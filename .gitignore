@@ -1,0 +1,38 @@
+# Python/cache artifacts
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+# Local IDE/editor state
+.idea/
+.vscode/
+
+# Experiment outputs and checkpoints
+/outputs/
+/eval_outputs/
+/wandb/
+/runs/
+/checkpoints/
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+
+# Local datasets and generated data
+/data/*
+!/data/train.example.jsonl
+
+# Vendored/reference projects
+/example_project/
+
+# Secrets and machine-local config
+.env
+.env.*
+*.pem
+*.key
+*.token
+
+# Logs
+*.log

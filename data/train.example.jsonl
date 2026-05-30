@@ -1,0 +1,1 @@
+{"messages":[{"role":"user","content":[{"type":"image","image":"images/example.jpg"},{"type":"text","text":"Describe this image."}]},{"role":"assistant","content":[{"type":"text","text":"This is a placeholder example. Replace it with your own image and answer."}]}]}
