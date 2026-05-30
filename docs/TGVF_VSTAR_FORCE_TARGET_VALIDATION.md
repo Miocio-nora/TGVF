@@ -109,8 +109,8 @@ Do not emit intent, mode, scope, JSON, tool metadata, explanations, or natural-l
 Only emit the foveation request.
 ```
 
-At the time this note was written, `src/tgvf_eval/prompts.py` is set to use this
-training capture prompt for force mode.
+The project default force prompt remains the old prompt used in the early VSTAR
+force runs. Rule targets are an explicit ablation, not the default target source.
 
 ## Deterministic Rule Target Builder
 
@@ -126,7 +126,8 @@ Added CLI:
 --force-target-source rule|llm|llm_with_rule_fallback
 ```
 
-VSTAR force mode defaults to `rule` unless a source is explicitly passed.
+Force mode defaults to `llm` unless a source is explicitly passed. Use
+`--force-target-source rule` to enable deterministic VSTAR rule targets.
 
 Rule behavior:
 

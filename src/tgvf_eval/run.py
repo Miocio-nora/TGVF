@@ -69,7 +69,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--force-target-source",
         choices=["rule", "llm", "llm_with_rule_fallback"],
         default=None,
-        help="Source for force-mode target text. Defaults to rule for VSTAR force runs, otherwise llm.",
+        help="Source for force-mode target text. Defaults to llm.",
     )
     parser.add_argument("--dump-target-quality-report", type=_bool, default=True)
     parser.add_argument("--dump-answer-distribution", type=_bool, default=True)
@@ -121,11 +121,7 @@ def run_benchmark(args: argparse.Namespace) -> dict[str, Any]:
             "Use --dry-run for state-machine/progress checks, or --video-foveation-mode off "
             "for current real model benchmark runs."
         )
-    force_target_source = args.force_target_source or (
-        "rule"
-        if args.benchmark == "vstar_bench" and method_config.trigger_mode == "force"
-        else "llm"
-    )
+    force_target_source = args.force_target_source or "llm"
     run_id = args.run_id or datetime.now(timezone.utc).strftime("eval_%Y%m%d_%H%M%S")
     paths = make_run_paths(args.output_root, run_id=run_id)
     config_payload = {
