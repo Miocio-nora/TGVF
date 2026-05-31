@@ -495,3 +495,255 @@ finite losses observed
 peak memory fits on B200 with local bs4
 2000-step training script is prepared
 ```
+
+## Completed 8B 2000-step run
+
+The first full 8B v3 Stage1 run has completed.
+
+Run directory:
+
+```text
+outputs/tgvf_v3_stage1_8b/8b_8gpu_2000step_stage1_v3
+```
+
+Final checkpoint:
+
+```text
+outputs/tgvf_v3_stage1_8b/8b_8gpu_2000step_stage1_v3/train/checkpoint_step_2000.pt
+```
+
+W&B:
+
+```text
+train: https://wandb.ai/mio_nora/tgvf-v3/runs/m05f8lvw
+eval:  https://wandb.ai/mio_nora/tgvf-v3/runs/9m211uc9
+```
+
+Training configuration:
+
+```text
+model: Qwen3-VL-8B-Thinking
+variant: tgvf_v2_bidirectional
+num_foveated_tokens: dynamic / null
+max_image_resolution: 512
+position_mode: native_source_grid
+mask: weak_strict_original_image_keys_4d
+capture_mode: teacher_forced
+same_image_negative_mode: matrix_ce
+local batch: 4
+world size: 8
+global batch: 32
+max_steps: 2000
+learning_rate: 1e-4
+warmup_steps: 100
+scheduler: cosine
+min_lr_ratio: 0.1
+```
+
+Dataset:
+
+```text
+train focus samples: 35,542
+skipped direct/control rows: 14,480
+validation file: data/tgvf_teacher/generated/runs/tgvf_v3_teacher_val_2k/final/tgvf_teacher_items.accepted.jsonl
+```
+
+Runtime:
+
+```text
+wall time: 6892.83 seconds
+wall time: 1.91 hours
+average speed: about 3.45 seconds/step
+```
+
+Saved checkpoints:
+
+```text
+checkpoint_step_500.pt
+checkpoint_step_1000.pt
+checkpoint_step_1500.pt
+checkpoint_step_2000.pt
+```
+
+### Final training state
+
+Final logged batch at step 2000:
+
+```text
+loss_total: 2.140625
+loss_gen: 1.8125
+loss_same_image_negative: 0.333984375
+grad_norm: 9.5
+learning_rate: 1e-5
+peak_memory_gb: 94.415
+finite_rate: 1.0
+d_norm_mean: 133.890
+norm_ratio_mean: 0.03254
+```
+
+Training sanity flags:
+
+```text
+qwen_frozen: true
+attention_mask_mode: weak_strict_original_image_keys_4d
+image_keys_blocked_for_tgvf_evidence_answer: true
+pre_tgvf_queries_keep_original_image_keys: true
+position_ids_source: qwen3_native_source_grid_full_trajectory
+second_full_forward_used: false
+```
+
+The same-image negative loss decreased materially during training. It started around 1.34 at step 1 and ended around 0.33 at step 2000, which indicates that matrix CE was doing useful target-specific pressure.
+
+The final point alone should not be over-interpreted because batches vary, but the run was numerically stable and completed without OOM.
+
+### Readout evaluation
+
+Evaluation file:
+
+```text
+outputs/tgvf_v3_stage1_8b/8b_8gpu_2000step_stage1_v3/eval/readout/readout_eval_report.json
+```
+
+Readout eval used 200 validation samples.
+
+Key metrics:
+
+```text
+mean_nll_correct_D: 1.3451
+mean_nll_target_only: 2.4613
+mean_nll_random_D: 2.3509
+mean_delta_correct_vs_target_only: 1.1162
+mean_delta_correct_vs_random: 1.0057
+mean_delta_correct_vs_wrong_same: 0.2561
+mean_delta_correct_vs_wrong_diff: 0.1715
+pct_correct_D_beats_target_only: 1.0000
+pct_correct_D_beats_random: 1.0000
+pct_correct_D_beats_wrong_same: 0.9045
+pct_correct_D_beats_wrong_diff: 0.9592
+second_full_forward_used_any: false
+```
+
+Interpretation:
+
+```text
+Correct D is strongly better than target-only.
+Correct D is strongly better than random D.
+Correct D usually beats wrong same-image D, but not perfectly.
+The gain is not explainable as prompt/protocol-only behavior.
+```
+
+This is the strongest evidence that the trained D carries readable visual information.
+
+### Query sensitivity evaluation
+
+Evaluation file:
+
+```text
+outputs/tgvf_v3_stage1_8b/8b_8gpu_2000step_stage1_v3/eval/query_sensitivity/query_sensitivity_report.json
+```
+
+Query sensitivity used 50 same-image groups and 189 items.
+
+Key metrics:
+
+```text
+retrieval_top1: 0.7778
+retrieval_top2: 0.9471
+mrr: 0.8794
+mean_diagonal_gap: 0.1244
+median_diagonal_gap: 0.0781
+second_full_forward_used_any: false
+```
+
+Interpretation:
+
+```text
+D is clearly target-conditioned.
+Same-image target specificity is strong enough for a first v3 Stage1 checkpoint.
+Wrong same-image D is still competitive in a minority of cases.
+```
+
+By source profile:
+
+```text
+chart top1: 0.8889
+document top1: 0.6809
+natural_image top1: 0.8333
+scene_text top1: 0.7586
+```
+
+By evidence type, `table_cell` was weak in this eval:
+
+```text
+table_cell top1: 0.0
+table_cell top2: 0.75
+table_cell diagonal_gap: -0.0117
+```
+
+This should be treated as a follow-up target. The sample count may be small, but table/document-style local evidence is a likely weak area.
+
+### FVT distribution evaluation
+
+Evaluation file:
+
+```text
+outputs/tgvf_v3_stage1_8b/8b_8gpu_2000step_stage1_v3/eval/fvt_distribution/fvt_distribution_report.json
+```
+
+Distribution eval used 200 validation samples.
+
+Key metrics:
+
+```text
+finite_rate: 1.0
+collapse_near_identical_rate: 0.0
+collapse_warning: false
+avg_norm_D: 131.8272
+avg_norm_V_merge: 3822.6146
+norm_ratio_D_to_Vmerge: 0.0378
+manifold_active_rate: 0.0
+second_full_forward_used_any: false
+```
+
+Interpretation:
+
+```text
+D is finite and does not show near-identical collapse.
+The current visual-token manifold loss is inactive because D is in LLM hidden dim 4096 while V_merge is in vision dim 1152.
+This is not a run failure, but calibration/manifold alignment remains unresolved for this v3 8B path.
+```
+
+### Overall conclusion
+
+This 8B Stage1 run is a valid v3 Stage1 baseline checkpoint.
+
+It establishes:
+
+```text
+1. D is useful: correct D beats target-only and random-D controls by a large margin.
+2. D is target-conditioned: same-image retrieval top1 is 77.8%, top2 is 94.7%.
+3. The v3 readout protocol works with weak-strict image-key masking.
+4. The Qwen3 backbone remains frozen.
+5. No second full forward was used in the evaluated path.
+6. Native source-grid position mode is active.
+7. The training path is fast enough for iteration on 8 B200 GPUs.
+```
+
+Current weaknesses:
+
+```text
+1. Same-image wrong-D controls are not fully solved.
+2. table_cell and some document-style cases appear weaker.
+3. manifold/calibration loss is inactive under the current D/V_merge dimensional mismatch.
+4. This is still Stage1 only; it does not prove end-to-end focus triggering or answer behavior.
+```
+
+Recommended next steps:
+
+```text
+1. Evaluate checkpoint_step_500, checkpoint_step_1000, checkpoint_step_1500, and checkpoint_step_2000 with the same eval suite.
+2. Run profile-specific query/readout eval for table_cell and document_field.
+3. Decide whether Stage1 should continue training beyond 2000 steps or whether 1000/1500 is better.
+4. Add a calibrated manifold/projection diagnostic that is meaningful for D dim 4096 vs V_merge dim 1152.
+5. After Stage1 checkpoint selection, move to Stage2 trajectory LoRA/action-readout training.
+```
