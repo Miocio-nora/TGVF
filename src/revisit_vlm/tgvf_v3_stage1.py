@@ -25,8 +25,12 @@ from revisit_vlm.qwen3_vl_tgvf import (
     Qwen3FocusCapture,
     _bracketed_visual_token_ids,
     _compute_qwen3_position_ids_for_sequence,
+    _decode,
     _encode_text,
+    build_focus_force_messages,
+    build_qwen3_inputs,
     capture_focus_single_pass_qwen3,
+    extract_qwen3_source_visual_geometry,
     llm_hidden_dim,
     tap_qwen3_vision_features,
 )
@@ -241,28 +245,49 @@ def collect_v3_stage1_features(
     device: torch.device | str,
     hidden_state_index: int = -1,
     max_image_resolution: int | None = 512,
+    capture_mode: Literal["teacher_forced", "decode_loop"] = "teacher_forced",
+    vision_cache: dict[str, tuple[Any, torch.Tensor, torch.Tensor]] | None = None,
 ) -> TGVFv3Stage1Features:
     image_input = _image_input(sample.image, max_image_resolution=max_image_resolution)
-    capture = capture_focus_single_pass_qwen3(
-        model,
-        processor,
-        image=image_input,
-        question=sample.prompt_question,
-        scripted_target_text=sample.target,
-        max_new_tokens=max(32, len(sample.target.split()) + 24),
-        device=device,
-        hidden_state_index=hidden_state_index,
-        eos_token_id=getattr(processor.tokenizer, "eos_token_id", None),
-    )
+    if capture_mode == "teacher_forced":
+        capture = capture_v3_stage1_focus_teacher_forced(
+            model=model,
+            processor=processor,
+            image=image_input,
+            question=sample.prompt_question,
+            target=sample.target,
+            device=device,
+            hidden_state_index=hidden_state_index,
+        )
+    elif capture_mode == "decode_loop":
+        capture = capture_focus_single_pass_qwen3(
+            model,
+            processor,
+            image=image_input,
+            question=sample.prompt_question,
+            scripted_target_text=sample.target,
+            max_new_tokens=max(32, len(sample.target.split()) + 24),
+            device=device,
+            hidden_state_index=hidden_state_index,
+            eos_token_id=getattr(processor.tokenizer, "eos_token_id", None),
+        )
+    else:
+        raise ValueError(f"Unsupported capture_mode: {capture_mode}")
     if not capture.capture_found:
         raise RuntimeError(f"Forced v3 focus span was not captured: {capture.generated_text!r}")
-    tap, v_pre, v_merge = tap_qwen3_vision_features(
-        model,
-        processor,
-        image=image_input,
-        question=sample.prompt_question,
-        device=device,
-    )
+    cache_key = f"{sample.image}|{max_image_resolution}"
+    if vision_cache is not None and cache_key in vision_cache:
+        tap, v_pre, v_merge = vision_cache[cache_key]
+    else:
+        tap, v_pre, v_merge = tap_qwen3_vision_features(
+            model,
+            processor,
+            image=image_input,
+            question=sample.prompt_question,
+            device=device,
+        )
+        if vision_cache is not None and v_pre is not None and v_merge is not None:
+            vision_cache[cache_key] = (tap, v_pre, v_merge)
     if v_pre is None:
         raise RuntimeError(f"Qwen3 V_pre tap failed: {tap.errors}")
     if v_merge is None:
@@ -276,6 +301,106 @@ def collect_v3_stage1_features(
             None if capture.image_grid_thw is None else capture.image_grid_thw.detach().cpu()
         ),
         vision_tap=tap,
+    )
+
+
+@torch.no_grad()
+def capture_v3_stage1_focus_teacher_forced(
+    *,
+    model: Any,
+    processor: Any,
+    image: Any,
+    question: str,
+    target: str,
+    device: torch.device | str | None = None,
+    hidden_state_index: int = -1,
+) -> Qwen3FocusCapture:
+    """Teacher-forced Stage1 H_q extraction.
+
+    This is deliberately separate from the deployment single-pass decode loop.
+    Stage1 already knows the teacher target, so a single frozen Qwen forward is
+    enough to obtain contextual target hidden states.
+    """
+    tokenizer = processor.tokenizer
+    messages = build_focus_force_messages(image, question)
+    inputs = build_qwen3_inputs(processor, messages)
+    if device is None:
+        device = _infer_model_device(model)
+    model_inputs = _move_tensors_for_stage1(dict(inputs), device)
+    base_input_ids = model_inputs["input_ids"]
+    base_attention = model_inputs.get("attention_mask")
+    source_visual_geometry = extract_qwen3_source_visual_geometry(model, model_inputs)
+    forced_text = (
+        f"{EVIDENCE_STATE_START}{NEED_LOCAL_EVIDENCE}{EVIDENCE_STATE_END}\n"
+        f"{FOCUS_START} {target.strip()} {FOCUS_END}"
+    )
+    forced_ids = _encode_text(tokenizer, forced_text, base_input_ids.device).view(1, -1)
+    full_input_ids = torch.cat([base_input_ids, forced_ids], dim=-1)
+    if base_attention is None:
+        full_attention = torch.ones_like(full_input_ids)
+    else:
+        full_attention = torch.cat(
+            [base_attention, torch.ones_like(forced_ids, dtype=base_attention.dtype)],
+            dim=-1,
+        )
+    forward_inputs = dict(model_inputs)
+    forward_inputs["input_ids"] = full_input_ids
+    forward_inputs["attention_mask"] = full_attention
+    if isinstance(forward_inputs.get("mm_token_type_ids"), torch.Tensor):
+        mm_token_type_ids = forward_inputs["mm_token_type_ids"]
+        forward_inputs["mm_token_type_ids"] = torch.cat(
+            [
+                mm_token_type_ids,
+                torch.zeros_like(forced_ids, dtype=mm_token_type_ids.dtype),
+            ],
+            dim=-1,
+        )
+    outputs = model(
+        **forward_inputs,
+        use_cache=False,
+        output_hidden_states=True,
+        return_dict=True,
+    )
+    generated_hidden = outputs.hidden_states[hidden_state_index][0, -int(forced_ids.shape[-1]) :]
+    span = _find_focus_target_span_in_forced_ids(tokenizer, forced_ids.view(-1).tolist())
+    if span is None:
+        target_start = target_end = 0
+        target_text = ""
+        target_ids: list[int] = []
+        target_hidden = generated_hidden[:0].detach()
+        capture_found = False
+        malformed = True
+        errors = ["teacher_forced_focus_span_not_found"]
+    else:
+        target_start, target_end, target_text = span
+        target_ids = forced_ids.view(-1).tolist()[target_start:target_end]
+        target_hidden = generated_hidden[target_start:target_end].detach()
+        capture_found = True
+        malformed = False
+        errors = []
+    return Qwen3FocusCapture(
+        target_text=target_text,
+        target_token_ids=target_ids,
+        target_hidden_states=target_hidden,
+        generated_ids=forced_ids.view(-1).tolist(),
+        generated_text=_decode(tokenizer, forced_ids.view(-1).tolist()),
+        generated_hidden_states=generated_hidden.detach(),
+        past_key_values=None,
+        attention_mask=full_attention.detach(),
+        cache_position=None,
+        input_ids=full_input_ids.detach(),
+        last_logits=None,
+        model_kwargs={"focus_target_source": "teacher_forced_stage1"},
+        image_grid_thw=model_inputs.get("image_grid_thw"),
+        video_grid_thw=model_inputs.get("video_grid_thw"),
+        source_visual_geometry=source_visual_geometry,
+        target_token_start=target_start,
+        target_token_end=target_end,
+        stop_reason="teacher_forced_focus_end_marker",
+        capture_found=capture_found,
+        second_full_forward_used=False,
+        malformed=malformed,
+        errors=errors,
     )
 
 
@@ -499,27 +624,171 @@ def compute_v3_stage1_lm_loss(
     model: Any,
     readout_inputs: dict[str, Any],
 ) -> tuple[torch.Tensor, torch.Tensor]:
+    losses, log_likelihoods = compute_v3_stage1_lm_losses_batched(
+        model=model,
+        readout_inputs_list=[readout_inputs],
+    )
+    return losses[0], log_likelihoods[0]
+
+
+def compute_v3_stage1_lm_losses_batched(
+    *,
+    model: Any,
+    readout_inputs_list: list[dict[str, Any]],
+) -> tuple[torch.Tensor, torch.Tensor]:
+    if not readout_inputs_list:
+        raise ValueError("readout_inputs_list must not be empty")
+    batched = batch_v3_stage1_readout_inputs(readout_inputs_list)
     outputs = model(
-        inputs_embeds=readout_inputs["inputs_embeds"],
-        attention_mask=readout_inputs["attention_mask"],
-        position_ids=readout_inputs["position_ids"],
-        image_grid_thw=readout_inputs["image_grid_thw"],
-        mm_token_type_ids=readout_inputs["mm_token_type_ids"],
-        labels=readout_inputs["labels"],
+        inputs_embeds=batched["inputs_embeds"],
+        attention_mask=batched["attention_mask"],
+        position_ids=batched["position_ids"],
+        image_grid_thw=batched["image_grid_thw"],
+        mm_token_type_ids=batched["mm_token_type_ids"],
         return_dict=True,
     )
     logits = outputs.logits
-    labels = readout_inputs["labels"]
+    labels = batched["labels"]
     shift_logits = logits[:, :-1, :].contiguous()
     shift_labels = labels[:, 1:].contiguous()
-    token_count = (shift_labels != IGNORE_INDEX).sum().clamp_min(1)
-    nll_sum = F.cross_entropy(
+    per_token_nll = F.cross_entropy(
         shift_logits.view(-1, shift_logits.shape[-1]),
         shift_labels.view(-1),
         ignore_index=IGNORE_INDEX,
-        reduction="sum",
-    )
+        reduction="none",
+    ).view(shift_labels.shape)
+    valid = shift_labels != IGNORE_INDEX
+    nll_sum = (per_token_nll * valid.to(per_token_nll.dtype)).sum(dim=-1)
+    token_count = valid.sum(dim=-1).clamp_min(1)
     return nll_sum / token_count, -nll_sum
+
+
+def batch_v3_stage1_readout_inputs(readout_inputs_list: list[dict[str, Any]]) -> dict[str, Any]:
+    max_len = max(int(item["inputs_embeds"].shape[1]) for item in readout_inputs_list)
+    embeds_list = []
+    labels_list = []
+    input_ids_list = []
+    token_type_list = []
+    attention_2d_list = []
+    position_list = []
+    attention_4d_list = []
+    image_grids = []
+    dtype = readout_inputs_list[0]["inputs_embeds"].dtype
+    device = readout_inputs_list[0]["inputs_embeds"].device
+    min_value = torch.finfo(dtype).min
+    for item in readout_inputs_list:
+        seq_len = int(item["inputs_embeds"].shape[1])
+        pad_len = max_len - seq_len
+        embeds = item["inputs_embeds"]
+        if pad_len:
+            embeds = torch.cat(
+                [embeds, embeds.new_zeros((1, pad_len, embeds.shape[-1]))],
+                dim=1,
+            )
+        embeds_list.append(embeds)
+
+        labels = item["labels"]
+        if pad_len:
+            labels = torch.cat(
+                [labels, torch.full((1, pad_len), IGNORE_INDEX, dtype=labels.dtype, device=labels.device)],
+                dim=1,
+            )
+        labels_list.append(labels)
+
+        input_ids = item["input_ids"]
+        if pad_len:
+            input_ids = torch.cat(
+                [input_ids, torch.zeros((1, pad_len), dtype=input_ids.dtype, device=input_ids.device)],
+                dim=1,
+            )
+        input_ids_list.append(input_ids)
+
+        token_type_ids = item["mm_token_type_ids"]
+        if pad_len:
+            token_type_ids = torch.cat(
+                [
+                    token_type_ids,
+                    torch.zeros((1, pad_len), dtype=token_type_ids.dtype, device=token_type_ids.device),
+                ],
+                dim=1,
+            )
+        token_type_list.append(token_type_ids)
+
+        attention_2d = item["attention_mask_2d"]
+        if pad_len:
+            attention_2d = torch.cat(
+                [
+                    attention_2d,
+                    torch.zeros((1, pad_len), dtype=attention_2d.dtype, device=attention_2d.device),
+                ],
+                dim=1,
+            )
+        attention_2d_list.append(attention_2d)
+
+        position_ids = item["position_ids"]
+        if pad_len:
+            position_ids = torch.cat(
+                [
+                    position_ids,
+                    torch.zeros(
+                        (position_ids.shape[0], 1, pad_len),
+                        dtype=position_ids.dtype,
+                        device=position_ids.device,
+                    ),
+                ],
+                dim=-1,
+            )
+        position_list.append(position_ids)
+
+        attention = item["attention_mask"]
+        if attention.ndim == 2:
+            attention = build_weak_strict_attention_mask(
+                attention_mask_2d=item["attention_mask_2d"],
+                original_image_token_indices=torch.empty(0, dtype=torch.long, device=device),
+                block_query_start=max_len + 1,
+                dtype=dtype,
+            )
+        padded_attention = torch.full(
+            (1, 1, max_len, max_len),
+            min_value,
+            dtype=attention.dtype,
+            device=attention.device,
+        )
+        padded_attention[:, :, :seq_len, :seq_len] = attention
+        attention_4d_list.append(padded_attention)
+        image_grids.append(item["image_grid_thw"])
+
+    return {
+        "input_ids": torch.cat(input_ids_list, dim=0),
+        "inputs_embeds": torch.cat(embeds_list, dim=0),
+        "labels": torch.cat(labels_list, dim=0),
+        "attention_mask": torch.cat(attention_4d_list, dim=0),
+        "attention_mask_2d": torch.cat(attention_2d_list, dim=0),
+        "position_ids": torch.cat(position_list, dim=1),
+        "image_grid_thw": torch.cat(image_grids, dim=0),
+        "mm_token_type_ids": torch.cat(token_type_list, dim=0),
+    }
+
+
+def compute_v3_stage1_lm_losses_chunked(
+    *,
+    model: Any,
+    readout_inputs_list: list[dict[str, Any]],
+    chunk_size: int,
+) -> tuple[list[torch.Tensor], list[torch.Tensor]]:
+    if chunk_size <= 0:
+        chunk_size = len(readout_inputs_list)
+    losses: list[torch.Tensor] = []
+    log_likelihoods: list[torch.Tensor] = []
+    for start in range(0, len(readout_inputs_list), chunk_size):
+        chunk = readout_inputs_list[start : start + chunk_size]
+        chunk_losses, chunk_ll = compute_v3_stage1_lm_losses_batched(
+            model=model,
+            readout_inputs_list=chunk,
+        )
+        losses.extend(chunk_losses.unbind(0))
+        log_likelihoods.extend(chunk_ll.unbind(0))
+    return losses, log_likelihoods
 
 
 def v3_stage1_training_step(
@@ -536,7 +805,10 @@ def v3_stage1_training_step(
     mask_original_image_after_tgvf: bool = True,
     position_mode: PositionMode = "native_source_grid",
     max_image_resolution: int | None = 512,
+    capture_mode: Literal["teacher_forced", "decode_loop"] = "teacher_forced",
+    readout_batch_size: int = 4,
 ) -> TGVFTrainStepOutput:
+    vision_cache: dict[str, tuple[Any, torch.Tensor, torch.Tensor]] = {}
     features = [
         collect_v3_stage1_features(
             model=qwen_model,
@@ -545,16 +817,17 @@ def v3_stage1_training_step(
             device=device,
             hidden_state_index=hidden_state_index,
             max_image_resolution=max_image_resolution,
+            capture_mode=capture_mode,
+            vision_cache=vision_cache,
         )
         for sample in samples
     ]
     fvt_outputs: list[torch.Tensor] = []
-    loss_gen_values: list[torch.Tensor] = []
-    positive_ll: list[torch.Tensor] = []
     loss_man_values: list[torch.Tensor] = []
     attention_debug_values: list[dict[str, Any]] = []
     norm_debug_values: list[dict[str, Any]] = []
     readout_debug_values: list[dict[str, Any]] = []
+    positive_readouts: list[dict[str, Any]] = []
 
     for sample, feature in zip(samples, features, strict=True):
         output = foveal_module(
@@ -579,12 +852,7 @@ def v3_stage1_training_step(
             mask_original_image_after_tgvf=mask_original_image_after_tgvf,
             position_mode=position_mode,
         )
-        gen_loss, log_likelihood = compute_v3_stage1_lm_loss(
-            model=qwen_model,
-            readout_inputs=readout_inputs,
-        )
-        loss_gen_values.append(gen_loss)
-        positive_ll.append(log_likelihood)
+        positive_readouts.append(readout_inputs)
         loss_man_values.append(
             _safe_visual_token_manifold_loss(d, feature.merged_visual_tokens.to(device))
         )
@@ -597,6 +865,11 @@ def v3_stage1_training_step(
         )
         readout_debug_values.append(_readout_debug(readout_inputs))
 
+    loss_gen_values, positive_ll = compute_v3_stage1_lm_losses_chunked(
+        model=qwen_model,
+        readout_inputs_list=positive_readouts,
+        chunk_size=readout_batch_size,
+    )
     loss_gen = torch.stack(loss_gen_values).mean()
     loss_man = torch.stack(loss_man_values).mean()
     zero = loss_gen.new_zeros(())
@@ -632,12 +905,17 @@ def v3_stage1_training_step(
         elif same_image_negative_mode == "matrix_ce":
             score_matrices = []
             for indices in same_image_negative_groups(samples):
+                pending_readouts: list[dict[str, Any]] = []
+                pending_slots: list[tuple[int, int]] = []
+                matrix_cells: list[list[torch.Tensor | None]] = [
+                    [None for _ in indices] for _ in indices
+                ]
                 rows = []
-                for pos_index in indices:
+                for row_index, pos_index in enumerate(indices):
                     row = []
-                    for fvt_index in indices:
+                    for col_index, fvt_index in enumerate(indices):
                         if pos_index == fvt_index:
-                            row.append(positive_ll[pos_index])
+                            matrix_cells[row_index][col_index] = positive_ll[pos_index]
                             continue
                         readout_inputs = prepare_v3_stage1_readout_inputs(
                             model=qwen_model,
@@ -649,11 +927,22 @@ def v3_stage1_training_step(
                             mask_original_image_after_tgvf=mask_original_image_after_tgvf,
                             position_mode=position_mode,
                         )
-                        _, log_likelihood = compute_v3_stage1_lm_loss(
-                            model=qwen_model,
-                            readout_inputs=readout_inputs,
-                        )
-                        row.append(log_likelihood)
+                        pending_readouts.append(readout_inputs)
+                        pending_slots.append((row_index, col_index))
+                if pending_readouts:
+                    _, pending_ll = compute_v3_stage1_lm_losses_chunked(
+                        model=qwen_model,
+                        readout_inputs_list=pending_readouts,
+                        chunk_size=readout_batch_size,
+                    )
+                    for (row_index, col_index), log_likelihood in zip(
+                        pending_slots, pending_ll, strict=True
+                    ):
+                        matrix_cells[row_index][col_index] = log_likelihood
+                for row_cells in matrix_cells:
+                    row = [cell for cell in row_cells if cell is not None]
+                    if len(row) != len(indices):
+                        raise RuntimeError("incomplete same-image matrix CE score row")
                     rows.append(torch.stack(row))
                 score_matrices.append(torch.stack(rows))
             if score_matrices:
@@ -705,7 +994,7 @@ def v3_stage1_training_step(
             "source_visual_token_count": readout_debug_values[0]["original_image_token_count"],
             "answer_token_count": readout_debug_values[0]["answer_token_count"],
             "attention_diagnostics": summarize_diagnostics(attention_debug_values),
-            "norm_diagnostics": summarize_diagnostics(norm_debug_values),
+            "norm_diagnostics": _compact_diagnostics(summarize_diagnostics(norm_debug_values)),
             "finite_rate": float(torch.stack([value.cpu() for value in finite_values]).mean()),
             "visual_token_manifold_active": bool(
                 first_d.shape[-1] == first_feature.merged_visual_tokens.shape[-1]
@@ -742,6 +1031,14 @@ def _readout_debug(readout_inputs: dict[str, Any]) -> dict[str, Any]:
         "mask_summary",
     )
     return {key: readout_inputs.get(key) for key in keys}
+
+
+def _compact_diagnostics(diagnostics: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: value
+        for key, value in diagnostics.items()
+        if not (isinstance(key, str) and key.endswith("_values"))
+    }
 
 
 def _safe_visual_token_manifold_loss(
@@ -803,3 +1100,107 @@ def _image_input(image: str, *, max_image_resolution: int | None) -> Any:
         "image": image,
         "max_pixels": int(max_image_resolution) * int(max_image_resolution),
     }
+
+
+def _move_tensors_for_stage1(
+    value: dict[str, Any],
+    device: torch.device | str | None,
+) -> dict[str, Any]:
+    if device is None:
+        return value
+    moved = {}
+    for key, item in value.items():
+        moved[key] = item.to(device) if isinstance(item, torch.Tensor) else item
+    return moved
+
+
+def _find_focus_target_span_in_forced_ids(
+    tokenizer: Any,
+    token_ids: list[int],
+) -> tuple[int, int, str] | None:
+    focus_start_ids = _encode_text(tokenizer, FOCUS_START, "cpu").view(-1).tolist()
+    focus_end_ids = _encode_text(tokenizer, FOCUS_END, "cpu").view(-1).tolist()
+    start_marker = _find_subsequence(token_ids, focus_start_ids)
+    if start_marker < 0:
+        return _find_focus_target_span_from_decoded_text(tokenizer, token_ids)
+    target_start = start_marker + len(focus_start_ids)
+    end_marker = _find_subsequence(token_ids[target_start:], focus_end_ids)
+    if end_marker < 0:
+        return _find_focus_target_span_from_decoded_text(tokenizer, token_ids)
+    target_end = target_start + end_marker
+    stripped_start, stripped_end = _strip_space_like_token_edges(
+        tokenizer,
+        token_ids,
+        target_start,
+        target_end,
+    )
+    target_text = _decode(tokenizer, token_ids[stripped_start:stripped_end]).strip()
+    return stripped_start, stripped_end, target_text
+
+
+def _find_focus_target_span_from_decoded_text(
+    tokenizer: Any,
+    token_ids: list[int],
+) -> tuple[int, int, str] | None:
+    text = _decode(tokenizer, token_ids)
+    start_index = text.find(FOCUS_START)
+    if start_index < 0:
+        return None
+    inner_start = start_index + len(FOCUS_START)
+    end_index = text.find(FOCUS_END, inner_start)
+    if end_index < 0:
+        return None
+    raw_focus = text[inner_start:end_index]
+    target_text = raw_focus.strip()
+    if not target_text:
+        return None
+    leading = len(raw_focus) - len(raw_focus.lstrip())
+    trailing = len(raw_focus.rstrip())
+    char_start = inner_start + leading
+    char_end = inner_start + trailing
+    offsets = _decoded_token_offsets_for_stage1(tokenizer, token_ids)
+    token_indices = [
+        index
+        for index, (tok_start, tok_end) in enumerate(offsets)
+        if tok_start < char_end and tok_end > char_start
+    ]
+    if not token_indices:
+        return None
+    return token_indices[0], token_indices[-1] + 1, target_text
+
+
+def _find_subsequence(values: list[int], pattern: list[int]) -> int:
+    if not pattern or len(pattern) > len(values):
+        return -1
+    limit = len(values) - len(pattern) + 1
+    for index in range(limit):
+        if values[index : index + len(pattern)] == pattern:
+            return index
+    return -1
+
+
+def _strip_space_like_token_edges(
+    tokenizer: Any,
+    token_ids: list[int],
+    start: int,
+    end: int,
+) -> tuple[int, int]:
+    while start < end and _decode(tokenizer, [token_ids[start]]).strip() == "":
+        start += 1
+    while end > start and _decode(tokenizer, [token_ids[end - 1]]).strip() == "":
+        end -= 1
+    return start, end
+
+
+def _decoded_token_offsets_for_stage1(
+    tokenizer: Any,
+    token_ids: list[int],
+) -> list[tuple[int, int]]:
+    offsets: list[tuple[int, int]] = []
+    cursor = 0
+    for token_id in token_ids:
+        token_text = _decode(tokenizer, [token_id])
+        end = cursor + len(token_text)
+        offsets.append((cursor, end))
+        cursor = end
+    return offsets

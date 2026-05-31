@@ -2,12 +2,19 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import os
+import random
 from dataclasses import asdict
 from pathlib import Path
+from typing import Any, Iterator
 
 import torch
+import torch.distributed as dist
+from torch.nn.parallel import DistributedDataParallel
 from torch.utils.data import DataLoader
+from torch.utils.data.distributed import DistributedSampler
 
 from revisit_vlm.qwen3_vl_tgvf import load_qwen3_vl, peak_memory_gb
 from revisit_vlm.tgvf_training import (
@@ -30,9 +37,17 @@ from revisit_vlm.wandb_logging import WandbLogger, flatten_metrics
 
 def main() -> None:
     args = parse_args()
-    device = torch.device(args.device)
+    ddp = setup_distributed(args)
+    rank = ddp["rank"]
+    local_rank = ddp["local_rank"]
+    world_size = ddp["world_size"]
+    is_main = rank == 0
+    device = ddp["device"]
+    effective_device_map = ddp["device_map"]
     output_dir = Path(args.output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
+    if is_main:
+        output_dir.mkdir(parents=True, exist_ok=True)
+    distributed_barrier()
 
     dataset = TGVFv3Stage1Dataset(
         args.train_file,
@@ -46,7 +61,7 @@ def main() -> None:
         args.model_id,
         processor_id=args.processor_id,
         dtype=args.dtype,
-        device_map=args.device_map,
+        device_map=effective_device_map,
         attn_implementation=args.attn_implementation,
     )
     model = loaded.model
@@ -88,7 +103,12 @@ def main() -> None:
         "tgvf": asdict(module_config),
         "loss_weights": asdict(loss_weights),
         "learning_rate": args.learning_rate,
+        "lr_scheduler": args.lr_scheduler,
+        "warmup_steps": args.warmup_steps,
+        "min_lr_ratio": args.min_lr_ratio,
         "batch_size": args.batch_size,
+        "local_batch_size": args.batch_size,
+        "global_batch_size": args.batch_size * world_size,
         "max_steps": args.max_steps,
         "freeze_qwen": True,
         "mask_original_image_after_tgvf": args.mask_original_image_after_tgvf,
@@ -102,14 +122,23 @@ def main() -> None:
         "max_pixels": None
         if args.max_image_resolution is None
         else int(args.max_image_resolution) * int(args.max_image_resolution),
+        "batch_sampling": _resolved_batch_sampling(args),
+        "drop_incomplete_same_image_batches": args.drop_incomplete_same_image_batches,
+        "capture_mode": args.capture_mode,
+        "readout_batch_size": args.readout_batch_size,
+        "dataloader_num_workers": args.num_workers,
+        "distributed": world_size > 1,
+        "world_size": world_size,
+        "rank": rank,
         "dims": dims,
         "dtype": args.dtype,
-        "device_map": args.device_map,
+        "device_map": effective_device_map,
         "attn_implementation": args.attn_implementation,
     }
-    (output_dir / "config.json").write_text(json.dumps(config, indent=2, ensure_ascii=False) + "\n")
+    if is_main:
+        (output_dir / "config.json").write_text(json.dumps(config, indent=2, ensure_ascii=False) + "\n")
     wandb_logger = WandbLogger(
-        project=args.wandb_project,
+        project=args.wandb_project if is_main else None,
         entity=args.wandb_entity,
         name=args.wandb_run_name or output_dir.name,
         group=args.wandb_group,
@@ -127,7 +156,7 @@ def main() -> None:
     )
 
     train_dtype = next(model.parameters()).dtype
-    foveal_module = build_tgvf_module(
+    raw_foveal_module = build_tgvf_module(
         variant=args.variant,
         d_lm=dims["d_lm"],
         d_v=dims["d_v"],
@@ -135,27 +164,83 @@ def main() -> None:
         spatial_merge_size=spatial_merge_size,
         attn_dim=args.attn_dim,
     ).to(device=device, dtype=train_dtype)
-    foveal_module.train()
+    if args.resume_from_checkpoint:
+        checkpoint = torch.load(args.resume_from_checkpoint, map_location="cpu")
+        raw_foveal_module.load_state_dict(checkpoint["tgvf_module"], strict=True)
+    raw_foveal_module.train()
+
+    if world_size > 1:
+        foveal_module = DistributedDataParallel(
+            raw_foveal_module,
+            device_ids=[local_rank] if device.type == "cuda" else None,
+            output_device=local_rank if device.type == "cuda" else None,
+            find_unused_parameters=args.ddp_find_unused_parameters,
+        )
+    else:
+        foveal_module = raw_foveal_module
+
     if args.wandb_watch and wandb_logger.enabled:
         wandb_logger._wandb.watch(
-            foveal_module,
+            _checkpoint_module(foveal_module),
             log=args.wandb_watch,
             log_freq=max(args.log_every, 1),
         )
     optimizer = torch.optim.AdamW(foveal_module.parameters(), lr=args.learning_rate)
+    scheduler = build_lr_scheduler(
+        optimizer,
+        scheduler_name=args.lr_scheduler,
+        max_steps=args.max_steps,
+        warmup_steps=args.warmup_steps,
+        min_lr_ratio=args.min_lr_ratio,
+    )
 
     if args.resume_from_checkpoint:
-        checkpoint = torch.load(args.resume_from_checkpoint, map_location="cpu")
-        foveal_module.load_state_dict(checkpoint["tgvf_module"], strict=True)
         if checkpoint.get("optimizer") is not None:
             optimizer.load_state_dict(checkpoint["optimizer"])
+        if checkpoint.get("scheduler") is not None:
+            scheduler.load_state_dict(checkpoint["scheduler"])
 
-    loader = DataLoader(
-        dataset,
-        batch_size=args.batch_size,
-        shuffle=True,
-        collate_fn=tgvf_v3_stage1_collate,
-    )
+    batch_sampling = _resolved_batch_sampling(args)
+    if batch_sampling == "same_image":
+        loader = DataLoader(
+            dataset,
+            batch_sampler=SameImageBatchSampler(
+                dataset.samples,
+                batch_size=args.batch_size,
+                seed=args.seed,
+                rank=rank,
+                world_size=world_size,
+                drop_incomplete=args.drop_incomplete_same_image_batches,
+            ),
+            collate_fn=tgvf_v3_stage1_collate,
+            num_workers=args.num_workers,
+            pin_memory=args.pin_memory,
+            persistent_workers=args.persistent_workers if args.num_workers > 0 else False,
+            prefetch_factor=args.prefetch_factor if args.num_workers > 0 else None,
+        )
+    else:
+        distributed_sampler = (
+            DistributedSampler(
+                dataset,
+                num_replicas=world_size,
+                rank=rank,
+                shuffle=True,
+                seed=args.seed,
+            )
+            if world_size > 1
+            else None
+        )
+        loader = DataLoader(
+            dataset,
+            batch_size=args.batch_size,
+            shuffle=distributed_sampler is None,
+            sampler=distributed_sampler,
+            collate_fn=tgvf_v3_stage1_collate,
+            num_workers=args.num_workers,
+            pin_memory=args.pin_memory,
+            persistent_workers=args.persistent_workers if args.num_workers > 0 else False,
+            prefetch_factor=args.prefetch_factor if args.num_workers > 0 else None,
+        )
     data_iter = iter(loader)
     debug_examples_path = output_dir / "debug_examples.jsonl"
     optimizer.zero_grad(set_to_none=True)
@@ -166,6 +251,8 @@ def main() -> None:
         try:
             samples = next(data_iter)
         except StopIteration:
+            if batch_sampling != "same_image" and isinstance(getattr(loader, "sampler", None), DistributedSampler):
+                loader.sampler.set_epoch(step)
             data_iter = iter(loader)
             samples = next(data_iter)
 
@@ -182,15 +269,18 @@ def main() -> None:
             mask_original_image_after_tgvf=args.mask_original_image_after_tgvf,
             position_mode=args.fvt_position_mode,
             max_image_resolution=args.max_image_resolution,
+            capture_mode=args.capture_mode,
+            readout_batch_size=args.readout_batch_size,
         )
         if not torch.isfinite(output.loss_total):
             raise RuntimeError(f"Non-finite v3 Stage1 loss at step {step}: {output.loss_total}")
         output.loss_total.backward()
         grad_norm = torch.nn.utils.clip_grad_norm_(foveal_module.parameters(), args.max_grad_norm)
         optimizer.step()
+        scheduler.step()
         optimizer.zero_grad(set_to_none=True)
 
-        if step == 1 or step % args.log_every == 0 or step == args.max_steps:
+        if is_main and (step == 1 or step % args.log_every == 0 or step == args.max_steps):
             log = {
                 "step": step,
                 "loss_total": float(output.loss_total.detach().cpu()),
@@ -198,11 +288,17 @@ def main() -> None:
                 "loss_visual_token_manifold": float(output.loss_visual_token_manifold.detach().cpu()),
                 "loss_same_image_negative": float(output.loss_same_image_negative.detach().cpu()),
                 "grad_norm": float(grad_norm.detach().cpu()),
+                "learning_rate": float(optimizer.param_groups[0]["lr"]),
                 "model_id": args.model_id,
                 "dataset": str(args.train_file),
                 "num_focus_samples_used": len(dataset),
                 "variant": args.variant,
                 "device": str(device),
+                "world_size": world_size,
+                "global_batch_size": args.batch_size * world_size,
+                "batch_sampling": batch_sampling,
+                "capture_mode": args.capture_mode,
+                "readout_batch_size": args.readout_batch_size,
                 "peak_memory_gb": peak_memory_gb(),
                 **output.debug,
             }
@@ -213,12 +309,13 @@ def main() -> None:
                 for example in output.debug.get("debug_examples", [])[: args.max_debug_examples_per_log]:
                     handle.write(json.dumps(_json_safe({"step": step, **example}), ensure_ascii=False) + "\n")
 
-        if step % args.save_every == 0 or step == args.max_steps:
+        if is_main and (step % args.save_every == 0 or step == args.max_steps):
             save_tgvf_checkpoint(
                 path=output_dir / f"checkpoint_step_{step}.pt",
-                foveal_module=foveal_module,
+                foveal_module=_checkpoint_module(foveal_module),
                 config=config,
                 optimizer=optimizer,
+                scheduler=scheduler,
                 global_step=step,
                 optimizer_step=step,
             )
@@ -229,8 +326,11 @@ def main() -> None:
                     paths=[output_dir / f"checkpoint_step_{step}.pt", output_dir / "config.json"],
                     aliases=["latest", f"step-{step}"],
                 )
+        distributed_barrier()
 
-    wandb_logger.finish()
+    if is_main:
+        wandb_logger.finish()
+    cleanup_distributed()
 
 
 def parse_args() -> argparse.Namespace:
@@ -248,7 +348,19 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--spatial-merge-size", default="auto")
     parser.add_argument("--attn-dim", type=int, default=None)
     parser.add_argument("--learning-rate", type=float, default=1e-4)
+    parser.add_argument("--lr-scheduler", choices=("constant", "linear", "cosine"), default="constant")
+    parser.add_argument("--warmup-steps", type=int, default=0)
+    parser.add_argument("--min-lr-ratio", type=float, default=0.0)
     parser.add_argument("--batch-size", type=int, default=1)
+    parser.add_argument("--batch-sampling", choices=("auto", "random", "same_image"), default="auto")
+    parser.add_argument("--drop-incomplete-same-image-batches", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--capture-mode", choices=("teacher_forced", "decode_loop"), default="teacher_forced")
+    parser.add_argument("--readout-batch-size", type=int, default=4)
+    parser.add_argument("--num-workers", type=int, default=0)
+    parser.add_argument("--pin-memory", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--persistent-workers", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--prefetch-factor", type=int, default=2)
+    parser.add_argument("--seed", type=int, default=20260525)
     parser.add_argument("--max-steps", type=int, default=1000)
     parser.add_argument("--save-every", type=int, default=1000)
     parser.add_argument("--log-every", type=int, default=10)
@@ -274,10 +386,19 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--wandb-tags", default="")
     parser.add_argument("--wandb-watch", default=None, choices=("gradients", "parameters", "all"))
     parser.add_argument("--wandb-log-checkpoints", action="store_true")
+    parser.add_argument("--ddp-find-unused-parameters", action="store_true")
     args = parser.parse_args()
     if args.variant not in TGVF_DYNAMIC_NUM_FVT_VARIANTS and args.num_foveated_tokens is None:
         variants = ", ".join(TGVF_DYNAMIC_NUM_FVT_VARIANTS)
         parser.error(f"--num-foveated-tokens none is supported only with --variant in: {variants}")
+    if args.warmup_steps < 0:
+        parser.error("--warmup-steps must be >= 0")
+    if args.readout_batch_size < 1:
+        parser.error("--readout-batch-size must be >= 1")
+    if args.num_workers < 0:
+        parser.error("--num-workers must be >= 0")
+    if not 0.0 <= args.min_lr_ratio <= 1.0:
+        parser.error("--min-lr-ratio must be between 0 and 1")
     return args
 
 
@@ -288,6 +409,150 @@ def _parse_optional_positive_int(value: str) -> int | None:
     if parsed <= 0:
         raise argparse.ArgumentTypeError("value must be positive, none, null, or auto")
     return parsed
+
+
+def _resolved_batch_sampling(args: argparse.Namespace) -> str:
+    if args.batch_sampling != "auto":
+        return args.batch_sampling
+    if (
+        args.batch_size > 1
+        and args.loss_same_image_negative > 0
+        and args.same_image_negative_mode == "matrix_ce"
+    ):
+        return "same_image"
+    return "random"
+
+
+class SameImageBatchSampler:
+    def __init__(
+        self,
+        samples: list[Any],
+        *,
+        batch_size: int,
+        seed: int,
+        rank: int = 0,
+        world_size: int = 1,
+        drop_incomplete: bool = True,
+    ) -> None:
+        if batch_size < 1:
+            raise ValueError("batch_size must be >= 1")
+        self.samples = samples
+        self.batch_size = batch_size
+        self.seed = seed
+        self.rank = rank
+        self.world_size = world_size
+        self.drop_incomplete = drop_incomplete
+        self.epoch = 0
+        groups: dict[str, list[int]] = {}
+        for index, sample in enumerate(samples):
+            group_id = str(sample.image_id or sample.image)
+            if world_size > 1:
+                owner = int(hashlib.sha1(group_id.encode()).hexdigest(), 16) % world_size
+                if owner != rank:
+                    continue
+            groups.setdefault(group_id, []).append(index)
+        if batch_size > 1:
+            min_size = batch_size if drop_incomplete else 2
+            groups = {group_id: indices for group_id, indices in groups.items() if len(indices) >= min_size}
+        self.groups = groups
+        self._length = 0
+        for indices in self.groups.values():
+            if drop_incomplete:
+                self._length += len(indices) // batch_size
+            else:
+                self._length += max(1, (len(indices) + batch_size - 1) // batch_size)
+        if not self.groups:
+            raise RuntimeError("same_image batch sampling found no image groups with enough samples")
+
+    def __iter__(self) -> Iterator[list[int]]:
+        rng = random.Random(self.seed + self.epoch)
+        self.epoch += 1
+        group_ids = list(self.groups)
+        rng.shuffle(group_ids)
+        for group_id in group_ids:
+            indices = list(self.groups[group_id])
+            rng.shuffle(indices)
+            for start in range(0, len(indices), self.batch_size):
+                batch = indices[start : start + self.batch_size]
+                if self.drop_incomplete and len(batch) != self.batch_size:
+                    continue
+                if len(batch) == 1 and self.batch_size > 1:
+                    continue
+                yield batch
+
+    def __len__(self) -> int:
+        return self._length
+
+
+def setup_distributed(args: argparse.Namespace) -> dict[str, Any]:
+    world_size = int(os.environ.get("WORLD_SIZE", "1"))
+    rank = int(os.environ.get("RANK", "0"))
+    local_rank = int(os.environ.get("LOCAL_RANK", "0"))
+    if world_size > 1:
+        if torch.cuda.is_available():
+            torch.cuda.set_device(local_rank)
+            device = torch.device(f"cuda:{local_rank}")
+            device_map: str | dict[str, str] | None = f"cuda:{local_rank}"
+        else:
+            device = torch.device("cpu")
+            device_map = None
+        dist.init_process_group(backend="nccl" if device.type == "cuda" else "gloo")
+    else:
+        device = torch.device(args.device)
+        device_map = args.device_map
+    return {
+        "rank": rank,
+        "local_rank": local_rank,
+        "world_size": world_size,
+        "device": device,
+        "device_map": device_map,
+    }
+
+
+def distributed_barrier() -> None:
+    if dist.is_available() and dist.is_initialized():
+        dist.barrier()
+
+
+def cleanup_distributed() -> None:
+    if dist.is_available() and dist.is_initialized():
+        dist.destroy_process_group()
+
+
+def _checkpoint_module(module: torch.nn.Module) -> torch.nn.Module:
+    if isinstance(module, DistributedDataParallel):
+        return module.module
+    return module
+
+
+def build_lr_scheduler(
+    optimizer: torch.optim.Optimizer,
+    *,
+    scheduler_name: str,
+    max_steps: int,
+    warmup_steps: int,
+    min_lr_ratio: float,
+) -> torch.optim.lr_scheduler.LambdaLR:
+    if max_steps <= 0:
+        raise ValueError("max_steps must be positive")
+    warmup_steps = max(0, int(warmup_steps))
+    min_lr_ratio = float(min_lr_ratio)
+
+    def lr_lambda(step: int) -> float:
+        if warmup_steps > 0 and step < warmup_steps:
+            return max(float(step + 1) / float(warmup_steps), 1e-8)
+        if scheduler_name == "constant":
+            return 1.0
+        decay_steps = max(1, int(max_steps) - warmup_steps)
+        progress = min(1.0, max(0.0, float(step - warmup_steps + 1) / float(decay_steps)))
+        if scheduler_name == "linear":
+            return min_lr_ratio + (1.0 - min_lr_ratio) * (1.0 - progress)
+        if scheduler_name == "cosine":
+            cosine = 0.5 * (1.0 + torch.cos(torch.tensor(progress * torch.pi)).item())
+            return min_lr_ratio + (1.0 - min_lr_ratio) * cosine
+        raise ValueError(f"Unsupported lr scheduler: {scheduler_name}")
+
+    return torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lr_lambda)
 
 
 def _json_safe(value):
