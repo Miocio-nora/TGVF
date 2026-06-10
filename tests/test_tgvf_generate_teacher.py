@@ -10,8 +10,10 @@ from tgvf_data.generate_teacher import (
     DEFAULT_TEACHER_SCHEMA_VERSION,
     PROMPT_VERSION_V0,
     PROMPT_VERSION_VISUAL_CUE_V1,
+    PROMPT_VERSION_V3,
     SCHEMA_VERSION_V0,
     SCHEMA_VERSION_VISUAL_CUE_V1,
+    SCHEMA_VERSION_V3,
     GenerationConfig,
     OpenAIConfig,
     TeacherResponse,
@@ -55,16 +57,19 @@ def test_teacher_schema_is_strict_and_enum_constrained() -> None:
     schema = teacher_output_schema()
 
     assert schema["additionalProperties"] is False
-    assert schema["properties"]["items"]["items"]["additionalProperties"] is False
-    evidence_enum = schema["properties"]["items"]["items"]["properties"]["evidence_type"]["enum"]
+    assert schema["properties"]["focus_items"]["items"]["additionalProperties"] is False
+    assert schema["properties"]["direct_items"]["items"]["additionalProperties"] is False
+    evidence_enum = schema["properties"]["focus_items"]["items"]["properties"]["evidence_type"]["enum"]
     assert "ocr_text" in evidence_enum
+    assert schema["properties"]["schema_version"]["enum"] == [SCHEMA_VERSION_V3]
 
 
 def test_prompt_registry_and_defaults() -> None:
-    assert DEFAULT_TEACHER_PROMPT_VERSION == PROMPT_VERSION_VISUAL_CUE_V1
-    assert DEFAULT_TEACHER_SCHEMA_VERSION == SCHEMA_VERSION_VISUAL_CUE_V1
+    assert DEFAULT_TEACHER_PROMPT_VERSION == PROMPT_VERSION_V3
+    assert DEFAULT_TEACHER_SCHEMA_VERSION == SCHEMA_VERSION_V3
     assert "visual evidence annotator" in get_teacher_prompt(PROMPT_VERSION_V0)
     assert "visual-cue target" in get_teacher_prompt(PROMPT_VERSION_VISUAL_CUE_V1)
+    assert "Target-Guided Visual Foveation" in get_teacher_prompt(PROMPT_VERSION_V3)
 
 
 def test_v1_schema_adds_visual_cue_fields_and_v0_omits_them() -> None:
@@ -86,7 +91,10 @@ def test_v1_visual_cue_item_validates_and_flattens() -> None:
     accepted, rejected = validate_image_level_output(
         _image_output([_visual_cue_item()]),
         _image_record(),
-        config=GenerationConfig(),
+        config=GenerationConfig(
+            prompt_version=PROMPT_VERSION_VISUAL_CUE_V1,
+            schema_version=SCHEMA_VERSION_VISUAL_CUE_V1,
+        ),
         teacher_run_id="teacher_run_test",
         model="gpt-test",
         raw_response_id="resp_1",
@@ -185,7 +193,10 @@ def test_quality_report_counts_visual_cue_fields() -> None:
             ]
         ),
         _image_record(),
-        config=GenerationConfig(),
+        config=GenerationConfig(
+            prompt_version=PROMPT_VERSION_VISUAL_CUE_V1,
+            schema_version=SCHEMA_VERSION_VISUAL_CUE_V1,
+        ),
         teacher_run_id="teacher_run_test",
         model="gpt-test",
     )
@@ -232,6 +243,91 @@ def test_validate_good_image_output_and_flatten() -> None:
     assert record["target"] == "the small text printed below the barcode"
     assert record["evidence_description"].endswith("EXP 08/2026.")
     assert record["item_content_hash"]
+
+
+def test_default_v3_normalizes_legacy_old_json() -> None:
+    accepted, rejected = validate_image_level_output(
+        _image_output([_good_item()]),
+        _image_record(),
+        config=GenerationConfig(),
+        teacher_run_id="teacher_run_test",
+        model="gpt-test",
+    )
+
+    assert rejected == []
+    assert accepted[0]["schema_version"] == SCHEMA_VERSION_V3
+    assert accepted[0]["need_focus"] is True
+    assert accepted[0]["evidence_state"] == "need_local_visual_evidence"
+    assert accepted[0]["trajectory_type"] == "single_focus"
+    assert accepted[0]["target_style"] == "unknown"
+    assert accepted[0]["target_cues"] == []
+    assert accepted[0]["answer"] == "EXP 08/2026"
+    assert accepted[0]["answer_format"] == "short_text"
+    assert accepted[0]["value_span_text"] == "EXP 08/2026"
+
+
+def test_v3_focus_and_direct_items_validate_flatten_and_report() -> None:
+    accepted, rejected = validate_image_level_output(
+        _v3_image_output([_v3_focus_item()], [_direct_item()]),
+        _image_record(),
+        config=GenerationConfig(),
+        teacher_run_id="teacher_run_test",
+        model="gpt-test",
+    )
+
+    assert rejected == []
+    assert len(accepted) == 2
+    focus = accepted[0]
+    direct = accepted[1]
+    assert focus["need_focus"] is True
+    assert focus["evidence_state"] == "need_local_visual_evidence"
+    assert focus["target_style"] == "visual_cue"
+    assert focus["answer"] == "EXP 08/2026"
+    assert direct["need_focus"] is False
+    assert direct["target"] == ""
+    assert direct["target_style"] == "none"
+    assert direct["answer"] == "dog"
+
+    report = quality_report(
+        accepted,
+        rejected,
+        [
+            make_ledger_entry(
+                teacher_run_id="teacher_run_test",
+                image_record=_image_record(),
+                status="succeeded",
+                accepted_item_count=len(accepted),
+                request_custom_id="request_1",
+                num_focus_items_raw=1,
+                num_direct_items_raw=1,
+            )
+        ],
+    )
+    assert report["focus_item_count"] == 1
+    assert report["direct_item_count"] == 1
+    assert report["answer_format_distribution"]["short_text"] == 2
+    assert report["image_group_size_histogram"] == {"2": 1}
+
+
+def test_v3_filtering_rejects_bad_visual_cue_and_direct_local_question() -> None:
+    generic_focus = {
+        **_v3_focus_item(),
+        "target": "the object",
+        "target_cues": ["color"],
+    }
+    reasons = validate_item(generic_focus, schema_version=SCHEMA_VERSION_V3)
+    assert "generic_target" in reasons
+    assert "visually_generic_target" in reasons
+    assert "visual_cue_target_missing_cues" in reasons
+
+    good_visual_cue = _v3_focus_item()
+    assert validate_item(good_visual_cue, schema_version=SCHEMA_VERSION_V3) == []
+
+    direct_reasons = validate_item(
+        {**_direct_item(), "question": "What tiny text is printed below the barcode?"},
+        schema_version=SCHEMA_VERSION_V3,
+    )
+    assert "direct_question_requires_focus" in direct_reasons
 
 
 def test_validation_rejects_answer_leakage_and_generic_evidence() -> None:
@@ -418,6 +514,67 @@ def _visual_cue_item() -> dict:
         "confidence": 0.94,
         "target_style": "visual_cue",
         "target_cues": ["location", "color", "size"],
+    }
+
+
+def _v3_image_output(focus_items: list[dict], direct_items: list[dict]) -> dict:
+    return {
+        "schema_version": SCHEMA_VERSION_V3,
+        "teacher_prompt_version": PROMPT_VERSION_V3,
+        "image_id": "textvqa:123",
+        "source_dataset": "textvqa",
+        "source_profile": "scene_text",
+        "global_notes": "contains visible local text and an obvious animal",
+        "focus_items": focus_items,
+        "direct_items": direct_items,
+    }
+
+
+def _v3_focus_item() -> dict:
+    return {
+        **_visual_cue_item(),
+        "need_focus": True,
+        "evidence_state": "need_local_visual_evidence",
+        "trajectory_type": "single_focus",
+        "question": "What text is printed below the barcode?",
+        "target": "the date-like small text printed below the barcode",
+        "evidence_description": "The small text below the barcode reads EXP 08/2026.",
+        "short_answer": "EXP 08/2026",
+        "answer": "EXP 08/2026",
+        "answer_format": "short_text",
+        "value_span_text": "EXP 08/2026",
+        "evidence_type": "ocr_text",
+        "answer_type": "text_string",
+        "visual_difficulty": "medium",
+        "visibility": "small",
+        "target_style": "visual_cue",
+        "target_cues": ["text_like", "location", "nearby_anchor", "region_type"],
+    }
+
+
+def _direct_item() -> dict:
+    return {
+        "item_id": "direct_0",
+        "need_focus": False,
+        "evidence_state": "sufficient_visual_evidence",
+        "trajectory_type": "direct_answer",
+        "question": "What animal is in the center of the image?",
+        "target": "",
+        "target_style": "none",
+        "target_cues": [],
+        "evidence_description": "A dog is clearly visible in the center of the image.",
+        "short_answer": "dog",
+        "answer": "dog",
+        "answer_format": "short_text",
+        "value_span_text": "dog",
+        "evidence_type": "attribute",
+        "locality": "single_object",
+        "answer_type": "category",
+        "visual_difficulty": "clear",
+        "visibility": "clear",
+        "target_leakage_risk": "none",
+        "evidence_specificity": "specific",
+        "confidence": 0.95,
     }
 
 

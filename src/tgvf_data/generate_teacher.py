@@ -28,12 +28,14 @@ from tgvf_data.prepare import DEFAULT_SOURCE_MIX, read_jsonl, write_jsonl
 
 PROMPT_VERSION_V0 = "tgvf_teacher_guide_v0"
 PROMPT_VERSION_VISUAL_CUE_V1 = "tgvf_teacher_guide_visual_cue_v1"
-DEFAULT_TEACHER_PROMPT_VERSION = PROMPT_VERSION_VISUAL_CUE_V1
+PROMPT_VERSION_V3 = "tgvf_v3_teacher_trajectory_visual_cue_v1"
+DEFAULT_TEACHER_PROMPT_VERSION = PROMPT_VERSION_V3
 PROMPT_VERSION = DEFAULT_TEACHER_PROMPT_VERSION
 
 SCHEMA_VERSION_V0 = "tgvf_teacher_schema_v0"
 SCHEMA_VERSION_VISUAL_CUE_V1 = "tgvf_teacher_schema_visual_cue_v1"
-DEFAULT_TEACHER_SCHEMA_VERSION = SCHEMA_VERSION_VISUAL_CUE_V1
+SCHEMA_VERSION_V3 = "tgvf_teacher_schema_v3"
+DEFAULT_TEACHER_SCHEMA_VERSION = SCHEMA_VERSION_V3
 SCHEMA_VERSION = DEFAULT_TEACHER_SCHEMA_VERSION
 DEFAULT_MODEL = "gpt-5.4"
 DEFAULT_IMAGE_DETAIL = "original"
@@ -59,6 +61,14 @@ EVIDENCE_TYPES = [
     "counting",
     "state_action",
 ]
+DIRECT_EVIDENCE_TYPES = [
+    "attribute",
+    "object_part",
+    "spatial_relation",
+    "counting",
+    "state_action",
+    "other",
+]
 LOCALITIES = [
     "tiny_region",
     "small_region",
@@ -69,6 +79,7 @@ LOCALITIES = [
     "table_region",
     "symbol_region",
 ]
+DIRECT_LOCALITIES = ["single_object", "whole_image", "small_region"]
 ANSWER_TYPES = [
     "text_string",
     "number",
@@ -81,12 +92,20 @@ ANSWER_TYPES = [
     "boolean_state",
     "short_description",
 ]
+DIRECT_ANSWER_TYPES = [
+    "category",
+    "attribute_value",
+    "count",
+    "boolean_state",
+    "short_description",
+]
+ANSWER_FORMATS = ["short_text", "multiple_choice", "numeric", "date", "boolean", "free_text"]
 VISUAL_DIFFICULTIES = ["clear", "medium", "hard"]
 VISIBILITIES = ["clear", "partially_occluded", "low_contrast", "small", "blurry_but_readable"]
 TARGET_LEAKAGE_RISKS = ["none", "low", "medium", "high"]
 EVIDENCE_SPECIFICITIES = ["specific", "generic"]
 TARGET_STYLES = ["semantic", "visual_cue", "mixed"]
-NORMALIZED_TARGET_STYLES = TARGET_STYLES + ["unknown"]
+NORMALIZED_TARGET_STYLES = TARGET_STYLES + ["none", "unknown"]
 TARGET_CUES = [
     "location",
     "color",
@@ -100,15 +119,27 @@ TARGET_CUES = [
     "text_like",
     "number_like",
     "date_like",
+    "chart_anchor",
+    "table_anchor",
     "chart_like",
     "table_like",
     "symbol_like",
     "object_part",
+    "relation",
     "spatial_relation",
 ]
-ALLOWED_PROMPT_VERSIONS = [PROMPT_VERSION_V0, PROMPT_VERSION_VISUAL_CUE_V1]
-ALLOWED_SCHEMA_VERSIONS = [SCHEMA_VERSION_V0, SCHEMA_VERSION_VISUAL_CUE_V1]
-LEDGER_TERMINAL_SUCCESS = {"succeeded"}
+SOURCE_PROFILES = [
+    "natural_image",
+    "scene_text",
+    "document",
+    "chart",
+    "table",
+    "mixed",
+    "unknown",
+]
+ALLOWED_PROMPT_VERSIONS = [PROMPT_VERSION_V0, PROMPT_VERSION_VISUAL_CUE_V1, PROMPT_VERSION_V3]
+ALLOWED_SCHEMA_VERSIONS = [SCHEMA_VERSION_V0, SCHEMA_VERSION_VISUAL_CUE_V1, SCHEMA_VERSION_V3]
+LEDGER_TERMINAL_SUCCESS = {"succeeded", "completed", "accepted"}
 RETRYABLE_ERROR_MARKERS = (
     "rate limit",
     "timeout",
@@ -478,7 +509,191 @@ Do not include markdown.
 Do not include explanations outside JSON.
 """
 
-TEACHER_PROMPT = TEACHER_PROMPT_V0
+TEACHER_PROMPT_V3 = """You are a meticulous visual evidence annotator for training a multimodal model.
+
+We are building a Target-Guided Visual Foveation system.
+
+Your task is to inspect the image and produce training data for two behaviors:
+
+1. Focus behavior:
+   The model should request a local visual focus target before answering.
+   These examples will train the model to emit:
+   <EVIDENCE_STATE>need_local_visual_evidence</EVIDENCE_STATE>
+   <FOCUS>target</FOCUS>
+   and later read foveated visual evidence.
+
+2. Direct-answer behavior:
+   The model should answer directly without foveation when the answer is already obvious from the whole image.
+   These examples will train the model to emit:
+   <EVIDENCE_STATE>sufficient_visual_evidence</EVIDENCE_STATE>
+   <ANSWER>answer</ANSWER>
+
+Important concept:
+
+- The "target" is a neutral visual pointer.
+- The target tells the vision system where or what to look at.
+- The target must NOT reveal the answer.
+- The "evidence_description" contains the actual visible detail.
+- The evidence_description should be specific and grounded in the image.
+- The target may be intentionally less specific than the evidence_description.
+- The teacher may see the detail clearly, but the target should still behave like a foveation pointer, not like the final answer.
+
+Generate:
+
+- 3 to 6 focus_items if reliable local evidence exists.
+- 0 to 2 direct_items if there are obvious whole-image questions that should not require foveation.
+
+Generate fewer items if fewer reliable details are visible.
+Do not hallucinate. If uncertain, skip the item.
+
+Target styles:
+
+A. Semantic target
+Use this when the local region or object is clear.
+Examples: the small text printed below the barcode; the date field near the bottom of the receipt; the number inside the blue circle; the label above the tallest chart bar; the logo in the upper-right corner of the package; the button near the right edge of the device; the table cell in the second row and third column.
+
+B. Visual-cue target
+Use this when the object category is uncertain, when naming the object precisely would reveal too much, or when visual cues are more appropriate than semantic labels. A visual-cue target describes a local region using visible cues such as color, shape, size, texture, pattern, position, or nearby anchors.
+Examples: the small green object near the left edge; the dark rectangular patch near the bottom; the elongated striped region below the label; the round blue mark in the upper-right corner; the date-like small text cluster near the lower-right corner; the barcode-like striped region on the package; the shiny curved part beside the handle; the patterned surface area on the metal part; the number-like symbols inside the blue circle; the long horizontal bar near the bottom of the chart.
+
+C. Mixed target
+Use this when the target combines a semantic region and visual cues.
+Examples: the small green label near the bottom of the package; the date-like text field on the lower part of the receipt; the blue circular logo near the upper-right corner; the textured metal strip along the lower edge.
+
+Target rules:
+
+- The target should be a short noun phrase.
+- The target should usually be 5 to 18 words.
+- The target must be local and visually locatable.
+- The target may include spatial anchors such as upper-right, below the barcode, near the left edge, inside the blue circle, or above the tallest bar.
+- The target may include visual cues only when those cues help locate the target and are not the answer being asked.
+- If the object category is uncertain, describe the region using visible cues instead of guessing a precise category.
+- Prefer "the small green object near the left edge" over "something green".
+- Prefer "the elongated striped region below the label" over "the thing below the label".
+- Prefer "the date-like text cluster below the barcode" over "the expiration date EXP 08/2026".
+- Prefer "the patterned area on the metal surface" over "the rough scratched texture" if the question asks what the texture is.
+
+The target must not include the answer value; exact text, number, date, code, label, or word that should be read; the queried attribute value if that value is the answer; the final material or texture description if that description is the answer; or the final count if the question asks for a count.
+
+Bad targets: the image; the scene; the object; something; something green; the important part; the answer; the expiration date EXP 08/2026 below the barcode; the red logo if the question asks what color the logo is; the number 42 if the answer is 42; the rough scratched texture if the question asks what texture is visible.
+
+Evidence description rules:
+
+- The evidence_description should be one concise sentence.
+- It must describe only visible evidence.
+- It should be specific, not generic.
+- For text, numbers, dates, and labels, transcribe exactly if readable.
+- For texture/material, describe the visible surface details.
+- For spatial relations, describe the relation clearly.
+- For chart/table items, identify the local mark, axis label, legend, row, column, or cell clearly.
+- For visual-cue targets, resolve the visual cue into a clear evidence description.
+- If uncertain, do not create the item.
+
+Question rules:
+
+- The question should naturally require looking at the target.
+- The question must not reveal the answer.
+- Prefer questions that require local visual evidence.
+- Avoid questions answerable from common sense alone.
+- For focus_items, the question should make foveation useful.
+- For direct_items, the question should be answerable without foveation.
+
+Evidence types for focus_items: ocr_text, document_field, chart_value, table_cell, logo_symbol, object_part, attribute, texture_material, spatial_relation, counting, state_action.
+Direct item evidence_type values: attribute, object_part, spatial_relation, counting, state_action, other.
+
+Direct item rules:
+Create direct_items only when the answer is clearly visible from the whole image and does not require local detail inspection. Good direct_items ask about obvious whole-image objects, animals, actions, state, count, or large foreground attributes. Bad direct_items ask for tiny text, receipt/footer dates, small chart labels, table cell values, small local numbers, or fine texture.
+
+Target cues:
+For each focus item, set target_cues as a list of cues used in the target. Allowed target_cues: location, color, shape, size, texture, pattern, nearby_anchor, region_type, text_like, number_like, chart_anchor, table_anchor, object_part, material, relation. For visual_cue targets, include at least two useful target_cues whenever possible.
+
+Quality rules:
+
+- Do not hallucinate.
+- Skip details that are too blurry or uncertain.
+- Avoid global scene captions in focus_items.
+- Avoid duplicate items.
+- Prefer diversity across evidence_type.
+- Prefer a mixture of semantic, visual_cue, and mixed targets when the image supports it.
+- Aim for roughly 60% semantic or mostly semantic targets, 30% visual_cue targets, and 10% mixed targets, but do not force this if the image does not support it.
+- Use confidence between 0.0 and 1.0.
+- Only include items with confidence >= 0.75.
+- Set target_leakage_risk to none, low, medium, or high.
+- Avoid medium/high leakage items unless unavoidable.
+- Set evidence_specificity to specific or generic.
+- Prefer only specific evidence.
+
+Privacy and safety rules:
+
+- Do not create items that reveal personal addresses, phone numbers, email addresses, government IDs, financial account numbers, or other sensitive personal identifiers.
+- If such information is visible, skip it.
+- Generic product labels, public signs, chart labels, package text, non-sensitive dates, and non-personal document fields are allowed.
+
+Return strict JSON only. Do not include markdown. Do not include explanations outside JSON.
+
+Use this schema exactly:
+
+{
+  "schema_version": "tgvf_teacher_schema_v3",
+  "teacher_prompt_version": "tgvf_v3_teacher_trajectory_visual_cue_v1",
+  "image_id": "<string or null>",
+  "source_dataset": "<string or null>",
+  "source_profile": "<natural_image | scene_text | document | chart | table | mixed | unknown>",
+  "global_notes": "<short debug summary, not used for training>",
+  "focus_items": [
+    {
+      "item_id": "<string>",
+      "need_focus": true,
+      "evidence_state": "need_local_visual_evidence",
+      "trajectory_type": "single_focus",
+      "question": "<question that naturally requires looking at the target>",
+      "target": "<neutral local visual pointer without answer leakage>",
+      "target_style": "<semantic | visual_cue | mixed>",
+      "target_cues": ["<cue strings>"],
+      "evidence_description": "<specific visible evidence sentence>",
+      "short_answer": "<short answer if applicable>",
+      "answer": "<final answer>",
+      "answer_format": "<short_text | multiple_choice | numeric | date | boolean | free_text>",
+      "value_span_text": "<answer-bearing span inside evidence_description, if any>",
+      "evidence_type": "<ocr_text | document_field | chart_value | table_cell | logo_symbol | object_part | attribute | texture_material | spatial_relation | counting | state_action>",
+      "locality": "<tiny_region | small_region | object_part | single_object | document_region | chart_region | table_region | symbol_region>",
+      "answer_type": "<text_string | number | date | category | attribute_value | material_texture | spatial_relation | count | boolean_state | short_description>",
+      "visual_difficulty": "<clear | medium | hard>",
+      "visibility": "<clear | partially_occluded | low_contrast | small | blurry_but_readable>",
+      "target_leakage_risk": "<none | low | medium | high>",
+      "evidence_specificity": "<specific | generic>",
+      "confidence": <float between 0 and 1>
+    }
+  ],
+  "direct_items": [
+    {
+      "item_id": "<string>",
+      "need_focus": false,
+      "evidence_state": "sufficient_visual_evidence",
+      "trajectory_type": "direct_answer",
+      "question": "<question answerable from the whole image without local foveation>",
+      "target": "",
+      "target_style": "none",
+      "target_cues": [],
+      "evidence_description": "<brief visible support, optional but useful>",
+      "short_answer": "<short answer>",
+      "answer": "<final answer>",
+      "answer_format": "<short_text | multiple_choice | numeric | date | boolean | free_text>",
+      "value_span_text": "<answer-bearing span if any>",
+      "evidence_type": "<attribute | object_part | spatial_relation | counting | state_action | other>",
+      "locality": "<single_object | whole_image | small_region>",
+      "answer_type": "<category | attribute_value | count | boolean_state | short_description>",
+      "visual_difficulty": "clear",
+      "visibility": "clear",
+      "target_leakage_risk": "none",
+      "evidence_specificity": "specific",
+      "confidence": <float between 0 and 1>
+    }
+  ]
+}
+"""
+
+TEACHER_PROMPT = TEACHER_PROMPT_V3
 
 
 def validate_teacher_version_pair(
@@ -494,6 +709,7 @@ def validate_teacher_version_pair(
     expected = {
         PROMPT_VERSION_V0: SCHEMA_VERSION_V0,
         PROMPT_VERSION_VISUAL_CUE_V1: SCHEMA_VERSION_VISUAL_CUE_V1,
+        PROMPT_VERSION_V3: SCHEMA_VERSION_V3,
     }[prompt_version]
     if schema_version != expected and not allow_mismatch:
         raise ValueError(
@@ -508,6 +724,7 @@ def get_teacher_prompt(prompt_version: str | None = None) -> str:
     prompts = {
         PROMPT_VERSION_V0: TEACHER_PROMPT_V0,
         PROMPT_VERSION_VISUAL_CUE_V1: TEACHER_PROMPT_VISUAL_CUE_V1,
+        PROMPT_VERSION_V3: TEACHER_PROMPT_V3,
     }
     try:
         return prompts[version]
@@ -519,6 +736,12 @@ def teacher_output_schema(schema_version: str | None = None) -> dict[str, Any]:
     version = schema_version or DEFAULT_TEACHER_SCHEMA_VERSION
     if version not in ALLOWED_SCHEMA_VERSIONS:
         raise ValueError(f"Unsupported teacher schema version: {version}")
+    if version == SCHEMA_VERSION_V3:
+        return teacher_output_schema_v3()
+    return teacher_output_schema_legacy(version)
+
+
+def teacher_output_schema_legacy(version: str) -> dict[str, Any]:
     include_visual_cue_fields = version == SCHEMA_VERSION_VISUAL_CUE_V1
     item_required = [
         "item_id",
@@ -590,6 +813,114 @@ def teacher_output_schema(schema_version: str | None = None) -> dict[str, Any]:
     }
 
 
+def teacher_output_schema_v3() -> dict[str, Any]:
+    focus_required = [
+        "item_id",
+        "need_focus",
+        "evidence_state",
+        "trajectory_type",
+        "question",
+        "target",
+        "target_style",
+        "target_cues",
+        "evidence_description",
+        "short_answer",
+        "answer",
+        "answer_format",
+        "value_span_text",
+        "evidence_type",
+        "locality",
+        "answer_type",
+        "visual_difficulty",
+        "visibility",
+        "target_leakage_risk",
+        "evidence_specificity",
+        "confidence",
+    ]
+    direct_required = list(focus_required)
+    focus_item_schema = {
+        "type": "object",
+        "additionalProperties": False,
+        "required": focus_required,
+        "properties": {
+            "item_id": {"type": "string"},
+            "need_focus": {"type": "boolean", "enum": [True]},
+            "evidence_state": {"type": "string", "enum": ["need_local_visual_evidence"]},
+            "trajectory_type": {"type": "string", "enum": ["single_focus"]},
+            "question": {"type": "string"},
+            "target": {"type": "string"},
+            "target_style": {"type": "string", "enum": TARGET_STYLES},
+            "target_cues": {"type": "array", "items": {"type": "string", "enum": TARGET_CUES}},
+            "evidence_description": {"type": "string"},
+            "short_answer": {"type": "string"},
+            "answer": {"type": "string"},
+            "answer_format": {"type": "string", "enum": ANSWER_FORMATS},
+            "value_span_text": {"type": "string"},
+            "evidence_type": {"type": "string", "enum": EVIDENCE_TYPES},
+            "locality": {"type": "string", "enum": LOCALITIES},
+            "answer_type": {"type": "string", "enum": ANSWER_TYPES},
+            "visual_difficulty": {"type": "string", "enum": VISUAL_DIFFICULTIES},
+            "visibility": {"type": "string", "enum": VISIBILITIES},
+            "target_leakage_risk": {"type": "string", "enum": TARGET_LEAKAGE_RISKS},
+            "evidence_specificity": {"type": "string", "enum": EVIDENCE_SPECIFICITIES},
+            "confidence": {"type": "number"},
+        },
+    }
+    direct_item_schema = {
+        "type": "object",
+        "additionalProperties": False,
+        "required": direct_required,
+        "properties": {
+            "item_id": {"type": "string"},
+            "need_focus": {"type": "boolean", "enum": [False]},
+            "evidence_state": {"type": "string", "enum": ["sufficient_visual_evidence"]},
+            "trajectory_type": {"type": "string", "enum": ["direct_answer"]},
+            "question": {"type": "string"},
+            "target": {"type": "string", "enum": [""]},
+            "target_style": {"type": "string", "enum": ["none"]},
+            "target_cues": {"type": "array", "items": {"type": "string"}, "maxItems": 0},
+            "evidence_description": {"type": "string"},
+            "short_answer": {"type": "string"},
+            "answer": {"type": "string"},
+            "answer_format": {"type": "string", "enum": ANSWER_FORMATS},
+            "value_span_text": {"type": "string"},
+            "evidence_type": {"type": "string", "enum": DIRECT_EVIDENCE_TYPES},
+            "locality": {"type": "string", "enum": DIRECT_LOCALITIES},
+            "answer_type": {"type": "string", "enum": DIRECT_ANSWER_TYPES},
+            "visual_difficulty": {"type": "string", "enum": ["clear"]},
+            "visibility": {"type": "string", "enum": ["clear"]},
+            "target_leakage_risk": {"type": "string", "enum": ["none"]},
+            "evidence_specificity": {"type": "string", "enum": ["specific"]},
+            "confidence": {"type": "number"},
+        },
+    }
+    string_or_null = {"type": ["string", "null"]}
+    return {
+        "type": "object",
+        "additionalProperties": False,
+        "required": [
+            "schema_version",
+            "teacher_prompt_version",
+            "image_id",
+            "source_dataset",
+            "source_profile",
+            "global_notes",
+            "focus_items",
+            "direct_items",
+        ],
+        "properties": {
+            "schema_version": {"type": "string", "enum": [SCHEMA_VERSION_V3]},
+            "teacher_prompt_version": {"type": "string", "enum": [PROMPT_VERSION_V3]},
+            "image_id": string_or_null,
+            "source_dataset": string_or_null,
+            "source_profile": {"type": "string", "enum": SOURCE_PROFILES},
+            "global_notes": {"type": "string"},
+            "focus_items": {"type": "array", "items": focus_item_schema},
+            "direct_items": {"type": "array", "items": direct_item_schema},
+        },
+    }
+
+
 def get_teacher_schema(schema_version: str | None = None) -> dict[str, Any]:
     return teacher_output_schema(schema_version)
 
@@ -617,7 +948,20 @@ def json_mode_text_format() -> dict[str, Any]:
 def build_user_message(image_record: dict[str, Any], source_context: str = "") -> str:
     profile = image_record.get("source_profile", "unknown")
     hint = source_profile_hint(profile)
-    context = source_context.strip() or "(none)"
+    context = source_context.strip()
+    optional_block = (
+        "Optional source context is provided below.\n\n"
+        "Use it only as a hint.\n"
+        "You must verify the answer from the image.\n"
+        "Do not copy source context if it is not visibly supported.\n\n"
+        f"{context}\n\n"
+        "If the source question-answer pair is visually grounded and reliable, "
+        "create one focus_item based on it. You may also create additional local "
+        "visual evidence items from the image. If the source question is not visibly "
+        "supported, ignore it."
+        if context
+        else "Optional source context:\n(none)"
+    )
     return (
         "Image metadata:\n"
         f"- stable_image_uid: {image_record['stable_image_uid']}\n"
@@ -626,12 +970,20 @@ def build_user_message(image_record: dict[str, Any], source_context: str = "") -
         "Inspect the provided image and generate local visual evidence items according "
         "to the schema.\n\n"
         f"Source-profile hint:\n{hint}\n\n"
-        "If optional source context is available, include it below:\n\n"
-        f"Optional source context:\n{context}\n\n"
-        "Use source context only as a hint.\n"
-        "You must verify evidence from the image.\n"
-        "Do not copy source context if it is not visibly supported."
+        f"{optional_block}"
     )
+
+
+def source_context_from_record(image_record: dict[str, Any]) -> str:
+    parts = []
+    if image_record.get("source_question"):
+        parts.append(f"source_question:\n{image_record['source_question']}")
+    if image_record.get("source_answer"):
+        parts.append(f"source_answer:\n{image_record['source_answer']}")
+    metadata = image_record.get("source_metadata") or image_record.get("metadata")
+    if metadata:
+        parts.append("source_metadata:\n" + json.dumps(jsonable(metadata), sort_keys=True))
+    return "\n\n".join(parts)
 
 
 def source_profile_hint(source_profile: str) -> str:
@@ -814,12 +1166,13 @@ def validate_image_level_output(
     config = config or GenerationConfig()
     accepted_candidates = []
     rejected = []
-    for index, item in enumerate(image_output.get("items") or []):
+    for index, item_kind, item in iter_teacher_items(image_output):
         reasons, warnings = validate_item_with_warnings(
             item,
             confidence_threshold=config.confidence_threshold,
             schema_version=config.schema_version,
             strict_visual_cue_schema=config.strict_visual_cue_schema,
+            item_kind=item_kind,
         )
         if reasons:
             rejected.append(
@@ -834,10 +1187,11 @@ def validate_image_level_output(
                     schema_version=config.schema_version,
                     raw_response_id=raw_response_id,
                     item_index=index,
+                    item_kind=item_kind,
                 )
             )
         else:
-            accepted_candidates.append((index, item, warnings))
+            accepted_candidates.append((index, item, warnings, item_kind))
 
     accepted, duplicate_rejections = deduplicate_items(
         accepted_candidates,
@@ -854,18 +1208,39 @@ def validate_image_level_output(
     return accepted, rejected
 
 
+def iter_teacher_items(image_output: dict[str, Any]) -> list[tuple[int, str, dict[str, Any]]]:
+    items: list[tuple[int, str, dict[str, Any]]] = []
+    if isinstance(image_output.get("focus_items"), list) or isinstance(
+        image_output.get("direct_items"), list
+    ):
+        for index, item in enumerate(image_output.get("focus_items") or []):
+            if isinstance(item, dict):
+                items.append((index, "focus", item))
+        offset = len(items)
+        for index, item in enumerate(image_output.get("direct_items") or []):
+            if isinstance(item, dict):
+                items.append((offset + index, "direct", item))
+        return items
+    for index, item in enumerate(image_output.get("items") or []):
+        if isinstance(item, dict):
+            items.append((index, infer_item_kind(item), item))
+    return items
+
+
 def validate_item(
     item: dict[str, Any],
     *,
     confidence_threshold: float = 0.75,
     schema_version: str | None = None,
     strict_visual_cue_schema: bool = False,
+    item_kind: str | None = None,
 ) -> list[str]:
     reasons, _warnings = validate_item_with_warnings(
         item,
         confidence_threshold=confidence_threshold,
         schema_version=schema_version,
         strict_visual_cue_schema=strict_visual_cue_schema,
+        item_kind=item_kind,
     )
     return reasons
 
@@ -876,6 +1251,29 @@ def validate_item_with_warnings(
     confidence_threshold: float = 0.75,
     schema_version: str | None = None,
     strict_visual_cue_schema: bool = False,
+    item_kind: str | None = None,
+) -> tuple[list[str], list[str]]:
+    kind = infer_item_kind(item, item_kind=item_kind)
+    normalized = normalize_teacher_item(item, item_kind=kind)
+    if kind == "direct":
+        return validate_direct_item_with_warnings(
+            normalized,
+            confidence_threshold=confidence_threshold,
+        )
+    return validate_focus_item_with_warnings(
+        normalized,
+        confidence_threshold=confidence_threshold,
+        schema_version=schema_version,
+        strict_visual_cue_schema=strict_visual_cue_schema,
+    )
+
+
+def validate_focus_item_with_warnings(
+    item: dict[str, Any],
+    *,
+    confidence_threshold: float,
+    schema_version: str | None,
+    strict_visual_cue_schema: bool,
 ) -> tuple[list[str], list[str]]:
     reasons = []
     warnings = []
@@ -895,6 +1293,13 @@ def validate_item_with_warnings(
         if not str(item.get(field_name, "")).strip():
             reasons.append(f"missing_{field_name}")
 
+    if item.get("need_focus") is not True:
+        reasons.append("need_focus_not_true")
+    if item.get("evidence_state") != "need_local_visual_evidence":
+        reasons.append("invalid_evidence_state")
+    if item.get("trajectory_type") != "single_focus":
+        reasons.append("invalid_trajectory_type")
+
     confidence = item.get("confidence")
     if not isinstance(confidence, int | float) or confidence < confidence_threshold:
         reasons.append("low_confidence")
@@ -904,6 +1309,8 @@ def validate_item_with_warnings(
         reasons.append("invalid_locality")
     if item.get("answer_type") not in ANSWER_TYPES:
         reasons.append("invalid_answer_type")
+    if item.get("answer_format") not in ANSWER_FORMATS:
+        reasons.append("invalid_answer_format")
     if item.get("visual_difficulty") not in VISUAL_DIFFICULTIES:
         reasons.append("invalid_visual_difficulty")
     if item.get("visibility") not in VISIBILITIES:
@@ -916,19 +1323,26 @@ def validate_item_with_warnings(
     target = str(item.get("target", ""))
     question = str(item.get("question", ""))
     evidence = str(item.get("evidence_description", ""))
-    short_answer = str(item.get("short_answer", ""))
+    answer_values = sorted(
+        {str(item.get("short_answer", "")).strip(), str(item.get("answer", "")).strip()} - {""}
+    )
     target_word_count = len(_words(target))
     evidence_word_count = len(_words(evidence))
     if target_word_count < 4 or target_word_count > 22:
         reasons.append("target_length_out_of_range")
-    if evidence_word_count < 6 or evidence_word_count > 45:
+    if evidence_word_count < 4 or evidence_word_count > 45:
         reasons.append("evidence_description_length_out_of_range")
     if target_is_global(target):
         reasons.append("global_target")
+    if target_is_forbidden_generic(target):
+        reasons.append("generic_target")
     if evidence_is_generic(evidence):
         reasons.append("generic_evidence_description")
-    reasons.extend(leakage_reasons(question, target, short_answer))
-    if contains_sensitive_identifier(" ".join([short_answer, evidence])):
+    if evidence_has_uncertain_reading(evidence):
+        reasons.append("uncertain_evidence_description")
+    for answer_value in answer_values:
+        reasons.extend(leakage_reasons(question, target, answer_value))
+    if contains_sensitive_identifier(" ".join([target, evidence, *answer_values])):
         reasons.append("sensitive_personal_identifier")
 
     style_reasons, style_warnings = validate_visual_cue_fields(
@@ -941,6 +1355,58 @@ def validate_item_with_warnings(
     return sorted(set(reasons)), sorted(set(warnings))
 
 
+def validate_direct_item_with_warnings(
+    item: dict[str, Any],
+    *,
+    confidence_threshold: float,
+) -> tuple[list[str], list[str]]:
+    reasons = []
+    for field_name in ("question", "answer", "evidence_type", "locality", "answer_type"):
+        if not str(item.get(field_name, "")).strip():
+            reasons.append(f"missing_{field_name}")
+    if item.get("need_focus") is not False:
+        reasons.append("need_focus_not_false")
+    if item.get("evidence_state") != "sufficient_visual_evidence":
+        reasons.append("invalid_evidence_state")
+    if item.get("trajectory_type") != "direct_answer":
+        reasons.append("invalid_trajectory_type")
+    if str(item.get("target", "")):
+        reasons.append("direct_target_not_empty")
+    if normalize_target_style(item) != "none":
+        reasons.append("direct_target_style_not_none")
+    if normalize_target_cues(item):
+        reasons.append("direct_target_cues_not_empty")
+    confidence = item.get("confidence")
+    if not isinstance(confidence, int | float) or confidence < confidence_threshold:
+        reasons.append("low_confidence")
+    if item.get("evidence_type") not in DIRECT_EVIDENCE_TYPES:
+        reasons.append("invalid_evidence_type")
+    if item.get("locality") not in DIRECT_LOCALITIES:
+        reasons.append("invalid_locality")
+    if item.get("answer_type") not in DIRECT_ANSWER_TYPES:
+        reasons.append("invalid_answer_type")
+    if item.get("answer_format") not in ANSWER_FORMATS:
+        reasons.append("invalid_answer_format")
+    if item.get("visual_difficulty") != "clear":
+        reasons.append("invalid_visual_difficulty")
+    if item.get("visibility") != "clear":
+        reasons.append("invalid_visibility")
+    if item.get("target_leakage_risk") != "none":
+        reasons.append("target_leakage_risk_too_high")
+    if item.get("evidence_specificity") != "specific":
+        reasons.append("generic_evidence_specificity")
+    question = str(item.get("question", ""))
+    evidence = str(item.get("evidence_description", ""))
+    answer = str(item.get("answer", ""))
+    if direct_question_requires_focus(question):
+        reasons.append("direct_question_requires_focus")
+    if evidence and evidence_is_generic(evidence):
+        reasons.append("generic_evidence_description")
+    if contains_sensitive_identifier(" ".join([question, evidence, answer])):
+        reasons.append("sensitive_personal_identifier")
+    return sorted(set(reasons)), []
+
+
 def validate_visual_cue_fields(
     item: dict[str, Any],
     *,
@@ -949,34 +1415,37 @@ def validate_visual_cue_fields(
 ) -> tuple[list[str], list[str]]:
     reasons = []
     warnings = []
-    requires_v1_fields = schema_version == SCHEMA_VERSION_VISUAL_CUE_V1
+    requires_style_fields = schema_version in {SCHEMA_VERSION_VISUAL_CUE_V1, SCHEMA_VERSION_V3}
     has_style = "target_style" in item
     has_cues = "target_cues" in item
     target = str(item.get("target", ""))
 
-    if requires_v1_fields and not has_style:
+    if requires_style_fields and not has_style:
         reasons.append("missing_target_style")
-    if requires_v1_fields and not has_cues:
+    if requires_style_fields and not has_cues:
         reasons.append("missing_target_cues")
 
     style = normalize_target_style(item)
     cues = normalize_target_cues(item)
+    legacy_normalized = bool(item.get("_legacy_normalized_target_fields"))
     if has_style and str(item.get("target_style")) not in TARGET_STYLES:
-        reasons.append("invalid_target_style")
+        if not (legacy_normalized and str(item.get("target_style")) in {"none", "unknown"}):
+            reasons.append("invalid_target_style")
     if has_cues:
         raw_cues = item.get("target_cues")
         if not isinstance(raw_cues, list):
             reasons.append("invalid_target_cues")
         elif any(cue not in TARGET_CUES for cue in raw_cues):
-            reasons.append("invalid_target_cue")
+            if not legacy_normalized:
+                reasons.append("invalid_target_cue")
 
     if style in {"visual_cue", "mixed"} and len(cues) < 2:
         warnings.append("visual_cue_target_has_fewer_than_two_cues")
-        if strict_visual_cue_schema and not cues:
+        if schema_version == SCHEMA_VERSION_V3 or strict_visual_cue_schema and not cues:
             reasons.append("visual_cue_target_missing_cues")
     if visually_generic_target(target):
         warnings.append("visually_generic_target")
-        if strict_visual_cue_schema:
+        if schema_version == SCHEMA_VERSION_V3 or strict_visual_cue_schema:
             reasons.append("visually_generic_target")
     if style == "semantic" and appears_visual_cue_based(target, cues):
         warnings.append("semantic_style_for_visual_cue_target")
@@ -985,8 +1454,66 @@ def validate_visual_cue_fields(
     return reasons, warnings
 
 
+def infer_item_kind(item: dict[str, Any], item_kind: str | None = None) -> str:
+    if item_kind in {"focus", "direct"}:
+        return item_kind
+    if item.get("need_focus") is False or item.get("trajectory_type") == "direct_answer":
+        return "direct"
+    return "focus"
+
+
+def normalize_teacher_item(item: dict[str, Any], *, item_kind: str | None = None) -> dict[str, Any]:
+    kind = infer_item_kind(item, item_kind=item_kind)
+    normalized = dict(item)
+    if kind == "direct":
+        answer = str(normalized.get("answer") or normalized.get("short_answer") or "").strip()
+        normalized.setdefault("need_focus", False)
+        normalized.setdefault("evidence_state", "sufficient_visual_evidence")
+        normalized.setdefault("trajectory_type", "direct_answer")
+        normalized["target"] = str(normalized.get("target") or "")
+        if "target_style" not in normalized or "target_cues" not in normalized:
+            normalized["_legacy_normalized_target_fields"] = True
+        normalized.setdefault("target_style", "none")
+        normalized.setdefault("target_cues", [])
+        normalized.setdefault("evidence_description", "")
+        normalized.setdefault("short_answer", answer)
+        normalized.setdefault("answer", answer)
+        normalized.setdefault("answer_format", infer_answer_format(normalized))
+        normalized.setdefault("value_span_text", answer)
+        normalized.setdefault("visual_difficulty", "clear")
+        normalized.setdefault("visibility", "clear")
+        normalized.setdefault("target_leakage_risk", "none")
+        normalized.setdefault("evidence_specificity", "specific")
+        return normalized
+
+    answer = str(normalized.get("answer") or normalized.get("short_answer") or "").strip()
+    normalized.setdefault("need_focus", True)
+    normalized.setdefault("evidence_state", "need_local_visual_evidence")
+    normalized.setdefault("trajectory_type", "single_focus")
+    if "target_style" not in normalized or "target_cues" not in normalized:
+        normalized["_legacy_normalized_target_fields"] = True
+    normalized.setdefault("target_style", "unknown")
+    normalized.setdefault("target_cues", [])
+    normalized.setdefault("answer", answer)
+    normalized.setdefault("answer_format", infer_answer_format(normalized))
+    normalized.setdefault("value_span_text", answer)
+    return normalized
+
+
+def infer_answer_format(item: dict[str, Any]) -> str:
+    answer_type = str(item.get("answer_type") or "")
+    answer = str(item.get("answer") or item.get("short_answer") or "")
+    if answer_type == "date":
+        return "date"
+    if answer_type in {"number", "count"}:
+        return "numeric"
+    if answer_type == "boolean_state" or normalize_text(answer) in {"yes", "no", "true", "false"}:
+        return "boolean"
+    return "short_text"
+
+
 def deduplicate_items(
-    candidates: list[tuple[int, dict[str, Any], list[str]]],
+    candidates: list[tuple[int, dict[str, Any], list[str], str]],
     *,
     image_record: dict[str, Any],
     teacher_run_id: str,
@@ -1003,22 +1530,26 @@ def deduplicate_items(
         reverse=True,
     )
     seen_targets: set[str] = set()
-    seen_answer_types: set[tuple[str, str]] = set()
     seen_evidence: set[str] = set()
+    seen_direct_questions: set[str] = set()
     accepted_ranked = []
     rejected = []
-    for index, item, warnings in ranked:
+    for index, item, warnings, item_kind in ranked:
+        normalized_item = normalize_teacher_item(item, item_kind=item_kind)
+        normalized_kind = infer_item_kind(normalized_item, item_kind=item_kind)
         reasons = []
-        target_key = normalize_text(item["target"])
-        answer_key = normalize_text(item.get("short_answer", ""))
-        evidence_type = str(item.get("evidence_type", ""))
-        evidence_key = normalize_text(item.get("evidence_description", ""))
-        content_hash = item_content_hash(image_record["stable_image_uid"], item)
-        if target_key in seen_targets:
-            reasons.append("duplicate_target")
-        if answer_key and (answer_key, evidence_type) in seen_answer_types:
-            reasons.append("duplicate_short_answer_evidence_type")
-        if evidence_key in seen_evidence:
+        target_key = normalize_text(normalized_item.get("target", ""))
+        evidence_type = str(normalized_item.get("evidence_type", ""))
+        evidence_key = normalize_text(normalized_item.get("evidence_description", ""))
+        direct_question_key = normalize_text(normalized_item.get("question", ""))
+        content_hash = item_content_hash(image_record["stable_image_uid"], normalized_item)
+        if normalized_kind == "direct":
+            if direct_question_key in seen_direct_questions:
+                reasons.append("duplicate_direct_question")
+        else:
+            if target_key in seen_targets:
+                reasons.append("duplicate_target")
+        if evidence_key and evidence_key in seen_evidence:
             reasons.append("duplicate_evidence_description")
         if content_hash in existing_item_hashes and not allow_duplicate_items:
             reasons.append("duplicate_existing_item_content_hash")
@@ -1026,7 +1557,7 @@ def deduplicate_items(
             rejected.append(
                 rejected_record(
                     image_record=image_record,
-                    item=item,
+                    item=normalized_item,
                     rejection_reasons=reasons,
                     visual_cue_warnings=warnings,
                     teacher_run_id=teacher_run_id,
@@ -1035,14 +1566,17 @@ def deduplicate_items(
                     schema_version=schema_version,
                     raw_response_id=raw_response_id,
                     item_index=index,
+                    item_kind=normalized_kind,
                 )
             )
             continue
-        seen_targets.add(target_key)
-        if answer_key:
-            seen_answer_types.add((answer_key, evidence_type))
-        seen_evidence.add(evidence_key)
-        accepted_ranked.append((index, item, warnings))
+        if normalized_kind == "direct":
+            seen_direct_questions.add(direct_question_key)
+        else:
+            seen_targets.add(target_key)
+        if evidence_key:
+            seen_evidence.add(evidence_key)
+        accepted_ranked.append((index, normalized_item, warnings, normalized_kind))
     accepted_ranked.sort(key=lambda pair: pair[0])
     return [
         flatten_item(
@@ -1055,8 +1589,9 @@ def deduplicate_items(
             visual_cue_warnings=warnings,
             raw_response_id=raw_response_id,
             item_index=out_index,
+            item_kind=item_kind,
         )
-        for out_index, (_original_index, item, warnings) in enumerate(accepted_ranked)
+        for out_index, (_original_index, item, warnings, item_kind) in enumerate(accepted_ranked)
     ], rejected
 
 
@@ -1071,8 +1606,11 @@ def flatten_item(
     visual_cue_warnings: list[str] | None = None,
     raw_response_id: str | None = None,
     item_index: int = 0,
+    item_kind: str | None = None,
 ) -> dict[str, Any]:
     stable_uid = image_record["stable_image_uid"]
+    kind = infer_item_kind(item, item_kind=item_kind)
+    normalized = normalize_teacher_item(item, item_kind=kind)
     record = {
         "uid": f"{teacher_run_id}:{stable_uid}:{item_index}",
         "teacher_run_id": teacher_run_id,
@@ -1081,26 +1619,33 @@ def flatten_item(
         "image_id": stable_uid,
         "source_dataset": image_record.get("source_dataset"),
         "source_profile": image_record.get("source_profile"),
-        "question": item["question"].strip(),
-        "target": item["target"].strip(),
-        "evidence_description": item["evidence_description"].strip(),
-        "short_answer": item.get("short_answer", "").strip(),
-        "evidence_type": item["evidence_type"],
-        "locality": item["locality"],
-        "answer_type": item["answer_type"],
-        "visual_difficulty": item["visual_difficulty"],
-        "visibility": item["visibility"],
-        "target_leakage_risk": item["target_leakage_risk"],
-        "evidence_specificity": item["evidence_specificity"],
-        "confidence": float(item["confidence"]),
-        "target_style": normalize_target_style(item),
-        "target_cues": normalize_target_cues(item),
-        "visual_cue_warnings": visual_cue_warnings or [],
-        "teacher_model": model,
+        "schema_version": schema_version,
         "teacher_prompt_version": prompt_version,
         "teacher_schema_version": schema_version,
+        "need_focus": bool(normalized.get("need_focus")),
+        "evidence_state": normalized.get("evidence_state"),
+        "trajectory_type": normalized.get("trajectory_type"),
+        "question": str(normalized.get("question", "")).strip(),
+        "target": str(normalized.get("target", "")).strip(),
+        "target_style": normalize_target_style(normalized),
+        "target_cues": normalize_target_cues(normalized),
+        "evidence_description": str(normalized.get("evidence_description", "")).strip(),
+        "short_answer": str(normalized.get("short_answer", "")).strip(),
+        "answer": str(normalized.get("answer", "")).strip(),
+        "answer_format": normalized.get("answer_format"),
+        "value_span_text": str(normalized.get("value_span_text", "")).strip(),
+        "evidence_type": normalized.get("evidence_type"),
+        "locality": normalized.get("locality"),
+        "answer_type": normalized.get("answer_type"),
+        "visual_difficulty": normalized.get("visual_difficulty"),
+        "visibility": normalized.get("visibility"),
+        "target_leakage_risk": normalized.get("target_leakage_risk"),
+        "evidence_specificity": normalized.get("evidence_specificity"),
+        "confidence": float(normalized["confidence"]),
+        "visual_cue_warnings": visual_cue_warnings or [],
+        "teacher_model": model,
         "raw_response_id": raw_response_id,
-        "item_content_hash": item_content_hash(stable_uid, item),
+        "item_content_hash": item_content_hash(stable_uid, normalized),
         "created_at": now_iso(),
     }
     return record
@@ -1118,7 +1663,10 @@ def rejected_record(
     schema_version: str = SCHEMA_VERSION,
     raw_response_id: str | None,
     item_index: int,
+    item_kind: str | None = None,
 ) -> dict[str, Any]:
+    kind = infer_item_kind(item, item_kind=item_kind)
+    normalized = normalize_teacher_item(item, item_kind=kind)
     return {
         "teacher_run_id": teacher_run_id,
         "stable_image_uid": image_record["stable_image_uid"],
@@ -1126,15 +1674,19 @@ def rejected_record(
         "image_id": image_record["stable_image_uid"],
         "source_dataset": image_record.get("source_dataset"),
         "source_profile": image_record.get("source_profile"),
+        "schema_version": schema_version,
+        "teacher_prompt_version": prompt_version,
+        "teacher_schema_version": schema_version,
+        "need_focus": bool(normalized.get("need_focus")),
+        "evidence_state": normalized.get("evidence_state"),
+        "trajectory_type": normalized.get("trajectory_type"),
         "item_index": item_index,
-        "item": item,
-        "target_style": normalize_target_style(item),
-        "target_cues": normalize_target_cues(item),
+        "item": normalized,
+        "target_style": normalize_target_style(normalized),
+        "target_cues": normalize_target_cues(normalized),
         "rejection_reasons": rejection_reasons,
         "visual_cue_warnings": visual_cue_warnings or [],
         "teacher_model": model,
-        "teacher_prompt_version": prompt_version,
-        "teacher_schema_version": schema_version,
         "raw_response_id": raw_response_id,
         "created_at": now_iso(),
     }
@@ -1200,20 +1752,30 @@ def make_ledger_entry(
     schema_version: str = SCHEMA_VERSION,
     usage: dict[str, int] | None = None,
     error: str | None = None,
+    num_focus_items_raw: int = 0,
+    num_direct_items_raw: int = 0,
 ) -> dict[str, Any]:
     return {
         "teacher_run_id": teacher_run_id,
         "stable_image_uid": image_record["stable_image_uid"],
+        "image": image_record.get("image_path"),
+        "image_id": image_record.get("stable_image_uid"),
         "source_dataset": image_record.get("source_dataset"),
         "source_profile": image_record.get("source_profile"),
         "image_path": image_record.get("image_path"),
         "status": status,
         "accepted_item_count": accepted_item_count,
         "rejected_item_count": rejected_item_count,
+        "num_focus_items_raw": int(num_focus_items_raw),
+        "num_direct_items_raw": int(num_direct_items_raw),
+        "num_rows_accepted": int(accepted_item_count),
+        "num_rows_rejected": int(rejected_item_count),
         "request_custom_id": request_custom_id,
         "model": model,
+        "teacher_model": model,
         "image_detail": image_detail,
         "prompt_version": prompt_version,
+        "teacher_prompt_version": prompt_version,
         "schema_version": schema_version,
         "created_at": now_iso(),
         "usage": usage or zero_usage(),
@@ -1221,12 +1783,34 @@ def make_ledger_entry(
     }
 
 
-def read_successful_ledger_uids(ledger_path: str | Path) -> set[str]:
-    return {
-        record["stable_image_uid"]
-        for record in read_jsonl(ledger_path)
-        if record.get("status") in LEDGER_TERMINAL_SUCCESS
-    }
+def count_raw_item_kinds(image_output: dict[str, Any] | None) -> dict[str, int]:
+    counts = {"focus": 0, "direct": 0}
+    if image_output is None:
+        return counts
+    for _index, item_kind, _item in iter_teacher_items(image_output):
+        counts[infer_item_kind({}, item_kind=item_kind)] += 1
+    return counts
+
+
+def read_successful_ledger_uids(
+    ledger_path: str | Path,
+    *,
+    prompt_version: str | None = None,
+    schema_version: str | None = None,
+    model: str | None = None,
+) -> set[str]:
+    successful = set()
+    for record in read_jsonl(ledger_path):
+        if record.get("status") not in LEDGER_TERMINAL_SUCCESS:
+            continue
+        if prompt_version is not None and record.get("prompt_version") != prompt_version:
+            continue
+        if schema_version is not None and record.get("schema_version") != schema_version:
+            continue
+        if model is not None and record.get("model") != model:
+            continue
+        successful.add(record["stable_image_uid"])
+    return successful
 
 
 def load_existing_item_hashes(generated_root: str | Path) -> set[str]:
@@ -1276,7 +1860,16 @@ def resume_sync(
     if limit_images is not None:
         selected = selected[:limit_images]
     ledger_path = generated_root(project_root) / "teacher_generation_ledger.jsonl"
-    successful = set() if allow_regenerate else read_successful_ledger_uids(ledger_path)
+    successful = (
+        set()
+        if allow_regenerate
+        else read_successful_ledger_uids(
+            ledger_path,
+            prompt_version=generation_config.prompt_version,
+            schema_version=generation_config.schema_version,
+            model=openai_config.model,
+        )
+    )
     existing_hashes = set() if allow_duplicate_items else load_existing_item_hashes(
         generated_root(project_root)
     )
@@ -1515,6 +2108,7 @@ def _process_one_sync(
             image_reference=image_reference,
             openai_config=openai_config,
             generation_config=generation_config,
+            source_context=source_context_from_record(image_record),
         )
         response = call_teacher_with_retries(
             client=client,
@@ -1616,6 +2210,7 @@ def persist_parsed_result(
         append_jsonl(run_paths["accepted"], record)
     for record in parsed.rejected_items:
         append_jsonl(run_paths["rejected"], record)
+    raw_kind_counts = count_raw_item_kinds(parsed.image_output)
     append_jsonl(
         run_paths["ledger"],
         make_ledger_entry(
@@ -1631,6 +2226,8 @@ def persist_parsed_result(
             schema_version=schema_version,
             usage=parsed.usage,
             error=parsed.error,
+            num_focus_items_raw=raw_kind_counts["focus"],
+            num_direct_items_raw=raw_kind_counts["direct"],
         ),
     )
 
@@ -1645,6 +2242,7 @@ def prepare_batch(
     target_accepted_samples: int = DEFAULT_TARGET_ACCEPTED_SAMPLES,
     limit_images: int | None = None,
     max_request_file_mb: int = 90,
+    allow_regenerate: bool = False,
 ) -> dict[str, Any]:
     run_paths = ensure_run_layout(project_root, run_id)
     generation_config = generation_config or GenerationConfig(
@@ -1667,6 +2265,16 @@ def prepare_batch(
     selected = read_jsonl(selection)
     if limit_images is not None:
         selected = selected[:limit_images]
+    successful = (
+        set()
+        if allow_regenerate
+        else read_successful_ledger_uids(
+            generated_root(project_root) / "teacher_generation_ledger.jsonl",
+            prompt_version=generation_config.prompt_version,
+            schema_version=generation_config.schema_version,
+            model=openai_config.model,
+        )
+    )
 
     request_index = []
     request_files = []
@@ -1678,6 +2286,8 @@ def prepare_batch(
     current_bytes = 0
     try:
         for image_record in selected:
+            if image_record.get("stable_image_uid") in successful:
+                continue
             if not Path(image_record["image_path"]).exists():
                 continue
             custom_id = request_custom_id(run_id, image_record["stable_image_uid"])
@@ -1686,6 +2296,7 @@ def prepare_batch(
                 image_reference=image_to_data_url(image_record["image_path"]),
                 openai_config=openai_config,
                 generation_config=generation_config,
+                source_context=source_context_from_record(image_record),
             )
             line = json.dumps(
                 {
@@ -1728,6 +2339,7 @@ def prepare_batch(
         "request_file_count": len(request_files),
         "request_files": [str(path) for path in request_files if path.exists()],
         "request_count": len(request_index),
+        "skipped_existing_images": len(successful),
         "target_accepted_samples": generation_config.target_accepted_samples,
         "prompt_version": generation_config.prompt_version,
         "schema_version": generation_config.schema_version,
@@ -1899,6 +2511,15 @@ def summarize_run(run_dir: str | Path) -> dict[str, Any]:
         "target_cues_distribution": dict(
             Counter(cue for record in accepted for cue in normalize_target_cues(record))
         ),
+        "answer_format_distribution": dict(
+            Counter(record.get("answer_format") for record in accepted)
+        ),
+        "trajectory_type_distribution": dict(
+            Counter(record.get("trajectory_type") for record in accepted)
+        ),
+        "focus_item_count": sum(1 for record in accepted if record.get("need_focus") is True),
+        "direct_item_count": sum(1 for record in accepted if record.get("need_focus") is False),
+        "image_group_size_histogram": image_group_size_histogram(accepted),
     }
     return summary
 
@@ -1947,20 +2568,29 @@ def quality_report(
     )
     confidence_bins = Counter(_confidence_bin(record.get("confidence", 0.0)) for record in accepted)
     image_calls = [
-        record for record in ledger if not record.get("status", "").startswith("skipped")
+        record for record in ledger if not str(record.get("status", "")).startswith("skipped")
     ]
     zero_item_images = sum(1 for record in ledger if record.get("accepted_item_count", 0) == 0)
     target_style_counts = Counter(normalize_target_style(record) for record in accepted)
     target_cue_counts = Counter(
         cue for record in accepted for cue in normalize_target_cues(record)
     )
+    need_focus_counts = Counter(bool(record.get("need_focus")) for record in accepted)
+    trajectory_counts = Counter(record.get("trajectory_type") or "unknown" for record in accepted)
+    group_histogram = image_group_size_histogram(accepted)
     return {
         "total_image_calls": len(image_calls),
+        "total_parsed_image_responses": sum(1 for record in ledger if record.get("request_custom_id")),
         "images_with_zero_items": zero_item_images,
         "raw_item_count": len(accepted) + len(rejected),
         "accepted_item_count": len(accepted),
         "rejected_item_count": len(rejected),
+        "focus_item_count": int(need_focus_counts.get(True, 0)),
+        "direct_item_count": int(need_focus_counts.get(False, 0)),
+        "hard_control_item_count": int(trajectory_counts.get("hard_control", 0)),
+        "trajectory_type_distribution": dict(trajectory_counts),
         "rejection_reason_histogram": dict(rejection_reasons),
+        "rejection_reason_distribution": dict(rejection_reasons),
         "visual_cue_warning_histogram": dict(visual_cue_warnings),
         "target_style_distribution": dict(target_style_counts),
         "target_cues_distribution": dict(target_cue_counts),
@@ -1980,17 +2610,29 @@ def quality_report(
         "source_dataset_distribution": dict(
             Counter(record.get("source_dataset") for record in accepted)
         ),
+        "answer_format_distribution": dict(
+            Counter(record.get("answer_format") for record in accepted)
+        ),
         "confidence_distribution": dict(confidence_bins),
         "target_leakage_risk_distribution": dict(
             Counter(record.get("target_leakage_risk") for record in accepted)
         ),
         "average_items_per_image": _safe_div(len(accepted) + len(rejected), len(image_calls)),
         "average_accepted_items_per_image": _safe_div(len(accepted), len(image_calls)),
+        "visual_difficulty_distribution": dict(
+            Counter(record.get("visual_difficulty") for record in accepted)
+        ),
         "samples_by_visual_difficulty": dict(
             Counter(record.get("visual_difficulty") for record in accepted)
         ),
         "samples_by_answer_type": dict(Counter(record.get("answer_type") for record in accepted)),
+        "image_group_size_histogram": group_histogram,
     }
+
+
+def image_group_size_histogram(records: list[dict[str, Any]]) -> dict[str, int]:
+    by_image = Counter(record.get("image_id") or record.get("stable_image_uid") for record in records)
+    return dict(Counter(str(size) for size in by_image.values()))
 
 
 def usage_report(ledger: list[dict[str, Any]]) -> dict[str, Any]:
@@ -2116,15 +2758,25 @@ def leakage_reasons(question: str, target: str, short_answer: str) -> list[str]:
     question_norm = normalize_text(question)
     if not answer:
         return []
-    if answer in target_norm:
-        reasons.append("short_answer_in_target")
-    if answer in question_norm:
-        reasons.append("short_answer_in_question")
-    answer_tokens = set(_words(short_answer))
-    target_tokens = set(_words(target))
-    if len(answer_tokens) >= 2:
-        overlap = answer_tokens & target_tokens
-        if len(overlap) / len(answer_tokens) >= 0.75:
+    answer_tokens = _words(short_answer)
+    target_tokens = _words(target)
+    question_tokens = _words(question)
+    single_alpha = len(answer) == 1 and answer.isalpha()
+    if single_alpha:
+        if answer in target_tokens:
+            reasons.append("short_answer_in_target")
+        if answer in question_tokens:
+            reasons.append("short_answer_in_question")
+    else:
+        if answer in target_norm:
+            reasons.append("short_answer_in_target")
+        if answer in question_norm:
+            reasons.append("short_answer_in_question")
+    answer_token_set = set(answer_tokens)
+    target_token_set = set(target_tokens)
+    if len(answer_token_set) >= 2:
+        overlap = answer_token_set & target_token_set
+        if len(overlap) / len(answer_token_set) >= 0.75:
             reasons.append("most_answer_tokens_in_target")
     if looks_numeric_date_or_code(short_answer):
         if answer in target_norm:
@@ -2225,6 +2877,61 @@ def target_is_global(target: str) -> bool:
         "the full image",
     }
     return norm in global_phrases or norm.startswith("the overall ")
+
+
+def target_is_forbidden_generic(target: str) -> bool:
+    norm = normalize_text(target)
+    return norm in {
+        "the image",
+        "the scene",
+        "the object",
+        "the answer",
+        "something",
+        "something green",
+        "the important part",
+        "relevant visual evidence needed to answer the question",
+    }
+
+
+def evidence_has_uncertain_reading(evidence: str) -> bool:
+    norm = normalize_text(evidence)
+    uncertain_phrases = {
+        "maybe",
+        "possibly",
+        "appears to say",
+        "seems to say",
+        "might say",
+        "looks like it says",
+        "not sure",
+        "unclear",
+    }
+    return any(phrase in norm for phrase in uncertain_phrases)
+
+
+def direct_question_requires_focus(question: str) -> bool:
+    norm = normalize_text(question)
+    focus_markers = {
+        "tiny text",
+        "small text",
+        "fine print",
+        "below the barcode",
+        "barcode",
+        "serial number",
+        "small number",
+        "tiny number",
+        "small blue circle",
+        "receipt footer",
+        "date printed",
+        "chart label",
+        "axis label",
+        "legend entry",
+        "table cell",
+        "row and column",
+        "fine texture",
+        "small label",
+        "local value",
+    }
+    return any(marker in norm for marker in focus_markers)
 
 
 def evidence_is_generic(evidence: str) -> bool:
@@ -2569,6 +3276,7 @@ def main(argv: list[str] | None = None) -> None:
             target_accepted_samples=args.target_accepted_samples,
             limit_images=args.limit_images,
             max_request_file_mb=args.max_request_file_mb,
+            allow_regenerate=args.allow_regenerate,
         )
         print(json.dumps(report, indent=2))
     elif args.command == "submit-batch":
@@ -2622,6 +3330,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     add_generation_args(batch)
     batch.add_argument("--limit-images", type=int, default=None)
     batch.add_argument("--max-request-file-mb", type=int, default=90)
+    batch.add_argument("--allow-regenerate", action="store_true")
     add_wandb_args(batch)
 
     submit = subparsers.add_parser("submit-batch")
