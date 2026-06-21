@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import math
+import os
 import re
 import time
 from dataclasses import asdict, dataclass, field
@@ -9,7 +11,7 @@ from typing import Any, Literal
 
 import torch
 from qwen_vl_utils import process_vision_info
-from transformers import AutoProcessor, Qwen3VLForConditionalGeneration
+from transformers import AutoProcessor, Qwen3VLForConditionalGeneration, StoppingCriteria, StoppingCriteriaList
 
 
 EVIDENCE_STATE_START = "<EVIDENCE_STATE>"
@@ -22,6 +24,54 @@ EVIDENCE_START = "<EVIDENCE>"
 EVIDENCE_END = "</EVIDENCE>"
 ANSWER_START = "<ANSWER>"
 ANSWER_END = "</ANSWER>"
+
+LEGACY_V3_PROTOCOL = "legacy_v3_tags"
+PROTOCOL_C_THINKING_SPECIAL = "protocol_c_thinking_special"
+PROTOCOL_C_TOOL_OBSERVATION = "protocol_c_tool_observation"
+PROTOCOL_D_QWEN_TOOL = "protocol_d_qwen_tool"
+PROTOCOL_E_ACTION_EVIDENCE_SPECIAL = "protocol_e_action_evidence_special"
+TGVFProtocol = Literal[
+    "legacy_v3_tags",
+    "protocol_c_thinking_special",
+    "protocol_c_tool_observation",
+    "protocol_d_qwen_tool",
+    "protocol_e_action_evidence_special",
+]
+TGVF_PROTOCOL_CHOICES = (
+    LEGACY_V3_PROTOCOL,
+    PROTOCOL_C_THINKING_SPECIAL,
+    PROTOCOL_C_TOOL_OBSERVATION,
+    PROTOCOL_D_QWEN_TOOL,
+    PROTOCOL_E_ACTION_EVIDENCE_SPECIAL,
+)
+
+PROTOCOL_C_FOCUS_START = "<|focus_start|>"
+PROTOCOL_C_FOCUS_END = "<|focus_end|>"
+PROTOCOL_C_TGVF_START = "<|tgvf_start|>"
+PROTOCOL_C_TGVF_END = "<|tgvf_end|>"
+PROTOCOL_E_EVIDENCE_START = "<|evidence_start|>"
+PROTOCOL_E_EVIDENCE_END = "<|evidence_end|>"
+PROTOCOL_C_SPECIAL_TOKENS = (
+    PROTOCOL_C_FOCUS_START,
+    PROTOCOL_C_FOCUS_END,
+    PROTOCOL_C_TGVF_START,
+    PROTOCOL_C_TGVF_END,
+)
+PROTOCOL_E_SPECIAL_TOKENS = (
+    PROTOCOL_C_FOCUS_START,
+    PROTOCOL_C_FOCUS_END,
+    PROTOCOL_C_TGVF_START,
+    PROTOCOL_C_TGVF_END,
+    PROTOCOL_E_EVIDENCE_START,
+    PROTOCOL_E_EVIDENCE_END,
+)
+THINK_START = "<think>"
+THINK_END = "</think>"
+TOOL_CALL_START = "<tool_call>"
+TOOL_CALL_END = "</tool_call>"
+TOOL_RESPONSE_START = "<tool_response>"
+TOOL_RESPONSE_END = "</tool_response>"
+TGVF_TOOL_NAME = "tgvf_focus"
 
 NEED_LOCAL_EVIDENCE = "need_local_visual_evidence"
 SUFFICIENT_EVIDENCE = "sufficient_visual_evidence"
@@ -38,6 +88,377 @@ GENERIC_TARGETS = {
     "visual target description",
     "specific local visual target",
 }
+
+
+def normalize_tgvf_protocol(protocol: str | None) -> TGVFProtocol:
+    if protocol is None:
+        return LEGACY_V3_PROTOCOL
+    if protocol in TGVF_PROTOCOL_CHOICES:
+        return protocol  # type: ignore[return-value]
+    raise ValueError(f"unsupported TGVF protocol: {protocol}")
+
+
+def protocol_focus_tokens(protocol: str | None = None) -> tuple[str, str]:
+    protocol = normalize_tgvf_protocol(protocol)
+    if protocol in {PROTOCOL_C_THINKING_SPECIAL, PROTOCOL_C_TOOL_OBSERVATION, PROTOCOL_E_ACTION_EVIDENCE_SPECIAL}:
+        return PROTOCOL_C_FOCUS_START, PROTOCOL_C_FOCUS_END
+    if protocol == PROTOCOL_D_QWEN_TOOL:
+        return TOOL_CALL_START, TOOL_CALL_END
+    return FOCUS_START, FOCUS_END
+
+
+def protocol_tgvf_tokens(protocol: str | None = None) -> tuple[str, str]:
+    protocol = normalize_tgvf_protocol(protocol)
+    if protocol in {PROTOCOL_C_THINKING_SPECIAL, PROTOCOL_C_TOOL_OBSERVATION, PROTOCOL_E_ACTION_EVIDENCE_SPECIAL}:
+        return PROTOCOL_C_TGVF_START, PROTOCOL_C_TGVF_END
+    if protocol == PROTOCOL_D_QWEN_TOOL:
+        return TOOL_RESPONSE_START, TOOL_RESPONSE_END
+    return TGVF_START, TGVF_END
+
+
+def protocol_c_pre_focus_think(target: str) -> str:
+    del target
+    return "I need visual focus before answering."
+
+
+def protocol_c_pre_answer_think() -> str:
+    return "The answer is directly visible from the image."
+
+
+def render_focus_action_text(
+    target: str,
+    *,
+    protocol: str | None = None,
+    pad_target_spaces: bool = False,
+    pre_focus_think: str | None = None,
+    include_think: bool = True,
+    append_im_end: bool = False,
+) -> str:
+    protocol = normalize_tgvf_protocol(protocol)
+    target = target.strip()
+    if pad_target_spaces:
+        rendered_target = f" {target} "
+    else:
+        rendered_target = target
+    if protocol in {PROTOCOL_C_THINKING_SPECIAL, PROTOCOL_C_TOOL_OBSERVATION, PROTOCOL_E_ACTION_EVIDENCE_SPECIAL}:
+        focus_text = f"{PROTOCOL_C_FOCUS_START}{rendered_target}{PROTOCOL_C_FOCUS_END}"
+        if not include_think:
+            text = focus_text
+            return f"{text}<|im_end|>" if append_im_end else text
+        think_text = (pre_focus_think or protocol_c_pre_focus_think(target)).strip()
+        text = f"{THINK_START}\n{think_text}\n{THINK_END}\n{focus_text}"
+        return f"{text}<|im_end|>" if append_im_end else text
+    if protocol == PROTOCOL_D_QWEN_TOOL:
+        tool_call = {
+            "name": TGVF_TOOL_NAME,
+            "arguments": {"target": rendered_target},
+        }
+        return (
+            f"{THINK_START}\n"
+            f"{protocol_c_pre_focus_think(target)}\n"
+            f"{THINK_END}\n\n"
+            f"{TOOL_CALL_START}\n"
+            f"{json.dumps(tool_call, ensure_ascii=False)}\n"
+            f"{TOOL_CALL_END}"
+        )
+    return (
+        f"{EVIDENCE_STATE_START}{NEED_LOCAL_EVIDENCE}{EVIDENCE_STATE_END}\n"
+        f"{FOCUS_START}{rendered_target}{FOCUS_END}"
+    )
+
+
+def render_force_focus_prefix(*, protocol: str | None = None, target_hint: str | None = None) -> str:
+    protocol = normalize_tgvf_protocol(protocol)
+    if protocol in {PROTOCOL_C_THINKING_SPECIAL, PROTOCOL_C_TOOL_OBSERVATION, PROTOCOL_E_ACTION_EVIDENCE_SPECIAL}:
+        target_hint = (target_hint or "").strip()
+        if target_hint:
+            think_text = protocol_c_pre_focus_think(target_hint)
+            return f"{THINK_START}\n{think_text}\n{THINK_END}\n{PROTOCOL_C_FOCUS_START}"
+        return f"{THINK_START}\n{THINK_END}\n{PROTOCOL_C_FOCUS_START}"
+    if protocol == PROTOCOL_D_QWEN_TOOL:
+        return (
+            f"{THINK_START}\n"
+            f"{protocol_c_pre_focus_think(target_hint or '')}\n"
+            f"{THINK_END}\n\n"
+            f"{TOOL_CALL_START}\n"
+            "{\"name\": \"tgvf_focus\", \"arguments\": {\"target\": \""
+        )
+    return f"{EVIDENCE_STATE_START}{NEED_LOCAL_EVIDENCE}{EVIDENCE_STATE_END}\n{FOCUS_START} "
+
+
+def render_tgvf_prefix_suffix(*, protocol: str | None = None, include_leading_im_end: bool = True) -> tuple[str, str]:
+    protocol = normalize_tgvf_protocol(protocol)
+    if protocol == PROTOCOL_C_TOOL_OBSERVATION:
+        prefix = f"<|im_start|>tool\n{PROTOCOL_C_TGVF_START}\n"
+        if include_leading_im_end:
+            prefix = f"<|im_end|>\n{prefix}"
+        return (
+            prefix,
+            f"\n{PROTOCOL_C_TGVF_END}<|im_end|>\n<|im_start|>assistant\n",
+        )
+    if protocol == PROTOCOL_D_QWEN_TOOL:
+        return (
+            f"<|im_end|>\n<|im_start|>user\n{TOOL_RESPONSE_START}\n",
+            f"\n{TOOL_RESPONSE_END}<|im_end|>\n<|im_start|>assistant\n",
+        )
+    start, end = protocol_tgvf_tokens(protocol)
+    return f"\n{start}\n", f"\n{end}\n"
+
+
+def _focus_action_terminal_ids(tokenizer: Any, protocol: str | None, focus_end_ids: list[int]) -> list[int]:
+    if normalize_tgvf_protocol(protocol) == PROTOCOL_C_TOOL_OBSERVATION:
+        if os.environ.get("TGVF_TOOLOBS_ACTION_STOP", "im_end").strip().lower() == "focus_end":
+            return focus_end_ids
+        terminal = _marker_ids(tokenizer, "<|im_end|>")
+        return terminal or focus_end_ids
+    return focus_end_ids
+
+
+def _completed_focus_ready_for_append(
+    ids: list[int],
+    completed: tuple[int, int, str],
+    *,
+    focus_end_ids: list[int],
+    terminal_ids: list[int],
+) -> bool:
+    if terminal_ids == focus_end_ids:
+        return True
+    focus_end_end = completed[1] + len(focus_end_ids)
+    return _find_subsequence(ids[focus_end_end:], terminal_ids) is not None
+
+
+def render_focus_readout_answer_text(
+    *,
+    evidence_description: str,
+    answer: str,
+    protocol: str | None = None,
+    readout_think: str | None = None,
+    append_im_end: bool = False,
+) -> str:
+    protocol = normalize_tgvf_protocol(protocol)
+    evidence_description = (readout_think or evidence_description).strip()
+    answer = answer.strip()
+    suffix = "<|im_end|>" if append_im_end else ""
+    if protocol in {PROTOCOL_C_THINKING_SPECIAL, PROTOCOL_C_TOOL_OBSERVATION}:
+        return f"{THINK_START}\n{evidence_description}\n{THINK_END}\n{answer}{suffix}"
+    if protocol == PROTOCOL_E_ACTION_EVIDENCE_SPECIAL:
+        return f"{PROTOCOL_E_EVIDENCE_START}{evidence_description}{PROTOCOL_E_EVIDENCE_END}\n{answer}{suffix}"
+    if protocol == PROTOCOL_D_QWEN_TOOL:
+        return f"{THINK_START}\n{evidence_description}\n{THINK_END}\n{answer}{suffix}"
+    return (
+        f"{EVIDENCE_START}{evidence_description}{EVIDENCE_END}\n"
+        f"{ANSWER_START}{answer}{ANSWER_END}{suffix}"
+    )
+
+
+def render_stage1_readout_text(
+    *,
+    evidence_description: str,
+    protocol: str | None = None,
+) -> tuple[str, str]:
+    protocol = normalize_tgvf_protocol(protocol)
+    evidence_description = evidence_description.strip()
+    if protocol in {PROTOCOL_C_THINKING_SPECIAL, PROTOCOL_C_TOOL_OBSERVATION}:
+        return f"{THINK_START}\n", f"{evidence_description}\n{THINK_END}"
+    if protocol == PROTOCOL_E_ACTION_EVIDENCE_SPECIAL:
+        return PROTOCOL_E_EVIDENCE_START, f"{evidence_description}{PROTOCOL_E_EVIDENCE_END}"
+    if protocol == PROTOCOL_D_QWEN_TOOL:
+        return f"{THINK_START}\n", f"{evidence_description}\n{THINK_END}"
+    return EVIDENCE_START, f"{evidence_description}{EVIDENCE_END}"
+
+
+def render_no_focus_output_text(
+    answer: str,
+    *,
+    protocol: str | None = None,
+    think_text: str | None = None,
+    append_im_end: bool = False,
+) -> str:
+    protocol = normalize_tgvf_protocol(protocol)
+    answer = answer.strip()
+    suffix = "<|im_end|>" if append_im_end else ""
+    if protocol in {PROTOCOL_C_THINKING_SPECIAL, PROTOCOL_C_TOOL_OBSERVATION, PROTOCOL_E_ACTION_EVIDENCE_SPECIAL}:
+        think = (think_text or protocol_c_pre_answer_think()).strip()
+        return f"{THINK_START}\n{think}\n{THINK_END}\n{answer}{suffix}"
+    if protocol == PROTOCOL_D_QWEN_TOOL:
+        return f"{THINK_START}\n{protocol_c_pre_answer_think()}\n{THINK_END}\n{answer}{suffix}"
+    return f"{EVIDENCE_STATE_START}{SUFFICIENT_EVIDENCE}{EVIDENCE_STATE_END}\n{ANSWER_START}{answer}{ANSWER_END}{suffix}"
+
+
+def focus_target_char_span(action_text: str, *, protocol: str | None = None) -> tuple[int, int] | None:
+    protocol = normalize_tgvf_protocol(protocol)
+    if protocol == PROTOCOL_D_QWEN_TOOL:
+        return _tool_call_target_char_span(action_text)
+    start, end = protocol_focus_tokens(protocol)
+    start_index = action_text.find(start)
+    if start_index < 0:
+        return None
+    inner_start = start_index + len(start)
+    end_index = action_text.find(end, inner_start)
+    if end_index < 0:
+        return None
+    while inner_start < end_index and action_text[inner_start].isspace():
+        inner_start += 1
+    while end_index > inner_start and action_text[end_index - 1].isspace():
+        end_index -= 1
+    return inner_start, end_index
+
+
+def _tool_call_target_char_span(text: str) -> tuple[int, int] | None:
+    tool_start = text.find(TOOL_CALL_START)
+    tool_end = text.find(TOOL_CALL_END, tool_start + len(TOOL_CALL_START)) if tool_start >= 0 else -1
+    if tool_start < 0 or tool_end < 0:
+        return None
+    match = re.search(r'"target"\s*:\s*"', text[tool_start:tool_end])
+    if match is None:
+        return None
+    char_start = tool_start + match.end()
+    cursor = char_start
+    escaped = False
+    while cursor < tool_end:
+        char = text[cursor]
+        if escaped:
+            escaped = False
+        elif char == "\\":
+            escaped = True
+        elif char == '"':
+            return char_start, cursor
+        cursor += 1
+    return None
+
+
+def _extract_protocol_d_focus_target(text: str) -> str | None:
+    span = _tool_call_target_char_span(text)
+    if span is None:
+        return None
+    raw = text[span[0] : span[1]]
+    try:
+        return json.loads(f'"{raw}"')
+    except json.JSONDecodeError:
+        return raw
+
+
+def protocol_c_special_token_ids(tokenizer: Any) -> dict[str, int]:
+    return protocol_special_token_ids(tokenizer, protocol=PROTOCOL_C_THINKING_SPECIAL)
+
+
+def protocol_special_tokens(protocol: str | None = None) -> tuple[str, ...]:
+    protocol = normalize_tgvf_protocol(protocol)
+    if protocol in {PROTOCOL_C_THINKING_SPECIAL, PROTOCOL_C_TOOL_OBSERVATION}:
+        return PROTOCOL_C_SPECIAL_TOKENS
+    if protocol == PROTOCOL_E_ACTION_EVIDENCE_SPECIAL:
+        return PROTOCOL_E_SPECIAL_TOKENS
+    return ()
+
+
+def protocol_special_token_ids(tokenizer: Any, *, protocol: str | None = None) -> dict[str, int]:
+    result: dict[str, int] = {}
+    for token in protocol_special_tokens(protocol):
+        token_id = None
+        if hasattr(tokenizer, "convert_tokens_to_ids"):
+            token_id = tokenizer.convert_tokens_to_ids(token)
+        unk_id = getattr(tokenizer, "unk_token_id", None)
+        if token_id is None or token_id == unk_id:
+            ids = tokenizer.encode(token, add_special_tokens=False)
+            if len(ids) == 1:
+                token_id = ids[0]
+        if token_id is None or token_id == unk_id:
+            raise ValueError(f"TGVF protocol token is not available in tokenizer: {token}")
+        result[token] = int(token_id)
+    return result
+
+
+def ensure_protocol_c_special_tokens(tokenizer: Any, model: Any | None = None) -> dict[str, Any]:
+    return ensure_tgvf_protocol_tokens(tokenizer, model, protocol=PROTOCOL_C_THINKING_SPECIAL)
+
+
+def ensure_tgvf_protocol_tokens(tokenizer: Any, model: Any | None = None, *, protocol: str | None = None) -> dict[str, Any]:
+    """Ensure Protocol C boundary tokens exist.
+
+    Despite the historical function name, Protocol C action boundary tokens are
+    registered as normal added tokens, following the VPT reference project:
+    model-generated action tokens should behave like regular vocabulary items,
+    while visual pad tokens are the ones treated as additional special tokens.
+    """
+    protocol = normalize_tgvf_protocol(protocol)
+    tokens = protocol_special_tokens(protocol)
+    before = len(tokenizer)
+    added = 0
+    existing_ids = {
+        token: tokenizer.encode(token, add_special_tokens=False)
+        for token in tokens
+    }
+    missing = [token for token, ids in existing_ids.items() if len(ids) != 1]
+    if missing and hasattr(tokenizer, "add_tokens"):
+        added = int(tokenizer.add_tokens(missing, special_tokens=False))
+    after = len(tokenizer)
+    resized = False
+    model_vocab = None
+    if model is not None:
+        try:
+            model_vocab = int(model.get_input_embeddings().weight.shape[0])
+        except Exception:
+            model_vocab = None
+    if model is not None and (after != before or model_vocab != after):
+        model.resize_token_embeddings(after)
+        resized = True
+        _vpt_noisy_mean_initialize_protocol_rows(model, tokenizer, protocol=protocol)
+    token_ids = protocol_special_token_ids(tokenizer, protocol=protocol)
+    return {
+        "special_tokens_added": False,
+        "num_special_tokens_added": 0,
+        "normal_tokens_added": bool(added),
+        "num_normal_tokens_added": added,
+        "protocol_c_token_registration": "normal_added_tokens",
+        "protocol_c_embedding_init": "vpt_noisy_mean_input_output",
+        "tgvf_protocol_token_registration": "normal_added_tokens",
+        "tgvf_protocol_embedding_init": "vpt_noisy_mean_input_output",
+        "tokenizer_size_before": before,
+        "tokenizer_size_after": after,
+        "tokenizer_resized": resized,
+        "protocol_c_special_token_ids": token_ids,
+        "protocol_c_token_ids": token_ids,
+        "tgvf_protocol_token_ids": token_ids,
+    }
+
+
+def _vpt_noisy_mean_initialize_protocol_c_rows(model: Any, tokenizer: Any) -> None:
+    _vpt_noisy_mean_initialize_protocol_rows(model, tokenizer, protocol=PROTOCOL_C_THINKING_SPECIAL)
+
+
+def _vpt_noisy_mean_initialize_protocol_rows(model: Any, tokenizer: Any, *, protocol: str | None = None) -> None:
+    tokens = protocol_special_tokens(protocol)
+    token_ids = protocol_special_token_ids(tokenizer, protocol=protocol)
+    row_ids = [int(token_ids[token]) for token in tokens]
+    input_embed = model.get_input_embeddings()
+    output_embed = model.get_output_embeddings() if hasattr(model, "get_output_embeddings") else None
+    with torch.no_grad():
+        _vpt_noisy_mean_initialize_rows(input_embed.weight, row_ids)
+        if output_embed is not None and hasattr(output_embed, "weight"):
+            input_ptr = input_embed.weight.data_ptr()
+            output_ptr = output_embed.weight.data_ptr()
+            if output_ptr != input_ptr:
+                _vpt_noisy_mean_initialize_rows(output_embed.weight, row_ids)
+
+
+def _vpt_noisy_mean_initialize_rows(weight: torch.Tensor, row_ids: list[int]) -> None:
+    valid_row_ids = sorted({row_id for row_id in row_ids if 0 <= row_id < int(weight.shape[0])})
+    if not valid_row_ids:
+        return
+    row_set = set(valid_row_ids)
+    base_row_ids = [idx for idx in range(int(weight.shape[0])) if idx not in row_set]
+    if not base_row_ids:
+        base = weight.float().mean(dim=0, keepdim=True)
+    else:
+        base = weight[base_row_ids].float().mean(dim=0, keepdim=True)
+    std = 1.0 / math.sqrt(float(weight.shape[1]))
+    noise = torch.empty(
+        (len(valid_row_ids), int(weight.shape[1])),
+        device=weight.device,
+        dtype=torch.float32,
+    ).normal_(mean=0.0, std=std)
+    initialized = (base + noise).to(dtype=weight.dtype)
+    weight[valid_row_ids].copy_(initialized)
 
 
 @dataclass
@@ -200,7 +621,15 @@ def build_direct_messages(image: Any, question: str) -> list[dict[str, Any]]:
     ]
 
 
-def build_focus_force_prompt(question: str) -> str:
+def build_focus_force_prompt(question: str, *, protocol: str | None = None) -> str:
+    protocol = normalize_tgvf_protocol(protocol)
+    if protocol in {PROTOCOL_C_THINKING_SPECIAL, PROTOCOL_C_TOOL_OBSERVATION, PROTOCOL_E_ACTION_EVIDENCE_SPECIAL}:
+        return (
+            "We are building a Target-Guided Visual Foveation system.\n"
+            "The model should identify the local visual evidence needed before answering.\n\n"
+            f"Question: {question}\n\n"
+            "Do not answer yet."
+        )
     return (
         "We are building a Target-Guided Visual Foveation system.\n"
         "The system first asks the language model what local visual evidence is needed, "
@@ -227,19 +656,44 @@ def build_focus_force_prompt(question: str) -> str:
     )
 
 
-def build_focus_force_messages(image: Any, question: str) -> list[dict[str, Any]]:
+def build_focus_force_messages(
+    image: Any,
+    question: str,
+    *,
+    protocol: str | None = None,
+) -> list[dict[str, Any]]:
     return [
         {
             "role": "user",
             "content": [
                 *_vision_content_items(image),
-                {"type": "text", "text": build_focus_force_prompt(question)},
+                {"type": "text", "text": build_focus_force_prompt(question, protocol=protocol)},
             ],
         }
     ]
 
 
-def build_free_router_prompt(question: str) -> str:
+def build_free_router_prompt(question: str, *, protocol: str | None = None) -> str:
+    protocol = normalize_tgvf_protocol(protocol)
+    if protocol in {PROTOCOL_C_THINKING_SPECIAL, PROTOCOL_C_TOOL_OBSERVATION, PROTOCOL_E_ACTION_EVIDENCE_SPECIAL}:
+        return (
+            "We are building a Target-Guided Visual Foveation system.\n"
+            "Decide whether the question can be answered directly, or whether localized visual inspection is needed.\n\n"
+            f"Question: {question}\n\n"
+            "If the answer is directly visible, use normal Qwen3 thinking briefly and then give the raw final answer:\n"
+            f"{THINK_START}\nThe answer is directly visible from the image.\n{THINK_END}\n"
+            "final answer\n\n"
+            "If focused inspection is needed, output a completed focus action and stop:\n"
+            f"{THINK_START}\nI need to inspect the relevant visible detail before answering.\n{THINK_END}\n"
+            f"{PROTOCOL_C_FOCUS_START}a short visually locatable focus description{PROTOCOL_C_FOCUS_END}\n\n"
+            "The focus description can be semantic, uncertain, visual-cue based, or inspection-oriented.\n"
+            "It may refer to an object, part, text-like area, mark, color, shape, texture, pattern, material, spatial relation, or viewing cue.\n"
+            "Good examples include: the small text-like area below the barcode; the red textured area near the lower-left side; "
+            "the fine texture on the dark patch; the region where the two objects overlap.\n"
+            "Do not use <EVIDENCE_STATE>, <EVIDENCE>, or <ANSWER>.\n"
+            "Do not leak the answer value in the focus description.\n"
+            "Do not use generic focus descriptions like the image, the answer, local visual evidence, or specific local region."
+        )
     return (
         "We are building a Target-Guided Visual Foveation system.\n"
         "Decide whether the question can be answered directly from the current image view, "
@@ -259,45 +713,49 @@ def build_free_router_prompt(question: str) -> str:
     )
 
 
-def build_free_router_messages(image: Any, question: str) -> list[dict[str, Any]]:
+def build_free_router_messages(
+    image: Any,
+    question: str,
+    *,
+    protocol: str | None = None,
+) -> list[dict[str, Any]]:
     return [
         {
             "role": "user",
             "content": [
                 *_vision_content_items(image),
-                {"type": "text", "text": build_free_router_prompt(question)},
+                {"type": "text", "text": build_free_router_prompt(question, protocol=protocol)},
             ],
         }
     ]
 
 
 def build_qwen3_inputs(processor: Any, messages: list[dict[str, Any]]) -> dict[str, Any]:
-    try:
-        inputs = processor.apply_chat_template(
-            messages,
-            tokenize=True,
-            add_generation_prompt=True,
-            return_dict=True,
-            return_tensors="pt",
-        )
-        if isinstance(inputs, dict) and "input_ids" in inputs:
-            return dict(inputs)
-    except TypeError:
-        pass
-
     text = processor.apply_chat_template(
         messages,
         tokenize=False,
         add_generation_prompt=True,
     )
-    image_inputs, video_inputs = process_vision_info(messages)
+    image_inputs, video_inputs, video_kwargs = process_vision_info(
+        messages,
+        image_patch_size=16,
+        return_video_kwargs=True,
+        return_video_metadata=True,
+    )
+    video_metadatas = None
+    if video_inputs is not None:
+        video_inputs, video_metadatas = zip(*video_inputs)
+        video_inputs, video_metadatas = list(video_inputs), list(video_metadatas)
     return dict(
         processor(
             text=[text],
             images=image_inputs,
             videos=video_inputs,
+            video_metadata=video_metadatas,
+            do_resize=False,
             padding=True,
             return_tensors="pt",
+            **(video_kwargs or {}),
         )
     )
 
@@ -311,6 +769,7 @@ def generate_direct_qwen3(
     question: str,
     max_new_tokens: int = 64,
     device: torch.device | str | None = None,
+    protocol: str | None = None,
 ) -> dict[str, Any]:
     messages = build_direct_messages(image, question)
     inputs = build_qwen3_inputs(processor, messages)
@@ -326,7 +785,7 @@ def generate_direct_qwen3(
     wall = time.perf_counter() - start
     new_ids = generated[0, prompt_len:].detach().cpu().tolist()
     text = _decode(tokenizer, new_ids)
-    parsed = parse_v3_action(text)
+    parsed = parse_v3_action(text, protocol=protocol)
     return {
         "raw_output": text,
         "generated_ids": new_ids,
@@ -350,8 +809,10 @@ def capture_focus_single_pass_qwen3(
     eos_token_id: int | None = None,
     force_action_prefix: bool = False,
     scripted_target_text: str | None = None,
+    protocol: str | None = None,
 ) -> Qwen3FocusCapture:
-    messages = messages or build_focus_force_messages(image, question)
+    protocol = normalize_tgvf_protocol(protocol)
+    messages = messages or build_focus_force_messages(image, question, protocol=protocol)
     inputs = build_qwen3_inputs(processor, messages)
     return capture_focus_single_pass_from_inputs_qwen3(
         model,
@@ -362,14 +823,17 @@ def capture_focus_single_pass_qwen3(
         hidden_state_index=hidden_state_index,
         eos_token_id=eos_token_id,
         forced_prefix_text=(
-            f"{EVIDENCE_STATE_START}{NEED_LOCAL_EVIDENCE}{EVIDENCE_STATE_END}\n"
-            f"{FOCUS_START} {scripted_target_text.strip()} {FOCUS_END}"
+            render_focus_action_text(
+                scripted_target_text,
+                protocol=protocol,
+                pad_target_spaces=True,
+            )
             if scripted_target_text
-            else
-            f"{EVIDENCE_STATE_START}{NEED_LOCAL_EVIDENCE}{EVIDENCE_STATE_END}\n{FOCUS_START} "
+            else render_force_focus_prefix(protocol=protocol)
             if force_action_prefix
             else None
         ),
+        protocol=protocol,
     )
 
 
@@ -384,14 +848,46 @@ def capture_focus_single_pass_from_inputs_qwen3(
     hidden_state_index: int = -1,
     eos_token_id: int | None = None,
     forced_prefix_text: str | None = None,
+    protocol: str | None = None,
 ) -> Qwen3FocusCapture:
     if max_new_tokens <= 0:
         raise ValueError("max_new_tokens must be positive")
 
-    focus_start_ids = _marker_ids(tokenizer, FOCUS_START)
-    focus_end_ids = _marker_ids(tokenizer, FOCUS_END)
+    if forced_prefix_text is not None and hasattr(model, "generate"):
+        return _capture_focus_forced_prefix_from_inputs_qwen3(
+            model,
+            tokenizer,
+            inputs,
+            forced_prefix_text=forced_prefix_text,
+            max_new_tokens=max_new_tokens,
+            device=device,
+            hidden_state_index=hidden_state_index,
+            eos_token_id=eos_token_id,
+            protocol=protocol,
+        )
+
+    if (
+        os.environ.get("TGVF_QWEN3_CAPTURE_GENERATE", "1").strip() != "0"
+        and forced_prefix_text is None
+        and hasattr(model, "generate")
+    ):
+        return _capture_focus_generate_from_inputs_qwen3(
+            model,
+            tokenizer,
+            inputs,
+            max_new_tokens=max_new_tokens,
+            device=device,
+            hidden_state_index=hidden_state_index,
+            eos_token_id=eos_token_id,
+            protocol=protocol,
+        )
+
+    focus_start, focus_end = protocol_focus_tokens(protocol)
+    focus_start_ids = _marker_ids(tokenizer, focus_start)
+    focus_end_ids = _marker_ids(tokenizer, focus_end)
     if not focus_start_ids or not focus_end_ids:
         raise ValueError("FOCUS markers must tokenize to non-empty id sequences")
+    action_terminal_ids = _focus_action_terminal_ids(tokenizer, protocol, focus_end_ids)
 
     if device is None:
         device = _infer_model_device(model)
@@ -443,8 +939,20 @@ def capture_focus_single_pass_from_inputs_qwen3(
             past_key_values = outputs.past_key_values
             logits = outputs.logits
             cache_position = step_inputs.get("cache_position")
-        completed = _find_completed_focus(generated_ids, focus_start_ids, focus_end_ids, tokenizer)
-        if completed is not None:
+        completed = _find_completed_focus(
+            generated_ids,
+            focus_start_ids,
+            focus_end_ids,
+            tokenizer,
+            start_marker=focus_start,
+            end_marker=focus_end,
+        )
+        if completed is not None and _completed_focus_ready_for_append(
+            generated_ids,
+            completed,
+            focus_end_ids=focus_end_ids,
+            terminal_ids=action_terminal_ids,
+        ):
             start, end, target_text = completed
             target_ids = generated_ids[start:end]
             target_hidden = _stack_hidden_states(generated_hidden_states[start:end])
@@ -469,7 +977,7 @@ def capture_focus_single_pass_from_inputs_qwen3(
                 source_visual_geometry=source_visual_geometry,
                 target_token_start=start,
                 target_token_end=end,
-                stop_reason="forced_focus_end_marker",
+                stop_reason="focus_action_terminal",
                 capture_found=True,
                 second_full_forward_used=False,
                 malformed=False,
@@ -504,8 +1012,20 @@ def capture_focus_single_pass_from_inputs_qwen3(
         logits = outputs.logits
         cache_position = step_inputs.get("cache_position")
 
-        completed = _find_completed_focus(generated_ids, focus_start_ids, focus_end_ids, tokenizer)
-        if completed is not None:
+        completed = _find_completed_focus(
+            generated_ids,
+            focus_start_ids,
+            focus_end_ids,
+            tokenizer,
+            start_marker=focus_start,
+            end_marker=focus_end,
+        )
+        if completed is not None and _completed_focus_ready_for_append(
+            generated_ids,
+            completed,
+            focus_end_ids=focus_end_ids,
+            terminal_ids=action_terminal_ids,
+        ):
             start, end, target_text = completed
             target_ids = generated_ids[start:end]
             target_hidden = _stack_hidden_states(generated_hidden_states[start:end])
@@ -527,7 +1047,7 @@ def capture_focus_single_pass_from_inputs_qwen3(
                 source_visual_geometry=source_visual_geometry,
                 target_token_start=start,
                 target_token_end=end,
-                stop_reason="focus_end_marker",
+                stop_reason="focus_action_terminal",
                 capture_found=True,
                 second_full_forward_used=False,
                 malformed=is_generic_target(target_text),
@@ -538,10 +1058,38 @@ def capture_focus_single_pass_from_inputs_qwen3(
             break
 
     generated_text = _decode(tokenizer, generated_ids)
-    parsed = parse_v3_action(generated_text)
+    parsed = parse_v3_action(generated_text, protocol=protocol)
     errors = list(parsed.malformed_reasons)
     if parsed.has_focus_open and not parsed.has_focus_close:
         errors.append("missing_closing_focus")
+    if False and completed is not None and parsed.focus_valid:
+        start, end, target_text = completed
+        target_ids = generated_ids[start:end]
+        target_hidden = _slice_generated_hidden(hidden_by_token, start, end)
+        return Qwen3FocusCapture(
+            target_text=target_text,
+            target_token_ids=target_ids,
+            target_hidden_states=target_hidden,
+            generated_ids=list(generated_ids),
+            generated_text=generated_text,
+            generated_hidden_states=_stack_hidden_states(hidden_by_token),
+            past_key_values=past_key_values,
+            attention_mask=attention_mask,
+            cache_position=None,
+            input_ids=full_input_ids,
+            last_logits=last_logits,
+            model_kwargs=_resume_model_kwargs(model_inputs),
+            image_grid_thw=model_inputs.get("image_grid_thw"),
+            video_grid_thw=model_inputs.get("video_grid_thw"),
+            source_visual_geometry=source_visual_geometry,
+            target_token_start=start,
+            target_token_end=end,
+            stop_reason="focus_span_without_terminal",
+            capture_found=True,
+            second_full_forward_used=False,
+            malformed=False,
+            errors=[],
+        )
     return Qwen3FocusCapture(
         target_text="",
         target_token_ids=[],
@@ -562,6 +1110,361 @@ def capture_focus_single_pass_from_inputs_qwen3(
         capture_found=False,
         second_full_forward_used=False,
         malformed=True,
+        errors=errors or ["no_complete_focus_span"],
+    )
+
+
+@torch.no_grad()
+def _capture_focus_forced_prefix_from_inputs_qwen3(
+    model: Any,
+    tokenizer: Any,
+    inputs: dict[str, Any],
+    *,
+    forced_prefix_text: str,
+    max_new_tokens: int,
+    device: torch.device | str | None,
+    hidden_state_index: int,
+    eos_token_id: int | None,
+    protocol: str | None = None,
+) -> Qwen3FocusCapture:
+    focus_start, focus_end = protocol_focus_tokens(protocol)
+    focus_start_ids = _marker_ids(tokenizer, focus_start)
+    focus_end_ids = _marker_ids(tokenizer, focus_end)
+    if not focus_start_ids or not focus_end_ids:
+        raise ValueError("FOCUS markers must tokenize to non-empty id sequences")
+    action_terminal_ids = _focus_action_terminal_ids(tokenizer, protocol, focus_end_ids)
+    if device is None:
+        device = _infer_model_device(model)
+    model_inputs = _move_tensors(dict(inputs), device)
+    input_ids = model_inputs["input_ids"]
+    prompt_len = int(input_ids.shape[-1])
+    forced_ids = _encode_text(tokenizer, forced_prefix_text, input_ids.device)
+    forced_inputs = _inputs_with_appended_text_ids(model_inputs, forced_ids)
+    forced_generated_ids = forced_ids.detach().cpu().tolist()
+
+    completed = _find_completed_focus(
+        forced_generated_ids,
+        focus_start_ids,
+        focus_end_ids,
+        tokenizer,
+        start_marker=focus_start,
+        end_marker=focus_end,
+    )
+    if completed is not None and _completed_focus_ready_for_append(
+        forced_generated_ids,
+        completed,
+        focus_end_ids=focus_end_ids,
+        terminal_ids=action_terminal_ids,
+    ):
+        outputs = model(
+            **forced_inputs,
+            use_cache=True,
+            output_hidden_states=True,
+            return_dict=True,
+        )
+        hidden_layer = outputs.hidden_states[hidden_state_index][0]
+        forced_hidden = [hidden_layer[prompt_len + index].detach() for index in range(len(forced_generated_ids))]
+        start, end, target_text = completed
+        return Qwen3FocusCapture(
+            target_text=target_text,
+            target_token_ids=forced_generated_ids[start:end],
+            target_hidden_states=_slice_generated_hidden(forced_hidden, start, end),
+            generated_ids=list(forced_generated_ids),
+            generated_text=_decode(tokenizer, forced_generated_ids),
+            generated_hidden_states=_stack_hidden_states(forced_hidden),
+            past_key_values=outputs.past_key_values,
+            attention_mask=forced_inputs.get("attention_mask"),
+            cache_position=None,
+            input_ids=forced_inputs["input_ids"],
+            last_logits=outputs.logits,
+            model_kwargs={**_resume_model_kwargs(forced_inputs), "focus_target_source": "scripted_for_smoke"},
+            image_grid_thw=forced_inputs.get("image_grid_thw"),
+            video_grid_thw=forced_inputs.get("video_grid_thw"),
+            source_visual_geometry=extract_qwen3_source_visual_geometry(model, forced_inputs),
+            target_token_start=start,
+            target_token_end=end,
+            stop_reason="focus_action_terminal",
+            capture_found=True,
+            second_full_forward_used=False,
+            malformed=False,
+            errors=[],
+        )
+
+    stopping_criteria = StoppingCriteriaList(
+        [_StopOnGeneratedSubsequence(action_terminal_ids, int(forced_inputs["input_ids"].shape[-1]))]
+    )
+    generate_kwargs = {
+        **forced_inputs,
+        "max_new_tokens": max_new_tokens,
+        "do_sample": False,
+        "use_cache": True,
+        "return_dict_in_generate": True,
+        "output_hidden_states": True,
+        "stopping_criteria": stopping_criteria,
+    }
+    if eos_token_id is not None:
+        generate_kwargs["eos_token_id"] = eos_token_id
+    generated = model.generate(**generate_kwargs)
+    sequences = generated.sequences
+    new_ids = sequences[0, int(forced_inputs["input_ids"].shape[-1]) :].detach().cpu().tolist()
+    combined_ids = [*forced_generated_ids, *new_ids]
+    forced_hidden = _forced_prefix_hidden_from_generate(
+        getattr(generated, "hidden_states", None),
+        prompt_len=prompt_len,
+        forced_len=len(forced_generated_ids),
+        hidden_state_index=hidden_state_index,
+    )
+    generated_hidden = _generated_token_hidden_states_from_generate(
+        getattr(generated, "hidden_states", None),
+        generated_len=len(new_ids),
+        hidden_state_index=hidden_state_index,
+    )
+    combined_hidden = [*forced_hidden, *generated_hidden]
+    attention_mask = forced_inputs.get("attention_mask")
+    if attention_mask is not None:
+        attention_mask = _extend_attention(attention_mask, len(new_ids))
+    source_visual_geometry = extract_qwen3_source_visual_geometry(model, forced_inputs)
+    completed = _find_completed_focus(
+        combined_ids,
+        focus_start_ids,
+        focus_end_ids,
+        tokenizer,
+        start_marker=focus_start,
+        end_marker=focus_end,
+    )
+    if completed is not None and _completed_focus_ready_for_append(
+        combined_ids,
+        completed,
+        focus_end_ids=focus_end_ids,
+        terminal_ids=action_terminal_ids,
+    ):
+        start, end, target_text = completed
+        return Qwen3FocusCapture(
+            target_text=target_text,
+            target_token_ids=combined_ids[start:end],
+            target_hidden_states=_slice_generated_hidden(combined_hidden, start, end),
+            generated_ids=list(combined_ids),
+            generated_text=_decode(tokenizer, combined_ids),
+            generated_hidden_states=_stack_hidden_states(combined_hidden),
+            past_key_values=getattr(generated, "past_key_values", None),
+            attention_mask=attention_mask,
+            cache_position=None,
+            input_ids=sequences.to(device=input_ids.device),
+            last_logits=None,
+            model_kwargs=_resume_model_kwargs(forced_inputs),
+            image_grid_thw=forced_inputs.get("image_grid_thw"),
+            video_grid_thw=forced_inputs.get("video_grid_thw"),
+            source_visual_geometry=source_visual_geometry,
+            target_token_start=start,
+            target_token_end=end,
+            stop_reason="focus_action_terminal",
+            capture_found=True,
+            second_full_forward_used=False,
+            malformed=is_generic_target(target_text),
+            errors=["generic_target"] if is_generic_target(target_text) else [],
+        )
+
+    generated_text = _decode(tokenizer, combined_ids)
+    parsed = parse_v3_action(generated_text, protocol=protocol)
+    errors = list(parsed.malformed_reasons)
+    if parsed.has_focus_open and not parsed.has_focus_close:
+        errors.append("missing_closing_focus")
+    if False and completed is not None and parsed.focus_valid:
+        start, end, target_text = completed
+        target_ids = generated_ids[start:end]
+        target_hidden = _slice_generated_hidden(hidden_by_token, start, end)
+        return Qwen3FocusCapture(
+            target_text=target_text,
+            target_token_ids=target_ids,
+            target_hidden_states=target_hidden,
+            generated_ids=list(generated_ids),
+            generated_text=generated_text,
+            generated_hidden_states=_stack_hidden_states(hidden_by_token),
+            past_key_values=past_key_values,
+            attention_mask=attention_mask,
+            cache_position=None,
+            input_ids=full_input_ids,
+            last_logits=last_logits,
+            model_kwargs=_resume_model_kwargs(model_inputs),
+            image_grid_thw=model_inputs.get("image_grid_thw"),
+            video_grid_thw=model_inputs.get("video_grid_thw"),
+            source_visual_geometry=source_visual_geometry,
+            target_token_start=start,
+            target_token_end=end,
+            stop_reason="focus_span_without_terminal",
+            capture_found=True,
+            second_full_forward_used=False,
+            malformed=False,
+            errors=[],
+        )
+    return Qwen3FocusCapture(
+        target_text="",
+        target_token_ids=[],
+        target_hidden_states=_empty_hidden_like(combined_hidden),
+        generated_ids=list(combined_ids),
+        generated_text=generated_text,
+        generated_hidden_states=_stack_hidden_states(combined_hidden),
+        past_key_values=getattr(generated, "past_key_values", None),
+        attention_mask=attention_mask,
+        cache_position=None,
+        input_ids=sequences.to(device=input_ids.device),
+        last_logits=None,
+        model_kwargs=_resume_model_kwargs(forced_inputs),
+        image_grid_thw=forced_inputs.get("image_grid_thw"),
+        video_grid_thw=forced_inputs.get("video_grid_thw"),
+        source_visual_geometry=source_visual_geometry,
+        stop_reason="eos_token" if combined_ids and combined_ids[-1] == eos_token_id else "max_new_tokens",
+        capture_found=False,
+        second_full_forward_used=False,
+        malformed=bool(parsed.malformed),
+        errors=errors or ["no_complete_focus_span"],
+    )
+
+
+@torch.no_grad()
+def _capture_focus_generate_from_inputs_qwen3(
+    model: Any,
+    tokenizer: Any,
+    inputs: dict[str, Any],
+    *,
+    max_new_tokens: int,
+    device: torch.device | str | None,
+    hidden_state_index: int,
+    eos_token_id: int | None,
+    protocol: str | None = None,
+) -> Qwen3FocusCapture:
+    focus_start, focus_end = protocol_focus_tokens(protocol)
+    focus_start_ids = _marker_ids(tokenizer, focus_start)
+    focus_end_ids = _marker_ids(tokenizer, focus_end)
+    if not focus_start_ids or not focus_end_ids:
+        raise ValueError("FOCUS markers must tokenize to non-empty id sequences")
+    action_terminal_ids = _focus_action_terminal_ids(tokenizer, protocol, focus_end_ids)
+    if device is None:
+        device = _infer_model_device(model)
+    model_inputs = _move_tensors(dict(inputs), device)
+    input_ids = model_inputs["input_ids"]
+    prompt_len = int(input_ids.shape[-1])
+    source_visual_geometry = extract_qwen3_source_visual_geometry(model, model_inputs)
+    stopping_criteria = StoppingCriteriaList([_StopOnGeneratedSubsequence(action_terminal_ids, prompt_len)])
+    generate_kwargs = {
+        **model_inputs,
+        "max_new_tokens": max_new_tokens,
+        "do_sample": False,
+        "use_cache": True,
+        "return_dict_in_generate": True,
+        "output_hidden_states": True,
+        "stopping_criteria": stopping_criteria,
+    }
+    if eos_token_id is not None:
+        generate_kwargs["eos_token_id"] = eos_token_id
+    generated = model.generate(**generate_kwargs)
+    sequences = generated.sequences
+    generated_ids = sequences[0, prompt_len:].detach().cpu().tolist()
+    generated_text = _decode(tokenizer, generated_ids)
+    attention_mask = model_inputs.get("attention_mask")
+    if attention_mask is not None:
+        attention_mask = _extend_attention(attention_mask, len(generated_ids))
+    full_input_ids = sequences.to(device=input_ids.device)
+    hidden_by_token = _generated_token_hidden_states_from_generate(
+        getattr(generated, "hidden_states", None),
+        generated_len=len(generated_ids),
+        hidden_state_index=hidden_state_index,
+    )
+    past_key_values = getattr(generated, "past_key_values", None)
+    last_logits = None
+    completed = _find_completed_focus(
+        generated_ids,
+        focus_start_ids,
+        focus_end_ids,
+        tokenizer,
+        start_marker=focus_start,
+        end_marker=focus_end,
+    )
+    if completed is not None and _completed_focus_ready_for_append(
+        generated_ids,
+        completed,
+        focus_end_ids=focus_end_ids,
+        terminal_ids=action_terminal_ids,
+    ):
+        start, end, target_text = completed
+        target_ids = generated_ids[start:end]
+        target_hidden = _slice_generated_hidden(hidden_by_token, start, end)
+        return Qwen3FocusCapture(
+            target_text=target_text,
+            target_token_ids=target_ids,
+            target_hidden_states=target_hidden,
+            generated_ids=list(generated_ids),
+            generated_text=generated_text,
+            generated_hidden_states=_stack_hidden_states(hidden_by_token),
+            past_key_values=past_key_values,
+            attention_mask=attention_mask,
+            cache_position=None,
+            input_ids=full_input_ids,
+            last_logits=last_logits,
+            model_kwargs=_resume_model_kwargs(model_inputs),
+            image_grid_thw=model_inputs.get("image_grid_thw"),
+            video_grid_thw=model_inputs.get("video_grid_thw"),
+            source_visual_geometry=source_visual_geometry,
+            target_token_start=start,
+            target_token_end=end,
+            stop_reason="focus_action_terminal",
+            capture_found=True,
+            second_full_forward_used=False,
+            malformed=is_generic_target(target_text),
+            errors=["generic_target"] if is_generic_target(target_text) else [],
+        )
+    parsed = parse_v3_action(generated_text, protocol=protocol)
+    errors = list(parsed.malformed_reasons)
+    if parsed.has_focus_open and not parsed.has_focus_close:
+        errors.append("missing_closing_focus")
+    if False and completed is not None and parsed.focus_valid:
+        start, end, target_text = completed
+        target_ids = generated_ids[start:end]
+        target_hidden = _slice_generated_hidden(hidden_by_token, start, end)
+        return Qwen3FocusCapture(
+            target_text=target_text,
+            target_token_ids=target_ids,
+            target_hidden_states=target_hidden,
+            generated_ids=list(generated_ids),
+            generated_text=generated_text,
+            generated_hidden_states=_stack_hidden_states(hidden_by_token),
+            past_key_values=past_key_values,
+            attention_mask=attention_mask,
+            cache_position=None,
+            input_ids=full_input_ids,
+            last_logits=last_logits,
+            model_kwargs=_resume_model_kwargs(model_inputs),
+            image_grid_thw=model_inputs.get("image_grid_thw"),
+            video_grid_thw=model_inputs.get("video_grid_thw"),
+            source_visual_geometry=source_visual_geometry,
+            target_token_start=start,
+            target_token_end=end,
+            stop_reason="focus_span_without_terminal",
+            capture_found=True,
+            second_full_forward_used=False,
+            malformed=False,
+            errors=[],
+        )
+    return Qwen3FocusCapture(
+        target_text="",
+        target_token_ids=[],
+        target_hidden_states=_empty_hidden_like(hidden_by_token),
+        generated_ids=list(generated_ids),
+        generated_text=generated_text,
+        generated_hidden_states=_stack_hidden_states(hidden_by_token),
+        past_key_values=past_key_values,
+        attention_mask=attention_mask,
+        cache_position=None,
+        input_ids=full_input_ids,
+        last_logits=last_logits,
+        model_kwargs=_resume_model_kwargs(model_inputs),
+        image_grid_thw=model_inputs.get("image_grid_thw"),
+        video_grid_thw=model_inputs.get("video_grid_thw"),
+        source_visual_geometry=source_visual_geometry,
+        stop_reason="eos_token" if generated_ids and generated_ids[-1] == eos_token_id else "max_new_tokens",
+        capture_found=False,
+        second_full_forward_used=False,
+        malformed=bool(parsed.malformed),
         errors=errors or ["no_complete_focus_span"],
     )
 
@@ -788,6 +1691,7 @@ def append_tgvf_visual_tokens_qwen3(
     continuation_instruction: str = "",
     force_answer_tag: bool = True,
     position_mode: Literal["native_source_grid", "inherit_source_visual_positions"] = "native_source_grid",
+    protocol: str | None = None,
 ) -> Qwen3AppendResult:
     tokenizer = getattr(tokenizer_or_processor, "tokenizer", tokenizer_or_processor)
     if not capture.capture_found:
@@ -812,13 +1716,13 @@ def append_tgvf_visual_tokens_qwen3(
         raise ValueError(
             f"FVT token count {int(d.shape[0])} must equal source visual token count {source_token_count}"
         )
-    prefix = f"\n{TGVF_START}\n"
-    suffix = f"\n{TGVF_END}\n"
+    protocol = normalize_tgvf_protocol(protocol)
+    prefix, suffix = render_tgvf_prefix_suffix(protocol=protocol)
     if continuation_instruction:
         suffix += continuation_instruction
         if not suffix.endswith("\n"):
             suffix += "\n"
-    if force_answer_tag:
+    if force_answer_tag and protocol == LEGACY_V3_PROTOCOL:
         suffix += ANSWER_START
 
     token_ids = _bracketed_visual_token_ids(
@@ -885,6 +1789,7 @@ def append_tgvf_visual_tokens_qwen3(
     source_positions = source_geometry.source_visual_position_ids
     metadata = {
         "fvt_append_path": "qwen3_visual_special_tokens_embedding_replace",
+        "tgvf_protocol": protocol,
         "uses_deepstack_for_fvt": False,
         "fvt_shape": list(d.shape),
         "source_image_grid_thw": _tensor_to_nested_ints(source_geometry.image_grid_thw),
@@ -950,6 +1855,7 @@ def continue_generation_qwen3(
     *,
     max_new_tokens: int = 64,
     eos_token_id: int | None = None,
+    stop_on_repetition: bool | None = None,
 ) -> Qwen3Continuation:
     tokenizer = getattr(tokenizer_or_processor, "tokenizer", tokenizer_or_processor)
     logits = state.last_logits
@@ -959,7 +1865,17 @@ def continue_generation_qwen3(
     generated_ids: list[int] = []
     stop_reason = "max_new_tokens"
     device = logits.device if logits is not None else (_infer_model_device(model) or torch.device("cpu"))
+    blocked_focus_start_ids: list[int] = []
+    if os.environ.get("TGVF_BLOCK_FOCUS_IN_CONTINUATION", "1").strip() != "0":
+        for marker in (PROTOCOL_C_FOCUS_START, PROTOCOL_C_FOCUS_END, FOCUS_START, FOCUS_END, TOOL_CALL_START, TOOL_CALL_END):
+            ids = _marker_ids(tokenizer, marker)
+            if len(ids) == 1:
+                blocked_focus_start_ids.append(int(ids[0]))
+    if stop_on_repetition is None:
+        stop_on_repetition = os.environ.get("TGVF_STOP_REPETITIVE_CONTINUATION", "1").strip() != "0"
     for _ in range(max_new_tokens):
+        if blocked_focus_start_ids:
+            logits[:, -1, blocked_focus_start_ids] = -torch.inf
         next_token = torch.argmax(logits[:, -1, :], dim=-1, keepdim=True)
         token_id = int(next_token[0, 0].detach().cpu().item())
         generated_ids.append(token_id)
@@ -985,6 +1901,9 @@ def continue_generation_qwen3(
         if eos_token_id is not None and token_id == eos_token_id:
             stop_reason = "eos_token"
             break
+        if stop_on_repetition and _decoded_tail_is_repetitive(_decode(tokenizer, generated_ids)):
+            stop_reason = "repetition"
+            break
     return Qwen3Continuation(
         generated_ids=generated_ids,
         generated_text=_decode(tokenizer, generated_ids),
@@ -996,13 +1915,50 @@ def continue_generation_qwen3(
     )
 
 
-def parse_v3_action(text: str) -> V3ActionParse:
-    evidence_state = _extract_tag(text, EVIDENCE_STATE_START, EVIDENCE_STATE_END)
-    focus = _extract_tag(text, FOCUS_START, FOCUS_END)
-    answer = _extract_tag(text, ANSWER_START, ANSWER_END)
-    has_focus_open = FOCUS_START in text
-    has_focus_close = FOCUS_END in text
+def _decoded_tail_is_repetitive(text: str, *, min_repeats: int = 4, max_ngram: int = 8) -> bool:
+    tokens = re.findall(r"\w+|[^\w\s]", text.strip(), flags=re.UNICODE)
+    if not tokens:
+        return False
+    max_n = min(max_ngram, len(tokens) // min_repeats)
+    for n in range(1, max_n + 1):
+        tail = tokens[-n:]
+        if all(tokens[-(i + 1) * n : -i * n if i else None] == tail for i in range(min_repeats)):
+            return True
+    return False
+
+
+def parse_v3_action(text: str, *, protocol: str | None = None) -> V3ActionParse:
+    protocol = normalize_tgvf_protocol(protocol)
+    focus_start, focus_end = protocol_focus_tokens(protocol)
+    evidence_state = (
+        _extract_tag(text, EVIDENCE_STATE_START, EVIDENCE_STATE_END)
+        if protocol == LEGACY_V3_PROTOCOL
+        else None
+    )
+    focus = (
+        _extract_protocol_d_focus_target(text)
+        if protocol == PROTOCOL_D_QWEN_TOOL
+        else _extract_tag(text, focus_start, focus_end)
+    )
+    answer = (
+        _extract_tag(text, ANSWER_START, ANSWER_END)
+        if protocol == LEGACY_V3_PROTOCOL
+        else _extract_protocol_c_final_answer(text)
+    )
+    has_focus_open = focus_start in text
+    has_focus_close = focus_end in text
     reasons: list[str] = []
+    if protocol in {PROTOCOL_C_THINKING_SPECIAL, PROTOCOL_C_TOOL_OBSERVATION, PROTOCOL_D_QWEN_TOOL, PROTOCOL_E_ACTION_EVIDENCE_SPECIAL}:
+        if any(tag in text for tag in (EVIDENCE_STATE_START, EVIDENCE_START, ANSWER_START, FOCUS_START)):
+            reasons.append("legacy_tag_in_nonlegacy_protocol")
+    if protocol in {PROTOCOL_C_THINKING_SPECIAL, PROTOCOL_C_TOOL_OBSERVATION, PROTOCOL_E_ACTION_EVIDENCE_SPECIAL}:
+        if text.count(focus_start) > 1 or text.count(focus_end) > 1:
+            reasons.append("nested_or_repeated_focus")
+    if protocol == PROTOCOL_D_QWEN_TOOL:
+        if has_focus_open and has_focus_close and focus is None:
+            reasons.append("missing_tool_target")
+        if text.count(focus_start) > 1 or text.count(focus_end) > 1:
+            reasons.append("nested_or_repeated_tool_call")
     if has_focus_open and not has_focus_close:
         reasons.append("missing_closing_focus")
     if has_focus_close and not has_focus_open:
@@ -1029,6 +1985,27 @@ def parse_v3_action(text: str) -> V3ActionParse:
         malformed=bool(reasons) or (has_focus_open and not focus_valid),
         malformed_reasons=reasons,
     )
+
+
+def _extract_protocol_c_final_answer(text: str) -> str | None:
+    if not text:
+        return None
+    evidence_end = text.rfind(PROTOCOL_E_EVIDENCE_END)
+    if evidence_end >= 0:
+        tail = text[evidence_end + len(PROTOCOL_E_EVIDENCE_END) :].strip()
+        tail = re.sub(r"<\|im_end\|>\s*$", "", tail).strip()
+        return tail or None
+    last_think_end = text.rfind(THINK_END)
+    last_think_start = text.rfind(THINK_START)
+    if last_think_start > last_think_end:
+        return None
+    if last_think_end >= 0:
+        tail = text[last_think_end + len(THINK_END) :].strip()
+        tail = re.sub(r"<\|im_end\|>\s*$", "", tail).strip()
+        return tail or None
+    if PROTOCOL_C_FOCUS_START in text:
+        return None
+    return text.strip() or None
 
 
 def is_generic_target(target: str) -> bool:
@@ -1089,16 +2066,18 @@ def capture_to_row(
     errors: list[str] | None = None,
     wall_time_sec: float = 0.0,
     peak_memory_gb: float | None = None,
+    protocol: str | None = None,
 ) -> dict[str, Any]:
     final_raw = continuation.generated_text if continuation is not None else None
-    parsed_final = parse_v3_action(final_raw or "")
-    parsed_capture = parse_v3_action(capture.generated_text if capture is not None else "")
+    parsed_final = parse_v3_action(final_raw or "", protocol=protocol)
+    parsed_capture = parse_v3_action(capture.generated_text if capture is not None else "", protocol=protocol)
     row = {
         "id": sample_id,
         "image": image,
         "question": question,
         "mode": mode,
         "model_id": model_id,
+        "tgvf_protocol": normalize_tgvf_protocol(protocol),
         "focus_raw_output": capture.generated_text if capture is not None else None,
         "focus_target_text": capture.target_text if capture is not None else "",
         "focus_valid": bool(capture.capture_found) if capture is not None else False,
@@ -1280,7 +2259,28 @@ def _find_completed_focus(
     start_marker_ids: list[int],
     end_marker_ids: list[int],
     tokenizer: Any,
+    *,
+    start_marker: str = FOCUS_START,
+    end_marker: str = FOCUS_END,
 ) -> tuple[int, int, str] | None:
+    if start_marker == TOOL_CALL_START and end_marker == TOOL_CALL_END:
+        text = _decode(tokenizer, generated_ids)
+        if TOOL_CALL_START not in text or TOOL_CALL_END not in text:
+            return None
+        char_span = _tool_call_target_char_span(text)
+        if char_span is None:
+            return None
+        target_text = _extract_protocol_d_focus_target(text) or ""
+        offsets = _decoded_token_offsets(tokenizer, generated_ids)
+        token_indices = [
+            index
+            for index, (tok_start, tok_end) in enumerate(offsets)
+            if tok_start < char_span[1] and tok_end > char_span[0]
+        ]
+        if not token_indices:
+            return None
+        return token_indices[0], token_indices[-1] + 1, target_text.strip()
+
     start_index = _find_subsequence(generated_ids, start_marker_ids)
     if start_index is not None:
         target_start = start_index + len(start_marker_ids)
@@ -1291,12 +2291,12 @@ def _find_completed_focus(
             return start, end, _decode(tokenizer, generated_ids[start:end]).strip()
 
     text = _decode(tokenizer, generated_ids)
-    focus = _extract_tag(text, FOCUS_START, FOCUS_END)
+    focus = _extract_tag(text, start_marker, end_marker)
     if focus is None:
         return None
     offsets = _decoded_token_offsets(tokenizer, generated_ids)
-    inner_start = text.find(FOCUS_START) + len(FOCUS_START)
-    raw_focus = text[inner_start : text.find(FOCUS_END, inner_start)]
+    inner_start = text.find(start_marker) + len(start_marker)
+    raw_focus = text[inner_start : text.find(end_marker, inner_start)]
     leading = len(raw_focus) - len(raw_focus.lstrip())
     trailing = len(raw_focus.rstrip())
     char_start = inner_start + leading
@@ -1346,6 +2346,94 @@ def _trim_whitespace_edges(
     return start, end
 
 
+class _StopOnGeneratedSubsequence(StoppingCriteria):
+    def __init__(self, pattern: list[int], prompt_len: int) -> None:
+        self.pattern = [int(item) for item in pattern]
+        self.prompt_len = int(prompt_len)
+
+    def __call__(
+        self,
+        input_ids: torch.LongTensor,
+        scores: torch.FloatTensor,
+        **kwargs: Any,
+    ) -> bool:
+        if not self.pattern:
+            return False
+        generated = input_ids[0, self.prompt_len :].detach().cpu().tolist()
+        if len(generated) < len(self.pattern):
+            return False
+        return generated[-len(self.pattern) :] == self.pattern
+
+
+def _generated_token_hidden_states_from_generate(
+    hidden_states: Any,
+    *,
+    generated_len: int,
+    hidden_state_index: int,
+) -> list[torch.Tensor]:
+    if not hidden_states or generated_len <= 0:
+        return []
+    steps = list(hidden_states)
+    first_seq_len = _hidden_step_seq_len(steps[0], hidden_state_index)
+    offset = 1 if first_seq_len is not None and first_seq_len > 1 else 0
+    token_hidden: list[torch.Tensor] = []
+    for token_index in range(generated_len):
+        step_index = token_index + offset
+        if step_index >= len(steps):
+            break
+        hidden = _hidden_step_last_token(steps[step_index], hidden_state_index)
+        if hidden is not None:
+            token_hidden.append(hidden)
+    return token_hidden
+
+
+def _forced_prefix_hidden_from_generate(
+    hidden_states: Any,
+    *,
+    prompt_len: int,
+    forced_len: int,
+    hidden_state_index: int,
+) -> list[torch.Tensor]:
+    if not hidden_states or forced_len <= 0:
+        return []
+    layer = _hidden_step_layer(list(hidden_states)[0], hidden_state_index)
+    if not isinstance(layer, torch.Tensor) or layer.ndim < 3:
+        return []
+    end = prompt_len + forced_len
+    if int(layer.shape[-2]) < end:
+        return []
+    return [layer[0, prompt_len + index].detach() for index in range(forced_len)]
+
+
+def _slice_generated_hidden(hidden_by_token: list[torch.Tensor], start: int, end: int) -> torch.Tensor:
+    if end > len(hidden_by_token):
+        available = len(hidden_by_token)
+        raise ValueError(f"generated hidden states cover {available} tokens, cannot slice [{start}, {end})")
+    return _stack_hidden_states(hidden_by_token[start:end])
+
+
+def _hidden_step_last_token(step: Any, hidden_state_index: int) -> torch.Tensor | None:
+    layer = _hidden_step_layer(step, hidden_state_index)
+    if not isinstance(layer, torch.Tensor) or layer.ndim < 3 or layer.shape[-2] == 0:
+        return None
+    return layer[0, -1].detach()
+
+
+def _hidden_step_seq_len(step: Any, hidden_state_index: int) -> int | None:
+    layer = _hidden_step_layer(step, hidden_state_index)
+    if not isinstance(layer, torch.Tensor) or layer.ndim < 3:
+        return None
+    return int(layer.shape[-2])
+
+
+def _hidden_step_layer(step: Any, hidden_state_index: int) -> Any:
+    if isinstance(step, torch.Tensor):
+        return step
+    if isinstance(step, (tuple, list)) and step:
+        return step[hidden_state_index]
+    return None
+
+
 def _decoded_token_offsets(tokenizer: Any, token_ids: list[int]) -> list[tuple[int, int]]:
     offsets: list[tuple[int, int]] = []
     cursor = 0
@@ -1374,10 +2462,18 @@ def _extract_vision_tensors(output: Any) -> tuple[torch.Tensor | None, torch.Ten
             v_pre = candidates[0]
     if v_pre is None:
         v_pre = last_hidden if isinstance(last_hidden, torch.Tensor) else None
-    v_merge = pooler if isinstance(pooler, torch.Tensor) else None
+    v_merge = _cat_tensor_sequence(pooler)
     if v_merge is None:
         v_merge = last_hidden if isinstance(last_hidden, torch.Tensor) else None
     return v_pre, v_merge
+
+
+def _cat_tensor_sequence(value: Any) -> torch.Tensor | None:
+    if isinstance(value, torch.Tensor):
+        return value
+    if isinstance(value, (tuple, list)) and value and all(isinstance(item, torch.Tensor) for item in value):
+        return torch.cat(list(value), dim=0)
+    return None
 
 
 def _deepstack_features(output: Any) -> list[torch.Tensor]:
@@ -1479,6 +2575,27 @@ def _append_attention(attention_mask: torch.Tensor | None, next_token: torch.Ten
         device=attention_mask.device,
     )
     return torch.cat([attention_mask, next_attention], dim=-1)
+
+
+def _inputs_with_appended_text_ids(inputs: dict[str, Any], token_ids: torch.Tensor) -> dict[str, Any]:
+    appended = dict(inputs)
+    token_ids = token_ids.view(1, -1).to(device=inputs["input_ids"].device)
+    appended["input_ids"] = torch.cat([inputs["input_ids"], token_ids], dim=-1)
+    attention_mask = inputs.get("attention_mask")
+    if isinstance(attention_mask, torch.Tensor):
+        appended["attention_mask"] = _extend_attention(attention_mask, int(token_ids.shape[-1]))
+    mm_token_type_ids = inputs.get("mm_token_type_ids")
+    if isinstance(mm_token_type_ids, torch.Tensor):
+        zeros = torch.zeros(
+            (mm_token_type_ids.shape[0], int(token_ids.shape[-1])),
+            dtype=mm_token_type_ids.dtype,
+            device=mm_token_type_ids.device,
+        )
+        appended["mm_token_type_ids"] = torch.cat([mm_token_type_ids, zeros], dim=-1)
+    appended.pop("position_ids", None)
+    appended.pop("cache_position", None)
+    appended.pop("rope_deltas", None)
+    return appended
 
 
 def _extend_attention(attention_mask: torch.Tensor, chunk_length: int) -> torch.Tensor:

@@ -5,7 +5,13 @@ from pathlib import Path
 
 import pytest
 
-from tgvf_eval.adapters import BENCHMARK_NAMES, BenchmarkRegistry, _extract_choices, _extract_media
+from tgvf_eval.adapters import (
+    BENCHMARK_NAMES,
+    BenchmarkRegistry,
+    BenchmarkSample,
+    _extract_choices,
+    _extract_media,
+)
 from tgvf_eval.config import image_budget_kwargs, method_config_from_name, validate_fvt_append_mode, validate_video_foveation_mode
 from tgvf_eval.force_ablation import (
     _base_row,
@@ -47,6 +53,36 @@ def test_tier_sampling_returns_deterministic_sample_ids() -> None:
     second = deterministic_sample(samples, benchmark="vstar_bench", tier="light", limit=10, seed=7)
     assert [item.sample_id for item in first] == [item.sample_id for item in second]
     assert len(first) == 10
+
+
+def test_vlmeval_benchmark_scripts_block_second_focus_by_default() -> None:
+    scripts = [
+        "scripts/run_vstar_valkit_512_clean_imend_20260617.sh",
+        "scripts/run_vstar_valkit_512_natural_continue_20260616.sh",
+        "scripts/run_other_benchmarks_512_clean_imend_20260617.sh",
+    ]
+    for script in scripts:
+        text = Path(script).read_text()
+        assert 'TGVF_BLOCK_FOCUS_IN_CONTINUATION="${TGVF_BLOCK_FOCUS_IN_CONTINUATION:-1}"' in text
+
+
+def test_vlmeval_tgvf_vstar_focus_only_prediction_cleans_to_empty() -> None:
+    import sys
+
+    vlmeval_root = Path("third_party/VLMEvalKit")
+    if str(vlmeval_root) not in sys.path:
+        sys.path.insert(0, str(vlmeval_root))
+    from vlmeval.vlm.tgvf import TGVFQwen3VL
+
+    model = TGVFQwen3VL.__new__(TGVFQwen3VL)
+    focus_only = (
+        "<think>\nNeed a closer look.\n</think>\n"
+        "<|focus_start|>small dustpan beside the trash can<|focus_end|><|im_end|>\n"
+        "<think>\nStill need a closer look.\n</think>\n<|im_end|>"
+    )
+
+    assert model._clean_for_vlmeval(focus_only, dataset="VStarBench") == ""
+    assert model._clean_for_vlmeval("</think>\nC. blue<|im_end|>", dataset="VStarBench") == "C"
 
 
 def test_prompt_only_force_prompt_contains_required_stop_span() -> None:
@@ -244,6 +280,185 @@ def test_official_tool_path_resolution_fails_clearly(tmp_path: Path) -> None:
     info = adapter.official_tool_info()
     assert info.official_tool_used is False
     assert "no local official scorer" in (info.note or "")
+
+
+def test_official_scoring_backend_loads_mmmu_pro_official_code(tmp_path: Path) -> None:
+    root = tmp_path / "benchmarks"
+    official = root / "mmmu_pro" / "official_code" / "mmmu-pro"
+    official.mkdir(parents=True)
+    (official / "evaluate.py").write_text(
+        "def get_multi_choice_info(options):\n"
+        "    return ({chr(ord('A') + i): option for i, option in enumerate(options)}, [chr(ord('A') + i) for i in range(len(options))])\n"
+        "def parse_multi_choice_response(response, all_choices, index2ans):\n"
+        "    for choice in all_choices:\n"
+        "        if choice in response:\n"
+        "            return choice\n"
+        "    return all_choices[0]\n"
+        "def eval_multi_choice(gold_i, pred_i):\n"
+        "    return gold_i == pred_i\n"
+    )
+    adapter = BenchmarkRegistry.get("mmmu_pro", benchmark_root=root, scoring_backend="official")
+    sample = BenchmarkSample(
+        benchmark="mmmu_pro",
+        sample_id="s1",
+        question="q",
+        choices=["red", "blue"],
+        gold_answer="B",
+    )
+
+    parsed = adapter.parse_prediction("B", sample)
+    payload = adapter.score_predictions(
+        [
+            {
+                "sample_id": "s1",
+                "raw_output": "B",
+                "parsed_answer": parsed,
+                "gold_answer": "B",
+                "choices": ["red", "blue"],
+                "metadata": {"subject": "mock"},
+            }
+        ]
+    )
+
+    assert parsed == "B"
+    assert payload["official_tool_used"] is True
+    assert payload["scorer_name"] == "official_mmmu_pro"
+    assert payload["accuracy"] == 1.0
+
+
+@pytest.mark.parametrize(
+    ("benchmark", "expected_scorer"),
+    [
+        ("blink", "official_blink_exact_match"),
+        ("hr_bench_4k", "official_compatible_hrbench4k_mc"),
+        ("ovo_bench", "official_compatible_ovo_bench_offline"),
+        ("mathverse", "official_mathverse"),
+    ],
+)
+def test_official_choice_wrappers_score_without_external_api(
+    tmp_path: Path,
+    benchmark: str,
+    expected_scorer: str,
+) -> None:
+    root = tmp_path / "benchmarks"
+    (root / benchmark / "official_code").mkdir(parents=True)
+    adapter = BenchmarkRegistry.get(benchmark, benchmark_root=root, scoring_backend="official")
+
+    payload = adapter.score_predictions(
+        [
+            {
+                "sample_id": "s1",
+                "question": "q",
+                "raw_output": "Answer: B",
+                "parsed_answer": "B",
+                "gold_answer": "B",
+                "choices": ["red", "blue"],
+                "metadata": {"task": "MC", "sub_task": "mock"},
+            }
+        ]
+    )
+
+    assert payload["official_tool_used"] is True
+    assert payload["scorer_name"] == expected_scorer
+    assert payload["accuracy"] == 1.0
+
+
+def test_mathvista_official_wrapper_normalizes_float_without_external_api(tmp_path: Path) -> None:
+    root = tmp_path / "benchmarks"
+    (root / "mathvista" / "official_code" / "evaluation").mkdir(parents=True)
+    adapter = BenchmarkRegistry.get("mathvista", benchmark_root=root, scoring_backend="official")
+
+    payload = adapter.score_predictions(
+        [
+            {
+                "sample_id": "s1",
+                "question": "q",
+                "raw_output": "The final answer is 1.24.",
+                "gold_answer": "1.2",
+                "choices": [],
+                "metadata": {"question_type": "free_form", "answer_type": "float", "precision": 1},
+            }
+        ]
+    )
+
+    assert payload["scorer_name"] == "official_mathvista"
+    assert payload["llm_judge_used"] is False
+    assert payload["accuracy"] == 1.0
+
+
+def test_ocrbench_v2_official_wrapper_calls_process_predictions(tmp_path: Path) -> None:
+    root = tmp_path / "benchmarks"
+    official = root / "ocrbench_v2" / "official_code" / "OCRBench_v2" / "eval_scripts"
+    official.mkdir(parents=True)
+    (official / "eval.py").write_text(
+        "import json\n"
+        "def process_predictions(input_path, output_path):\n"
+        "    rows = json.loads(open(input_path).read())\n"
+        "    for row in rows:\n"
+        "        row['score'] = 1 if str(row.get('predict')).lower() in [str(a).lower() for a in row.get('answers', [])] else 0\n"
+        "    open(output_path, 'w').write(json.dumps(rows))\n"
+    )
+    adapter = BenchmarkRegistry.get("ocrbench_v2", benchmark_root=root, scoring_backend="official")
+
+    payload = adapter.score_predictions(
+        [
+            {
+                "sample_id": "s1",
+                "question": "read text",
+                "raw_output": "HELLO",
+                "parsed_answer": "HELLO",
+                "gold_answer": "HELLO",
+                "choices": [],
+                "metadata": {"type": "Regular Text Recognition", "answers": ["HELLO"]},
+            }
+        ]
+    )
+
+    assert payload["scorer_name"] == "official_ocrbench_v2"
+    assert payload["accuracy"] == 1.0
+    assert payload["by_group"]["type:Regular Text Recognition"] == 1.0
+
+
+def test_official_llm_required_fails_without_mathvista_azure_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    root = tmp_path / "benchmarks"
+    (root / "mathvista" / "official_code" / "evaluation").mkdir(parents=True)
+    for name in (
+        "AZURE_OPENAI_API_ENDPOINT",
+        "AZURE_OPENAI_API_KEY",
+        "AZURE_OPENAI_API_VERSION",
+        "AZURE_OPENAI_MODEL",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+    with pytest.raises(RuntimeError, match="MathVista official LLM extraction requires"):
+        BenchmarkRegistry.get(
+            "mathvista",
+            benchmark_root=root,
+            scoring_backend="official",
+            official_llm_mode="required",
+        )
+
+
+def test_official_llm_required_fails_without_mathverse_openai_key(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    root = tmp_path / "benchmarks"
+    (root / "mathverse" / "official_code" / "evaluation").mkdir(parents=True)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+    with pytest.raises(RuntimeError, match="MathVerse official LLM judge requires OPENAI_API_KEY"):
+        BenchmarkRegistry.get(
+            "mathverse",
+            benchmark_root=root,
+            scoring_backend="official",
+            official_llm_mode="required",
+        )
+
+
+def test_official_scoring_backend_fails_for_unwired_benchmark(tmp_path: Path) -> None:
+    root = tmp_path / "benchmarks"
+    (root / "vstar_bench" / "official_code").mkdir(parents=True)
+
+    with pytest.raises(RuntimeError, match="official scoring is not wired"):
+        BenchmarkRegistry.get("vstar_bench", benchmark_root=root, scoring_backend="official")
 
 
 def test_force_target_mode_generated_does_not_flag_fixed_target() -> None:

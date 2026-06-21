@@ -77,6 +77,8 @@ def main() -> None:
                 cache_dir=args.fvt_cache_dir,
                 checkpoint_path=args.tgvf_checkpoint,
                 variant=args.variant,
+                protocol=args.tgvf_protocol,
+                focus_action_im_end=args.focus_action_im_end,
                 use_cache=args.use_fvt_cache,
             )
             row = distribution_row(item)

@@ -20,6 +20,7 @@ from revisit_vlm.tgvf_foveal import (
     PooledFovealCrossAttention,
     Qwen2VLPreMergeVisualHook,
     TargetSlotFovealCrossMerger,
+    TGVFEncoderBidirReencode,
     TGVFv2Bidirectional,
     TGVFv2CrossAttention,
     TGVFv2VPTGating,
@@ -43,14 +44,18 @@ TGVF_V2_VARIANTS = (
     "tgvf_v2_cross_attention",
     "tgvf_v2_bidirectional",
 )
+TGVF_ENCODER_REENCODE_VARIANTS = (
+    "tgvf_encoder_bidir_8_16_24",
+)
 TGVF_VARIANTS = (
     "token_direct",
     "pooled",
     "foveal_cross_merger",
     "target_slot_foveal_cross_merger",
     *TGVF_V2_VARIANTS,
+    *TGVF_ENCODER_REENCODE_VARIANTS,
 )
-TGVF_DYNAMIC_NUM_FVT_VARIANTS = ("token_direct", *TGVF_V2_VARIANTS)
+TGVF_DYNAMIC_NUM_FVT_VARIANTS = ("token_direct", *TGVF_V2_VARIANTS, *TGVF_ENCODER_REENCODE_VARIANTS)
 
 
 @dataclass
@@ -82,6 +87,15 @@ class TGVFModuleConfig:
     num_foveated_tokens: int | None = 16
     spatial_merge_size: int = 2
     attn_dim: int | None = None
+    encoder_adapter_layers: tuple[int, ...] = (8, 16, 24)
+    encoder_adapter_type: str = "bidirectional"
+    encoder_adapter_gate_init: float = 0.0
+    encoder_adapter_share_weights: bool = False
+    encoder_adapter_layer_index_base: int = 0
+    encoder_reencode_deepstack_compatible: bool = False
+    encoder_reencode: bool = False
+    preserve_llm_kv_cache: bool = True
+    second_full_llm_forward: bool = False
 
 
 @dataclass
@@ -223,6 +237,12 @@ def build_tgvf_module(
     num_foveated_tokens: int | None,
     spatial_merge_size: int = 2,
     attn_dim: int | None = None,
+    encoder_adapter_layers: tuple[int, ...] | list[int] = (8, 16, 24),
+    encoder_adapter_gate_init: float = 0.0,
+    encoder_adapter_type: str = "bidirectional",
+    encoder_adapter_share_weights: bool = False,
+    encoder_adapter_layer_index_base: int = 0,
+    encoder_reencode_deepstack_compatible: bool = False,
 ) -> nn.Module:
     if variant not in TGVF_DYNAMIC_NUM_FVT_VARIANTS and num_foveated_tokens is None:
         supported = ", ".join(TGVF_DYNAMIC_NUM_FVT_VARIANTS)
@@ -253,6 +273,19 @@ def build_tgvf_module(
             d_v=d_v,
             spatial_merge_size=spatial_merge_size,
             attn_dim=attn_dim,
+        )
+    if variant == "tgvf_encoder_bidir_8_16_24":
+        return TGVFEncoderBidirReencode(
+            d_lm=d_lm,
+            d_v=d_v,
+            spatial_merge_size=spatial_merge_size,
+            attn_dim=attn_dim,
+            adapter_layers=tuple(int(layer) for layer in encoder_adapter_layers),
+            layer_index_base=int(encoder_adapter_layer_index_base),
+            gate_init=float(encoder_adapter_gate_init),
+            share_weights=bool(encoder_adapter_share_weights),
+            deepstack_compatible=bool(encoder_reencode_deepstack_compatible),
+            adapter_type=str(encoder_adapter_type),
         )
     if variant == "pooled":
         return PooledFovealCrossAttention(

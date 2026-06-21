@@ -67,6 +67,8 @@ def main() -> None:
             cache_dir=args.fvt_cache_dir,
             checkpoint_path=args.tgvf_checkpoint,
             variant=args.variant,
+            protocol=args.tgvf_protocol,
+            focus_action_im_end=args.focus_action_im_end,
             use_cache=args.use_fvt_cache,
         )
         for sample in progress_iter(
@@ -102,6 +104,8 @@ def main() -> None:
                 device=device,
                 mask_original_image_after_tgvf=args.mask_original_image_after_tgvf,
                 position_mode=args.fvt_position_mode,
+                protocol=args.tgvf_protocol,
+                focus_action_im_end=args.focus_action_im_end,
             )
             nll_target_only = compute_v3_readout_nll(
                 model=model,
@@ -112,6 +116,8 @@ def main() -> None:
                 device=device,
                 mask_original_image_after_tgvf=args.mask_original_image_after_tgvf,
                 position_mode=args.fvt_position_mode,
+                protocol=args.tgvf_protocol,
+                focus_action_im_end=args.focus_action_im_end,
             )
             nll_random = compute_v3_readout_nll(
                 model=model,
@@ -122,6 +128,8 @@ def main() -> None:
                 device=device,
                 mask_original_image_after_tgvf=args.mask_original_image_after_tgvf,
                 position_mode=args.fvt_position_mode,
+                protocol=args.tgvf_protocol,
+                focus_action_im_end=args.focus_action_im_end,
             )
             nll_wrong_same = None
             if same_index is not None and can_score_fvt_for_item(item, items[same_index].foveated_visual_tokens):
@@ -134,6 +142,8 @@ def main() -> None:
                     device=device,
                     mask_original_image_after_tgvf=args.mask_original_image_after_tgvf,
                     position_mode=args.fvt_position_mode,
+                    protocol=args.tgvf_protocol,
+                    focus_action_im_end=args.focus_action_im_end,
                 )
             nll_wrong_diff = None
             if diff_index is not None and can_score_fvt_for_item(item, items[diff_index].foveated_visual_tokens):
@@ -146,6 +156,8 @@ def main() -> None:
                     device=device,
                     mask_original_image_after_tgvf=args.mask_original_image_after_tgvf,
                     position_mode=args.fvt_position_mode,
+                    protocol=args.tgvf_protocol,
+                    focus_action_im_end=args.focus_action_im_end,
                 )
 
             nlls = {

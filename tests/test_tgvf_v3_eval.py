@@ -2,14 +2,17 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+import eval.v3_common as v3_common
 from eval.eval_v3_fvt_distribution import distribution_row
 from eval.v3_common import (
     V3EvalFeatureCacheItem,
+    _v3_fvt_cache_path,
     can_score_fvt_for_item,
     group_indices_by_v3_image,
     same_image_wrong_index_v3,
@@ -105,3 +108,111 @@ def test_v3_distribution_row_handles_qwen3_dim_mismatch() -> None:
     assert row["manifold_loss"] is None
     assert row["mean_mse"] is None
     assert row["norm_ratio_D_to_Vmerge"] is not None
+
+
+def test_v3_fvt_cache_path_includes_focus_action_im_end(tmp_path: Path) -> None:
+    sample = _sample("img-a", "the small text near the top")
+    common_kwargs = {
+        "cache_dir": tmp_path,
+        "sample": sample,
+        "checkpoint_path": "checkpoint.pt",
+        "variant": "tgvf_v2_bidirectional",
+        "protocol": "protocol_c_tool_observation",
+        "capture_layer": -1,
+        "max_image_resolution": 512,
+        "position_mode": "native_source_grid",
+    }
+    without_im_end = _v3_fvt_cache_path(**common_kwargs, focus_action_im_end=False)
+    with_im_end = _v3_fvt_cache_path(**common_kwargs, focus_action_im_end=True)
+    assert without_im_end != with_im_end
+
+
+def test_compute_v3_eval_item_forwards_protocol_and_focus_im_end(monkeypatch) -> None:
+    sample = _sample("img-a", "the small text near the top")
+    cached_item = _item(sample, source_count=4, d_dim=8, v_dim=8)
+    seen = {}
+
+    def fake_collect_v3_stage1_features(**kwargs):
+        seen["collect_protocol"] = kwargs["protocol"]
+        seen["collect_focus_action_im_end"] = kwargs["focus_action_im_end"]
+        return SimpleNamespace(
+            target_hidden_states=torch.randn(2, 8),
+            pre_merge_visual_tokens=torch.randn(16, 8),
+            merged_visual_tokens=torch.randn(4, 8),
+            capture=cached_item.capture,
+        )
+
+    class DummyFoveal:
+        def __call__(self, **kwargs):
+            return SimpleNamespace(foveated_visual_tokens=torch.randn(4, 8))
+
+    def fake_prepare_v3_stage1_readout_inputs(**kwargs):
+        seen["readout_protocol"] = kwargs["protocol"]
+        seen["readout_focus_action_im_end"] = kwargs["focus_action_im_end"]
+        return {
+            "mask_mode": "test",
+            "position_mode": kwargs["position_mode"],
+            "position_ids_source": "test",
+            "original_image_token_count": 4,
+            "blocked_original_image_keys_for_post_tgvf": True,
+            "pre_tgvf_queries_keep_original_image_keys": True,
+        }
+
+    monkeypatch.setattr(v3_common, "collect_v3_stage1_features", fake_collect_v3_stage1_features)
+    monkeypatch.setattr(v3_common, "prepare_v3_stage1_readout_inputs", fake_prepare_v3_stage1_readout_inputs)
+    monkeypatch.setattr(v3_common, "finalize_tgvf_output_with_frozen_qwen_merger", lambda model, output: output)
+
+    item = v3_common.compute_v3_eval_item(
+        model=object(),
+        processor=object(),
+        foveal_module=DummyFoveal(),
+        sample=sample,
+        device="cpu",
+        protocol="protocol_c_tool_observation",
+        focus_action_im_end=True,
+    )
+
+    assert seen == {
+        "collect_protocol": "protocol_c_tool_observation",
+        "collect_focus_action_im_end": True,
+        "readout_protocol": "protocol_c_tool_observation",
+        "readout_focus_action_im_end": True,
+    }
+    assert item.readout_metadata["focus_action_im_end"] is True
+
+
+def test_compute_v3_readout_nll_forwards_protocol_and_focus_im_end(monkeypatch) -> None:
+    item = _item(_sample("img-a", "the small text near the top"), source_count=4, d_dim=8, v_dim=8)
+    seen = {}
+
+    def fake_prepare_v3_stage1_readout_inputs(**kwargs):
+        seen["protocol"] = kwargs["protocol"]
+        seen["focus_action_im_end"] = kwargs["focus_action_im_end"]
+        return {
+            "answer_token_count": 2,
+            "mask_mode": "test",
+            "position_mode": kwargs["position_mode"],
+            "position_ids_source": "test",
+        }
+
+    monkeypatch.setattr(v3_common, "prepare_v3_stage1_readout_inputs", fake_prepare_v3_stage1_readout_inputs)
+    monkeypatch.setattr(
+        v3_common,
+        "compute_v3_stage1_lm_loss",
+        lambda *, model, readout_inputs: (torch.tensor(1.5), torch.tensor(-3.0)),
+    )
+
+    result = v3_common.compute_v3_readout_nll(
+        model=object(),
+        tokenizer_or_processor=object(),
+        capture=item.capture,
+        evidence_description=item.sample.evidence_description,
+        foveated_visual_tokens=item.foveated_visual_tokens,
+        device="cpu",
+        protocol="protocol_c_tool_observation",
+        focus_action_im_end=True,
+    )
+
+    assert seen == {"protocol": "protocol_c_tool_observation", "focus_action_im_end": True}
+    assert result["avg_nll"] == 1.5
+    assert result["total_nll"] == 3.0

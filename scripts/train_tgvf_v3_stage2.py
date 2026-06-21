@@ -15,7 +15,20 @@ from peft import LoraConfig, get_peft_model, get_peft_model_state_dict
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
 
-from revisit_vlm.qwen3_vl_tgvf import load_qwen3_vl, peak_memory_gb
+from revisit_vlm.qwen3_vl_tgvf import (
+    PROTOCOL_C_THINKING_SPECIAL,
+    PROTOCOL_C_TOOL_OBSERVATION,
+    PROTOCOL_C_SPECIAL_TOKENS,
+    PROTOCOL_D_QWEN_TOOL,
+    PROTOCOL_E_ACTION_EVIDENCE_SPECIAL,
+    TGVF_PROTOCOL_CHOICES,
+    ensure_tgvf_protocol_tokens,
+    load_qwen3_vl,
+    peak_memory_gb,
+    protocol_c_special_token_ids,
+    protocol_special_token_ids,
+    protocol_special_tokens,
+)
 from revisit_vlm.tgvf_training import (
     TGVF_DYNAMIC_NUM_FVT_VARIANTS,
     TGVF_VARIANTS,
@@ -71,12 +84,21 @@ def main() -> None:
     if getattr(processor.tokenizer, "pad_token", None) is None:
         processor.tokenizer.pad_token = processor.tokenizer.eos_token
     tokenizer_size_before = len(processor.tokenizer)
+    protocol_token_info: dict[str, Any] = {}
+    token_row_protocols = {PROTOCOL_C_THINKING_SPECIAL, PROTOCOL_C_TOOL_OBSERVATION, PROTOCOL_E_ACTION_EVIDENCE_SPECIAL}
+    if args.tgvf_protocol in token_row_protocols:
+        protocol_token_info = ensure_tgvf_protocol_tokens(processor.tokenizer, model, protocol=args.tgvf_protocol)
     freeze_qwen_backbone(model)
     if args.gradient_checkpointing and hasattr(model, "gradient_checkpointing_enable"):
         model.gradient_checkpointing_enable()
     if hasattr(model, "config"):
         model.config.use_cache = False
     lora_targets = [item.strip() for item in args.lora_target_modules.split(",") if item.strip()]
+    lora_modules_to_save = (
+        ["embed_tokens", "lm_head"]
+        if args.tgvf_protocol in token_row_protocols
+        else None
+    )
     lora_config = LoraConfig(
         r=args.lora_rank,
         lora_alpha=args.lora_alpha,
@@ -84,11 +106,16 @@ def main() -> None:
         lora_dropout=args.lora_dropout,
         bias=args.lora_bias,
         task_type="CAUSAL_LM",
+        modules_to_save=lora_modules_to_save,
+        ensure_weight_tying=False,
     )
     model = get_peft_model(model, lora_config)
     model.train()
     utility_model = model.get_base_model() if hasattr(model, "get_base_model") else model
     tokenizer_size_after = len(processor.tokenizer)
+
+    stage1_checkpoint = torch.load(args.stage1_checkpoint, map_location="cpu")
+    stage1_tgvf_config_resolution = _apply_stage1_tgvf_config(args, stage1_checkpoint)
 
     dims = infer_qwen3_stage1_dims(
         model=utility_model,
@@ -107,6 +134,15 @@ def main() -> None:
         num_foveated_tokens=args.num_foveated_tokens,
         spatial_merge_size=spatial_merge_size,
         attn_dim=args.attn_dim,
+        encoder_adapter_layers=tuple(args.encoder_adapter_layers),
+        encoder_adapter_type=args.encoder_adapter_type,
+        encoder_adapter_gate_init=args.encoder_adapter_gate_init,
+        encoder_adapter_share_weights=args.encoder_adapter_share_weights,
+        encoder_adapter_layer_index_base=args.encoder_adapter_layer_index_base,
+        encoder_reencode_deepstack_compatible=args.encoder_reencode_deepstack_compatible,
+        encoder_reencode=args.variant == "tgvf_encoder_bidir_8_16_24",
+        preserve_llm_kv_cache=True,
+        second_full_llm_forward=False,
     )
     train_dtype = next(model.parameters()).dtype
     foveal_module = build_tgvf_module(
@@ -116,8 +152,32 @@ def main() -> None:
         num_foveated_tokens=args.num_foveated_tokens,
         spatial_merge_size=spatial_merge_size,
         attn_dim=args.attn_dim,
+        encoder_adapter_layers=args.encoder_adapter_layers,
+        encoder_adapter_type=args.encoder_adapter_type,
+        encoder_adapter_gate_init=args.encoder_adapter_gate_init,
+        encoder_adapter_share_weights=args.encoder_adapter_share_weights,
+        encoder_adapter_layer_index_base=args.encoder_adapter_layer_index_base,
+        encoder_reencode_deepstack_compatible=args.encoder_reencode_deepstack_compatible,
     ).to(device=device, dtype=train_dtype)
-    stage1_checkpoint = torch.load(args.stage1_checkpoint, map_location="cpu")
+    stage1_token_row_info = {}
+    if args.tgvf_protocol in {PROTOCOL_C_THINKING_SPECIAL, PROTOCOL_C_TOOL_OBSERVATION}:
+        stage1_token_row_info = _restore_protocol_c_token_rows_from_stage1(
+            model=model,
+            tokenizer=processor.tokenizer,
+            stage1_checkpoint=stage1_checkpoint,
+        )
+    elif args.tgvf_protocol == PROTOCOL_E_ACTION_EVIDENCE_SPECIAL:
+        stage1_token_row_info = {
+            "available_in_stage1_checkpoint": False,
+            "loaded": False,
+            "reason": "protocol_e_initializes_token_rows_from_base_model",
+            "current_token_ids": {
+                token: int(token_id)
+                for token, token_id in protocol_special_token_ids(
+                    processor.tokenizer, protocol=args.tgvf_protocol
+                ).items()
+            },
+        }
     foveal_module.load_state_dict(stage1_checkpoint["tgvf_module"], strict=True)
     foveal_module.train()
 
@@ -155,6 +215,7 @@ def main() -> None:
     frozen_count = sum(p.numel() for p in list(model.parameters()) + list(foveal_module.parameters()) if not p.requires_grad)
     config = {
         "stage": "tgvf_v3_stage2_50k",
+        "tgvf_protocol": args.tgvf_protocol,
         "model_id": args.model_id,
         "processor_id": loaded.processor_id,
         "train_file": str(args.train_file),
@@ -170,6 +231,7 @@ def main() -> None:
             "dropout": args.lora_dropout,
             "bias": args.lora_bias,
             "target_modules": lora_targets,
+            "modules_to_save": lora_modules_to_save,
         },
         "lr_groups": lr_groups,
         "optimizer": {
@@ -197,9 +259,15 @@ def main() -> None:
         "fvt_position_mode": args.fvt_position_mode,
         "capture_mode": "teacher_forced",
         "train_long_cot": False,
-        "special_tokens_added": False,
+        "special_tokens_added": bool(protocol_token_info.get("special_tokens_added", False)),
+        "normal_tokens_added": bool(protocol_token_info.get("normal_tokens_added", False)),
+        "protocol_c_token_registration": protocol_token_info.get("protocol_c_token_registration"),
         "tokenizer_resized": tokenizer_size_before != tokenizer_size_after,
-        "markers_are_plain_text": True,
+        "markers_are_plain_text": args.tgvf_protocol not in {PROTOCOL_C_THINKING_SPECIAL, PROTOCOL_C_TOOL_OBSERVATION, PROTOCOL_D_QWEN_TOOL, PROTOCOL_E_ACTION_EVIDENCE_SPECIAL},
+        "protocol_c_special_token_ids": protocol_token_info.get("protocol_c_special_token_ids"),
+        "protocol_c_token_ids": protocol_token_info.get("protocol_c_token_ids"),
+        "protocol_c_tokenizer_info": protocol_token_info,
+        "protocol_c_stage1_token_rows": stage1_token_row_info,
         "fast_batched_stage2": args.fast_batched_stage2,
         "matrix_ce_enabled": False,
         "same_image_negative_enabled": False,
@@ -207,7 +275,8 @@ def main() -> None:
         "tgvf_trainable": True,
         "qwen_base_frozen": True,
         "vision_encoder_frozen": True,
-        "lm_head_frozen": True,
+        "lm_head_frozen": args.tgvf_protocol not in token_row_protocols,
+        "input_embeddings_frozen": args.tgvf_protocol not in token_row_protocols,
         "trainable_parameter_count": trainable_count,
         "frozen_parameter_count": frozen_count,
         "dtype": args.dtype,
@@ -218,6 +287,8 @@ def main() -> None:
     if is_main:
         (output_dir / "config.json").write_text(json.dumps(_json_safe(config), indent=2, ensure_ascii=False) + "\n")
         (output_dir / "trainable_params.txt").write_text("\n".join(trainable_names) + "\n")
+        if args.tgvf_protocol in token_row_protocols:
+            processor.save_pretrained(output_dir / "processor")
     wandb_logger = WandbLogger(
         project=args.wandb_project if is_main else None,
         entity=args.wandb_entity,
@@ -232,13 +303,31 @@ def main() -> None:
     if is_main and wandb_logger.enabled:
         wandb_logger.log(_wandb_dataset_metrics(train_stats, val_stats), step=0)
 
-    sampler = DistributedSampler(
-        train_dataset,
-        num_replicas=world_size,
-        rank=rank,
-        shuffle=True,
-        seed=args.seed,
-    ) if world_size > 1 else None
+    sampler = None
+    if args.target_focus_ratio is not None:
+        target_focus_ratio = float(args.target_focus_ratio)
+        focus_count = max(sum(1 for sample in train_dataset.samples if sample.need_focus), 1)
+        no_focus_count = max(sum(1 for sample in train_dataset.samples if not sample.need_focus), 1)
+        weights = [
+            (target_focus_ratio / focus_count) if sample.need_focus else ((1.0 - target_focus_ratio) / no_focus_count)
+            for sample in train_dataset.samples
+        ]
+        generator = torch.Generator()
+        generator.manual_seed(int(args.seed) + rank)
+        sampler = torch.utils.data.WeightedRandomSampler(
+            torch.as_tensor(weights, dtype=torch.double),
+            num_samples=math.ceil(len(train_dataset) / max(world_size, 1)),
+            replacement=True,
+            generator=generator,
+        )
+    elif world_size > 1:
+        sampler = DistributedSampler(
+            train_dataset,
+            num_replicas=world_size,
+            rank=rank,
+            shuffle=True,
+            seed=args.seed,
+        )
     loader = DataLoader(
         train_dataset,
         batch_size=args.batch_size,
@@ -261,7 +350,7 @@ def main() -> None:
     running_logs: list[dict[str, Any]] = []
 
     while optimizer_step < args.max_steps:
-        if sampler is not None and micro_step % max(len(loader), 1) == 0:
+        if sampler is not None and hasattr(sampler, "set_epoch") and micro_step % max(len(loader), 1) == 0:
             sampler.set_epoch(micro_step // max(len(loader), 1))
         try:
             samples = next(data_iter)
@@ -283,6 +372,7 @@ def main() -> None:
             max_image_resolution=args.max_image_resolution,
             position_mode=args.fvt_position_mode,
             mask_original_image_after_tgvf=args.mask_original_image_after_tgvf,
+            protocol=args.tgvf_protocol,
         )
         if not torch.isfinite(output.loss_total):
             raise RuntimeError(f"Non-finite Stage2 loss at micro step {micro_step}: {output.loss_total}")
@@ -319,8 +409,14 @@ def main() -> None:
                 "peak_memory_gb": peak_memory_gb(),
                 "world_size": world_size,
                 "effective_global_batch_size": args.batch_size * args.gradient_accumulation_steps * world_size,
+                "target_focus_sampling_ratio": args.target_focus_ratio,
                 **summarize_step_debug(running_logs),
             }
+            log["special_tokens_added"] = config["special_tokens_added"]
+            log["normal_tokens_added"] = config.get("normal_tokens_added")
+            log["protocol_c_token_registration"] = config.get("protocol_c_token_registration")
+            log["tokenizer_resized"] = config["tokenizer_resized"]
+            log["markers_are_plain_text"] = config["markers_are_plain_text"]
             print(json.dumps(_json_safe(log), indent=2, ensure_ascii=False))
             if wandb_logger.enabled:
                 wandb_logger.log(_wandb_metrics(log), step=optimizer_step)
@@ -342,6 +438,8 @@ def main() -> None:
                 micro_step=micro_step,
             )
             model.save_pretrained(output_dir / f"lora_adapter_step_{optimizer_step}")
+            if args.tgvf_protocol in token_row_protocols:
+                processor.save_pretrained(output_dir / f"processor_step_{optimizer_step}")
 
         if (
             is_main
@@ -389,6 +487,7 @@ def validate_stage2(
     value_rates = []
     mask_focus = []
     mask_no_focus = []
+    boundary_logs = []
     with torch.no_grad():
         step_fn = v3_stage2_batched_training_step if args.fast_batched_stage2 else v3_stage2_training_step
         for sample in dataset.samples[: args.eval_max_samples]:
@@ -404,6 +503,7 @@ def validate_stage2(
                 max_image_resolution=args.max_image_resolution,
                 position_mode=args.fvt_position_mode,
                 mask_original_image_after_tgvf=args.mask_original_image_after_tgvf,
+                protocol=args.tgvf_protocol,
             )
             losses.append(float(output.loss_total.detach().cpu()))
             focus += output.debug["focus_count"]
@@ -412,6 +512,7 @@ def validate_stage2(
                 value_rates.append(float(output.debug["value_span_match_rate"]))
             mask_focus.append(float(output.debug["focus_sample_mask_active_rate"]))
             mask_no_focus.append(float(output.debug["no_focus_mask_active_rate"]))
+            boundary_logs.append(output.debug)
     model.train()
     foveal_module.train()
     return {
@@ -426,9 +527,54 @@ def validate_stage2(
             "no_focus_mask_active_rate": sum(mask_no_focus) / max(len(mask_no_focus), 1),
             "value_span_match_rate": sum(value_rates) / max(len(value_rates), 1) if value_rates else None,
             "matrix_ce_enabled": False,
+            **_merge_boundary_debug(boundary_logs),
         },
     }
 
+
+
+def _restore_protocol_c_token_rows_from_stage1(*, model: Any, tokenizer: Any, stage1_checkpoint: dict[str, Any]) -> dict[str, Any]:
+    payload = stage1_checkpoint.get("protocol_c_token_rows")
+    current_ids = protocol_c_special_token_ids(tokenizer)
+    info: dict[str, Any] = {
+        "available_in_stage1_checkpoint": payload is not None,
+        "loaded": False,
+        "reason": None,
+        "current_token_ids": {token: int(current_ids[token]) for token in PROTOCOL_C_SPECIAL_TOKENS},
+    }
+    if payload is None:
+        info["reason"] = "missing_protocol_c_token_rows_in_stage1_checkpoint"
+        return info
+    saved_ids = payload.get("token_ids") or {}
+    mismatched = {
+        token: {"current": int(current_ids[token]), "saved": int(saved_ids.get(token, -1))}
+        for token in PROTOCOL_C_SPECIAL_TOKENS
+        if int(saved_ids.get(token, -1)) != int(current_ids[token])
+    }
+    info["saved_token_ids"] = {token: int(saved_ids.get(token, -1)) for token in PROTOCOL_C_SPECIAL_TOKENS}
+    if mismatched:
+        info["reason"] = "token_id_mismatch"
+        info["mismatched_token_ids"] = mismatched
+        return info
+    ordered_ids = [int(current_ids[token]) for token in PROTOCOL_C_SPECIAL_TOKENS]
+    input_rows = payload.get("input_embeddings")
+    output_rows = payload.get("output_embeddings")
+    if input_rows is None:
+        info["reason"] = "missing_input_embeddings"
+        return info
+    input_embed = model.get_input_embeddings()
+    output_embed = model.get_output_embeddings() if hasattr(model, "get_output_embeddings") else None
+    with torch.no_grad():
+        input_tensor = input_rows.to(device=input_embed.weight.device, dtype=input_embed.weight.dtype)
+        input_embed.weight[ordered_ids].copy_(input_tensor)
+        if output_rows is not None and output_embed is not None and hasattr(output_embed, "weight"):
+            output_tensor = output_rows.to(device=output_embed.weight.device, dtype=output_embed.weight.dtype)
+            output_embed.weight[ordered_ids].copy_(output_tensor)
+    info["loaded"] = True
+    info["reason"] = "loaded_from_stage1_checkpoint"
+    info["loaded_input_rows"] = True
+    info["loaded_output_rows"] = output_rows is not None
+    return info
 
 def build_optimizer(*, model: Any, foveal_module: torch.nn.Module, args: argparse.Namespace):
     lora_params = [(n, p) for n, p in model.named_parameters() if p.requires_grad]
@@ -505,6 +651,7 @@ def summarize_step_debug(debug_logs: list[dict[str, Any]]) -> dict[str, Any]:
     focus = sum(int(item.get("focus_count", 0)) for item in debug_logs)
     no_focus = sum(int(item.get("no_focus_count", 0)) for item in debug_logs)
     value_rates = [item.get("value_span_match_rate") for item in debug_logs if item.get("value_span_match_rate") is not None]
+    protocol = debug_logs[0].get("tgvf_protocol", "legacy_v3_tags") if debug_logs else "legacy_v3_tags"
     examples = []
     for item in debug_logs:
         examples.extend(item.get("debug_examples", []))
@@ -520,11 +667,41 @@ def summarize_step_debug(debug_logs: list[dict[str, Any]]) -> dict[str, Any]:
         "value_span_match_rate": sum(value_rates) / max(len(value_rates), 1) if value_rates else None,
         "special_tokens_added": False,
         "tokenizer_resized": False,
-        "markers_are_plain_text": True,
+        "markers_are_plain_text": protocol not in {PROTOCOL_C_THINKING_SPECIAL, PROTOCOL_C_TOOL_OBSERVATION, PROTOCOL_D_QWEN_TOOL, PROTOCOL_E_ACTION_EVIDENCE_SPECIAL},
+        "tgvf_protocol": protocol,
         "matrix_ce_enabled": False,
         "same_image_negative_enabled": False,
+        **_merge_boundary_debug(debug_logs),
         "debug_examples": examples[:2],
     }
+
+
+def _merge_boundary_debug(debug_logs: list[dict[str, Any]]) -> dict[str, Any]:
+    names = ("focus_start", "focus_end", "tgvf_start", "tgvf_end", "evidence_start", "evidence_end")
+    merged: dict[str, Any] = {}
+    acc_values = []
+    total_support = 0
+    for name in names:
+        support_key = f"protocol_c_boundary_support_{name}"
+        acc_key = f"protocol_c_boundary_acc_{name}"
+        support = sum(int(item.get(support_key, 0) or 0) for item in debug_logs)
+        total_support += support
+        merged[support_key] = support
+        if support:
+            weighted = 0.0
+            for item in debug_logs:
+                item_support = int(item.get(support_key, 0) or 0)
+                item_acc = item.get(acc_key)
+                if item_support and item_acc is not None:
+                    weighted += float(item_acc) * item_support
+            acc = weighted / support
+            merged[acc_key] = acc
+            acc_values.append(acc)
+        else:
+            merged[acc_key] = None
+    merged["protocol_c_boundary_support_total"] = total_support
+    merged["protocol_c_boundary_acc_mean"] = sum(acc_values) / len(acc_values) if acc_values else None
+    return merged
 
 
 def setup_distributed(args: argparse.Namespace) -> dict[str, Any]:
@@ -581,6 +758,47 @@ def build_lr_scheduler(
     return torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lr_lambda)
 
 
+def _apply_stage1_tgvf_config(args: argparse.Namespace, stage1_checkpoint: dict) -> dict:
+    """Resolve Stage2 TGVF module args from the Stage1 checkpoint config.
+
+    Stage2 normally should instantiate the exact Stage1 TGVF module variant before
+    loading `tgvf_module`. This matters for encoder-reencode checkpoints, which
+    are incompatible with the legacy bidirectional module shape.
+    """
+
+    if not getattr(args, "use_stage1_tgvf_config", True):
+        return {"enabled": False, "reason": "disabled_by_cli"}
+
+    tgvf_config = ((stage1_checkpoint.get("config") or {}).get("tgvf") or {})
+    if not tgvf_config:
+        return {"enabled": False, "reason": "missing_checkpoint_config"}
+
+    fields = (
+        "variant",
+        "num_foveated_tokens",
+        "spatial_merge_size",
+        "attn_dim",
+        "encoder_adapter_layers",
+        "encoder_adapter_type",
+        "encoder_adapter_gate_init",
+        "encoder_adapter_share_weights",
+        "encoder_adapter_layer_index_base",
+        "encoder_reencode_deepstack_compatible",
+    )
+    applied: dict[str, dict[str, object]] = {}
+    for field in fields:
+        if field not in tgvf_config:
+            continue
+        old_value = getattr(args, field, None)
+        new_value = tgvf_config[field]
+        if field == "encoder_adapter_layers" and new_value is not None:
+            new_value = tuple(int(v) for v in new_value)
+        setattr(args, field, new_value)
+        if old_value != new_value:
+            applied[field] = {"old": old_value, "new": new_value}
+    return {"enabled": True, "source": "stage1_checkpoint.config.tgvf", "applied": applied}
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train TGVF-v3 Stage2 trajectory LoRA + TGVF.")
     parser.add_argument("--train-file", required=True)
@@ -593,11 +811,19 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--device-map", default="cuda:0")
     parser.add_argument("--device", default="cuda:0")
     parser.add_argument("--attn-implementation", default="sdpa")
+    parser.add_argument("--tgvf-protocol", choices=TGVF_PROTOCOL_CHOICES, default="legacy_v3_tags")
     parser.add_argument("--gradient-checkpointing", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--variant", choices=TGVF_VARIANTS, default="tgvf_v2_bidirectional")
+    parser.add_argument("--use-stage1-tgvf-config", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--num-foveated-tokens", type=_parse_optional_positive_int, default=None)
     parser.add_argument("--spatial-merge-size", default="auto")
     parser.add_argument("--attn-dim", type=int, default=None)
+    parser.add_argument("--encoder-adapter-layers", type=_parse_int_list, default=(8, 16, 24))
+    parser.add_argument("--encoder-adapter-type", choices=("bidirectional", "bidirectional_film_aggressive"), default="bidirectional")
+    parser.add_argument("--encoder-adapter-gate-init", type=float, default=0.0)
+    parser.add_argument("--encoder-adapter-share-weights", action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument("--encoder-adapter-layer-index-base", type=int, choices=(0, 1), default=0)
+    parser.add_argument("--encoder-reencode-deepstack-compatible", action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument("--lora-rank", type=int, default=64)
     parser.add_argument("--lora-alpha", type=int, default=256)
     parser.add_argument("--lora-dropout", type=float, default=0.05)
@@ -616,6 +842,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--weight-decay", type=float, default=0.01)
     parser.add_argument("--batch-size", type=int, default=1)
     parser.add_argument("--gradient-accumulation-steps", type=int, default=16)
+    parser.add_argument("--target-focus-ratio", type=float, default=None)
     parser.add_argument("--max-steps", type=int, default=1200)
     parser.add_argument("--save-every", type=int, default=300)
     parser.add_argument("--eval-every", type=int, default=300)
@@ -632,7 +859,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--loss-evidence-state", type=float, default=0.2)
     parser.add_argument("--loss-focus-target", type=float, default=1.5)
     parser.add_argument("--loss-evidence", type=float, default=1.0)
-    parser.add_argument("--loss-value-span", type=float, default=3.0)
+    parser.add_argument("--loss-value-span", type=float, default=1.0)
     parser.add_argument("--loss-answer", type=float, default=1.0)
     parser.add_argument("--loss-no-focus-evidence-state", type=float, default=0.2)
     parser.add_argument("--loss-no-focus-answer", type=float, default=1.0)
@@ -652,7 +879,18 @@ def parse_args() -> argparse.Namespace:
     args = parser.parse_args()
     if args.variant not in TGVF_DYNAMIC_NUM_FVT_VARIANTS and args.num_foveated_tokens is None:
         parser.error("--num-foveated-tokens none is supported only for dynamic variants")
+    if args.target_focus_ratio is not None and not (0.0 < args.target_focus_ratio < 1.0):
+        parser.error("--target-focus-ratio must be between 0 and 1")
     return args
+
+
+def _parse_int_list(value: str) -> tuple[int, ...]:
+    if isinstance(value, (list, tuple)):
+        return tuple(int(item) for item in value)
+    parsed = tuple(int(item.strip()) for item in str(value).split(",") if item.strip())
+    if not parsed:
+        raise argparse.ArgumentTypeError("expected comma-separated integer list")
+    return parsed
 
 
 def _parse_optional_positive_int(value: str) -> int | None:
@@ -696,13 +934,18 @@ def _wandb_metrics(log: dict[str, Any]) -> dict[str, Any]:
         "train/focus_loss_token_weight": log.get("focus_loss_token_weight"),
         "train/no_focus_loss_token_weight": log.get("no_focus_loss_token_weight"),
         "train/effective_global_batch_size": log.get("effective_global_batch_size"),
+        "train/target_focus_sampling_ratio": log.get("target_focus_sampling_ratio"),
         "train/world_size": log.get("world_size"),
         "train/special_tokens_added": float(bool(log.get("special_tokens_added"))),
+        "train/normal_tokens_added": float(bool(log.get("normal_tokens_added"))),
         "train/tokenizer_resized": float(bool(log.get("tokenizer_resized"))),
         "train/markers_are_plain_text": float(bool(log.get("markers_are_plain_text"))),
         "train/matrix_ce_enabled": float(bool(log.get("matrix_ce_enabled"))),
         "train/same_image_negative_enabled": float(bool(log.get("same_image_negative_enabled"))),
     }
+    for key, value in log.items():
+        if key.startswith("protocol_c_boundary_acc_") or key.startswith("protocol_c_boundary_support_"):
+            metrics[f"train/{key}"] = value
     for index, lr in enumerate(log.get("learning_rates") or []):
         metrics[f"train/lr_group_{index}"] = lr
     return metrics

@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import random
+from contextlib import nullcontext
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any, Iterator
@@ -16,7 +17,16 @@ from torch.nn.parallel import DistributedDataParallel
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
 
-from revisit_vlm.qwen3_vl_tgvf import load_qwen3_vl, peak_memory_gb
+from revisit_vlm.qwen3_vl_tgvf import (
+    PROTOCOL_C_THINKING_SPECIAL,
+    PROTOCOL_C_TOOL_OBSERVATION,
+    PROTOCOL_C_SPECIAL_TOKENS,
+    TGVF_PROTOCOL_CHOICES,
+    ensure_protocol_c_special_tokens,
+    load_qwen3_vl,
+    peak_memory_gb,
+    protocol_c_special_token_ids,
+)
 from revisit_vlm.tgvf_training import (
     TGVF_DYNAMIC_NUM_FVT_VARIANTS,
     TGVF_VARIANTS,
@@ -66,7 +76,37 @@ def main() -> None:
     )
     model = loaded.model
     processor = loaded.processor
+    if getattr(processor.tokenizer, "pad_token", None) is None:
+        processor.tokenizer.pad_token = processor.tokenizer.eos_token
+    protocol_token_info: dict[str, Any] = {}
+    token_row_protocols = {PROTOCOL_C_THINKING_SPECIAL, PROTOCOL_C_TOOL_OBSERVATION}
+    if args.tgvf_protocol in token_row_protocols:
+        protocol_token_info = ensure_protocol_c_special_tokens(processor.tokenizer, model)
     freeze_qwen_backbone(model)
+    protocol_c_token_train_info: dict[str, Any] = {}
+    protocol_c_token_params: list[torch.nn.Parameter] = []
+    if args.tgvf_protocol in token_row_protocols:
+        protocol_c_token_train_info, protocol_c_token_params = _enable_protocol_c_token_row_training(
+            model=model,
+            tokenizer=processor.tokenizer,
+            mode=args.protocol_token_row_mode,
+        )
+
+    reencode_model = None
+    reencode_train_info: dict[str, Any] = {"enabled": False}
+    reencode_trainable_params: list[torch.nn.Parameter] = []
+    if args.train_reencode_vision_branch:
+        reencode_loaded = load_qwen3_vl(
+            args.model_id,
+            processor_id=args.processor_id,
+            dtype=args.dtype,
+            device_map=effective_device_map,
+            attn_implementation=args.attn_implementation,
+        )
+        reencode_model = reencode_loaded.model
+        freeze_qwen_backbone(reencode_model)
+        reencode_train_info, reencode_trainable_params = _enable_reencode_vision_branch_training(reencode_model)
+        reencode_model.train()
 
     dims = infer_qwen3_stage1_dims(
         model=model,
@@ -85,6 +125,15 @@ def main() -> None:
         num_foveated_tokens=args.num_foveated_tokens,
         spatial_merge_size=spatial_merge_size,
         attn_dim=args.attn_dim,
+        encoder_adapter_layers=tuple(args.encoder_adapter_layers),
+        encoder_adapter_type=args.encoder_adapter_type,
+        encoder_adapter_gate_init=args.encoder_adapter_gate_init,
+        encoder_adapter_share_weights=args.encoder_adapter_share_weights,
+        encoder_adapter_layer_index_base=args.encoder_adapter_layer_index_base,
+        encoder_reencode_deepstack_compatible=args.encoder_reencode_deepstack_compatible,
+        encoder_reencode=args.variant == "tgvf_encoder_bidir_8_16_24",
+        preserve_llm_kv_cache=True,
+        second_full_llm_forward=False,
     )
     loss_weights = LossWeights(
         gen=args.loss_gen,
@@ -94,6 +143,7 @@ def main() -> None:
     )
     config = {
         "stage": "tgvf_v3_stage1",
+        "tgvf_protocol": args.tgvf_protocol,
         "model_id": args.model_id,
         "processor_id": loaded.processor_id,
         "dataset": str(args.train_file),
@@ -108,7 +158,8 @@ def main() -> None:
         "min_lr_ratio": args.min_lr_ratio,
         "batch_size": args.batch_size,
         "local_batch_size": args.batch_size,
-        "global_batch_size": args.batch_size * world_size,
+        "gradient_accumulation_steps": args.gradient_accumulation_steps,
+        "global_batch_size": args.batch_size * world_size * args.gradient_accumulation_steps,
         "max_steps": args.max_steps,
         "freeze_qwen": True,
         "mask_original_image_after_tgvf": args.mask_original_image_after_tgvf,
@@ -125,11 +176,20 @@ def main() -> None:
         "batch_sampling": _resolved_batch_sampling(args),
         "drop_incomplete_same_image_batches": args.drop_incomplete_same_image_batches,
         "capture_mode": args.capture_mode,
+        "focus_action_im_end": args.focus_action_im_end,
+        "protocol_token_row_mode": args.protocol_token_row_mode,
+        "protocol_c_special_token_ids": protocol_token_info.get("protocol_c_special_token_ids"),
+        "protocol_c_tokenizer_info": protocol_token_info,
+        "protocol_c_token_rows_trainable": protocol_c_token_train_info,
         "readout_batch_size": args.readout_batch_size,
         "dataloader_num_workers": args.num_workers,
         "distributed": world_size > 1,
         "world_size": world_size,
         "rank": rank,
+        "resume_from_checkpoint": args.resume_from_checkpoint,
+        "init_tgvf_from_checkpoint": args.init_tgvf_from_checkpoint,
+        "reencode_vision_branch": reencode_train_info,
+        "reencode_vision_learning_rate": args.reencode_vision_learning_rate,
         "dims": dims,
         "dtype": args.dtype,
         "device_map": effective_device_map,
@@ -137,6 +197,8 @@ def main() -> None:
     }
     if is_main:
         (output_dir / "config.json").write_text(json.dumps(config, indent=2, ensure_ascii=False) + "\n")
+        if args.tgvf_protocol in token_row_protocols:
+            processor.save_pretrained(output_dir / "processor")
     wandb_logger = WandbLogger(
         project=args.wandb_project if is_main else None,
         entity=args.wandb_entity,
@@ -163,10 +225,42 @@ def main() -> None:
         num_foveated_tokens=args.num_foveated_tokens,
         spatial_merge_size=spatial_merge_size,
         attn_dim=args.attn_dim,
+        encoder_adapter_layers=args.encoder_adapter_layers,
+        encoder_adapter_type=args.encoder_adapter_type,
+        encoder_adapter_gate_init=args.encoder_adapter_gate_init,
+        encoder_adapter_share_weights=args.encoder_adapter_share_weights,
+        encoder_adapter_layer_index_base=args.encoder_adapter_layer_index_base,
+        encoder_reencode_deepstack_compatible=args.encoder_reencode_deepstack_compatible,
     ).to(device=device, dtype=train_dtype)
+    checkpoint = None
     if args.resume_from_checkpoint:
         checkpoint = torch.load(args.resume_from_checkpoint, map_location="cpu")
+        if args.tgvf_protocol in token_row_protocols:
+            protocol_c_token_train_info["resume_token_rows"] = _restore_protocol_c_token_rows(
+                model=model,
+                tokenizer=processor.tokenizer,
+                checkpoint=checkpoint,
+            )
         raw_foveal_module.load_state_dict(checkpoint["tgvf_module"], strict=True)
+        if reencode_model is not None:
+            reencode_train_info["resume_reencode_vision_branch"] = _restore_reencode_vision_branch(
+                reencode_model=reencode_model,
+                checkpoint=checkpoint,
+            )
+    elif args.init_tgvf_from_checkpoint:
+        init_checkpoint = torch.load(args.init_tgvf_from_checkpoint, map_location="cpu")
+        if args.tgvf_protocol in token_row_protocols:
+            protocol_c_token_train_info["init_token_rows"] = _restore_protocol_c_token_rows(
+                model=model,
+                tokenizer=processor.tokenizer,
+                checkpoint=init_checkpoint,
+            )
+        raw_foveal_module.load_state_dict(init_checkpoint["tgvf_module"], strict=True)
+        if reencode_model is not None:
+            reencode_train_info["init_reencode_vision_branch"] = _restore_reencode_vision_branch(
+                reencode_model=reencode_model,
+                checkpoint=init_checkpoint,
+            )
     raw_foveal_module.train()
 
     if world_size > 1:
@@ -185,7 +279,23 @@ def main() -> None:
             log=args.wandb_watch,
             log_freq=max(args.log_every, 1),
         )
-    optimizer = torch.optim.AdamW(foveal_module.parameters(), lr=args.learning_rate)
+    optimizer_param_groups: list[dict[str, Any]] = [
+        {"params": list(foveal_module.parameters()), "lr": args.learning_rate, "name": "tgvf_module"}
+    ]
+    if protocol_c_token_params:
+        token_group = {"params": protocol_c_token_params, "lr": args.learning_rate, "name": "protocol_c_token_rows"}
+        if args.protocol_token_row_mode == "full_mask":
+            token_group["weight_decay"] = 0.0
+        optimizer_param_groups.append(token_group)
+    if reencode_trainable_params:
+        optimizer_param_groups.append(
+            {
+                "params": reencode_trainable_params,
+                "lr": args.reencode_vision_learning_rate,
+                "name": "reencode_vision_branch",
+            }
+        )
+    optimizer = torch.optim.AdamW(optimizer_param_groups, lr=args.learning_rate)
     scheduler = build_lr_scheduler(
         optimizer,
         scheduler_name=args.lr_scheduler,
@@ -194,7 +304,9 @@ def main() -> None:
         min_lr_ratio=args.min_lr_ratio,
     )
 
+    start_step = 0
     if args.resume_from_checkpoint:
+        start_step = int(checkpoint.get("global_step") or checkpoint.get("optimizer_step") or 0)
         if checkpoint.get("optimizer") is not None:
             optimizer.load_state_dict(checkpoint["optimizer"])
         if checkpoint.get("scheduler") is not None:
@@ -245,37 +357,67 @@ def main() -> None:
     debug_examples_path = output_dir / "debug_examples.jsonl"
     optimizer.zero_grad(set_to_none=True)
 
-    for step in range(1, args.max_steps + 1):
+    for step in range(start_step + 1, args.max_steps + 1):
         if str(device).startswith("cuda"):
             torch.cuda.reset_peak_memory_stats(device)
-        try:
-            samples = next(data_iter)
-        except StopIteration:
-            if batch_sampling != "same_image" and isinstance(getattr(loader, "sampler", None), DistributedSampler):
-                loader.sampler.set_epoch(step)
-            data_iter = iter(loader)
-            samples = next(data_iter)
+        loss_sums = {
+            "loss_total": 0.0,
+            "loss_gen": 0.0,
+            "loss_visual_token_manifold": 0.0,
+            "loss_same_image_negative": 0.0,
+        }
+        output = None
+        for micro_step in range(args.gradient_accumulation_steps):
+            try:
+                samples = next(data_iter)
+            except StopIteration:
+                if batch_sampling != "same_image" and isinstance(getattr(loader, "sampler", None), DistributedSampler):
+                    loader.sampler.set_epoch(step)
+                data_iter = iter(loader)
+                samples = next(data_iter)
 
-        output = v3_stage1_training_step(
-            qwen_model=model,
-            processor=processor,
-            foveal_module=foveal_module,
-            samples=samples,
-            loss_weights=loss_weights,
-            device=device,
-            hidden_state_index=args.capture_layer,
-            same_image_negative_margin=args.same_image_negative_margin,
-            same_image_negative_mode=args.same_image_negative_mode,
-            mask_original_image_after_tgvf=args.mask_original_image_after_tgvf,
-            position_mode=args.fvt_position_mode,
-            max_image_resolution=args.max_image_resolution,
-            capture_mode=args.capture_mode,
-            readout_batch_size=args.readout_batch_size,
-        )
-        if not torch.isfinite(output.loss_total):
-            raise RuntimeError(f"Non-finite v3 Stage1 loss at step {step}: {output.loss_total}")
-        output.loss_total.backward()
-        grad_norm = torch.nn.utils.clip_grad_norm_(foveal_module.parameters(), args.max_grad_norm)
+            sync_context = (
+                foveal_module.no_sync()
+                if world_size > 1
+                and hasattr(foveal_module, "no_sync")
+                and micro_step < args.gradient_accumulation_steps - 1
+                else nullcontext()
+            )
+            with sync_context:
+                output = v3_stage1_training_step(
+                    qwen_model=model,
+                    processor=processor,
+                    foveal_module=foveal_module,
+                    reencode_qwen_model=reencode_model,
+                    samples=samples,
+                    loss_weights=loss_weights,
+                    device=device,
+                    hidden_state_index=args.capture_layer,
+                    same_image_negative_margin=args.same_image_negative_margin,
+                    same_image_negative_mode=args.same_image_negative_mode,
+                    mask_original_image_after_tgvf=args.mask_original_image_after_tgvf,
+                    position_mode=args.fvt_position_mode,
+                    max_image_resolution=args.max_image_resolution,
+                    capture_mode=args.capture_mode,
+                    focus_action_im_end=args.focus_action_im_end,
+                    readout_batch_size=args.readout_batch_size,
+                    protocol=args.tgvf_protocol,
+                )
+                if not torch.isfinite(output.loss_total):
+                    raise RuntimeError(f"Non-finite v3 Stage1 loss at step {step}: {output.loss_total}")
+                (output.loss_total / args.gradient_accumulation_steps).backward()
+            loss_sums["loss_total"] += float(output.loss_total.detach().cpu())
+            loss_sums["loss_gen"] += float(output.loss_gen.detach().cpu())
+            loss_sums["loss_visual_token_manifold"] += float(output.loss_visual_token_manifold.detach().cpu())
+            loss_sums["loss_same_image_negative"] += float(output.loss_same_image_negative.detach().cpu())
+        if output is None:
+            raise RuntimeError("gradient accumulation produced no Stage1 output")
+        if protocol_c_token_params:
+            _average_protocol_c_token_row_gradients(protocol_c_token_params, world_size=world_size)
+        if reencode_trainable_params:
+            _average_trainable_gradients(reencode_trainable_params, world_size=world_size)
+        trainable_for_clip = [p for group in optimizer.param_groups for p in group["params"] if p.requires_grad]
+        grad_norm = torch.nn.utils.clip_grad_norm_(trainable_for_clip, args.max_grad_norm)
         optimizer.step()
         scheduler.step()
         optimizer.zero_grad(set_to_none=True)
@@ -283,10 +425,11 @@ def main() -> None:
         if is_main and (step == 1 or step % args.log_every == 0 or step == args.max_steps):
             log = {
                 "step": step,
-                "loss_total": float(output.loss_total.detach().cpu()),
-                "loss_gen": float(output.loss_gen.detach().cpu()),
-                "loss_visual_token_manifold": float(output.loss_visual_token_manifold.detach().cpu()),
-                "loss_same_image_negative": float(output.loss_same_image_negative.detach().cpu()),
+                "resume_start_step": start_step,
+                "loss_total": loss_sums["loss_total"] / args.gradient_accumulation_steps,
+                "loss_gen": loss_sums["loss_gen"] / args.gradient_accumulation_steps,
+                "loss_visual_token_manifold": loss_sums["loss_visual_token_manifold"] / args.gradient_accumulation_steps,
+                "loss_same_image_negative": loss_sums["loss_same_image_negative"] / args.gradient_accumulation_steps,
                 "grad_norm": float(grad_norm.detach().cpu()),
                 "learning_rate": float(optimizer.param_groups[0]["lr"]),
                 "model_id": args.model_id,
@@ -295,11 +438,18 @@ def main() -> None:
                 "variant": args.variant,
                 "device": str(device),
                 "world_size": world_size,
-                "global_batch_size": args.batch_size * world_size,
+                "local_batch_size": args.batch_size,
+                "gradient_accumulation_steps": args.gradient_accumulation_steps,
+                "global_batch_size": args.batch_size * world_size * args.gradient_accumulation_steps,
                 "batch_sampling": batch_sampling,
                 "capture_mode": args.capture_mode,
                 "readout_batch_size": args.readout_batch_size,
                 "peak_memory_gb": peak_memory_gb(),
+                "protocol_c_token_rows_trainable": bool(protocol_c_token_params),
+                "protocol_c_token_row_param_count": sum(int(p.numel()) for p in protocol_c_token_params),
+                "reencode_vision_branch_trainable": bool(reencode_trainable_params),
+                "reencode_vision_branch_param_count": sum(int(p.numel()) for p in reencode_trainable_params),
+                "reencode_vision_learning_rate": args.reencode_vision_learning_rate,
                 **output.debug,
             }
             print(json.dumps(_json_safe(log), indent=2, ensure_ascii=False))
@@ -310,8 +460,9 @@ def main() -> None:
                     handle.write(json.dumps(_json_safe({"step": step, **example}), ensure_ascii=False) + "\n")
 
         if is_main and (step % args.save_every == 0 or step == args.max_steps):
+            checkpoint_path = output_dir / f"checkpoint_step_{step}.pt"
             save_tgvf_checkpoint(
-                path=output_dir / f"checkpoint_step_{step}.pt",
+                path=checkpoint_path,
                 foveal_module=_checkpoint_module(foveal_module),
                 config=config,
                 optimizer=optimizer,
@@ -319,6 +470,19 @@ def main() -> None:
                 global_step=step,
                 optimizer_step=step,
             )
+            if reencode_model is not None:
+                _append_reencode_vision_branch(
+                    checkpoint_path,
+                    reencode_model=reencode_model,
+                    train_info=reencode_train_info,
+                )
+            if args.tgvf_protocol in token_row_protocols:
+                _append_protocol_c_token_rows(
+                    checkpoint_path,
+                    model=model,
+                    tokenizer=processor.tokenizer,
+                )
+                processor.save_pretrained(output_dir / f"processor_step_{step}")
             if args.wandb_log_checkpoints and wandb_logger.enabled:
                 wandb_logger.log_artifact(
                     name=f"{output_dir.name}-checkpoint-{step}",
@@ -343,18 +507,35 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--device-map", default="cuda:0")
     parser.add_argument("--device", default="cuda:0")
     parser.add_argument("--attn-implementation", default="sdpa")
+    parser.add_argument("--tgvf-protocol", choices=TGVF_PROTOCOL_CHOICES, default="legacy_v3_tags")
     parser.add_argument("--variant", choices=TGVF_VARIANTS, default="tgvf_v2_bidirectional")
     parser.add_argument("--num-foveated-tokens", type=_parse_optional_positive_int, default=None)
     parser.add_argument("--spatial-merge-size", default="auto")
     parser.add_argument("--attn-dim", type=int, default=None)
+    parser.add_argument("--encoder-adapter-layers", type=_parse_int_list, default=(8, 16, 24))
+    parser.add_argument("--encoder-adapter-type", choices=("bidirectional", "bidirectional_film_aggressive"), default="bidirectional")
+    parser.add_argument("--encoder-adapter-gate-init", type=float, default=0.0)
+    parser.add_argument("--encoder-adapter-share-weights", action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument("--encoder-adapter-layer-index-base", type=int, choices=(0, 1), default=0)
+    parser.add_argument("--encoder-reencode-deepstack-compatible", action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument("--train-reencode-vision-branch", action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument("--reencode-vision-learning-rate", type=float, default=1e-6)
     parser.add_argument("--learning-rate", type=float, default=1e-4)
     parser.add_argument("--lr-scheduler", choices=("constant", "linear", "cosine"), default="constant")
     parser.add_argument("--warmup-steps", type=int, default=0)
     parser.add_argument("--min-lr-ratio", type=float, default=0.0)
     parser.add_argument("--batch-size", type=int, default=1)
+    parser.add_argument("--gradient-accumulation-steps", type=int, default=1)
     parser.add_argument("--batch-sampling", choices=("auto", "random", "same_image"), default="auto")
     parser.add_argument("--drop-incomplete-same-image-batches", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--capture-mode", choices=("teacher_forced", "decode_loop"), default="teacher_forced")
+    parser.add_argument("--focus-action-im-end", action=argparse.BooleanOptionalAction, default=False, help="Append <|im_end|> after teacher-forced focus action in Stage1.")
+    parser.add_argument(
+        "--protocol-token-row-mode",
+        choices=("row_only", "full_mask"),
+        default="row_only",
+        help="How to train Protocol C marker token rows: current row-only override, or old full tensor with row gradient mask.",
+    )
     parser.add_argument("--readout-batch-size", type=int, default=4)
     parser.add_argument("--num-workers", type=int, default=0)
     parser.add_argument("--pin-memory", action=argparse.BooleanOptionalAction, default=True)
@@ -376,6 +557,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--min-confidence", type=float, default=None)
     parser.add_argument("--max-image-resolution", type=_parse_optional_positive_int, default=512)
     parser.add_argument("--resume-from-checkpoint", default=None)
+    parser.add_argument(
+        "--init-tgvf-from-checkpoint",
+        default=None,
+        help="Load only tgvf_module weights from a checkpoint, without optimizer/scheduler state.",
+    )
     parser.add_argument("--max-debug-examples-per-log", type=int, default=2)
     parser.add_argument("--wandb-project", default=None)
     parser.add_argument("--wandb-entity", default=None)
@@ -393,13 +579,28 @@ def parse_args() -> argparse.Namespace:
         parser.error(f"--num-foveated-tokens none is supported only with --variant in: {variants}")
     if args.warmup_steps < 0:
         parser.error("--warmup-steps must be >= 0")
+    if args.gradient_accumulation_steps < 1:
+        parser.error("--gradient-accumulation-steps must be >= 1")
     if args.readout_batch_size < 1:
         parser.error("--readout-batch-size must be >= 1")
+    if args.variant == "tgvf_encoder_bidir_8_16_24" and args.encoder_adapter_type not in {"bidirectional", "bidirectional_film_aggressive"}:
+        parser.error("tgvf_encoder_bidir_8_16_24 requires a supported encoder adapter type")
+    if args.train_reencode_vision_branch and args.variant != "tgvf_encoder_bidir_8_16_24":
+        parser.error("--train-reencode-vision-branch is currently supported only for tgvf_encoder_bidir_8_16_24")
     if args.num_workers < 0:
         parser.error("--num-workers must be >= 0")
     if not 0.0 <= args.min_lr_ratio <= 1.0:
         parser.error("--min-lr-ratio must be between 0 and 1")
     return args
+
+
+def _parse_int_list(value: str) -> tuple[int, ...]:
+    if isinstance(value, (list, tuple)):
+        return tuple(int(item) for item in value)
+    parsed = tuple(int(item.strip()) for item in str(value).split(",") if item.strip())
+    if not parsed:
+        raise argparse.ArgumentTypeError("expected comma-separated integer list")
+    return parsed
 
 
 def _parse_optional_positive_int(value: str) -> int | None:
@@ -568,6 +769,354 @@ def _json_safe(value):
         return [_json_safe(item) for item in value]
     return value
 
+
+
+
+def _visual_module_for_stage1(model: Any) -> torch.nn.Module:
+    if hasattr(model, "visual"):
+        return model.visual
+    if hasattr(model, "model") and hasattr(model.model, "visual"):
+        return model.model.visual
+    raise AttributeError("Could not find Qwen visual module")
+
+
+def _enable_reencode_vision_branch_training(model: Any) -> tuple[dict[str, Any], list[torch.nn.Parameter]]:
+    visual = _visual_module_for_stage1(model)
+    for parameter in model.parameters():
+        parameter.requires_grad_(False)
+    for parameter in visual.parameters():
+        parameter.requires_grad_(True)
+    params = [parameter for parameter in visual.parameters() if parameter.requires_grad]
+    return {
+        "enabled": True,
+        "scope": "separate_qwen3_visual_branch_only",
+        "original_qwen_branch_frozen": True,
+        "trainable_module": "visual",
+        "trainable_param_count": sum(int(parameter.numel()) for parameter in params),
+        "trainable_tensor_count": len(params),
+    }, params
+
+
+def _average_trainable_gradients(params: list[torch.nn.Parameter], *, world_size: int) -> None:
+    if world_size <= 1 or not dist.is_available() or not dist.is_initialized():
+        return
+    for param in params:
+        if param.grad is None:
+            continue
+        dist.all_reduce(param.grad, op=dist.ReduceOp.SUM)
+        param.grad.div_(world_size)
+
+
+def _append_reencode_vision_branch(path: Path, *, reencode_model: Any, train_info: dict[str, Any]) -> None:
+    checkpoint = torch.load(path, map_location="cpu")
+    visual = _visual_module_for_stage1(reencode_model)
+    checkpoint["reencode_vision_branch"] = {
+        "visual_state_dict": {key: value.detach().cpu() for key, value in visual.state_dict().items()},
+        "train_info": train_info,
+    }
+    torch.save(checkpoint, path)
+
+
+def _restore_reencode_vision_branch(*, reencode_model: Any, checkpoint: dict[str, Any]) -> dict[str, Any]:
+    payload = checkpoint.get("reencode_vision_branch")
+    info = {"available_in_checkpoint": payload is not None, "loaded": False}
+    if payload is None:
+        info["reason"] = "missing_reencode_vision_branch"
+        return info
+    state = payload.get("visual_state_dict")
+    if state is None:
+        info["reason"] = "missing_visual_state_dict"
+        return info
+    visual = _visual_module_for_stage1(reencode_model)
+    visual.load_state_dict(state, strict=True)
+    info["loaded"] = True
+    info["reason"] = "loaded_from_checkpoint"
+    return info
+
+
+def _enable_protocol_c_token_row_training(
+    *,
+    model: Any,
+    tokenizer: Any,
+    mode: str = "row_only",
+) -> tuple[dict[str, Any], list[torch.nn.Parameter]]:
+    if mode == "full_mask":
+        return _enable_protocol_c_token_row_training_full_mask(model=model, tokenizer=tokenizer)
+    if mode != "row_only":
+        raise ValueError(f"unsupported protocol token row mode: {mode}")
+    return _enable_protocol_c_token_row_training_row_only(model=model, tokenizer=tokenizer)
+
+
+def _enable_protocol_c_token_row_training_row_only(*, model: Any, tokenizer: Any) -> tuple[dict[str, Any], list[torch.nn.Parameter]]:
+    token_ids = protocol_c_special_token_ids(tokenizer)
+    ordered_ids = [int(token_ids[token]) for token in PROTOCOL_C_SPECIAL_TOKENS]
+    input_embed = model.get_input_embeddings()
+    output_embed = model.get_output_embeddings() if hasattr(model, "get_output_embeddings") else None
+    output_tied = (
+        output_embed is not None
+        and hasattr(output_embed, "weight")
+        and int(output_embed.weight.data_ptr()) == int(input_embed.weight.data_ptr())
+    )
+    input_override = _RowOverrideEmbedding(input_embed, ordered_ids)
+    if hasattr(model, "set_input_embeddings"):
+        model.set_input_embeddings(input_override)
+    else:
+        raise RuntimeError("model does not support set_input_embeddings; cannot train protocol token rows only")
+    params: list[torch.nn.Parameter] = []
+    params.append(input_override.row_values)
+    output_trainable = False
+    output_override = None
+    if output_embed is not None and hasattr(output_embed, "weight"):
+        output_override = _RowOverrideOutput(output_embed, ordered_ids, shared_row_values=input_override.row_values if output_tied else None)
+        if hasattr(model, "set_output_embeddings"):
+            model.set_output_embeddings(output_override)
+        else:
+            raise RuntimeError("model does not support set_output_embeddings; cannot train protocol output token rows only")
+        output_trainable = True
+        if not output_tied:
+            params.append(output_override.row_values)
+    return {
+        "enabled": True,
+        "tokens": list(PROTOCOL_C_SPECIAL_TOKENS),
+        "token_ids": {token: int(token_ids[token]) for token in PROTOCOL_C_SPECIAL_TOKENS},
+        "num_token_rows": len(ordered_ids),
+        "input_embeddings_trainable": True,
+        "output_embeddings_trainable": output_trainable,
+        "input_output_tied": output_tied,
+        "row_only_parameters": True,
+        "optimizer_param_tensors": len(params),
+        "optimizer_param_count": sum(int(param.numel()) for param in params),
+        "row_gradient_mask_active": False,
+    }, params
+
+
+def _enable_protocol_c_token_row_training_full_mask(*, model: Any, tokenizer: Any) -> tuple[dict[str, Any], list[torch.nn.Parameter]]:
+    token_ids = protocol_c_special_token_ids(tokenizer)
+    ordered_ids = [int(token_ids[token]) for token in PROTOCOL_C_SPECIAL_TOKENS]
+    row_ids = torch.tensor(sorted({int(row_id) for row_id in ordered_ids}), dtype=torch.long)
+    input_embed = model.get_input_embeddings()
+    output_embed = model.get_output_embeddings() if hasattr(model, "get_output_embeddings") else None
+    output_tied = (
+        output_embed is not None
+        and hasattr(output_embed, "weight")
+        and int(output_embed.weight.data_ptr()) == int(input_embed.weight.data_ptr())
+    )
+    params: list[torch.nn.Parameter] = []
+    _enable_weight_rows_with_gradient_mask(input_embed.weight, row_ids=row_ids, name="input_embeddings")
+    params.append(input_embed.weight)
+    output_trainable = False
+    if output_embed is not None and hasattr(output_embed, "weight"):
+        output_trainable = True
+        if not output_tied:
+            _enable_weight_rows_with_gradient_mask(output_embed.weight, row_ids=row_ids, name="output_embeddings")
+            params.append(output_embed.weight)
+    return {
+        "enabled": True,
+        "tokens": list(PROTOCOL_C_SPECIAL_TOKENS),
+        "token_ids": {token: int(token_ids[token]) for token in PROTOCOL_C_SPECIAL_TOKENS},
+        "num_token_rows": len(ordered_ids),
+        "input_embeddings_trainable": True,
+        "output_embeddings_trainable": output_trainable,
+        "input_output_tied": output_tied,
+        "row_only_parameters": False,
+        "optimizer_param_tensors": len(params),
+        "optimizer_param_count": sum(int(param.numel()) for param in params),
+        "row_gradient_mask_active": True,
+        "weight_decay": 0.0,
+    }, params
+
+
+def _enable_weight_rows_with_gradient_mask(weight: torch.nn.Parameter, *, row_ids: torch.Tensor, name: str) -> None:
+    weight.requires_grad_(True)
+    setattr(weight, "_tgvf_protocol_row_ids", row_ids.detach().cpu())
+    setattr(weight, "_tgvf_protocol_row_mask_name", name)
+    weight.register_hook(_protocol_row_gradient_mask_hook(row_ids.detach().cpu()))
+
+
+def _protocol_row_gradient_mask_hook(row_ids_cpu: torch.Tensor):
+    def hook(grad: torch.Tensor) -> torch.Tensor:
+        row_ids = row_ids_cpu.to(device=grad.device, dtype=torch.long)
+        masked = torch.zeros_like(grad)
+        masked.index_copy_(0, row_ids, grad.index_select(0, row_ids))
+        return masked
+
+    return hook
+
+
+class _RowOverrideEmbedding(torch.nn.Module):
+    def __init__(self, base: torch.nn.Module, row_ids: list[int]) -> None:
+        super().__init__()
+        self.base = base
+        rows = torch.tensor(sorted({int(row_id) for row_id in row_ids}), dtype=torch.long)
+        if rows.numel() == 0:
+            raise ValueError("Protocol C token row ids are empty")
+        self.register_buffer("row_ids", rows, persistent=False)
+        self.row_values = torch.nn.Parameter(base.weight.detach()[rows].clone())
+        self.num_embeddings = int(base.weight.shape[0])
+        self.embedding_dim = int(base.weight.shape[1])
+        self.padding_idx = getattr(base, "padding_idx", None)
+
+    @property
+    def weight(self) -> torch.Tensor:
+        return self.base.weight
+
+    def forward(self, input_ids: torch.Tensor) -> torch.Tensor:
+        embeds = self.base(input_ids)
+        row_ids = self.row_ids.to(device=input_ids.device)
+        row_values = self.row_values.to(device=embeds.device, dtype=embeds.dtype)
+        for idx in range(int(row_ids.numel())):
+            mask = input_ids == row_ids[idx]
+            if bool(mask.any()):
+                embeds = torch.where(mask.unsqueeze(-1), row_values[idx].view(*([1] * (embeds.ndim - 1)), -1), embeds)
+        return embeds
+
+    def effective_rows(self) -> torch.Tensor:
+        return self.row_values
+
+    def set_rows(self, rows: torch.Tensor) -> None:
+        with torch.no_grad():
+            self.row_values.copy_(rows.to(device=self.row_values.device, dtype=self.row_values.dtype))
+
+
+class _RowOverrideOutput(torch.nn.Module):
+    def __init__(
+        self,
+        base: torch.nn.Module,
+        row_ids: list[int],
+        *,
+        shared_row_values: torch.nn.Parameter | None = None,
+    ) -> None:
+        super().__init__()
+        self.base = base
+        rows = torch.tensor(sorted({int(row_id) for row_id in row_ids}), dtype=torch.long)
+        if rows.numel() == 0:
+            raise ValueError("Protocol C output token row ids are empty")
+        self.register_buffer("row_ids", rows, persistent=False)
+        if shared_row_values is None:
+            self.row_values = torch.nn.Parameter(base.weight.detach()[rows].clone())
+        else:
+            self.row_values = shared_row_values
+        bias = getattr(base, "bias", None)
+        self.register_buffer(
+            "row_bias",
+            None if bias is None else bias.detach()[rows].clone(),
+            persistent=False,
+        )
+
+    @property
+    def weight(self) -> torch.Tensor:
+        return self.base.weight
+
+    @property
+    def bias(self) -> torch.Tensor | None:
+        return getattr(self.base, "bias", None)
+
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        logits = self.base(hidden_states)
+        row_values = self.row_values.to(device=hidden_states.device, dtype=hidden_states.dtype)
+        selected_logits = torch.matmul(hidden_states, row_values.t())
+        if self.row_bias is not None:
+            selected_logits = selected_logits + self.row_bias.to(device=hidden_states.device, dtype=hidden_states.dtype)
+        logits.index_copy_(-1, self.row_ids.to(device=logits.device), selected_logits.to(dtype=logits.dtype))
+        return logits
+
+    def effective_rows(self) -> torch.Tensor:
+        return self.row_values
+
+    def set_rows(self, rows: torch.Tensor) -> None:
+        with torch.no_grad():
+            self.row_values.copy_(rows.to(device=self.row_values.device, dtype=self.row_values.dtype))
+
+
+def _average_protocol_c_token_row_gradients(params: list[torch.nn.Parameter], *, world_size: int) -> None:
+    if world_size <= 1 or not dist.is_available() or not dist.is_initialized():
+        return
+    for param in params:
+        if param.grad is None:
+            continue
+        row_ids_cpu = getattr(param, "_tgvf_protocol_row_ids", None)
+        if isinstance(row_ids_cpu, torch.Tensor) and param.grad.ndim >= 2:
+            row_ids = row_ids_cpu.to(device=param.grad.device, dtype=torch.long)
+            row_grad = param.grad.index_select(0, row_ids).contiguous()
+            dist.all_reduce(row_grad, op=dist.ReduceOp.SUM)
+            row_grad.div_(world_size)
+            param.grad.zero_()
+            param.grad.index_copy_(0, row_ids, row_grad)
+            continue
+        dist.all_reduce(param.grad, op=dist.ReduceOp.SUM)
+        param.grad.div_(world_size)
+
+
+def _restore_protocol_c_token_rows(*, model: Any, tokenizer: Any, checkpoint: dict[str, Any]) -> dict[str, Any]:
+    payload = checkpoint.get("protocol_c_token_rows")
+    current_ids = protocol_c_special_token_ids(tokenizer)
+    info: dict[str, Any] = {
+        "available_in_checkpoint": payload is not None,
+        "loaded": False,
+        "current_token_ids": {token: int(current_ids[token]) for token in PROTOCOL_C_SPECIAL_TOKENS},
+    }
+    if payload is None:
+        info["reason"] = "missing_protocol_c_token_rows"
+        return info
+    saved_ids = payload.get("token_ids") or {}
+    mismatched = {
+        token: {"current": int(current_ids[token]), "saved": int(saved_ids.get(token, -1))}
+        for token in PROTOCOL_C_SPECIAL_TOKENS
+        if int(saved_ids.get(token, -1)) != int(current_ids[token])
+    }
+    info["saved_token_ids"] = {token: int(saved_ids.get(token, -1)) for token in PROTOCOL_C_SPECIAL_TOKENS}
+    if mismatched:
+        info["reason"] = "token_id_mismatch"
+        info["mismatched_token_ids"] = mismatched
+        return info
+    ordered_ids = [int(current_ids[token]) for token in PROTOCOL_C_SPECIAL_TOKENS]
+    input_rows = payload.get("input_embeddings")
+    output_rows = payload.get("output_embeddings")
+    if input_rows is None:
+        info["reason"] = "missing_input_embeddings"
+        return info
+    input_embed = model.get_input_embeddings()
+    output_embed = model.get_output_embeddings() if hasattr(model, "get_output_embeddings") else None
+    with torch.no_grad():
+        if hasattr(input_embed, "set_rows"):
+            input_embed.set_rows(input_rows)
+        else:
+            input_embed.weight[ordered_ids].copy_(input_rows.to(device=input_embed.weight.device, dtype=input_embed.weight.dtype))
+        if output_rows is not None and output_embed is not None and hasattr(output_embed, "weight"):
+            if hasattr(output_embed, "set_rows"):
+                output_embed.set_rows(output_rows)
+            else:
+                output_embed.weight[ordered_ids].copy_(output_rows.to(device=output_embed.weight.device, dtype=output_embed.weight.dtype))
+    info["loaded"] = True
+    info["reason"] = "loaded_from_checkpoint"
+    info["loaded_input_rows"] = True
+    info["loaded_output_rows"] = output_rows is not None
+    return info
+
+def _append_protocol_c_token_rows(path: Path, *, model: Any, tokenizer: Any) -> None:
+    token_ids = protocol_c_special_token_ids(tokenizer)
+    ordered_ids = [int(token_ids[token]) for token in PROTOCOL_C_SPECIAL_TOKENS]
+    input_embed = model.get_input_embeddings()
+    output_embed = model.get_output_embeddings() if hasattr(model, "get_output_embeddings") else None
+    input_rows = (
+        input_embed.effective_rows().detach().cpu().clone()
+        if hasattr(input_embed, "effective_rows")
+        else input_embed.weight.detach().cpu()[ordered_ids].clone()
+    )
+    payload: dict[str, Any] = {
+        "tokens": list(PROTOCOL_C_SPECIAL_TOKENS),
+        "token_ids": {token: int(token_ids[token]) for token in PROTOCOL_C_SPECIAL_TOKENS},
+        "input_embeddings": input_rows,
+    }
+    if output_embed is not None and hasattr(output_embed, "weight"):
+        payload["output_embeddings"] = (
+            output_embed.effective_rows().detach().cpu().clone()
+            if hasattr(output_embed, "effective_rows")
+            else output_embed.weight.detach().cpu()[ordered_ids].clone()
+        )
+    checkpoint = torch.load(path, map_location="cpu")
+    checkpoint["protocol_c_token_rows"] = payload
+    torch.save(checkpoint, path)
 
 def _wandb_train_metrics(log: dict) -> dict:
     metrics = {

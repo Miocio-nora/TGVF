@@ -11,7 +11,12 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from tgvf_eval.config import MethodConfig
-from tgvf_eval.official_tools import OfficialToolInfo, resolve_official_tool
+from tgvf_eval.official_tools import (
+    OfficialScorer,
+    OfficialToolInfo,
+    build_official_scorer,
+    resolve_official_tool,
+)
 from tgvf_eval.parsing import normalize_open_answer, parse_prediction
 from tgvf_eval.prompts import build_prompt
 from tgvf_eval.sampling import deterministic_sample
@@ -55,7 +60,14 @@ class BenchmarkAdapter:
     preferred_files: tuple[str, ...] = ()
     multiple_choice = False
 
-    def __init__(self, benchmark_root: str | Path, tools_root: str | Path | None = None) -> None:
+    def __init__(
+        self,
+        benchmark_root: str | Path,
+        tools_root: str | Path | None = None,
+        *,
+        scoring_backend: str = "project",
+        official_llm_mode: str = "disabled",
+    ) -> None:
         self.benchmark_root = Path(benchmark_root)
         self.tools_root = Path(tools_root) if tools_root else self.benchmark_root / "_tools"
         self.root = self.benchmark_root / self.name
@@ -65,6 +77,14 @@ class BenchmarkAdapter:
             benchmark_root=self.benchmark_root,
             tools_root=self.tools_root,
         )
+        self.official_scorer: OfficialScorer | None = build_official_scorer(
+            self.name,
+            tool_info=self.tool_info,
+            scoring_backend=scoring_backend,
+            official_llm_mode=official_llm_mode,
+        )
+        if self.official_scorer is not None:
+            self.tool_info = self.official_scorer.tool_info
 
     def load_samples(self, max_records: int | None = None) -> list[BenchmarkSample]:
         for rel_path in self.preferred_files:
@@ -108,9 +128,13 @@ class BenchmarkAdapter:
         return build_prompt(sample.question, method_config).prompt
 
     def parse_prediction(self, raw_output: str, sample: BenchmarkSample) -> str:
+        if self.official_scorer is not None:
+            return self.official_scorer.parse_prediction(raw_output, sample)
         return parse_prediction(raw_output, choices=sample.choices)
 
     def score_predictions(self, rows: list[dict[str, Any]]) -> dict[str, Any]:
+        if self.official_scorer is not None:
+            return self.official_scorer.score_predictions(rows)
         scored = []
         groups: dict[str, list[float]] = {}
         for row in rows:
@@ -118,7 +142,8 @@ class BenchmarkAdapter:
             pred = row.get("parsed_answer")
             if gold is None or gold == "":
                 continue
-            score = _score_value(str(pred or ""), str(gold), multiple_choice=bool(row.get("choices")))
+            choices = row.get("choices") or []
+            score = _score_value(str(pred or ""), str(gold), choices=choices, multiple_choice=bool(choices))
             row["score"] = score
             scored.append(score)
             for key in ("category", "task", "mode", "subset", "subject", "version"):
@@ -230,16 +255,37 @@ class HRBench4KAdapter(BenchmarkAdapter):
     preferred_files = ("snapshot/hr_bench_4k.parquet", "snapshot/hr_bench_4k.tsv")
     multiple_choice = True
 
+    def record_to_sample(self, record: dict[str, Any], *, path: Path, index: int) -> BenchmarkSample:
+        sample = super().record_to_sample(record, path=path, index=index)
+        sample.metadata.setdefault("category", record.get("category"))
+        sample.metadata.setdefault("cycle_category", record.get("cycle_category"))
+        return sample
+
 
 class OCRBenchV2Adapter(BenchmarkAdapter):
     name = "ocrbench_v2"
     preferred_files = ("snapshot/EN/test-00000-of-00003.parquet", "snapshot/data/test-00000-of-00004.parquet")
 
+    def record_to_sample(self, record: dict[str, Any], *, path: Path, index: int) -> BenchmarkSample:
+        sample = super().record_to_sample(record, path=path, index=index)
+        for key in ("dataset_name", "type", "answers", "content", "bbox", "image_shape", "raw_text"):
+            if key in record:
+                sample.metadata.setdefault(key, record.get(key))
+        sample.metadata.setdefault("subset", record.get("dataset_name"))
+        return sample
+
 
 class BlinkAdapter(BenchmarkAdapter):
     name = "blink"
-    preferred_files = ("snapshot/Counting/test-00000-of-00001.parquet",)
+    # BLINK test labels are hidden in the local snapshot. Use the validation
+    # split for local scored diagnostics.
+    preferred_files = ("snapshot/Counting/val-00000-of-00001.parquet",)
     multiple_choice = True
+
+    def record_to_sample(self, record: dict[str, Any], *, path: Path, index: int) -> BenchmarkSample:
+        sample = super().record_to_sample(record, path=path, index=index)
+        sample.metadata.setdefault("sub_task", record.get("sub_task"))
+        return sample
 
 
 class MMMUProAdapter(BenchmarkAdapter):
@@ -254,6 +300,14 @@ class MathVistaAdapter(BenchmarkAdapter):
 
     def record_to_sample(self, record: dict[str, Any], *, path: Path, index: int) -> BenchmarkSample:
         sample = super().record_to_sample(record, path=path, index=index)
+        metadata = record.get("metadata")
+        if isinstance(metadata, dict):
+            sample.metadata.update(metadata)
+        for key in ("pid", "question_type", "answer_type", "precision", "unit", "query"):
+            if key in record:
+                sample.metadata.setdefault(key, record.get(key))
+        if sample.choices:
+            sample.metadata.setdefault("choices", sample.choices)
         if isinstance(sample.primary_media, str) and not Path(sample.primary_media).exists():
             sample.media = [_resolve_media_path(Path(sample.primary_media).name, self.snapshot / "images")]
         return sample
@@ -271,6 +325,12 @@ class MathVerseAdapter(BenchmarkAdapter):
                 candidate = self.snapshot / "images" / raw_image
                 if candidate.exists():
                     sample.media = [str(candidate)]
+        metadata = record.get("metadata")
+        if isinstance(metadata, dict):
+            sample.metadata.update(metadata)
+        for key in ("sample_index", "problem_index", "problem_version", "question_type"):
+            if key in record:
+                sample.metadata.setdefault(key, record.get(key))
         sample.metadata.setdefault("version", record.get("problem_version"))
         return sample
 
@@ -298,6 +358,8 @@ class OVOBenchAdapter(BenchmarkAdapter):
         if isinstance(record.get("gt"), int):
             sample.gold_answer = chr(ord("A") + int(record["gt"]))
         sample.metadata.setdefault("task", record.get("task"))
+        sample.metadata.setdefault("gt", record.get("gt"))
+        sample.metadata.setdefault("answer", record.get("answer"))
         return sample
 
 
@@ -324,10 +386,17 @@ class BenchmarkRegistry:
         *,
         benchmark_root: str | Path,
         tools_root: str | Path | None = None,
+        scoring_backend: str = "project",
+        official_llm_mode: str = "disabled",
     ) -> BenchmarkAdapter:
         if name not in cls.adapters:
             raise KeyError(f"Unknown benchmark '{name}'. Expected one of {BENCHMARK_NAMES}")
-        return cls.adapters[name](benchmark_root=benchmark_root, tools_root=tools_root)
+        return cls.adapters[name](
+            benchmark_root=benchmark_root,
+            tools_root=tools_root,
+            scoring_backend=scoring_backend,
+            official_llm_mode=official_llm_mode,
+        )
 
 
 def _read_records(path: Path, max_records: int | None = None) -> Iterable[dict[str, Any]]:
@@ -430,6 +499,9 @@ def _choices_from_question(question: str) -> list[str]:
         stripped = line.strip()
         if len(stripped) > 3 and stripped[0] == "(" and stripped[2] == ")":
             choices.append(stripped[3:].strip())
+            continue
+        if len(stripped) > 2 and stripped[0].isalpha() and stripped[1] in {":", "."}:
+            choices.append(stripped[2:].strip())
     return choices
 
 
@@ -499,10 +571,31 @@ def _resolve_media_path(value: str, *roots: Path) -> str:
     return str(roots[0] / value) if roots else value
 
 
-def _score_value(prediction: str, gold: str, *, multiple_choice: bool) -> float:
+def _score_value(prediction: str, gold: str, *, choices: list[str] | None = None, multiple_choice: bool) -> float:
     if multiple_choice:
-        return 1.0 if prediction.strip().upper() == gold.strip().upper() else 0.0
+        choices = choices or []
+        pred = prediction.strip()
+        gold_text = gold.strip()
+        pred_letter = _normalize_choice_letter(pred)
+        gold_letter = _normalize_choice_letter(gold_text)
+        if pred_letter and gold_letter:
+            return 1.0 if pred_letter == gold_letter else 0.0
+        if pred_letter and choices:
+            index = ord(pred_letter) - ord("A")
+            if 0 <= index < len(choices):
+                pred = choices[index]
+        if gold_letter and choices:
+            index = ord(gold_letter) - ord("A")
+            if 0 <= index < len(choices):
+                gold_text = choices[index]
+        return 1.0 if normalize_open_answer(pred) == normalize_open_answer(gold_text) else 0.0
     return 1.0 if normalize_open_answer(prediction) == normalize_open_answer(gold) else 0.0
+
+
+def _normalize_choice_letter(text: str) -> str:
+    compact = str(text or "").strip().upper()
+    compact = compact.strip("()[]{}.: ")
+    return compact if len(compact) == 1 and "A" <= compact <= "Z" else ""
 
 
 def _mean(values: list[float]) -> float | None:

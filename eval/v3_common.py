@@ -24,11 +24,18 @@ from revisit_vlm.qwen3_vl_tgvf import (
     EVIDENCE_END,
     EVIDENCE_START,
     NEED_LOCAL_EVIDENCE,
+    PROTOCOL_C_TOOL_OBSERVATION,
+    PROTOCOL_C_THINKING_SPECIAL,
+    PROTOCOL_E_ACTION_EVIDENCE_SPECIAL,
     Qwen3FocusCapture,
     Qwen3SourceVisualGeometry,
+    TGVF_PROTOCOL_CHOICES,
     _compute_qwen3_position_ids_for_sequence,
     _encode_text,
+    ensure_tgvf_protocol_tokens,
     load_qwen3_vl,
+    normalize_tgvf_protocol,
+    render_stage1_readout_text,
 )
 from revisit_vlm.tgvf_foveal import finalize_tgvf_output_with_frozen_qwen_merger
 from revisit_vlm.tgvf_training import (
@@ -69,6 +76,12 @@ def add_v3_common_eval_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--model-id", default="Qwen/Qwen3-VL-8B-Thinking")
     parser.add_argument("--processor-id", default=None)
     parser.add_argument("--tgvf-checkpoint", required=True)
+    parser.add_argument("--tgvf-protocol", choices=TGVF_PROTOCOL_CHOICES, default="legacy_v3_tags")
+    parser.add_argument(
+        "--focus-action-im-end",
+        action="store_true",
+        help="Match Stage1 focus capture/readout when the forced action includes a trailing <|im_end|>.",
+    )
     parser.add_argument("--variant", choices=TGVF_VARIANTS, default="tgvf_v2_bidirectional")
     parser.add_argument("--eval-jsonl", required=True)
     parser.add_argument("--output-dir", required=True)
@@ -84,6 +97,12 @@ def add_v3_common_eval_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--seed", type=int, default=20260525)
     parser.add_argument("--capture-layer", type=int, default=-1)
     parser.add_argument("--num-foveated-tokens", type=_parse_optional_positive_int, default=None)
+    parser.add_argument("--encoder-adapter-layers", type=_parse_int_list, default=(8, 16, 24))
+    parser.add_argument("--encoder-adapter-type", choices=("bidirectional", "bidirectional_film_aggressive"), default="bidirectional")
+    parser.add_argument("--encoder-adapter-gate-init", type=float, default=0.0)
+    parser.add_argument("--encoder-adapter-share-weights", action="store_true")
+    parser.add_argument("--encoder-adapter-layer-index-base", type=int, choices=(0, 1), default=0)
+    parser.add_argument("--encoder-reencode-deepstack-compatible", action="store_true")
     parser.add_argument("--max-image-resolution", type=int, default=512)
     parser.add_argument(
         "--fvt-position-mode",
@@ -183,6 +202,10 @@ def load_qwen3_and_tgvf(
     )
     model = loaded.model
     processor = loaded.processor
+    protocol = normalize_tgvf_protocol(args.tgvf_protocol)
+    protocol_token_info: dict[str, Any] = {}
+    if protocol in {PROTOCOL_C_THINKING_SPECIAL, PROTOCOL_C_TOOL_OBSERVATION, PROTOCOL_E_ACTION_EVIDENCE_SPECIAL}:
+        protocol_token_info = ensure_tgvf_protocol_tokens(processor.tokenizer, model, protocol=protocol)
     freeze_qwen_backbone(model)
     dims = infer_qwen3_stage1_dims(
         model=model,
@@ -197,8 +220,33 @@ def load_qwen3_and_tgvf(
         d_v=dims["d_v"],
         num_foveated_tokens=args.num_foveated_tokens,
         spatial_merge_size=dims["spatial_merge_size"],
+        encoder_adapter_layers=getattr(args, "encoder_adapter_layers", (8, 16, 24)),
+        encoder_adapter_type=getattr(args, "encoder_adapter_type", "bidirectional"),
+        encoder_adapter_gate_init=getattr(args, "encoder_adapter_gate_init", 0.0),
+        encoder_adapter_share_weights=getattr(args, "encoder_adapter_share_weights", False),
+        encoder_adapter_layer_index_base=getattr(args, "encoder_adapter_layer_index_base", 0),
+        encoder_reencode_deepstack_compatible=getattr(args, "encoder_reencode_deepstack_compatible", False),
     ).to(device=device, dtype=next(model.parameters()).dtype)
     checkpoint = load_tgvf_module_checkpoint(module, args.tgvf_checkpoint, strict=True)
+    reencode_model = None
+    reencode_branch_info = {"available_in_checkpoint": "reencode_vision_branch" in checkpoint, "loaded": False}
+    if "reencode_vision_branch" in checkpoint:
+        reencode_loaded = load_qwen3_vl(
+            args.model_id,
+            processor_id=args.processor_id,
+            dtype=args.dtype,
+            device_map=_resolve_device_map(args.device_map),
+            attn_implementation=args.attn_implementation,
+            trust_remote_code=True,
+        )
+        reencode_model = reencode_loaded.model
+        freeze_qwen_backbone(reencode_model)
+        reencode_branch_info = _restore_eval_reencode_vision_branch(
+            reencode_model=reencode_model,
+            checkpoint=checkpoint,
+        )
+        reencode_model.eval()
+    setattr(module, "_eval_reencode_qwen_model", reencode_model)
     module.eval()
     return model, processor, module, device, {
         "model_id": args.model_id,
@@ -209,8 +257,37 @@ def load_qwen3_and_tgvf(
         "checkpoint_global_step": checkpoint.get("global_step"),
         "checkpoint_optimizer_step": checkpoint.get("optimizer_step"),
         "stage": "tgvf_v3_stage1_eval",
+        "tgvf_protocol": protocol,
+        "protocol_token_info": protocol_token_info,
         "second_full_forward_used": False,
+        "reencode_vision_branch": reencode_branch_info,
     }
+
+
+def _eval_visual_module(model: Any) -> torch.nn.Module:
+    if hasattr(model, "visual"):
+        return model.visual
+    if hasattr(model, "model") and hasattr(model.model, "visual"):
+        return model.model.visual
+    raise AttributeError("Could not find Qwen visual module")
+
+
+def _restore_eval_reencode_vision_branch(*, reencode_model: Any, checkpoint: dict[str, Any]) -> dict[str, Any]:
+    payload = checkpoint.get("reencode_vision_branch")
+    info = {"available_in_checkpoint": payload is not None, "loaded": False}
+    if payload is None:
+        info["reason"] = "missing_reencode_vision_branch"
+        return info
+    state = payload.get("visual_state_dict")
+    if state is None:
+        info["reason"] = "missing_visual_state_dict"
+        return info
+    visual = _eval_visual_module(reencode_model)
+    visual.load_state_dict(state, strict=True)
+    info["loaded"] = True
+    info["reason"] = "loaded_from_checkpoint"
+    info["train_info"] = payload.get("train_info")
+    return info
 
 
 @torch.no_grad()
@@ -225,7 +302,10 @@ def compute_v3_eval_item(
     max_image_resolution: int | None = 512,
     position_mode: PositionMode = "native_source_grid",
     mask_original_image_after_tgvf: bool = True,
+    protocol: str = "legacy_v3_tags",
+    focus_action_im_end: bool = False,
 ) -> V3EvalFeatureCacheItem:
+    protocol = normalize_tgvf_protocol(protocol)
     features = collect_v3_stage1_features(
         model=model,
         processor=processor,
@@ -233,6 +313,8 @@ def compute_v3_eval_item(
         device=device,
         hidden_state_index=capture_layer,
         max_image_resolution=max_image_resolution,
+        protocol=protocol,
+        focus_action_im_end=focus_action_im_end,
     )
     output = foveal_module(
         target_hidden_states=features.target_hidden_states.to(device),
@@ -241,6 +323,11 @@ def compute_v3_eval_item(
             "target": sample.target,
             "stage": "tgvf_v3_eval",
             "evidence_state": NEED_LOCAL_EVIDENCE,
+            "qwen_model": getattr(foveal_module, "_eval_reencode_qwen_model", None) or model,
+            "processor": processor,
+            "image": _v3_image_input(sample.image, max_image_resolution=max_image_resolution),
+            "question": sample.prompt_question,
+            "device": device,
         },
     )
     output = finalize_tgvf_output_with_frozen_qwen_merger(model, output)
@@ -254,6 +341,8 @@ def compute_v3_eval_item(
         device=device,
         mask_original_image_after_tgvf=mask_original_image_after_tgvf,
         position_mode=position_mode,
+        protocol=protocol,
+        focus_action_im_end=focus_action_im_end,
     )
     return V3EvalFeatureCacheItem(
         sample=sample,
@@ -281,6 +370,9 @@ def compute_v3_eval_item(
                 "pre_tgvf_queries_keep_original_image_keys"
             ),
             "second_full_forward_used": False,
+            "tgvf_protocol": protocol,
+            "focus_action_im_end": bool(focus_action_im_end),
+            "separate_reencode_qwen_model": getattr(foveal_module, "_eval_reencode_qwen_model", None) is not None,
         },
     )
 
@@ -300,8 +392,11 @@ def compute_or_load_v3_eval_item(
     cache_dir: str | Path | None = None,
     checkpoint_path: str | None = None,
     variant: str | None = None,
+    protocol: str = "legacy_v3_tags",
+    focus_action_im_end: bool = False,
     use_cache: bool = False,
 ) -> V3EvalFeatureCacheItem:
+    protocol = normalize_tgvf_protocol(protocol)
     if not use_cache:
         return compute_v3_eval_item(
             model=model,
@@ -313,6 +408,8 @@ def compute_or_load_v3_eval_item(
             max_image_resolution=max_image_resolution,
             position_mode=position_mode,
             mask_original_image_after_tgvf=mask_original_image_after_tgvf,
+            protocol=protocol,
+            focus_action_im_end=focus_action_im_end,
         )
     if cache_dir is None:
         raise ValueError("--use-fvt-cache requires --fvt-cache-dir")
@@ -321,9 +418,11 @@ def compute_or_load_v3_eval_item(
         sample=sample,
         checkpoint_path=checkpoint_path or "",
         variant=variant or "",
+        protocol=protocol,
         capture_layer=capture_layer,
         max_image_resolution=max_image_resolution,
         position_mode=position_mode,
+        focus_action_im_end=focus_action_im_end,
     )
     if cache_path.exists():
         payload = torch.load(cache_path, map_location="cpu")
@@ -348,6 +447,8 @@ def compute_or_load_v3_eval_item(
         max_image_resolution=max_image_resolution,
         position_mode=position_mode,
         mask_original_image_after_tgvf=mask_original_image_after_tgvf,
+        protocol=protocol,
+        focus_action_im_end=focus_action_im_end,
     )
     cache_path.parent.mkdir(parents=True, exist_ok=True)
     torch.save(
@@ -366,6 +467,8 @@ def compute_or_load_v3_eval_item(
                 "image": sample.image,
                 "checkpoint_path": checkpoint_path,
                 "variant": variant,
+                "protocol": protocol,
+                "focus_action_im_end": bool(focus_action_im_end),
                 "capture_layer": capture_layer,
                 "max_image_resolution": max_image_resolution,
                 "position_mode": position_mode,
@@ -386,7 +489,10 @@ def compute_v3_readout_nll(
     device: torch.device | str,
     mask_original_image_after_tgvf: bool = True,
     position_mode: PositionMode = "native_source_grid",
+    protocol: str = "legacy_v3_tags",
+    focus_action_im_end: bool = False,
 ) -> dict[str, Any]:
+    protocol = normalize_tgvf_protocol(protocol)
     if foveated_visual_tokens is None:
         readout_inputs = prepare_v3_target_only_readout_inputs(
             model=model,
@@ -395,6 +501,7 @@ def compute_v3_readout_nll(
             evidence_description=evidence_description,
             device=device,
             mask_original_image_after_tgvf=mask_original_image_after_tgvf,
+            protocol=protocol,
         )
     else:
         readout_inputs = prepare_v3_stage1_readout_inputs(
@@ -406,6 +513,8 @@ def compute_v3_readout_nll(
             device=device,
             mask_original_image_after_tgvf=mask_original_image_after_tgvf,
             position_mode=position_mode,
+            protocol=protocol,
+            focus_action_im_end=focus_action_im_end,
         )
     loss, log_likelihood = compute_v3_stage1_lm_loss(model=model, readout_inputs=readout_inputs)
     token_count = int(readout_inputs["answer_token_count"])
@@ -429,7 +538,9 @@ def prepare_v3_target_only_readout_inputs(
     evidence_description: str,
     device: torch.device | str,
     mask_original_image_after_tgvf: bool = True,
+    protocol: str = "legacy_v3_tags",
 ) -> dict[str, Any]:
+    protocol = normalize_tgvf_protocol(protocol)
     if not capture.capture_found:
         raise ValueError("capture must contain a valid focus span")
     if capture.input_ids is None:
@@ -444,8 +555,12 @@ def prepare_v3_target_only_readout_inputs(
     tokenizer = getattr(tokenizer_or_processor, "tokenizer", tokenizer_or_processor)
     base_input_ids = capture.input_ids.to(device)
     base_len = int(base_input_ids.shape[-1])
-    evidence_prefix_ids = _encode_text(tokenizer, f"\n{EVIDENCE_START}", device).view(1, -1)
-    evidence_ids = _encode_text(tokenizer, f"{evidence_description}{EVIDENCE_END}", device).view(1, -1)
+    readout_prefix, readout_text = render_stage1_readout_text(
+        evidence_description=evidence_description,
+        protocol=protocol,
+    )
+    evidence_prefix_ids = _encode_text(tokenizer, readout_prefix, device).view(1, -1)
+    evidence_ids = _encode_text(tokenizer, readout_text, device).view(1, -1)
     input_ids = torch.cat([base_input_ids, evidence_prefix_ids, evidence_ids], dim=-1)
     evidence_start = base_len + int(evidence_prefix_ids.shape[-1])
 
@@ -511,6 +626,7 @@ def prepare_v3_target_only_readout_inputs(
             "pre_tgvf_queries_keep_original_image_keys"
         ],
         "mask_summary": mask_summary,
+        "tgvf_protocol": protocol,
     }
 
 
@@ -551,6 +667,15 @@ def different_image_index_v3(items: list[V3EvalFeatureCacheItem], index: int) ->
     return None
 
 
+def _v3_image_input(image: str, *, max_image_resolution: int | None) -> Any:
+    if max_image_resolution is None or max_image_resolution <= 0:
+        return image
+    return {
+        "type": "image",
+        "image": image,
+        "max_pixels": int(max_image_resolution) * int(max_image_resolution),
+    }
+
 def v3_group_id(sample: TGVFv3Stage1Sample) -> str:
     return str(sample.image_id or sample.image)
 
@@ -584,6 +709,14 @@ def sample_metadata_row(sample: TGVFv3Stage1Sample) -> dict[str, Any]:
     }
 
 
+def _parse_int_list(value: str) -> tuple[int, ...]:
+    if isinstance(value, (list, tuple)):
+        return tuple(int(item) for item in value)
+    parsed = tuple(int(item.strip()) for item in str(value).split(",") if item.strip())
+    if not parsed:
+        raise argparse.ArgumentTypeError("expected comma-separated integer list")
+    return parsed
+
 def _parse_optional_positive_int(value: str) -> int | None:
     if value.lower() in {"none", "null"}:
         return None
@@ -609,17 +742,21 @@ def _v3_fvt_cache_path(
     sample: TGVFv3Stage1Sample,
     checkpoint_path: str,
     variant: str,
+    protocol: str,
     capture_layer: int,
     max_image_resolution: int | None,
     position_mode: str,
+    focus_action_im_end: bool = False,
 ) -> Path:
     key = "|".join(
         [
             checkpoint_path,
             variant,
+            protocol,
             str(capture_layer),
             str(max_image_resolution),
             position_mode,
+            str(bool(focus_action_im_end)),
             v3_sample_uid(sample),
             sample.target,
             sample.image,

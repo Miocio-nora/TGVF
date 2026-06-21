@@ -25,16 +25,25 @@ except ModuleNotFoundError:  # pragma: no cover
 
 from revisit_vlm.wandb_logging import WandbLogger, flatten_metrics
 from tgvf_data.prepare import DEFAULT_SOURCE_MIX, read_jsonl, write_jsonl
+from tgvf_data.tgvf_teacher_schema_v4 import (
+    SCHEMA_VERSION_V4 as SCHEMA_VERSION_V4_CONST,
+    TEACHER_VERSION_V4,
+    teacher_output_schema_v4,
+    validate_v4_image_level_output,
+)
+from tgvf_data.tgvf_v4_teacher import TEACHER_PROMPT_V4, build_v4_user_message
 
 PROMPT_VERSION_V0 = "tgvf_teacher_guide_v0"
 PROMPT_VERSION_VISUAL_CUE_V1 = "tgvf_teacher_guide_visual_cue_v1"
 PROMPT_VERSION_V3 = "tgvf_v3_teacher_trajectory_visual_cue_v1"
+PROMPT_VERSION_V4 = TEACHER_VERSION_V4
 DEFAULT_TEACHER_PROMPT_VERSION = PROMPT_VERSION_V3
 PROMPT_VERSION = DEFAULT_TEACHER_PROMPT_VERSION
 
 SCHEMA_VERSION_V0 = "tgvf_teacher_schema_v0"
 SCHEMA_VERSION_VISUAL_CUE_V1 = "tgvf_teacher_schema_visual_cue_v1"
 SCHEMA_VERSION_V3 = "tgvf_teacher_schema_v3"
+SCHEMA_VERSION_V4 = SCHEMA_VERSION_V4_CONST
 DEFAULT_TEACHER_SCHEMA_VERSION = SCHEMA_VERSION_V3
 SCHEMA_VERSION = DEFAULT_TEACHER_SCHEMA_VERSION
 DEFAULT_MODEL = "gpt-5.4"
@@ -137,8 +146,18 @@ SOURCE_PROFILES = [
     "mixed",
     "unknown",
 ]
-ALLOWED_PROMPT_VERSIONS = [PROMPT_VERSION_V0, PROMPT_VERSION_VISUAL_CUE_V1, PROMPT_VERSION_V3]
-ALLOWED_SCHEMA_VERSIONS = [SCHEMA_VERSION_V0, SCHEMA_VERSION_VISUAL_CUE_V1, SCHEMA_VERSION_V3]
+ALLOWED_PROMPT_VERSIONS = [
+    PROMPT_VERSION_V0,
+    PROMPT_VERSION_VISUAL_CUE_V1,
+    PROMPT_VERSION_V3,
+    PROMPT_VERSION_V4,
+]
+ALLOWED_SCHEMA_VERSIONS = [
+    SCHEMA_VERSION_V0,
+    SCHEMA_VERSION_VISUAL_CUE_V1,
+    SCHEMA_VERSION_V3,
+    SCHEMA_VERSION_V4,
+]
 LEDGER_TERMINAL_SUCCESS = {"succeeded", "completed", "accepted"}
 RETRYABLE_ERROR_MARKERS = (
     "rate limit",
@@ -710,6 +729,7 @@ def validate_teacher_version_pair(
         PROMPT_VERSION_V0: SCHEMA_VERSION_V0,
         PROMPT_VERSION_VISUAL_CUE_V1: SCHEMA_VERSION_VISUAL_CUE_V1,
         PROMPT_VERSION_V3: SCHEMA_VERSION_V3,
+        PROMPT_VERSION_V4: SCHEMA_VERSION_V4,
     }[prompt_version]
     if schema_version != expected and not allow_mismatch:
         raise ValueError(
@@ -725,6 +745,7 @@ def get_teacher_prompt(prompt_version: str | None = None) -> str:
         PROMPT_VERSION_V0: TEACHER_PROMPT_V0,
         PROMPT_VERSION_VISUAL_CUE_V1: TEACHER_PROMPT_VISUAL_CUE_V1,
         PROMPT_VERSION_V3: TEACHER_PROMPT_V3,
+        PROMPT_VERSION_V4: TEACHER_PROMPT_V4,
     }
     try:
         return prompts[version]
@@ -736,6 +757,8 @@ def teacher_output_schema(schema_version: str | None = None) -> dict[str, Any]:
     version = schema_version or DEFAULT_TEACHER_SCHEMA_VERSION
     if version not in ALLOWED_SCHEMA_VERSIONS:
         raise ValueError(f"Unsupported teacher schema version: {version}")
+    if version == SCHEMA_VERSION_V4:
+        return teacher_output_schema_v4()
     if version == SCHEMA_VERSION_V3:
         return teacher_output_schema_v3()
     return teacher_output_schema_legacy(version)
@@ -1016,6 +1039,12 @@ def build_responses_payload(
     schema: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     generation_config = generation_config or GenerationConfig()
+    user_message = (
+        build_v4_user_message(image_record, source_context)
+        if generation_config.prompt_version == PROMPT_VERSION_V4
+        or generation_config.schema_version == SCHEMA_VERSION_V4
+        else build_user_message(image_record, source_context)
+    )
     return {
         "model": openai_config.model,
         "input": [
@@ -1033,7 +1062,7 @@ def build_responses_payload(
                 "content": [
                     {
                         "type": "input_text",
-                        "text": build_user_message(image_record, source_context),
+                        "text": user_message,
                     },
                     {
                         "type": "input_image",
@@ -1164,6 +1193,19 @@ def validate_image_level_output(
     allow_duplicate_items: bool = False,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     config = config or GenerationConfig()
+    if config.schema_version == SCHEMA_VERSION_V4:
+        return validate_v4_image_level_output(
+            image_output,
+            image_record,
+            teacher_run_id=teacher_run_id,
+            model=model,
+            prompt_version=config.prompt_version,
+            schema_version=config.schema_version,
+            raw_response_id=raw_response_id,
+            confidence_threshold=config.confidence_threshold,
+            existing_item_hashes=existing_item_hashes,
+            allow_duplicate_items=allow_duplicate_items,
+        )
     accepted_candidates = []
     rejected = []
     for index, item_kind, item in iter_teacher_items(image_output):
@@ -1457,6 +1499,10 @@ def validate_visual_cue_fields(
 def infer_item_kind(item: dict[str, Any], item_kind: str | None = None) -> str:
     if item_kind in {"focus", "direct"}:
         return item_kind
+    if item.get("item_type") in {"no_refocus_continue", "no_refocus_answer"}:
+        return "direct"
+    if item.get("item_type") in {"single_refocus", "multi_refocus"}:
+        return "focus"
     if item.get("need_focus") is False or item.get("trajectory_type") == "direct_answer":
         return "direct"
     return "focus"
@@ -2497,7 +2543,16 @@ def summarize_run(run_dir: str | Path) -> dict[str, Any]:
         "ledger_entries": len(ledger),
         "ledger_status_counts": dict(Counter(record.get("status") for record in ledger)),
         "evidence_type_distribution": dict(
-            Counter(record.get("evidence_type") for record in accepted)
+            Counter(
+                evidence_type
+                for record in accepted
+                for evidence_type in (
+                    record.get("evidence_types")
+                    if isinstance(record.get("evidence_types"), list)
+                    else [record.get("evidence_type")]
+                )
+                if evidence_type
+            )
         ),
         "source_profile_distribution": dict(
             Counter(record.get("source_profile") for record in accepted)
@@ -2575,8 +2630,15 @@ def quality_report(
     target_cue_counts = Counter(
         cue for record in accepted for cue in normalize_target_cues(record)
     )
+    v4_focus_descriptor_cue_counts = Counter(
+        cue for record in accepted for cue in record.get("focus_descriptor_cues", [])
+    )
     need_focus_counts = Counter(bool(record.get("need_focus")) for record in accepted)
     trajectory_counts = Counter(record.get("trajectory_type") or "unknown" for record in accepted)
+    item_type_counts = Counter(record.get("item_type") or "unknown" for record in accepted)
+    question_type_counts = Counter(record.get("question_type") or "unknown" for record in accepted)
+    focus_category_counts = Counter(record.get("focus_category") or "unknown" for record in accepted)
+    num_focus_step_counts = Counter(str(record.get("num_focus_steps", 0)) for record in accepted)
     group_histogram = image_group_size_histogram(accepted)
     return {
         "total_image_calls": len(image_calls),
@@ -2589,11 +2651,16 @@ def quality_report(
         "direct_item_count": int(need_focus_counts.get(False, 0)),
         "hard_control_item_count": int(trajectory_counts.get("hard_control", 0)),
         "trajectory_type_distribution": dict(trajectory_counts),
+        "item_type_distribution": dict(item_type_counts),
+        "question_type_distribution": dict(question_type_counts),
+        "focus_category_distribution": dict(focus_category_counts),
+        "num_focus_steps_distribution": dict(num_focus_step_counts),
         "rejection_reason_histogram": dict(rejection_reasons),
         "rejection_reason_distribution": dict(rejection_reasons),
         "visual_cue_warning_histogram": dict(visual_cue_warnings),
         "target_style_distribution": dict(target_style_counts),
         "target_cues_distribution": dict(target_cue_counts),
+        "focus_descriptor_cues_distribution": dict(v4_focus_descriptor_cue_counts),
         "visual_cue_item_count": int(target_style_counts.get("visual_cue", 0)),
         "semantic_item_count": int(target_style_counts.get("semantic", 0)),
         "mixed_item_count": int(target_style_counts.get("mixed", 0)),
@@ -2602,7 +2669,11 @@ def quality_report(
             int(target_style_counts.get("visual_cue", 0)), len(image_calls)
         ),
         "evidence_type_distribution": dict(
-            Counter(record.get("evidence_type") for record in accepted)
+            Counter(
+                evidence_type
+                for record in accepted
+                for evidence_type in record_evidence_types(record)
+            )
         ),
         "source_profile_distribution": dict(
             Counter(record.get("source_profile") for record in accepted)
@@ -2628,6 +2699,14 @@ def quality_report(
         "samples_by_answer_type": dict(Counter(record.get("answer_type") for record in accepted)),
         "image_group_size_histogram": group_histogram,
     }
+
+
+def record_evidence_types(record: dict[str, Any]) -> list[str]:
+    evidence_types = record.get("evidence_types")
+    if isinstance(evidence_types, list):
+        return [str(value) for value in evidence_types if value]
+    evidence_type = record.get("evidence_type")
+    return [str(evidence_type)] if evidence_type else []
 
 
 def image_group_size_histogram(records: list[dict[str, Any]]) -> dict[str, int]:

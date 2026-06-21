@@ -15,6 +15,7 @@ class FovealCrossAttentionOutput:
     attention_debug: dict[str, torch.Tensor]
     debug_metadata: dict[str, Any]
     conditioned_pre_merge_visual_tokens: torch.Tensor | None = None
+    deepstack_visual_embeds: list[torch.Tensor] | None = None
 
 
 @dataclass
@@ -786,6 +787,600 @@ class TGVFv2Bidirectional(nn.Module):
             conditioned_pre_merge_visual_tokens=conditioned_visual_tokens,
         )
 
+
+
+@dataclass
+class EncoderReencodeOutput:
+    foveated_visual_tokens: torch.Tensor
+    reencoded_pre_merge_visual_tokens: torch.Tensor | None
+    reencoded_merged_visual_tokens: torch.Tensor | None
+    deepstack_visual_embeds: list[torch.Tensor]
+    gate_values: dict[str, float]
+    activation_stats: dict[str, Any]
+    debug_metadata: dict[str, Any]
+
+
+class EncoderBidirectionalLayerAdapter(nn.Module):
+    """Bidirectional target/vision adapter inserted inside the Qwen3 vision encoder."""
+
+    def __init__(
+        self,
+        *,
+        d_lm: int,
+        d_v: int,
+        attn_dim: int | None = None,
+        gate_init: float = 0.0,
+    ) -> None:
+        super().__init__()
+        self.d_lm = int(d_lm)
+        self.d_v = int(d_v)
+        self.attn_dim = int(attn_dim or d_v)
+        self.target_norm = nn.LayerNorm(self.d_lm)
+        self.target_proj = nn.Linear(self.d_lm, self.attn_dim)
+        self.visual_norm = nn.LayerNorm(self.d_v)
+        self.visual_proj = nn.Linear(self.d_v, self.attn_dim)
+        self.target_q_proj = nn.Linear(self.attn_dim, self.attn_dim)
+        self.visual_k_proj = nn.Linear(self.attn_dim, self.attn_dim)
+        self.visual_v_proj = nn.Linear(self.attn_dim, self.attn_dim)
+        self.enriched_target_norm = nn.LayerNorm(self.attn_dim)
+        self.visual_q_proj = nn.Linear(self.attn_dim, self.attn_dim)
+        self.target_k_proj = nn.Linear(self.attn_dim, self.attn_dim)
+        self.target_v_proj = nn.Linear(self.attn_dim, self.attn_dim)
+        self.context_to_delta = nn.Linear(self.attn_dim, self.d_v)
+        self.gate_proj = nn.Linear(self.d_v + self.attn_dim, self.d_v)
+        self.alpha = nn.Parameter(torch.tensor(float(gate_init)))
+        self.last_debug: dict[str, Any] = {}
+
+    def forward(
+        self,
+        *,
+        target_hidden_states: torch.Tensor,
+        vision_hidden_states: torch.Tensor,
+    ) -> torch.Tensor:
+        visual, unbatched = self._normalize_visual(vision_hidden_states)
+        target = self._normalize_target(target_hidden_states, batch_size=int(visual.shape[0]))
+        dtype = self.target_norm.weight.dtype
+        device = self.target_norm.weight.device
+        target = target.to(device=device, dtype=dtype)
+        visual = visual.to(device=device, dtype=dtype)
+
+        target_tokens = self.target_proj(self.target_norm(target))
+        visual_tokens = self.visual_norm(visual)
+        visual_projected = self.visual_proj(visual_tokens)
+        target_context, target_to_visual_attention = _batched_cross_attention(
+            self.target_q_proj(target_tokens),
+            self.visual_k_proj(visual_projected),
+            self.visual_v_proj(visual_projected),
+        )
+        enriched_target = self.enriched_target_norm(target_tokens + target_context)
+        visual_context, visual_to_target_attention = _batched_cross_attention(
+            self.visual_q_proj(visual_projected),
+            self.target_k_proj(enriched_target),
+            self.target_v_proj(enriched_target),
+        )
+        delta = self.context_to_delta(visual_context)
+        gate = torch.sigmoid(self.gate_proj(torch.cat([visual_tokens, visual_context], dim=-1)))
+        gated_delta = gate * delta
+        conditioned = visual + self.alpha.to(dtype=dtype) * gated_delta
+        visual_salience = F.softmax(gated_delta.float().norm(dim=-1), dim=-1).to(gated_delta.dtype)
+        self.last_debug = {
+            "alpha": float(self.alpha.detach().float().cpu().item()),
+            "target_to_visual_attention_shape": list(target_to_visual_attention.shape),
+            "visual_to_target_attention_shape": list(visual_to_target_attention.shape),
+            "delta_norm_mean": float(gated_delta.detach().float().norm(dim=-1).mean().cpu().item()),
+            "delta_norm_max": float(gated_delta.detach().float().norm(dim=-1).max().cpu().item()),
+            "visual_salience_entropy": float(_attention_entropy(visual_salience.detach()).mean().cpu().item()),
+        }
+        output = conditioned.to(dtype=vision_hidden_states.dtype, device=vision_hidden_states.device)
+        return output.squeeze(0) if unbatched else output
+
+    def _normalize_visual(self, value: torch.Tensor) -> tuple[torch.Tensor, bool]:
+        if value.ndim == 2:
+            if int(value.shape[-1]) != self.d_v:
+                raise ValueError(f"vision hidden dim {value.shape[-1]} != d_v={self.d_v}")
+            return value.unsqueeze(0), True
+        if value.ndim == 3:
+            if int(value.shape[-1]) != self.d_v:
+                raise ValueError(f"vision hidden dim {value.shape[-1]} != d_v={self.d_v}")
+            return value, False
+        raise ValueError("vision_hidden_states must have shape [N, d_v] or [B, N, d_v]")
+
+    def _normalize_target(self, value: torch.Tensor, *, batch_size: int) -> torch.Tensor:
+        if value.ndim == 2:
+            if int(value.shape[-1]) != self.d_lm:
+                raise ValueError(f"target hidden dim {value.shape[-1]} != d_lm={self.d_lm}")
+            return value.unsqueeze(0).expand(batch_size, -1, -1)
+        if value.ndim == 3:
+            if int(value.shape[-1]) != self.d_lm:
+                raise ValueError(f"target hidden dim {value.shape[-1]} != d_lm={self.d_lm}")
+            if int(value.shape[0]) == batch_size:
+                return value
+            if int(value.shape[0]) == 1:
+                return value.expand(batch_size, -1, -1)
+            raise ValueError("target batch size does not match vision batch size")
+        raise ValueError("target_hidden_states must have shape [T, d_lm] or [B, T, d_lm]")
+
+
+class EncoderFiLMAggressiveLayerAdapter(EncoderBidirectionalLayerAdapter):
+    """Aggressive FiLM variant for target-conditioned encoder reencoding.
+
+    This keeps the bidirectional target/visual attention path but modulates the
+    existing vision hidden state multiplicatively, making target conditioning
+    harder to wash out than a small residual-only delta.
+    """
+
+    def __init__(
+        self,
+        *,
+        d_lm: int,
+        d_v: int,
+        attn_dim: int | None = None,
+        gate_init: float = 0.0,
+        scale_init: float = 0.05,
+        shift_init: float = 0.01,
+    ) -> None:
+        super().__init__(d_lm=d_lm, d_v=d_v, attn_dim=attn_dim, gate_init=gate_init)
+        self.gamma_proj = nn.Linear(self.attn_dim + self.d_v, self.d_v)
+        self.beta_proj = nn.Linear(self.attn_dim, self.d_v)
+        self.alpha_scale = nn.Parameter(torch.tensor(float(scale_init)))
+        self.alpha_shift = nn.Parameter(torch.tensor(float(shift_init)))
+
+    def forward(
+        self,
+        *,
+        target_hidden_states: torch.Tensor,
+        vision_hidden_states: torch.Tensor,
+    ) -> torch.Tensor:
+        visual, unbatched = self._normalize_visual(vision_hidden_states)
+        target = self._normalize_target(target_hidden_states, batch_size=int(visual.shape[0]))
+        dtype = self.target_norm.weight.dtype
+        device = self.target_norm.weight.device
+        target = target.to(device=device, dtype=dtype)
+        visual = visual.to(device=device, dtype=dtype)
+
+        target_tokens = self.target_proj(self.target_norm(target))
+        visual_tokens = self.visual_norm(visual)
+        visual_projected = self.visual_proj(visual_tokens)
+        target_context, target_to_visual_attention = _batched_cross_attention(
+            self.target_q_proj(target_tokens),
+            self.visual_k_proj(visual_projected),
+            self.visual_v_proj(visual_projected),
+        )
+        enriched_target = self.enriched_target_norm(target_tokens + target_context)
+        visual_context, visual_to_target_attention = _batched_cross_attention(
+            self.visual_q_proj(visual_projected),
+            self.target_k_proj(enriched_target),
+            self.target_v_proj(enriched_target),
+        )
+        delta = self.context_to_delta(visual_context)
+        gate = torch.sigmoid(self.gate_proj(torch.cat([visual_tokens, visual_context], dim=-1)))
+        gated_delta = gate * delta
+        gamma = torch.tanh(self.gamma_proj(torch.cat([visual_tokens, visual_context], dim=-1)))
+        beta = self.beta_proj(visual_context)
+        alpha = self.alpha.to(dtype=dtype)
+        alpha_scale = self.alpha_scale.to(dtype=dtype)
+        alpha_shift = self.alpha_shift.to(dtype=dtype)
+        conditioned = visual * (1.0 + alpha_scale * gamma) + alpha_shift * beta + alpha * gated_delta
+        visual_salience = F.softmax((alpha_scale * gamma).float().norm(dim=-1), dim=-1).to(gamma.dtype)
+        self.last_debug = {
+            "alpha": float(self.alpha.detach().float().cpu().item()),
+            "alpha_scale": float(self.alpha_scale.detach().float().cpu().item()),
+            "alpha_shift": float(self.alpha_shift.detach().float().cpu().item()),
+            "target_to_visual_attention_shape": list(target_to_visual_attention.shape),
+            "visual_to_target_attention_shape": list(visual_to_target_attention.shape),
+            "delta_norm_mean": float(gated_delta.detach().float().norm(dim=-1).mean().cpu().item()),
+            "delta_norm_max": float(gated_delta.detach().float().norm(dim=-1).max().cpu().item()),
+            "gamma_abs_mean": float(gamma.detach().float().abs().mean().cpu().item()),
+            "gamma_norm_mean": float(gamma.detach().float().norm(dim=-1).mean().cpu().item()),
+            "beta_norm_mean": float(beta.detach().float().norm(dim=-1).mean().cpu().item()),
+            "film_scale_mean": float((1.0 + alpha_scale * gamma).detach().float().mean().cpu().item()),
+            "film_scale_std": float((1.0 + alpha_scale * gamma).detach().float().std().cpu().item()),
+            "visual_salience_entropy": float(_attention_entropy(visual_salience.detach()).mean().cpu().item()),
+        }
+        output = conditioned.to(dtype=vision_hidden_states.dtype, device=vision_hidden_states.device)
+        return output.squeeze(0) if unbatched else output
+
+
+class TGVFEncoderBidirReencode(nn.Module):
+    """Encoder-side TGVF re-encoding with bidirectional adapters at vision layers 8/16/24."""
+
+    variant_name = "tgvf_encoder_bidir_8_16_24"
+
+    def __init__(
+        self,
+        *,
+        d_lm: int,
+        d_v: int,
+        spatial_merge_size: int = 2,
+        attn_dim: int | None = None,
+        adapter_layers: tuple[int, ...] | list[int] = (8, 16, 24),
+        layer_index_base: int = 0,
+        gate_init: float = 0.0,
+        share_weights: bool = False,
+        deepstack_compatible: bool = False,
+        adapter_type: str = "bidirectional",
+    ) -> None:
+        super().__init__()
+        if layer_index_base not in {0, 1}:
+            raise ValueError("layer_index_base must be 0 or 1")
+        self.d_lm = int(d_lm)
+        self.d_v = int(d_v)
+        self.spatial_merge_size = int(spatial_merge_size)
+        self.requested_adapter_layers = tuple(int(layer) for layer in adapter_layers)
+        self.layer_index_base = int(layer_index_base)
+        self.actual_adapter_indices = tuple(
+            layer if self.layer_index_base == 0 else layer - 1
+            for layer in self.requested_adapter_layers
+        )
+        if any(index < 0 for index in self.actual_adapter_indices):
+            raise ValueError("encoder adapter layer indices must be non-negative after index-base conversion")
+        self.gate_init = float(gate_init)
+        self.share_weights = bool(share_weights)
+        self.deepstack_compatible = bool(deepstack_compatible)
+        self.adapter_type = str(adapter_type)
+        if self.adapter_type not in {"bidirectional", "bidirectional_film_aggressive"}:
+            raise ValueError(f"Unsupported encoder adapter type: {self.adapter_type}")
+        if self.share_weights:
+            shared = self._make_adapter(d_lm=d_lm, d_v=d_v, attn_dim=attn_dim, gate_init=gate_init)
+            self.adapters = nn.ModuleDict({str(index): shared for index in self.actual_adapter_indices})
+        else:
+            self.adapters = nn.ModuleDict(
+                {
+                    str(index): self._make_adapter(
+                        d_lm=d_lm,
+                        d_v=d_v,
+                        attn_dim=attn_dim,
+                        gate_init=gate_init,
+                    )
+                    for index in self.actual_adapter_indices
+                }
+            )
+        self.last_reencode_debug: dict[str, Any] = {}
+
+    def _make_adapter(self, *, d_lm: int, d_v: int, attn_dim: int | None, gate_init: float) -> nn.Module:
+        if self.adapter_type == "bidirectional_film_aggressive":
+            return EncoderFiLMAggressiveLayerAdapter(
+                d_lm=d_lm,
+                d_v=d_v,
+                attn_dim=attn_dim,
+                gate_init=gate_init,
+                scale_init=0.05,
+                shift_init=0.01,
+            )
+        return EncoderBidirectionalLayerAdapter(
+            d_lm=d_lm,
+            d_v=d_v,
+            attn_dim=attn_dim,
+            gate_init=gate_init,
+        )
+
+    def forward(
+        self,
+        *,
+        target_hidden_states: torch.Tensor,
+        pre_merge_visual_tokens: torch.Tensor,
+        metadata: dict[str, Any] | None = None,
+    ) -> FovealCrossAttentionOutput:
+        _validate_inputs(target_hidden_states, pre_merge_visual_tokens)
+        metadata = dict(metadata or {})
+        model = metadata.get("qwen_model")
+        processor = metadata.get("processor")
+        image = metadata.get("image") or metadata.get("image_input")
+        question = metadata.get("question") or "Describe the image."
+        device = metadata.get("device") or _infer_model_device(model) or target_hidden_states.device
+        if model is None or processor is None or image is None:
+            raise ValueError(
+                "tgvf_encoder_bidir_8_16_24 requires metadata keys: qwen_model, processor, image/image_input"
+            )
+        public_metadata = _public_encoder_reencode_metadata(metadata)
+        reencoded = run_tgvf_encoder_reencode(
+            model=model,
+            processor=processor,
+            image=image,
+            question=question,
+            target_hidden_states=target_hidden_states.to(device),
+            adapters=self.adapters,
+            requested_layers=self.requested_adapter_layers,
+            actual_indices=self.actual_adapter_indices,
+            layer_index_base=self.layer_index_base,
+            device=device,
+        )
+        d = reencoded.foveated_visual_tokens
+        attention = _encoder_reencode_attention_debug(
+            d,
+            reference_tokens=pre_merge_visual_tokens,
+            device=d.device,
+        )
+        debug_metadata = _metadata(
+            self.variant_name,
+            target_hidden_states,
+            pre_merge_visual_tokens,
+            d,
+            attention,
+            public_metadata,
+            encoder_reencode=True,
+            encoder_adapter_type=self.adapter_type,
+            encoder_adapter_layers=list(self.requested_adapter_layers),
+            encoder_adapter_actual_indices=list(self.actual_adapter_indices),
+            encoder_adapter_layer_index_base=self.layer_index_base,
+            encoder_adapter_share_weights=self.share_weights,
+            encoder_adapter_gate_init=self.gate_init,
+            encoder_reencode_deepstack_compatible=self.deepstack_compatible,
+            encoder_reencode_deepstack_feature_count=len(reencoded.deepstack_visual_embeds),
+            encoder_reencode_deepstack_feature_shapes=[list(item.shape) for item in reencoded.deepstack_visual_embeds],
+            uses_deepstack_for_encoder_reencode=bool(self.deepstack_compatible and reencoded.deepstack_visual_embeds),
+            encoder_adapter_gate_values=reencoded.gate_values,
+            encoder_adapter_activation_stats=reencoded.activation_stats,
+            output_token_count_source="target_conditioned_qwen3_vision_reencode_merger",
+            final_fvt_requires_qwen_visual_merger=False,
+            final_fvt_stage="post_qwen3_reencode_merger",
+            reencoded_pre_merge_visual_shape=(
+                None if reencoded.reencoded_pre_merge_visual_tokens is None else list(reencoded.reencoded_pre_merge_visual_tokens.shape)
+            ),
+            reencoded_merged_visual_shape=(
+                None if reencoded.reencoded_merged_visual_tokens is None else list(reencoded.reencoded_merged_visual_tokens.shape)
+            ),
+            **reencoded.debug_metadata,
+        )
+        self.last_reencode_debug = debug_metadata
+        return FovealCrossAttentionOutput(
+            foveated_visual_tokens=d,
+            attention_debug={
+                "attention_weights": attention,
+                "encoder_gate_values": torch.tensor(
+                    list(reencoded.gate_values.values()),
+                    device=d.device,
+                    dtype=torch.float32,
+                ),
+            },
+            debug_metadata=debug_metadata,
+            conditioned_pre_merge_visual_tokens=reencoded.reencoded_pre_merge_visual_tokens,
+            deepstack_visual_embeds=reencoded.deepstack_visual_embeds if self.deepstack_compatible else None,
+        )
+
+
+def run_tgvf_encoder_reencode(
+    *,
+    model: Any,
+    processor: Any,
+    image: Any,
+    question: str,
+    target_hidden_states: torch.Tensor,
+    adapters: nn.ModuleDict,
+    requested_layers: tuple[int, ...] | list[int],
+    actual_indices: tuple[int, ...] | list[int],
+    layer_index_base: int = 0,
+    device: torch.device | str | None = None,
+) -> EncoderReencodeOutput:
+    from revisit_vlm.qwen3_vl_tgvf import build_direct_messages, build_qwen3_inputs
+
+    if device is None:
+        device = _infer_model_device(model) or target_hidden_states.device
+    messages = build_direct_messages(image, question)
+    inputs = build_qwen3_inputs(processor, messages)
+    model_inputs = {
+        key: value.to(device) if isinstance(value, torch.Tensor) else value
+        for key, value in dict(inputs).items()
+    }
+    pixel_values = model_inputs.get("pixel_values")
+    image_grid_thw = model_inputs.get("image_grid_thw")
+    if pixel_values is None or image_grid_thw is None:
+        raise RuntimeError("encoder reencode requires pixel_values and image_grid_thw")
+    output, hook_debug = _run_qwen3_image_features_with_encoder_adapters(
+        model=model,
+        pixel_values=pixel_values,
+        image_grid_thw=image_grid_thw,
+        target_hidden_states=target_hidden_states,
+        adapters=adapters,
+        actual_indices=tuple(int(index) for index in actual_indices),
+    )
+    v_pre, v_merge = _extract_encoder_reencode_vision_tensors(output)
+    deepstack_features = _extract_encoder_reencode_deepstack_features(output)
+    if not isinstance(v_merge, torch.Tensor):
+        raise RuntimeError("encoder reencode did not produce merged visual tokens")
+    gate_values = {
+        f"layer_{index}": float(adapters[str(index)].alpha.detach().float().cpu().item())
+        for index in actual_indices
+        if str(index) in adapters
+    }
+    activation_stats = {
+        f"layer_{index}": dict(getattr(adapters[str(index)], "last_debug", {}))
+        for index in actual_indices
+        if str(index) in adapters
+    }
+    debug_metadata = {
+        "encoder_reencode_function": "run_tgvf_encoder_reencode",
+        "requested_adapter_layers": list(requested_layers),
+        "actual_adapter_indices": list(actual_indices),
+        "layer_index_base": int(layer_index_base),
+        "image_grid_thw": None if image_grid_thw is None else image_grid_thw.detach().cpu().tolist(),
+        "hooked_layer_count": int(hook_debug.get("hooked_layer_count", 0)),
+        "vision_block_count": hook_debug.get("vision_block_count"),
+        "vision_blocks_attr": hook_debug.get("vision_blocks_attr"),
+        "vision_output_type": type(output).__name__,
+        "deepstack_feature_count": len(deepstack_features),
+        "deepstack_feature_shapes": [list(item.shape) for item in deepstack_features],
+        "vision_tower_rerun": True,
+        "second_full_llm_forward": False,
+    }
+    return EncoderReencodeOutput(
+        foveated_visual_tokens=v_merge,
+        reencoded_pre_merge_visual_tokens=v_pre,
+        reencoded_merged_visual_tokens=v_merge,
+        deepstack_visual_embeds=deepstack_features,
+        gate_values=gate_values,
+        activation_stats=activation_stats,
+        debug_metadata=debug_metadata,
+    )
+
+
+def _public_encoder_reencode_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
+    public = {}
+    for key, value in metadata.items():
+        if key in {"qwen_model", "processor", "device"}:
+            continue
+        if key in {"image", "image_input"}:
+            if isinstance(value, dict):
+                public[key] = {
+                    item_key: item_value
+                    for item_key, item_value in value.items()
+                    if item_key in {"type", "image", "max_pixels"}
+                }
+            else:
+                public[key] = str(value)
+            continue
+        public[key] = value
+    return public
+
+def _run_qwen3_image_features_with_encoder_adapters(
+    *,
+    model: Any,
+    pixel_values: torch.Tensor,
+    image_grid_thw: torch.Tensor,
+    target_hidden_states: torch.Tensor,
+    adapters: nn.ModuleDict,
+    actual_indices: tuple[int, ...],
+) -> tuple[Any, dict[str, Any]]:
+    if not hasattr(model, "get_image_features"):
+        raise AttributeError("Qwen3 model does not expose get_image_features")
+    visual = _visual_module(model)
+    blocks, blocks_attr = _resolve_vision_blocks(visual)
+    if not blocks:
+        raise RuntimeError("could not resolve Qwen3 vision blocks for encoder adapters")
+    max_index = len(blocks) - 1
+    missing = [index for index in actual_indices if index < 0 or index > max_index]
+    if missing:
+        raise IndexError(
+            f"encoder adapter indices out of range: {missing}; vision block count={len(blocks)}"
+        )
+    handles = []
+
+    def make_hook(index: int):
+        adapter = adapters[str(index)]
+
+        def hook(_module: nn.Module, _inputs: tuple[Any, ...], output: Any) -> Any:
+            hidden, rebuild = _extract_hook_hidden_tensor(output)
+            conditioned = adapter(
+                target_hidden_states=target_hidden_states,
+                vision_hidden_states=hidden,
+            )
+            return rebuild(conditioned)
+
+        return hook
+
+    try:
+        for index in actual_indices:
+            handles.append(blocks[index].register_forward_hook(make_hook(index)))
+        output = model.get_image_features(
+            pixel_values,
+            image_grid_thw=image_grid_thw,
+            output_hidden_states=True,
+            return_dict=True,
+        )
+    finally:
+        for handle in handles:
+            handle.remove()
+    return output, {
+        "hooked_layer_count": len(handles),
+        "vision_block_count": len(blocks),
+        "vision_blocks_attr": blocks_attr,
+    }
+
+
+def _resolve_vision_blocks(visual: Any) -> tuple[list[nn.Module], str]:
+    candidates = [
+        ("blocks", getattr(visual, "blocks", None)),
+        ("layers", getattr(visual, "layers", None)),
+        ("encoder.layers", getattr(getattr(visual, "encoder", None), "layers", None)),
+        ("model.layers", getattr(getattr(visual, "model", None), "layers", None)),
+    ]
+    for name, value in candidates:
+        if isinstance(value, nn.ModuleList) or isinstance(value, list) or isinstance(value, tuple):
+            modules = [module for module in value if isinstance(module, nn.Module)]
+            if modules:
+                return modules, name
+    return [], "unresolved"
+
+
+def _extract_hook_hidden_tensor(output: Any) -> tuple[torch.Tensor, Any]:
+    if isinstance(output, torch.Tensor):
+        return output, lambda hidden: hidden
+    if isinstance(output, tuple) and output and isinstance(output[0], torch.Tensor):
+        return output[0], lambda hidden: (hidden, *output[1:])
+    if isinstance(output, list) and output and isinstance(output[0], torch.Tensor):
+        return output[0], lambda hidden: [hidden, *output[1:]]
+    raise TypeError(f"unsupported vision block output type for adapter hook: {type(output).__name__}")
+
+
+def _extract_encoder_reencode_vision_tensors(output: Any) -> tuple[torch.Tensor | None, torch.Tensor | None]:
+    if output is None:
+        return None, None
+    hidden_states = getattr(output, "hidden_states", None)
+    last_hidden = getattr(output, "last_hidden_state", None)
+    pooler = getattr(output, "pooler_output", None)
+    if last_hidden is None and isinstance(output, (tuple, list)) and output:
+        first = output[0]
+        if isinstance(first, torch.Tensor):
+            last_hidden = first
+    v_pre = None
+    if hidden_states:
+        candidates = [item for item in hidden_states if isinstance(item, torch.Tensor)]
+        if candidates:
+            v_pre = candidates[0]
+    if v_pre is None:
+        v_pre = last_hidden if isinstance(last_hidden, torch.Tensor) else None
+    v_merge = _cat_tensor_sequence(pooler)
+    if v_merge is None:
+        v_merge = last_hidden if isinstance(last_hidden, torch.Tensor) else None
+    return v_pre, v_merge
+
+
+def _extract_encoder_reencode_deepstack_features(output: Any) -> list[torch.Tensor]:
+    features = getattr(output, "deepstack_features", None)
+    if features is None and isinstance(output, dict):
+        features = output.get("deepstack_features")
+    if features is None:
+        return []
+    result = []
+    for item in features:
+        tensor = _cat_tensor_sequence(item)
+        if isinstance(tensor, torch.Tensor):
+            result.append(tensor)
+    return result
+
+
+def _cat_tensor_sequence(value: Any) -> torch.Tensor | None:
+    if isinstance(value, torch.Tensor):
+        return value
+    if isinstance(value, (tuple, list)) and value and all(isinstance(item, torch.Tensor) for item in value):
+        return torch.cat(list(value), dim=0)
+    return None
+
+
+def _batched_cross_attention(
+    queries: torch.Tensor,
+    keys: torch.Tensor,
+    values: torch.Tensor,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    scale = sqrt(float(queries.shape[-1]))
+    scores = torch.matmul(queries, keys.transpose(-1, -2)) / scale
+    attention = F.softmax(scores, dim=-1)
+    attended = torch.matmul(attention, values)
+    return attended, attention
+
+
+def _encoder_reencode_attention_debug(
+    fvt: torch.Tensor,
+    *,
+    reference_tokens: torch.Tensor,
+    device: torch.device | str,
+) -> torch.Tensor:
+    token_count = int(fvt.shape[0]) if fvt.ndim >= 2 else 1
+    ref_count = int(reference_tokens.shape[0]) if reference_tokens.ndim >= 2 else token_count
+    if token_count <= 0 or ref_count <= 0:
+        return torch.empty((0, 0), device=device)
+    eye = torch.eye(token_count, ref_count, device=device, dtype=fvt.dtype)
+    return eye
 
 def finalize_tgvf_output_with_frozen_qwen_merger(
     model: Any,

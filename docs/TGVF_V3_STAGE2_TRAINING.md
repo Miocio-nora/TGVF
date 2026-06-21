@@ -89,7 +89,7 @@ Focus samples:
 - evidence_state: 0.2
 - focus_target: 1.5
 - evidence: 1.0
-- value_span: 3.0
+- value_span: 1.0
 - answer: 1.0
 
 No-focus samples:

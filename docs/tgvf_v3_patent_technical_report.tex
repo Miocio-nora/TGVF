@@ -1,0 +1,426 @@
+\documentclass[10pt,twocolumn]{ctexart}
+
+\usepackage[a4paper,margin=1.6cm,columnsep=0.7cm]{geometry}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{graphicx}
+\usepackage{amsmath}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue!50!black,
+  urlcolor=blue!50!black,
+  citecolor=blue!50!black
+}
+
+\setlist[itemize]{leftmargin=*,nosep}
+\setlist[enumerate]{leftmargin=*,nosep}
+
+\title{\bfseries Target-Guided Visual Foveation：\\
+一种面向视觉语言模型的目标引导式视觉重看与证据注入方法\\
+\large 技术披露报告（专利交底草案）}
+\author{TGVF Project}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+本文档披露一种用于多模态视觉语言模型的目标引导式视觉重看方法，称为 Target-Guided Visual Foveation（TGVF）。该方法使模型在生成过程中先基于图像和问题进行思考，显式产生一个视觉聚焦描述，再由系统捕获该聚焦描述对应的语言隐藏状态，用其调制或生成新的目标相关视觉证据 token，并将该视觉证据作为新的工具观测或视觉输入追加到上下文中，随后模型继续推理并回答。与裁剪、缩放、固定提示词、黑盒可学习控制 token 不同，本方法的控制信号是自然语言可读、可解析、可监督的视觉焦点描述；视觉证据来自原始图像视觉特征或其目标条件重编码，而不是纯语言提示。当前实现已经形成“思考 $\rightarrow$ refocus $\rightarrow$ TGVF 视觉证据注入 $\rightarrow$ 证据读出/推理 $\rightarrow$ 回答”的基本闭环，并在 Stage1/Stage2 训练、工具式推理协议和消融实验中验证了正确 TGVF 视觉证据相对 no-D、random-D、wrong-D 的明显优势。
+\end{abstract}
+
+\section{技术领域}
+
+本技术属于多模态人工智能、视觉语言模型、主动视觉感知、目标条件视觉编码、视觉证据重读、工具增强推理和视觉 token 生成领域。更具体地，本技术涉及一种在视觉语言模型推理过程中由模型自身产生视觉聚焦描述，并基于该描述对图像视觉特征进行目标条件提取、重编码或视觉 token 生成，再将所得目标相关视觉证据追加给语言模型继续推理的方法。
+
+\section{背景与问题}
+
+现有视觉语言模型通常在输入阶段一次性编码整张图像，并在后续语言推理中反复使用固定的视觉 token。该范式存在以下不足：
+
+\begin{itemize}
+  \item 图像中小目标、局部文字、细纹理、局部关系或特定对象部件可能在初始视觉编码或视觉 token 合并过程中丢失。
+  \item 模型在推理中即使意识到缺少局部视觉证据，也缺乏稳定机制主动表达“需要重新看哪里”。
+  \item 裁剪和缩放方法通常依赖外部框、启发式区域、OCR/检测器或任务特定策略，不一定与模型当前推理状态一致。
+  \item 传统可学习视觉提示或 VPT 类方法通常使用黑盒 control token，控制语义不可读，难以审计、过滤和监督。
+  \item 若简单追加自然语言提示，模型可能依赖提示格式或语言先验，而不是新增视觉证据本身。
+\end{itemize}
+
+因此，需要一种能够在模型推理过程中产生可读、可解析、样本相关的视觉重看目标，并将该目标用于生成目标相关视觉证据的机制。
+
+\section{核心技术方案}
+
+TGVF 的核心过程如下：
+
+\begin{enumerate}
+  \item 输入图像与问题，视觉语言模型进行初始思考。
+  \item 当模型判断需要局部视觉证据时，输出一个视觉聚焦描述，记为 focus text。
+  \item 系统解析该 focus text 的边界，并捕获其内部 token 的隐藏状态 $H_q$，不包含边界 token。
+  \item 从视觉编码器获得原图视觉特征，例如预合并视觉 token $V_{\mathrm{pre}}$ 和合并后视觉 token $V_{\mathrm{merge}}$。
+  \item 目标条件视觉模块根据 $H_q$ 与视觉特征生成目标相关视觉证据 token $D$。
+  \item 系统将 $D$ 作为新的 TGVF 视觉输入追加到上下文中，不修改已有图像 token 或已有 KV cache。
+  \item 模型基于原问题、已生成思考、focus text 和新增视觉证据继续推理并回答。
+\end{enumerate}
+
+该过程可表示为：
+
+\[
+\mathrm{image}, q \rightarrow \mathrm{think} \rightarrow H_q
+\]
+\[
+H_q, V_{\mathrm{pre}} \rightarrow D
+\]
+\[
+\mathrm{context} + D \rightarrow \mathrm{evidence/readout} \rightarrow \mathrm{answer}
+\]
+
+\section{与已有方案的差异}
+
+\subsection{不同于裁剪/缩放}
+
+本方法不以裁剪图像区域作为核心身份。TGVF 的关键在于将模型产生的 focus text 隐藏状态用于条件化视觉特征处理，并生成新的视觉证据 token。即使未来可结合 crop 作为对照或扩展，核心方法仍是目标条件视觉证据 token 生成与追加。
+
+\subsection{不同于固定目标提示}
+
+本方法不使用固定的通用目标，例如“relevant visual evidence needed to answer the question”。focus text 必须由模型针对当前样本生成，且需要视觉可定位、语义可读、不泄露答案。
+
+\subsection{不同于黑盒 VPT 控制 token}
+
+VPT 类方法通常通过可学习 token 影响模型行为，其控制语义不可解释。TGVF 使用自然语言 focus text 作为显式控制信号，便于数据过滤、错误分析、同图多目标监督和专门的协议评估。
+
+\subsection{不同于长链式思维监督}
+
+本方法不依赖长篇 CoT 作为主要监督。当前较稳定的协议仅保留短思考或工具式视觉重看动作，重点监督 focus 边界、视觉证据读出和最终答案。
+
+\section{协议设计}
+
+\subsection{早期 legacy v3 标签协议}
+
+早期 TGVF-v3 使用显式标签：
+
+\begin{verbatim}
+<EVIDENCE_STATE>need_local_visual_evidence</EVIDENCE_STATE>
+<FOCUS>target</FOCUS>
+<TGVF>[D]</TGVF>
+<EVIDENCE>evidence</EVIDENCE>
+<ANSWER>answer</ANSWER>
+\end{verbatim}
+
+该协议结构清晰，但较重，且与 Qwen3-VL-Thinking 的原生交互风格不完全一致。
+
+\subsection{Protocol C 工具观测协议}
+
+当前重点版本采用 Protocol C tool-observation 风格：
+
+\begin{verbatim}
+Assistant:
+<think>
+... short reasoning ...
+</think>
+<|focus_start|>visual focus descriptor<|focus_end|><|im_end|>
+
+Tool:
+<|tgvf_start|>
+[D visual embeddings]
+<|tgvf_end|><|im_end|>
+
+Assistant:
+<think>
+... focused evidence readout ...
+</think>
+answer
+\end{verbatim}
+
+其中：
+
+\begin{itemize}
+  \item \verb|<|focus_start|>| 与 \verb|<|focus_end|>| 标记模型请求视觉重看的目标描述。
+  \item focus text 是视觉编码器面对的描述，不是任务指令，也不是答案。
+  \item \verb|<|tgvf_start|>| 与 \verb|<|tgvf_end|>| 包裹系统插入的 TGVF 视觉证据。
+  \item 新统一版训练要求 focus action 后有 \verb|<|im_end|>|，使 assistant action 与 tool observation 边界一致。
+\end{itemize}
+
+\section{数据构建}
+
+\subsection{V3 教师数据}
+
+V3 数据以 focus/no-focus item 为基本单元，字段包括问题、target、evidence description、answer、need focus、target style、target cues、evidence type 等。该格式支持 Stage1 projector/foveal module 训练和 Stage2 轨迹训练。
+
+\subsection{V4 教师数据}
+
+V4 数据改为 trace 格式，直接面向 SFT 渲染：
+
+\begin{itemize}
+  \item \textbf{single\_refocus}: 一次视觉重看。
+  \item \textbf{multi\_refocus}: 两次视觉重看。
+  \item \textbf{no\_refocus\_continue}: 图像证据足够，但仍需推理。
+  \item \textbf{no\_refocus\_answer}: 可直接回答。
+\end{itemize}
+
+V4 的关键变化是 focus text 不再是简单 target noun phrase，而是 encoder-facing visual descriptor，例如“close-up surface texture, folds, and sheen of the glove”。该描述强调视觉方面、区域、锚点和上下文，而非任务动词或答案。
+
+\subsection{多样性与过滤}
+
+数据过滤重点包括：
+
+\begin{itemize}
+  \item focus text 不得泄露答案、选项文本、数字、日期、颜色、材质或最终属性。
+  \item 避免“the object”“something”等泛化目标。
+  \item 优先覆盖颜色、纹理、材质、图案、形状边界、对象部件、空间关系、计数、状态/接触等视觉细节类别。
+  \item OCR、文本、数字类样本被限制，避免数据过度偏向文本读取。
+  \item 引入多选题比例，提高与 benchmark 的匹配度。
+\end{itemize}
+
+\section{模型结构}
+
+\subsection{输入与目标隐藏状态}
+
+模型首先生成 focus text。系统捕获 focus text 内部 token 的隐藏状态：
+
+\[
+H_q = \{h_i \mid i \in \mathrm{inside}(focus\_start, focus\_end)\}
+\]
+
+边界 token 不作为查询。该设计避免模型将动作边界本身当成视觉目标。
+
+\subsection{视觉特征来源}
+
+视觉特征可来自 Qwen3-VL 视觉编码器：
+
+\begin{itemize}
+  \item $V_{\mathrm{pre}}$: 预合并视觉 token，保留较细粒度视觉信息。
+  \item $V_{\mathrm{merge}}$: Qwen 合并后的视觉 token，维度与 LLM hidden dim 对齐。
+\end{itemize}
+
+\subsection{Bidirectional TGVF 模块}
+
+当前主要使用 v2 bidirectional variant。该模块在目标隐藏状态和视觉 token 之间进行双向交互，输出与原图视觉 token 数量对应的 TGVF token $D$。默认输出数量与原图合并视觉 token 一致，使其可以继承或重新构造与原图一致的视觉位置结构。
+
+\subsection{位置与追加}
+
+TGVF token 采用 bracketed visual append 方式追加：
+
+\begin{verbatim}
+<|tgvf_start|>
+[D visual embeddings]
+<|tgvf_end|>
+\end{verbatim}
+
+当前实现使用真实 Qwen3 视觉 special token 包裹和 native source grid 位置策略，尽量保持视觉空间位置结构。追加时不修改旧图像 token，不重写旧 KV cache。
+
+\section{训练方法}
+
+\subsection{Stage1：TGVF 模块预训练}
+
+Stage1 训练目标是使 $D$ 可读且目标相关。冻结 Qwen3-VL 视觉编码器、LLM 和原视觉路径，仅训练 TGVF refiner/projector 及相关校准层或协议 token rows。
+
+训练输入为：
+
+\begin{verbatim}
+image + question
+<think>...</think>
+<|focus_start|>focus text<|focus_end|><|im_end|>
+tool TGVF visual tokens
+<think>focused evidence</think>
+\end{verbatim}
+
+主要损失：
+
+\begin{itemize}
+  \item evidence/readout 生成损失。
+  \item visual token manifold/calibration loss。
+  \item same-image matrix CE，用于同图多目标区分。
+\end{itemize}
+
+弱严格 attention mask 用于防止 TGVF 之后的 evidence/answer 位置直接读取原始图像 token key，从而迫使 evidence 更依赖新增视觉证据 $D$。
+
+\subsection{Stage2：轨迹与动作训练}
+
+Stage2 训练模型学会：
+
+\begin{itemize}
+  \item 何时需要 refocus。
+  \item 如何生成视觉 focus descriptor。
+  \item 如何在 TGVF 工具观测后读出证据。
+  \item 如何最终回答。
+\end{itemize}
+
+默认训练：
+
+\begin{itemize}
+  \item 训练 LLM LoRA。
+  \item 训练 TGVF 模块。
+  \item 保持 Qwen3 base LLM 和视觉编码器冻结。
+  \item 不启用 Stage2 matrix CE。
+  \item focus/no-focus 按约 0.8/0.2 采样。
+\end{itemize}
+
+\section{推理控制器}
+
+推理控制器执行以下逻辑：
+
+\begin{enumerate}
+  \item 模型生成 assistant action。
+  \item 若输出完整 focus span，则触发 TGVF。
+  \item 对新统一版 Protocol C，等待 \verb|<|focus_end|><|im_end|>| 后再追加 tool observation。
+  \item 捕获 $H_q$，生成 $D$。
+  \item 追加 TGVF tool observation。
+  \item 继续解码，允许模型继续思考、再次 refocus 或最终回答。
+\end{enumerate}
+
+当前实现支持多次 focus controller，但训练数据中 multi-refocus 比例仍较小，后续可继续增强。
+
+\section{实验结果}
+
+\subsection{Stage1 结果}
+
+新统一版 Stage1 使用 V4 focus 数据，Protocol C tool-observation，focus action 后带 \verb|<|im_end|>|。结果见表~\ref{tab:stage1}。
+
+\begin{table}[h]
+\centering
+\small
+\caption{Stage1 focus-imend 评估结果}
+\label{tab:stage1}
+\begin{tabular}{lr}
+\toprule
+指标 & 数值 \\
+\midrule
+mean NLL correct D & 1.655 \\
+correct D beats target-only & 100\% \\
+correct D beats random D & 100\% \\
+correct D beats wrong same-image D & 94.5\% \\
+correct D beats wrong diff-image D & 96.875\% \\
+retrieval top1 & 74.5\% \\
+retrieval top2 & 94.0\% \\
+MRR & 86.1\% \\
+mean diagonal gap & 0.098 \\
+D/V\_merge norm ratio & 5.35 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Stage2 训练结果}
+
+Stage2 从 focus-imend Stage1 checkpoint 初始化，训练 1200 steps。结果见表~\ref{tab:stage2-train}。
+
+\begin{table}[h]
+\centering
+\small
+\caption{Stage2 训练与验证}
+\label{tab:stage2-train}
+\begin{tabular}{lrr}
+\toprule
+指标 & Train & Val \\
+\midrule
+loss & 0.7197 & 0.7843 \\
+focus start acc & 1.000 & 1.000 \\
+focus end acc & 0.9219 & 0.8649 \\
+boundary mean & 0.9609 & 0.9324 \\
+focus ratio & 0.800 & 0.867 \\
+no-focus ratio & 0.200 & 0.133 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Protocol Eval}
+
+关键 protocol eval 结果见表~\ref{tab:controls}。在 teacher-forced 和 force end-to-end 场景下，correct D 大幅优于 no-D、random-D 和 wrong-D。
+
+\begin{table*}[t]
+\centering
+\small
+\caption{TGVF D 控制实验}
+\label{tab:controls}
+\begin{tabular}{lrrrr}
+\toprule
+设置 & correct D & no D & random D & wrong same-image D \\
+\midrule
+teacher-forced post-TGVF acc & 89.84\% & 0.00\% & 53.91\% & 54.69\% \\
+force end-to-end acc & 87.50\% & 0.00\% & 51.56\% & 50.00\% \\
+free triggered acc & 72.73\% & 0.00\% & 48.48\% & 48.48\% \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+free router 结果如表~\ref{tab:free} 所示。当前 free 模式已能自发触发 refocus，但触发率与触发质量仍是主要瓶颈。
+
+\begin{table}[h]
+\centering
+\small
+\caption{Free router 结果}
+\label{tab:free}
+\begin{tabular}{lr}
+\toprule
+指标 & 数值 \\
+\midrule
+overall accuracy & 67.78\% \\
+free trigger rate & 42.53\% \\
+focus valid rate & 42.53\% \\
+focus miss rate & 36.54\% \\
+no-focus false trigger rate & 0.00\% \\
+generic target rate & 0.00\% \\
+direct/miss accuracy & 85.65\% \\
+triggered correct-D accuracy & 72.73\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{技术效果}
+
+实验显示：
+
+\begin{itemize}
+  \item 正确 TGVF 视觉证据显著优于无视觉证据、随机视觉证据和错误视觉证据。
+  \item 同图 wrong-D 控制仍明显弱于 correct-D，说明 $D$ 并非仅为图像通用 soft prompt。
+  \item Stage1 readout 与 query sensitivity 表明 TGVF token 具有目标相关性。
+  \item Stage2 学会了稳定的 focus 边界生成，force focus target 有 100\% 合法率。
+  \item 完整推理链路中未使用第二次完整 LLM prefix forward，保留了 KV cache 续写原则。
+\end{itemize}
+
+\section{可保护的技术要点}
+
+以下内容可作为专利权利要求或技术特征候选：
+
+\begin{enumerate}
+  \item 一种由视觉语言模型在推理过程中生成自然语言视觉 focus descriptor，并用该 descriptor 的隐藏状态条件化视觉证据生成的方法。
+  \item 一种从 focus descriptor 内部 token 提取 $H_q$，排除边界 token，并将其与视觉预合并 token $V_{\mathrm{pre}}$ 交互生成目标相关视觉证据 token $D$ 的方法。
+  \item 一种不修改旧图像 token 或旧 KV cache，而将目标相关视觉 token 作为 tool observation 或 bracketed visual block 追加给模型继续推理的方法。
+  \item 一种利用 weak-strict attention mask 训练 evidence/readout，使 TGVF 后续位置不能直接读取原图视觉 key，而仍可读取问题、focus 和文本上下文的方法。
+  \item 一种同图多目标 matrix CE 或 query sensitivity 训练方法，使正确 target 与正确 visual evidence 对齐，并与同图错误 evidence 区分。
+  \item 一种工具式 Protocol C，其中 focus action 由 assistant 输出，TGVF 视觉证据由 tool turn 插入，assistant 再继续证据读出和回答。
+  \item 一种支持多次 refocus 的控制器，可在一次 TGVF 后继续解析新的 focus action 并重复视觉证据生成。
+  \item 一种面向 TGVF 的教师数据 trace 生成方法，将 reasoning intent 留在 think 中，将 encoder-facing visual descriptor 放入 focus span 中，并过滤答案泄露。
+\end{enumerate}
+
+\section{可选实施方式}
+
+本技术可包括以下变体：
+
+\begin{itemize}
+  \item 使用 post-encoder bidirectional refiner 生成 $D$。
+  \item 使用 encoder-side adapter 在视觉编码器特定层进行目标条件重编码。
+  \item 使用单次或多次 refocus。
+  \item 使用 Protocol C tool observation、legacy v3 tags、或其他工具调用格式。
+  \item 使用原生 3D visual position、继承原图 visual position 或其他位置编码策略。
+  \item 对图片、文档、图表、OCR、自然图像和视频帧序列进行 TGVF。
+\end{itemize}
+
+\section{当前限制与后续改进}
+
+当前系统已经证明 D 质量和 force 模式闭环有效，但仍存在以下限制：
+
+\begin{itemize}
+  \item free router 的触发率和触发决策仍需提升。
+  \item multi-refocus 数据比例较小，多次工具使用稳定性仍需增强。
+  \item no-focus direct 在某些版本中会受到训练约束影响，需要更好的路由/直接回答平衡。
+  \item benchmark 正式结果需要进一步接入标准评测框架，例如 VLMEvalKit。
+  \item encoder-side reencode 版本仍需更充分验证。
+\end{itemize}
+
+\section{结论}
+
+TGVF 提供了一种区别于裁剪、固定提示和黑盒视觉提示的主动视觉感知机制。模型可在推理中显式表达需要重看的视觉证据，系统利用该 focus descriptor 的隐藏状态生成目标相关视觉 token，并通过工具式视觉观测追加给模型继续推理。当前实验表明，正确 TGVF 视觉证据在 teacher-forced、force end-to-end 和 free triggered 场景下均显著优于 no-D、random-D 和 wrong-D 控制，说明该方法具备可验证的目标相关视觉证据增益。
+
+\end{document}

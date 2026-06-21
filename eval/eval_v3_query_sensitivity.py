@@ -74,6 +74,8 @@ def main() -> None:
             cache_dir=args.fvt_cache_dir,
             checkpoint_path=args.tgvf_checkpoint,
             variant=args.variant,
+            protocol=args.tgvf_protocol,
+            focus_action_im_end=args.focus_action_im_end,
             use_cache=args.use_fvt_cache,
         )
         for sample in progress_iter(
@@ -126,6 +128,8 @@ def main() -> None:
                         device=device,
                         mask_original_image_after_tgvf=args.mask_original_image_after_tgvf,
                         position_mode=args.fvt_position_mode,
+                        protocol=args.tgvf_protocol,
+                        focus_action_im_end=args.focus_action_im_end,
                     )
                     row.append(float(nll["avg_nll"]))
                 nll_matrix.append(row)

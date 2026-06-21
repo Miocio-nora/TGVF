@@ -17,6 +17,9 @@ EVAL_JSONL="${EVAL_JSONL:-data/tgvf_v3_teacher_50k/val_2k.jsonl}"
 MODEL_ID="${MODEL_ID:-Qwen/Qwen3-VL-8B-Thinking}"
 PROCESSOR_ID="${PROCESSOR_ID:-}"
 VARIANT="${VARIANT:-tgvf_v2_bidirectional}"
+ENCODER_ADAPTER_TYPE="${ENCODER_ADAPTER_TYPE:-bidirectional}"
+TGVF_PROTOCOL="${TGVF_PROTOCOL:-legacy_v3_tags}"
+FOCUS_ACTION_IM_END="${FOCUS_ACTION_IM_END:-0}"
 DEVICE="${DEVICE:-cuda:0}"
 DEVICE_MAP="${DEVICE_MAP:-cuda:0}"
 DTYPE="${DTYPE:-bfloat16}"
@@ -25,6 +28,7 @@ NUM_FVT="${NUM_FVT:-none}"
 CAPTURE_LAYER="${CAPTURE_LAYER:--1}"
 MAX_IMAGE_RESOLUTION="${MAX_IMAGE_RESOLUTION:-512}"
 FVT_POSITION_MODE="${FVT_POSITION_MODE:-native_source_grid}"
+ENCODER_REENCODE_DEEPSTACK_COMPATIBLE="${ENCODER_REENCODE_DEEPSTACK_COMPATIBLE:-0}"
 SEED="${SEED:-20260525}"
 RUN_ID="${RUN_ID:-$(date +%Y%m%d_%H%M%S)}"
 CHECKPOINT_NAME="$(basename "${CHECKPOINT}")"
@@ -68,6 +72,8 @@ common_args=(
   --model-id "${MODEL_ID}"
   --tgvf-checkpoint "${CHECKPOINT}"
   --variant "${VARIANT}"
+  --encoder-adapter-type "${ENCODER_ADAPTER_TYPE}"
+  --tgvf-protocol "${TGVF_PROTOCOL}"
   --eval-jsonl "${EVAL_JSONL}"
   --device "${DEVICE}"
   --device-map "${DEVICE_MAP}"
@@ -79,6 +85,12 @@ common_args=(
   --fvt-position-mode "${FVT_POSITION_MODE}"
   --seed "${SEED}"
 )
+if [[ "${FOCUS_ACTION_IM_END}" == "1" || "${FOCUS_ACTION_IM_END}" == "true" || "${FOCUS_ACTION_IM_END}" == "True" ]]; then
+  common_args+=(--focus-action-im-end)
+fi
+if [[ "${ENCODER_REENCODE_DEEPSTACK_COMPATIBLE}" == "1" || "${ENCODER_REENCODE_DEEPSTACK_COMPATIBLE}" == "true" || "${ENCODER_REENCODE_DEEPSTACK_COMPATIBLE}" == "True" ]]; then
+  common_args+=(--encoder-reencode-deepstack-compatible)
+fi
 
 if [[ -n "${PROCESSOR_ID}" ]]; then
   common_args+=(--processor-id "${PROCESSOR_ID}")
@@ -99,6 +111,9 @@ eval_jsonl=${EVAL_JSONL}
 model_id=${MODEL_ID}
 processor_id=${PROCESSOR_ID}
 variant=${VARIANT}
+encoder_adapter_type=${ENCODER_ADAPTER_TYPE}
+tgvf_protocol=${TGVF_PROTOCOL}
+focus_action_im_end=${FOCUS_ACTION_IM_END}
 device=${DEVICE}
 device_map=${DEVICE_MAP}
 dtype=${DTYPE}
@@ -107,6 +122,7 @@ num_fvt=${NUM_FVT}
 capture_layer=${CAPTURE_LAYER}
 max_image_resolution=${MAX_IMAGE_RESOLUTION}
 fvt_position_mode=${FVT_POSITION_MODE}
+encoder_reencode_deepstack_compatible=${ENCODER_REENCODE_DEEPSTACK_COMPATIBLE}
 seed=${SEED}
 readout_max_samples=${READOUT_MAX_SAMPLES}
 distribution_max_samples=${DISTRIBUTION_MAX_SAMPLES}

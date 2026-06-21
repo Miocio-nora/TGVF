@@ -54,6 +54,22 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--spatial-merge-size", default="auto")
     parser.add_argument("--benchmark-root", default=DEFAULT_BENCHMARK_ROOT)
     parser.add_argument("--tools-root", default=DEFAULT_TOOLS_ROOT)
+    parser.add_argument(
+        "--scoring-backend",
+        choices=["project", "official", "auto"],
+        default="project",
+        help="Use project fallback scoring, require official scoring, or use official when wired.",
+    )
+    parser.add_argument(
+        "--official-llm-mode",
+        choices=["disabled", "optional", "required"],
+        default="disabled",
+        help=(
+            "Controls official scorers that can call external LLM judges/extractors. "
+            "disabled never calls them; optional uses them only when credentials exist; "
+            "required fails if credentials or calls are unavailable."
+        ),
+    )
     parser.add_argument("--output-root", default=DEFAULT_OUTPUT_ROOT)
     parser.add_argument("--run-id", default=None)
     parser.add_argument("--overwrite", action="store_true")
@@ -171,6 +187,8 @@ def run_benchmark(args: argparse.Namespace) -> dict[str, Any]:
             "tier": args.tier,
             "seed": args.seed,
             "official_tools": True,
+            "scoring_backend": args.scoring_backend,
+            "official_llm_mode": args.official_llm_mode,
             "resume": not args.no_resume,
         },
     }
@@ -180,6 +198,8 @@ def run_benchmark(args: argparse.Namespace) -> dict[str, Any]:
         args.benchmark,
         benchmark_root=args.benchmark_root,
         tools_root=args.tools_root,
+        scoring_backend=args.scoring_backend,
+        official_llm_mode=args.official_llm_mode,
     )
     samples = adapter.sample(tier=args.tier, limit=args.limit, seed=args.seed)
     writer = ResultWriter(paths, benchmark=args.benchmark, method=args.method)
@@ -225,6 +245,9 @@ def run_benchmark(args: argparse.Namespace) -> dict[str, Any]:
             score = adapter.score_predictions(
                 [
                     {
+                        "sample_id": sample.sample_id,
+                        "question": sample.question,
+                        "raw_output": result.raw_output,
                         "parsed_answer": parsed,
                         "gold_answer": sample.gold_answer,
                         "choices": sample.choices,
@@ -265,6 +288,8 @@ def run_benchmark(args: argparse.Namespace) -> dict[str, Any]:
             "official_tool_path": adapter.tool_info.official_tool_path,
             "scorer_name": adapter.tool_info.scorer_name,
             "prompt_source": adapter.tool_info.prompt_source,
+            "official_compatible": adapter.tool_info.official_compatible,
+            "llm_judge_required": adapter.tool_info.llm_judge_required,
             "error": result.error,
         }
         writer.append_row(row)

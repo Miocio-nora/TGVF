@@ -22,6 +22,7 @@ from revisit_vlm.qwen3_vl_tgvf import (
     NEED_LOCAL_EVIDENCE,
     TGVF_END,
     TGVF_START,
+    TGVFProtocol,
     Qwen3FocusCapture,
     _bracketed_visual_token_ids,
     _compute_qwen3_position_ids_for_sequence,
@@ -31,7 +32,13 @@ from revisit_vlm.qwen3_vl_tgvf import (
     build_qwen3_inputs,
     capture_focus_single_pass_qwen3,
     extract_qwen3_source_visual_geometry,
+    focus_target_char_span,
     llm_hidden_dim,
+    normalize_tgvf_protocol,
+    protocol_focus_tokens,
+    render_focus_action_text,
+    render_stage1_readout_text,
+    render_tgvf_prefix_suffix,
     tap_qwen3_vision_features,
 )
 from revisit_vlm.tgvf_foveal import finalize_tgvf_output_with_frozen_qwen_merger
@@ -195,7 +202,14 @@ def format_question_with_choices(question: str, choices: Any | None) -> str:
     if isinstance(choices, dict):
         choice_lines = [f"{key}. {value}" for key, value in choices.items()]
     elif isinstance(choices, list):
-        choice_lines = [str(choice) for choice in choices]
+        choice_lines = []
+        for index, choice in enumerate(choices):
+            if isinstance(choice, dict):
+                label = str(choice.get("label") or chr(ord("A") + index)).strip()
+                text = str(choice.get("text") or choice.get("value") or "").strip()
+                choice_lines.append(f"{label}. {text}" if text else label)
+            else:
+                choice_lines.append(str(choice))
     else:
         choice_lines = [str(choices)]
     return question.rstrip() + "\nChoices:\n" + "\n".join(choice_lines)
@@ -247,6 +261,8 @@ def collect_v3_stage1_features(
     max_image_resolution: int | None = 512,
     capture_mode: Literal["teacher_forced", "decode_loop"] = "teacher_forced",
     vision_cache: dict[str, tuple[Any, torch.Tensor, torch.Tensor]] | None = None,
+    protocol: TGVFProtocol = "legacy_v3_tags",
+    focus_action_im_end: bool = False,
 ) -> TGVFv3Stage1Features:
     image_input = _image_input(sample.image, max_image_resolution=max_image_resolution)
     if capture_mode == "teacher_forced":
@@ -258,6 +274,8 @@ def collect_v3_stage1_features(
             target=sample.target,
             device=device,
             hidden_state_index=hidden_state_index,
+            protocol=protocol,
+            append_im_end=focus_action_im_end,
         )
     elif capture_mode == "decode_loop":
         capture = capture_focus_single_pass_qwen3(
@@ -270,6 +288,7 @@ def collect_v3_stage1_features(
             device=device,
             hidden_state_index=hidden_state_index,
             eos_token_id=getattr(processor.tokenizer, "eos_token_id", None),
+            protocol=protocol,
         )
     else:
         raise ValueError(f"Unsupported capture_mode: {capture_mode}")
@@ -314,6 +333,8 @@ def capture_v3_stage1_focus_teacher_forced(
     target: str,
     device: torch.device | str | None = None,
     hidden_state_index: int = -1,
+    protocol: TGVFProtocol = "legacy_v3_tags",
+    append_im_end: bool = False,
 ) -> Qwen3FocusCapture:
     """Teacher-forced Stage1 H_q extraction.
 
@@ -321,8 +342,9 @@ def capture_v3_stage1_focus_teacher_forced(
     Stage1 already knows the teacher target, so a single frozen Qwen forward is
     enough to obtain contextual target hidden states.
     """
+    protocol = normalize_tgvf_protocol(protocol)
     tokenizer = processor.tokenizer
-    messages = build_focus_force_messages(image, question)
+    messages = build_focus_force_messages(image, question, protocol=protocol)
     inputs = build_qwen3_inputs(processor, messages)
     if device is None:
         device = _infer_model_device(model)
@@ -330,9 +352,11 @@ def capture_v3_stage1_focus_teacher_forced(
     base_input_ids = model_inputs["input_ids"]
     base_attention = model_inputs.get("attention_mask")
     source_visual_geometry = extract_qwen3_source_visual_geometry(model, model_inputs)
-    forced_text = (
-        f"{EVIDENCE_STATE_START}{NEED_LOCAL_EVIDENCE}{EVIDENCE_STATE_END}\n"
-        f"{FOCUS_START} {target.strip()} {FOCUS_END}"
+    forced_text = render_focus_action_text(
+        target,
+        protocol=protocol,
+        pad_target_spaces=True,
+        append_im_end=append_im_end,
     )
     forced_ids = _encode_text(tokenizer, forced_text, base_input_ids.device).view(1, -1)
     full_input_ids = torch.cat([base_input_ids, forced_ids], dim=-1)
@@ -362,7 +386,11 @@ def capture_v3_stage1_focus_teacher_forced(
         return_dict=True,
     )
     generated_hidden = outputs.hidden_states[hidden_state_index][0, -int(forced_ids.shape[-1]) :]
-    span = _find_focus_target_span_in_forced_ids(tokenizer, forced_ids.view(-1).tolist())
+    span = _find_focus_target_span_in_forced_ids(
+        tokenizer,
+        forced_ids.view(-1).tolist(),
+        protocol=protocol,
+    )
     if span is None:
         target_start = target_end = 0
         target_text = ""
@@ -414,6 +442,8 @@ def prepare_v3_stage1_readout_inputs(
     device: torch.device | str | None = None,
     mask_original_image_after_tgvf: bool = True,
     position_mode: PositionMode = "native_source_grid",
+    protocol: TGVFProtocol = "legacy_v3_tags",
+    focus_action_im_end: bool = False,
 ) -> dict[str, Any]:
     if not capture.capture_found:
         raise ValueError("capture must contain a valid focus span")
@@ -433,13 +463,24 @@ def prepare_v3_stage1_readout_inputs(
         raise ValueError(f"Unsupported position_mode: {position_mode}")
 
     tokenizer = getattr(tokenizer_or_processor, "tokenizer", tokenizer_or_processor)
+    protocol = normalize_tgvf_protocol(protocol)
     if device is None:
         device = _infer_model_device(model) or foveated_visual_tokens.device
     base_input_ids = capture.input_ids.to(device)
     base_len = int(base_input_ids.shape[-1])
     d = foveated_visual_tokens.to(device)
-    prefix = f"\n{TGVF_START}\n"
-    suffix = f"\n{TGVF_END}\n{EVIDENCE_START}"
+    tgvf_prefix, tgvf_suffix = render_tgvf_prefix_suffix(
+        protocol=protocol,
+        include_leading_im_end=not (
+            protocol == "protocol_c_tool_observation" and focus_action_im_end
+        ),
+    )
+    readout_prefix, readout_text = render_stage1_readout_text(
+        evidence_description=evidence_description,
+        protocol=protocol,
+    )
+    prefix = tgvf_prefix
+    suffix = f"{tgvf_suffix}{readout_prefix}"
     tgvf_ids = _bracketed_visual_token_ids(
         tokenizer_or_processor,
         model,
@@ -448,7 +489,7 @@ def prepare_v3_stage1_readout_inputs(
         suffix=suffix,
         device=device,
     ).view(1, -1)
-    evidence_ids = _encode_text(tokenizer, f"{evidence_description}{EVIDENCE_END}", device).view(1, -1)
+    evidence_ids = _encode_text(tokenizer, readout_text, device).view(1, -1)
     input_ids = torch.cat([base_input_ids, tgvf_ids, evidence_ids], dim=-1)
 
     prefix_ids = _encode_text(tokenizer, prefix, device)
@@ -458,7 +499,7 @@ def prepare_v3_stage1_readout_inputs(
     fvt_token_end = base_len + local_fvt_end
     evidence_start = base_len + int(tgvf_ids.shape[-1])
 
-    base_embeds = model.get_input_embeddings()(input_ids).detach()
+    base_embeds = model.get_input_embeddings()(input_ids)
     embeds = torch.cat(
         [
             base_embeds[:, :fvt_token_start],
@@ -556,6 +597,7 @@ def prepare_v3_stage1_readout_inputs(
             "pre_tgvf_queries_keep_original_image_keys"
         ],
         "mask_summary": mask_summary,
+        "tgvf_protocol": protocol,
     }
 
 
@@ -565,6 +607,7 @@ def build_weak_strict_attention_mask(
     original_image_token_indices: torch.Tensor,
     block_query_start: int,
     dtype: torch.dtype,
+    block_query_end: int | None = None,
 ) -> torch.Tensor:
     if attention_mask_2d.ndim != 2 or attention_mask_2d.shape[0] != 1:
         raise ValueError("weak-strict mask currently supports batch size 1")
@@ -577,10 +620,11 @@ def build_weak_strict_attention_mask(
     key_padding = attention_mask_2d[:, None, None, :] == 0
     mask = mask.masked_fill(key_padding, min_value)
     if int(original_image_token_indices.numel()) > 0:
-        query_indices = torch.nonzero(
-            torch.arange(seq_len, device=device) >= int(block_query_start),
-            as_tuple=False,
-        ).view(-1)
+        query_range = torch.arange(seq_len, device=device)
+        query_mask = query_range >= int(block_query_start)
+        if block_query_end is not None:
+            query_mask = query_mask & (query_range < int(block_query_end))
+        query_indices = torch.nonzero(query_mask, as_tuple=False).view(-1)
         if int(query_indices.numel()) > 0:
             mask[:, :, query_indices[:, None], original_image_token_indices[None, :]] = min_value
     return mask
@@ -796,6 +840,7 @@ def v3_stage1_training_step(
     qwen_model: Any,
     processor: Any,
     foveal_module: nn.Module,
+    reencode_qwen_model: Any | None = None,
     samples: list[TGVFv3Stage1Sample],
     loss_weights: LossWeights,
     device: torch.device | str,
@@ -807,7 +852,10 @@ def v3_stage1_training_step(
     max_image_resolution: int | None = 512,
     capture_mode: Literal["teacher_forced", "decode_loop"] = "teacher_forced",
     readout_batch_size: int = 4,
+    protocol: TGVFProtocol = "legacy_v3_tags",
+    focus_action_im_end: bool = False,
 ) -> TGVFTrainStepOutput:
+    protocol = normalize_tgvf_protocol(protocol)
     vision_cache: dict[str, tuple[Any, torch.Tensor, torch.Tensor]] = {}
     features = [
         collect_v3_stage1_features(
@@ -819,6 +867,8 @@ def v3_stage1_training_step(
             max_image_resolution=max_image_resolution,
             capture_mode=capture_mode,
             vision_cache=vision_cache,
+            protocol=protocol,
+            focus_action_im_end=focus_action_im_end,
         )
         for sample in samples
     ]
@@ -837,6 +887,13 @@ def v3_stage1_training_step(
                 "target": sample.target,
                 "stage": "tgvf_v3_stage1",
                 "evidence_state": NEED_LOCAL_EVIDENCE,
+                "qwen_model": reencode_qwen_model if reencode_qwen_model is not None else qwen_model,
+                "processor": processor,
+                "image": _image_input(sample.image, max_image_resolution=max_image_resolution),
+                "question": sample.prompt_question,
+                "device": device,
+                "original_qwen_model_used_for_readout": reencode_qwen_model is None,
+                "separate_reencode_qwen_model": reencode_qwen_model is not None,
             },
         )
         output = finalize_tgvf_output_with_frozen_qwen_merger(qwen_model, output)
@@ -849,9 +906,11 @@ def v3_stage1_training_step(
             evidence_description=sample.evidence_description,
             foveated_visual_tokens=d,
             device=device,
-            mask_original_image_after_tgvf=mask_original_image_after_tgvf,
-            position_mode=position_mode,
-        )
+                            mask_original_image_after_tgvf=mask_original_image_after_tgvf,
+                            position_mode=position_mode,
+                            protocol=protocol,
+                            focus_action_im_end=focus_action_im_end,
+                        )
         positive_readouts.append(readout_inputs)
         loss_man_values.append(
             _safe_visual_token_manifold_loss(d, feature.merged_visual_tokens.to(device))
@@ -889,6 +948,8 @@ def v3_stage1_training_step(
                     device=device,
                     mask_original_image_after_tgvf=mask_original_image_after_tgvf,
                     position_mode=position_mode,
+                    protocol=protocol,
+                    focus_action_im_end=focus_action_im_end,
                 )
                 _, log_likelihood = compute_v3_stage1_lm_loss(
                     model=qwen_model,
@@ -924,9 +985,11 @@ def v3_stage1_training_step(
                             evidence_description=samples[pos_index].evidence_description,
                             foveated_visual_tokens=fvt_outputs[fvt_index],
                             device=device,
-                            mask_original_image_after_tgvf=mask_original_image_after_tgvf,
-                            position_mode=position_mode,
-                        )
+	                            mask_original_image_after_tgvf=mask_original_image_after_tgvf,
+	                            position_mode=position_mode,
+	                            protocol=protocol,
+	                            focus_action_im_end=focus_action_im_end,
+	                        )
                         pending_readouts.append(readout_inputs)
                         pending_slots.append((row_index, col_index))
                 if pending_readouts:
@@ -972,6 +1035,7 @@ def v3_stage1_training_step(
         loss_contrastive_alignment=loss_contrastive,
         debug={
             "stage": "tgvf_v3_stage1",
+            "tgvf_protocol": protocol,
             "target_hidden_shape": list(first_feature.target_hidden_states.shape),
             "pre_merge_visual_shape": list(first_feature.pre_merge_visual_tokens.shape),
             "merged_visual_shape": list(first_feature.merged_visual_tokens.shape),
@@ -1000,7 +1064,14 @@ def v3_stage1_training_step(
                 first_d.shape[-1] == first_feature.merged_visual_tokens.shape[-1]
             ),
             "qwen_frozen": not any(parameter.requires_grad for parameter in qwen_model.parameters()),
+            "separate_reencode_qwen_model": reencode_qwen_model is not None,
+            "reencode_qwen_trainable": False if reencode_qwen_model is None else any(parameter.requires_grad for parameter in reencode_qwen_model.parameters()),
             "second_full_forward_used": False,
+            "encoder_reencode": bool(getattr(_unwrap_module(foveal_module), "variant_name", "") == "tgvf_encoder_bidir_8_16_24"),
+            "encoder_adapter_layers": first_d.detach().new_tensor([]).detach().cpu().tolist() if not hasattr(_unwrap_module(foveal_module), "requested_adapter_layers") else list(getattr(_unwrap_module(foveal_module), "requested_adapter_layers")),
+            "encoder_adapter_actual_indices": [] if not hasattr(_unwrap_module(foveal_module), "actual_adapter_indices") else list(getattr(_unwrap_module(foveal_module), "actual_adapter_indices")),
+            "encoder_adapter_gate_values": first_d.detach().new_tensor([]).detach().cpu().tolist() if not hasattr(_unwrap_module(foveal_module), "last_reencode_debug") else getattr(_unwrap_module(foveal_module), "last_reencode_debug", {}).get("encoder_adapter_gate_values"),
+            "vision_tower_rerun": bool(getattr(_unwrap_module(foveal_module), "last_reencode_debug", {}).get("vision_tower_rerun", False)),
             "backward_performed": False,
             "debug_examples": [
                 {
@@ -1018,6 +1089,9 @@ def v3_stage1_training_step(
     )
 
 
+def _unwrap_module(module: nn.Module) -> nn.Module:
+    return getattr(module, "module", module)
+
 def _readout_debug(readout_inputs: dict[str, Any]) -> dict[str, Any]:
     keys = (
         "mask_mode",
@@ -1029,6 +1103,7 @@ def _readout_debug(readout_inputs: dict[str, Any]) -> dict[str, Any]:
         "pre_tgvf_queries_keep_original_image_keys",
         "answer_token_count",
         "mask_summary",
+        "tgvf_protocol",
     )
     return {key: readout_inputs.get(key) for key in keys}
 
@@ -1117,16 +1192,33 @@ def _move_tensors_for_stage1(
 def _find_focus_target_span_in_forced_ids(
     tokenizer: Any,
     token_ids: list[int],
+    *,
+    protocol: str | None = None,
 ) -> tuple[int, int, str] | None:
-    focus_start_ids = _encode_text(tokenizer, FOCUS_START, "cpu").view(-1).tolist()
-    focus_end_ids = _encode_text(tokenizer, FOCUS_END, "cpu").view(-1).tolist()
+    if normalize_tgvf_protocol(protocol) == "protocol_d_qwen_tool":
+        return _find_focus_target_span_from_decoded_text(
+            tokenizer,
+            token_ids,
+            protocol=protocol,
+        )
+    focus_start, focus_end = protocol_focus_tokens(protocol)
+    focus_start_ids = _encode_text(tokenizer, focus_start, "cpu").view(-1).tolist()
+    focus_end_ids = _encode_text(tokenizer, focus_end, "cpu").view(-1).tolist()
     start_marker = _find_subsequence(token_ids, focus_start_ids)
     if start_marker < 0:
-        return _find_focus_target_span_from_decoded_text(tokenizer, token_ids)
+        return _find_focus_target_span_from_decoded_text(
+            tokenizer,
+            token_ids,
+            protocol=protocol,
+        )
     target_start = start_marker + len(focus_start_ids)
     end_marker = _find_subsequence(token_ids[target_start:], focus_end_ids)
     if end_marker < 0:
-        return _find_focus_target_span_from_decoded_text(tokenizer, token_ids)
+        return _find_focus_target_span_from_decoded_text(
+            tokenizer,
+            token_ids,
+            protocol=protocol,
+        )
     target_end = target_start + end_marker
     stripped_start, stripped_end = _strip_space_like_token_edges(
         tokenizer,
@@ -1141,13 +1233,33 @@ def _find_focus_target_span_in_forced_ids(
 def _find_focus_target_span_from_decoded_text(
     tokenizer: Any,
     token_ids: list[int],
+    *,
+    protocol: str | None = None,
 ) -> tuple[int, int, str] | None:
     text = _decode(tokenizer, token_ids)
-    start_index = text.find(FOCUS_START)
+    if normalize_tgvf_protocol(protocol) == "protocol_d_qwen_tool":
+        span = focus_target_char_span(text, protocol=protocol)
+        if span is None:
+            return None
+        char_start, char_end = span
+        target_text = text[char_start:char_end].strip()
+        if not target_text:
+            return None
+        offsets = _decoded_token_offsets_for_stage1(tokenizer, token_ids)
+        token_indices = [
+            index
+            for index, (tok_start, tok_end) in enumerate(offsets)
+            if tok_start < char_end and tok_end > char_start
+        ]
+        if not token_indices:
+            return None
+        return token_indices[0], token_indices[-1] + 1, target_text
+    focus_start, focus_end = protocol_focus_tokens(protocol)
+    start_index = text.find(focus_start)
     if start_index < 0:
         return None
-    inner_start = start_index + len(FOCUS_START)
-    end_index = text.find(FOCUS_END, inner_start)
+    inner_start = start_index + len(focus_start)
+    end_index = text.find(focus_end, inner_start)
     if end_index < 0:
         return None
     raw_focus = text[inner_start:end_index]
