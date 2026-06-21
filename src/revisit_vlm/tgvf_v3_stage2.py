@@ -431,6 +431,7 @@ def prepare_v3_stage2_focus_inputs(
     device: torch.device | str,
     position_mode: PositionMode = "native_source_grid",
     mask_original_image_after_tgvf: bool = True,
+    mask_original_image_after_tgvf_prob: float = 1.0,
     max_image_resolution: int | None = 512,
     protocol: TGVFProtocol = "legacy_v3_tags",
 ) -> dict[str, Any]:
@@ -593,11 +594,16 @@ def prepare_v3_stage2_focus_inputs(
     original_image_indices = source_positions.to(device=device, dtype=torch.long)
     block_query_start = action_end
     block_query_end = None
-    if protocol == PROTOCOL_E_ACTION_EVIDENCE_SPECIAL and answer_start >= 0:
+    if answer_start >= 0:
         block_query_end = ev_answer_start + int(
             _encode_text(tokenizer, ev_answer_text[:answer_start], device).view(-1).numel()
         )
-    if mask_original_image_after_tgvf:
+    mask_active = sample_original_image_mask_active(
+        enabled=mask_original_image_after_tgvf,
+        probability=mask_original_image_after_tgvf_prob,
+        device=device,
+    )
+    if mask_active:
         attention_mask = build_weak_strict_attention_mask(
             attention_mask_2d=attention_mask_2d,
             original_image_token_indices=original_image_indices,
@@ -620,8 +626,9 @@ def prepare_v3_stage2_focus_inputs(
         "image_grid_thw": image_grid_thw,
         "mm_token_type_ids": mm_token_type_ids,
         "mask_mode": mask_mode,
-        "image_key_mask_active": bool(mask_original_image_after_tgvf),
-        "masked_image_key_count": original_count if mask_original_image_after_tgvf else 0,
+        "image_key_mask_active": bool(mask_active),
+        "masked_image_key_count": original_count if mask_active else 0,
+        "mask_original_image_after_tgvf_prob": float(mask_original_image_after_tgvf_prob),
         "fvt_shape": list(d.shape),
         "target_hidden_shape": list(capture.target_hidden_states.shape),
         "value_span_matched": value_span_matched,
@@ -849,6 +856,7 @@ def v3_stage2_training_step(
     max_image_resolution: int | None = 512,
     position_mode: PositionMode = "native_source_grid",
     mask_original_image_after_tgvf: bool = True,
+    mask_original_image_after_tgvf_prob: float = 1.0,
     protocol: TGVFProtocol = "legacy_v3_tags",
 ) -> TGVFv3Stage2StepOutput:
     protocol = normalize_tgvf_protocol(protocol)
@@ -859,6 +867,7 @@ def v3_stage2_training_step(
     vision_cache: dict[str, tuple[Any, torch.Tensor, torch.Tensor]] = {}
     value_span_attempted = 0
     value_span_matched = 0
+    focus_mask_active = 0
     boundary_stat_logs: list[dict[str, float | int]] = []
 
     for sample in samples:
@@ -899,6 +908,7 @@ def v3_stage2_training_step(
                 device=device,
                 position_mode=position_mode,
                 mask_original_image_after_tgvf=mask_original_image_after_tgvf,
+                mask_original_image_after_tgvf_prob=mask_original_image_after_tgvf_prob,
                 max_image_resolution=max_image_resolution,
                 protocol=protocol,
             )
@@ -917,6 +927,7 @@ def v3_stage2_training_step(
             if sample.value_span_text:
                 value_span_attempted += 1
                 value_span_matched += int(bool(trajectory_inputs["value_span_matched"]))
+            focus_mask_active += int(bool(trajectory_inputs["image_key_mask_active"]))
         else:
             trajectory_inputs = prepare_v3_stage2_no_focus_inputs(
                 model=qwen_model,
@@ -987,8 +998,13 @@ def v3_stage2_training_step(
             "tokenizer_resized": False,
             "markers_are_plain_text": protocol == "legacy_v3_tags",
             "tgvf_protocol": protocol,
-            "mask_mode": "weak_strict_original_image_keys_4d",
-            "focus_sample_mask_active_rate": 1.0 if focus_count else 0.0,
+            "mask_mode": (
+                "weak_strict_original_image_keys_4d_evidence_only_answer_unmasked"
+                if focus_mask_active and mask_original_image_after_tgvf
+                else "standard_2d_causal"
+            ),
+            "mask_original_image_after_tgvf_prob": float(mask_original_image_after_tgvf_prob),
+            "focus_sample_mask_active_rate": focus_mask_active / max(focus_count, 1),
             "no_focus_mask_active_rate": 0.0,
             "value_span_match_rate": (
                 value_span_matched / value_span_attempted if value_span_attempted else None
@@ -997,6 +1013,22 @@ def v3_stage2_training_step(
             "debug_examples": debug_items,
         },
     )
+
+
+def sample_original_image_mask_active(
+    *,
+    enabled: bool,
+    probability: float,
+    device: torch.device | str,
+) -> bool:
+    if not enabled:
+        return False
+    probability = float(probability)
+    if probability <= 0.0:
+        return False
+    if probability >= 1.0:
+        return True
+    return bool(torch.rand((), device=device).item() < probability)
 
 
 def merge_protocol_c_boundary_stats(logs: list[dict[str, float | int]]) -> dict[str, float | int | None]:

@@ -49,6 +49,8 @@ from revisit_vlm.wandb_logging import WandbLogger
 
 def main() -> None:
     args = parse_args()
+    if not (0.0 <= float(args.mask_original_image_after_tgvf_prob) <= 1.0):
+        raise ValueError("--mask-original-image-after-tgvf-prob must be in [0, 1]")
     ddp = setup_distributed(args)
     rank = ddp["rank"]
     local_rank = ddp["local_rank"]
@@ -256,6 +258,7 @@ def main() -> None:
         "max_image_resolution": args.max_image_resolution,
         "max_seq_len": args.max_seq_len,
         "mask_original_image_after_tgvf": args.mask_original_image_after_tgvf,
+        "mask_original_image_after_tgvf_prob": args.mask_original_image_after_tgvf_prob,
         "fvt_position_mode": args.fvt_position_mode,
         "capture_mode": "teacher_forced",
         "train_long_cot": False,
@@ -372,6 +375,7 @@ def main() -> None:
             max_image_resolution=args.max_image_resolution,
             position_mode=args.fvt_position_mode,
             mask_original_image_after_tgvf=args.mask_original_image_after_tgvf,
+            mask_original_image_after_tgvf_prob=args.mask_original_image_after_tgvf_prob,
             protocol=args.tgvf_protocol,
         )
         if not torch.isfinite(output.loss_total):
@@ -503,6 +507,7 @@ def validate_stage2(
                 max_image_resolution=args.max_image_resolution,
                 position_mode=args.fvt_position_mode,
                 mask_original_image_after_tgvf=args.mask_original_image_after_tgvf,
+                mask_original_image_after_tgvf_prob=args.mask_original_image_after_tgvf_prob,
                 protocol=args.tgvf_protocol,
             )
             losses.append(float(output.loss_total.detach().cpu()))
@@ -650,8 +655,21 @@ def trainable_parameter_names(module: torch.nn.Module, *, prefix: str = "") -> l
 def summarize_step_debug(debug_logs: list[dict[str, Any]]) -> dict[str, Any]:
     focus = sum(int(item.get("focus_count", 0)) for item in debug_logs)
     no_focus = sum(int(item.get("no_focus_count", 0)) for item in debug_logs)
+    focus_mask_active = sum(
+        float(item.get("focus_sample_mask_active_rate", 0.0) or 0.0) * int(item.get("focus_count", 0))
+        for item in debug_logs
+    )
+    no_focus_mask_active = sum(
+        float(item.get("no_focus_mask_active_rate", 0.0) or 0.0) * int(item.get("no_focus_count", 0))
+        for item in debug_logs
+    )
     value_rates = [item.get("value_span_match_rate") for item in debug_logs if item.get("value_span_match_rate") is not None]
     protocol = debug_logs[0].get("tgvf_protocol", "legacy_v3_tags") if debug_logs else "legacy_v3_tags"
+    mask_probs = [
+        float(item.get("mask_original_image_after_tgvf_prob"))
+        for item in debug_logs
+        if item.get("mask_original_image_after_tgvf_prob") is not None
+    ]
     examples = []
     for item in debug_logs:
         examples.extend(item.get("debug_examples", []))
@@ -662,8 +680,9 @@ def summarize_step_debug(debug_logs: list[dict[str, Any]]) -> dict[str, Any]:
         "no_focus_count": no_focus,
         "focus_ratio": focus / max(focus + no_focus, 1),
         "no_focus_ratio": no_focus / max(focus + no_focus, 1),
-        "focus_sample_mask_active_rate": 1.0 if focus else 0.0,
-        "no_focus_mask_active_rate": 0.0,
+        "focus_sample_mask_active_rate": focus_mask_active / max(focus, 1),
+        "no_focus_mask_active_rate": no_focus_mask_active / max(no_focus, 1),
+        "mask_original_image_after_tgvf_prob": sum(mask_probs) / max(len(mask_probs), 1) if mask_probs else None,
         "value_span_match_rate": sum(value_rates) / max(len(value_rates), 1) if value_rates else None,
         "special_tokens_added": False,
         "tokenizer_resized": False,
@@ -854,6 +873,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-seq-len", type=int, default=2048)
     parser.add_argument("--fvt-position-mode", choices=("native_source_grid", "inherit_source_visual_positions"), default="native_source_grid")
     parser.add_argument("--mask-original-image-after-tgvf", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--mask-original-image-after-tgvf-prob", type=float, default=1.0)
     parser.add_argument("--fast-batched-stage2", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--min-confidence", type=float, default=None)
     parser.add_argument("--loss-evidence-state", type=float, default=0.2)

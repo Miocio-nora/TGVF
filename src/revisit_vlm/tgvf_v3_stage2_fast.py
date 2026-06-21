@@ -54,6 +54,7 @@ from revisit_vlm.tgvf_v3_stage2 import (
     TGVFv3Stage2StepOutput,
     merge_protocol_c_boundary_stats,
     protocol_c_boundary_token_accuracy,
+    sample_original_image_mask_active,
     _weighted_stage2_tokens,
 )
 
@@ -92,6 +93,8 @@ class _FocusPrepared:
     final_position_ids: torch.Tensor
     final_mm_token_type_ids: torch.Tensor
     masked_image_key_count: int
+    image_key_mask_active: bool
+    mask_mode: str
     fvt_shape: list[int]
     target_hidden_shape: list[int]
 
@@ -120,6 +123,7 @@ def v3_stage2_batched_training_step(
     max_image_resolution: int | None = 512,
     position_mode: str = "native_source_grid",
     mask_original_image_after_tgvf: bool = True,
+    mask_original_image_after_tgvf_prob: float = 1.0,
     protocol: TGVFProtocol = "legacy_v3_tags",
 ) -> TGVFv3Stage2StepOutput:
     protocol = normalize_tgvf_protocol(protocol)
@@ -199,6 +203,7 @@ def v3_stage2_batched_training_step(
                     loss_weights=loss_weights,
                     device=device,
                     mask_original_image_after_tgvf=mask_original_image_after_tgvf,
+                    mask_original_image_after_tgvf_prob=mask_original_image_after_tgvf_prob,
                     protocol=protocol,
                 )
             )
@@ -216,6 +221,7 @@ def v3_stage2_batched_training_step(
                 hidden_state_index=hidden_state_index,
                 max_image_resolution=max_image_resolution,
                 mask_original_image_after_tgvf=mask_original_image_after_tgvf,
+                mask_original_image_after_tgvf_prob=mask_original_image_after_tgvf_prob,
                 protocol=protocol,
             )
         )
@@ -330,16 +336,8 @@ def v3_stage2_batched_training_step(
                 "question": item.sample.question,
                 "target": item.sample.target,
                 "answer": item.sample.answer,
-                "mask_mode": (
-                    "weak_strict_original_image_keys_4d_evidence_only_answer_unmasked"
-                    if item.sample.need_focus
-                    and mask_original_image_after_tgvf
-                    and protocol == PROTOCOL_E_ACTION_EVIDENCE_SPECIAL
-                    else "weak_strict_original_image_keys_4d"
-                    if item.sample.need_focus and mask_original_image_after_tgvf
-                    else "standard_2d_causal"
-                ),
-                "image_key_mask_active": bool(item.sample.need_focus and mask_original_image_after_tgvf),
+                "mask_mode": getattr(item, "mask_mode", "standard_2d_causal"),
+                "image_key_mask_active": bool(getattr(item, "image_key_mask_active", False)),
                 "masked_image_key_count": getattr(item, "masked_image_key_count", 0),
                 "fvt_shape": getattr(item, "fvt_shape", None),
                 "target_hidden_shape": getattr(item, "target_hidden_shape", None),
@@ -347,6 +345,7 @@ def v3_stage2_batched_training_step(
                 "tgvf_protocol": protocol,
             }
         )
+    focus_mask_active = sum(1 for item in focus_prepared if item.image_key_mask_active)
     return TGVFv3Stage2StepOutput(
         loss_total=loss_total,
         loss_focus=loss_focus,
@@ -358,8 +357,9 @@ def v3_stage2_batched_training_step(
             "single_focus_count": len(focus_items),
             "multi_focus_count": len(multi_focus_items),
             "no_focus_count": len(no_focus_prepared),
-            "focus_sample_mask_active_rate": 1.0 if focus_prepared and mask_original_image_after_tgvf else 0.0,
+            "focus_sample_mask_active_rate": focus_mask_active / max(len(focus_prepared), 1),
             "no_focus_mask_active_rate": 0.0,
+            "mask_original_image_after_tgvf_prob": float(mask_original_image_after_tgvf_prob),
             "value_span_match_rate": (
                 sum(1.0 for matched in value_matches if matched) / max(len(value_matches), 1)
                 if value_matches
@@ -592,6 +592,7 @@ def _prepare_focus_final(
     loss_weights: Stage2LossWeights,
     device: torch.device | str,
     mask_original_image_after_tgvf: bool,
+    mask_original_image_after_tgvf_prob: float,
     protocol: TGVFProtocol,
 ) -> _FocusPrepared:
     tokenizer = processor.tokenizer
@@ -695,21 +696,28 @@ def _prepare_focus_final(
     )
     if position_ids is None:
         raise RuntimeError("Qwen3 position id computation failed for fast focus final")
-    protocol_e_answer_query_start = None
-    if protocol == PROTOCOL_E_ACTION_EVIDENCE_SPECIAL and answer_start >= 0:
-        protocol_e_answer_query_start = ev_start + int(
+    answer_query_start = None
+    if answer_start >= 0:
+        answer_query_start = ev_start + int(
             _encode_text(tokenizer, ev_answer_text[:answer_start], device).view(-1).numel()
         )
-    if mask_original_image_after_tgvf:
+    mask_active = sample_original_image_mask_active(
+        enabled=mask_original_image_after_tgvf,
+        probability=mask_original_image_after_tgvf_prob,
+        device=device,
+    )
+    if mask_active:
         attention_mask = _weak_strict_mask_b1(
             attention_mask_2d=attention_mask_2d,
             original_image_token_indices=item.image_token_indices.to(device),
             block_query_start=action_end,
-            block_query_end=protocol_e_answer_query_start,
+            block_query_end=answer_query_start,
             dtype=embeds.dtype,
         )
+        mask_mode = "weak_strict_original_image_keys_4d" if answer_query_start is None else "weak_strict_original_image_keys_4d_evidence_only_answer_unmasked"
     else:
-        attention_mask = attention_mask_2d
+        attention_mask = _causal_mask_b1(attention_mask_2d=attention_mask_2d, dtype=embeds.dtype)
+        mask_mode = "standard_4d_causal"
     return _FocusPrepared(
         sample=item.sample,
         item=item,
@@ -730,7 +738,9 @@ def _prepare_focus_final(
         final_attention_mask=attention_mask,
         final_position_ids=position_ids,
         final_mm_token_type_ids=mm_token_type_ids,
-        masked_image_key_count=int(item.image_token_indices.numel()) if mask_original_image_after_tgvf else 0,
+        masked_image_key_count=int(item.image_token_indices.numel()) if mask_active else 0,
+        image_key_mask_active=bool(mask_active),
+        mask_mode=mask_mode,
         fvt_shape=list(d.shape),
         target_hidden_shape=list(target_hidden_states.shape),
     )
@@ -748,6 +758,7 @@ def _prepare_multi_focus_final(
     hidden_state_index: int,
     max_image_resolution: int | None,
     mask_original_image_after_tgvf: bool,
+    mask_original_image_after_tgvf_prob: float,
     protocol: TGVFProtocol,
 ) -> _FocusPrepared:
     tokenizer = processor.tokenizer
@@ -757,6 +768,11 @@ def _prepare_multi_focus_final(
     steps = steps[:2]
     pre = item.model_inputs["_v_pre"].to(device)
     merged = item.model_inputs["_v_merge"].to(device)
+    mask_active = sample_original_image_mask_active(
+        enabled=mask_original_image_after_tgvf,
+        probability=mask_original_image_after_tgvf_prob,
+        device=device,
+    )
 
     action_ids_list: list[torch.Tensor] = []
     action_weights_list: list[torch.Tensor] = []
@@ -863,7 +879,7 @@ def _prepare_multi_focus_final(
         inputs_embeds=prefix2_embeds,
         device=device,
         image_grid_repeats=2,
-        mask_original_image_after_tgvf=mask_original_image_after_tgvf,
+        mask_original_image_after_tgvf=mask_active,
         block_query_start=action1_end,
         hidden_state_index=hidden_state_index,
     )
@@ -892,7 +908,7 @@ def _prepare_multi_focus_final(
     action_target_spans.append(action2_span)
 
     tgvf2_ids = _multi_tgvf_ids(processor, qwen_model, int(d2.shape[0]), protocol=protocol, device=device)
-    readout2_ids, readout2_weights, matched2 = _multi_final_readout_ids_weights(
+    readout2_ids, readout2_weights, matched2, final_answer_token_start = _multi_final_readout_ids_weights(
         tokenizer=tokenizer,
         evidence=steps[1].get("post_think") or steps[1]["evidence_description"],
         answer=item.sample.answer,
@@ -955,16 +971,31 @@ def _prepare_multi_focus_final(
     )
     if position_ids is None:
         raise RuntimeError("Qwen3 position id computation failed for multi-focus final")
-    if mask_original_image_after_tgvf:
+    final_readout2_start = (
+        int(item.input_ids.shape[-1])
+        + int(action1_ids.shape[-1])
+        + int(tgvf1_ids.shape[-1])
+        + int(readout1_ids.shape[-1])
+        + int(action2_ids.shape[-1])
+        + int(tgvf2_ids.shape[-1])
+    )
+    block_query_end = (
+        final_readout2_start + int(final_answer_token_start)
+        if final_answer_token_start is not None
+        else None
+    )
+    if mask_active:
         attention_mask = _weak_strict_mask_b1(
             attention_mask_2d=attention_mask_2d,
             original_image_token_indices=item.image_token_indices.to(device),
             block_query_start=action1_end,
-            block_query_end=None,
+            block_query_end=block_query_end,
             dtype=embeds.dtype,
         )
+        mask_mode = "weak_strict_original_image_keys_4d" if block_query_end is None else "weak_strict_original_image_keys_4d_evidence_only_answer_unmasked"
     else:
-        attention_mask = attention_mask_2d
+        attention_mask = _causal_mask_b1(attention_mask_2d=attention_mask_2d, dtype=embeds.dtype)
+        mask_mode = "standard_4d_causal"
     target_shapes = [list(h.shape) for h in target_hidden_list]
     return _FocusPrepared(
         sample=item.sample,
@@ -986,7 +1017,9 @@ def _prepare_multi_focus_final(
         final_attention_mask=attention_mask,
         final_position_ids=position_ids,
         final_mm_token_type_ids=mm_token_type_ids,
-        masked_image_key_count=int(item.image_token_indices.numel()) if mask_original_image_after_tgvf else 0,
+        masked_image_key_count=int(item.image_token_indices.numel()) if mask_active else 0,
+        image_key_mask_active=bool(mask_active),
+        mask_mode=mask_mode,
         fvt_shape=[list(d.shape) for d in d_list],
         target_hidden_shape=target_shapes,
     )
@@ -1181,7 +1214,7 @@ def _multi_final_readout_ids_weights(
     loss_weights: Stage2LossWeights,
     protocol: TGVFProtocol,
     device: torch.device | str,
-) -> tuple[torch.Tensor, torch.Tensor, bool]:
+) -> tuple[torch.Tensor, torch.Tensor, bool, int | None]:
     text = render_focus_readout_answer_text(
         evidence_description=evidence,
         answer=answer,
@@ -1213,7 +1246,12 @@ def _multi_final_readout_ids_weights(
         device=device,
         default_weight=1.0,
     )
-    return ids, weights, matched
+    answer_token_start = (
+        int(_encode_text(tokenizer, text[:answer_start], device).view(-1).numel())
+        if answer_start >= 0
+        else None
+    )
+    return ids, weights, matched, answer_token_start
 
 
 def _multi_embeds_with_visual_groups(
@@ -1408,6 +1446,15 @@ def _weak_strict_mask_b1(
         if int(query_indices.numel()) > 0:
             mask[:, :, query_indices[:, None], original_image_token_indices.to(device)[None, :]] = min_value
     return mask
+
+
+def _causal_mask_b1(*, attention_mask_2d: torch.Tensor, dtype: torch.dtype) -> torch.Tensor:
+    return _weak_strict_mask_b1(
+        attention_mask_2d=attention_mask_2d,
+        original_image_token_indices=torch.empty(0, dtype=torch.long, device=attention_mask_2d.device),
+        block_query_start=0,
+        dtype=dtype,
+    )
 
 
 def _weighted_lm_loss(

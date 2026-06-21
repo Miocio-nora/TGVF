@@ -37,11 +37,17 @@ LOG_EVERY="${LOG_EVERY:-10}"
 
 TARGET_FOCUS_RATIO="${TARGET_FOCUS_RATIO:-0.8}"
 MAX_IMAGE_RESOLUTION="${MAX_IMAGE_RESOLUTION:-512}"
+MASK_ORIGINAL_IMAGE_AFTER_TGVF="${MASK_ORIGINAL_IMAGE_AFTER_TGVF:-1}"
+MASK_ORIGINAL_IMAGE_AFTER_TGVF_PROB="${MASK_ORIGINAL_IMAGE_AFTER_TGVF_PROB:-1.0}"
 ATTN_IMPLEMENTATION="${ATTN_IMPLEMENTATION:-sdpa}"
 GRADIENT_CHECKPOINTING="${GRADIENT_CHECKPOINTING:-1}"
 GRADIENT_CHECKPOINTING_FLAG="--gradient-checkpointing"
 if [[ "${GRADIENT_CHECKPOINTING}" == "0" || "${GRADIENT_CHECKPOINTING}" == "false" || "${GRADIENT_CHECKPOINTING}" == "False" ]]; then
   GRADIENT_CHECKPOINTING_FLAG="--no-gradient-checkpointing"
+fi
+MASK_ORIGINAL_IMAGE_FLAG="--mask-original-image-after-tgvf"
+if [[ "${MASK_ORIGINAL_IMAGE_AFTER_TGVF}" == "0" || "${MASK_ORIGINAL_IMAGE_AFTER_TGVF}" == "false" || "${MASK_ORIGINAL_IMAGE_AFTER_TGVF}" == "False" ]]; then
+  MASK_ORIGINAL_IMAGE_FLAG="--no-mask-original-image-after-tgvf"
 fi
 
 LR_LORA="${LR_LORA:-2e-5}"
@@ -81,6 +87,8 @@ echo "[Protocol C Stage2 from Stage1-C] train: ${TRAIN_FILE}"
 echo "[Protocol C Stage2 from Stage1-C] val: ${VAL_FILE}"
 echo "[Protocol C Stage2 from Stage1-C] target_focus_ratio: ${TARGET_FOCUS_RATIO}"
 echo "[Protocol C Stage2 from Stage1-C] tgvf_protocol: ${TGVF_PROTOCOL}"
+echo "[Protocol C Stage2 from Stage1-C] mask_original_image_after_tgvf: ${MASK_ORIGINAL_IMAGE_AFTER_TGVF}"
+echo "[Protocol C Stage2 from Stage1-C] mask_original_image_after_tgvf_prob: ${MASK_ORIGINAL_IMAGE_AFTER_TGVF_PROB}"
 echo "[Protocol C Stage2 from Stage1-C] effective_global_batch_size: $((NPROC_PER_NODE * BATCH_SIZE * GRAD_ACCUM))"
 
 set -o pipefail
@@ -117,7 +125,8 @@ set -o pipefail
   --lora-dropout "${LORA_DROPOUT}" \
   --loss-value-span "${LOSS_VALUE_SPAN}" \
   --lora-target-modules q_proj,k_proj,v_proj,o_proj,gate_proj,up_proj,down_proj \
-  --mask-original-image-after-tgvf \
+  "${MASK_ORIGINAL_IMAGE_FLAG}" \
+  --mask-original-image-after-tgvf-prob "${MASK_ORIGINAL_IMAGE_AFTER_TGVF_PROB}" \
   --fvt-position-mode native_source_grid \
   --num-workers 0 \
   --wandb-project "${WANDB_PROJECT}" \
