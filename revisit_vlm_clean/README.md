@@ -95,6 +95,7 @@ tgvf_train_stage2_executor --plan /path/to/training_plan.json --prepare-executio
 tgvf_train_stage2_executor --plan /path/to/training_plan.json --prepare-execution --audit-runtime --audit-optimizer
 tgvf_train_stage2_executor --plan /path/to/training_plan.json --prepare-execution --audit-runtime --audit-checkpoint
 tgvf_train_stage2_executor --plan /path/to/training_plan.json --prepare-execution --audit-runtime --audit-training-step
+tgvf_train_stage2_executor --plan /path/to/training_plan.json --prepare-execution --audit-runtime --audit-optimizer-step
 ```
 
 Without `--preflight-only`, `--prepare-execution`, or `--audit-runtime`, these
@@ -137,6 +138,13 @@ records readout-context, M-RoPE position-id, matrix-CE, and manifold-loss
 evidence. Stage2 records fast batched path, weighted-span loss, and
 original-image mask-scope evidence. This still does not call `backward`,
 `optimizer.step`, `scheduler.step`, or checkpoint save.
+With explicit `--audit-optimizer-step`, runtime audit also writes
+`optimizer_step_runtime.json` after one bounded backward, gradient clipping,
+`optimizer.step`, `scheduler.step`, and post-step `zero_grad` probe from the
+clean training-step loss. It implies model-parameter, optimizer, and
+training-step runtime audits. This is first-step wiring evidence only: it still
+does not enter an epoch loop, perform gradient accumulation, publish a
+checkpoint, or set `will_launch_training=true`.
 
 ## Fixed Manifests
 

@@ -1768,6 +1768,31 @@ Implemented after Phase 67.
   publish training checkpoints, or implement DeepStack training execution.
   `will_launch_training` remains `false`.
 
+## Phase 69: Bounded Optimizer-Step Runtime Audit Gate
+
+Implemented after Phase 68.
+
+- Stage1/Stage2 executors now support explicit `--audit-optimizer-step`
+  together with `--audit-runtime`;
+- `--audit-optimizer-step` implies:
+  - actual model-parameter audit;
+  - actual optimizer/scheduler construction;
+  - actual training-step forward probe;
+- the audit writes `optimizer_step_runtime.json` after one bounded probe that:
+  - starts from the clean training-step loss tensor;
+  - calls `backward`;
+  - clips gradients with the planned `max_grad_norm` when present;
+  - calls `optimizer.step`;
+  - calls `scheduler.step`;
+  - calls post-step `zero_grad`;
+- runtime launch gates now mark
+  `run_backward_optimizer_scheduler_step_from_plan` as `identity_validated`
+  only when the probe proves backward, optimizer step, and scheduler step ran
+  without publishing a checkpoint or entering a training loop;
+- this phase still does not enter an epoch loop, perform gradient accumulation,
+  publish training checkpoints, or implement DeepStack training execution.
+  `will_launch_training` remains `false`.
+
 ## Later Phases
 
 1. Replace training launch plans with clean-native training execution.

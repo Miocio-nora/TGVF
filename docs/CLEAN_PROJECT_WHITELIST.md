@@ -128,6 +128,11 @@ before training/eval cleanup can proceed.
   fast batched path, weighted-span loss wiring, and original-image mask scope.
   This still must not run backward, optimizer steps, scheduler steps, or
   checkpoint saving.
+- Explicit optimizer-step audit may write `optimizer_step_runtime.json` after
+  one bounded backward, gradient clipping, `optimizer.step`, `scheduler.step`,
+  and post-step `zero_grad` probe from the clean training-step loss. It is
+  first-step wiring evidence only and must not enter an epoch loop, perform
+  gradient accumulation, publish a checkpoint, or set `will_launch_training=true`.
 - `clean_prepare_execution_command.sh` is the runnable clean handoff command;
   `clean_training_command.sh` stays non-executable until the trainer loop is
   ported.
@@ -243,6 +248,11 @@ before training/eval cleanup can proceed.
   fast batched path, weighted-span loss wiring, and original-image mask scope.
   This still must not run backward, optimizer steps, scheduler steps, or
   checkpoint saving.
+- Explicit optimizer-step audit may write `optimizer_step_runtime.json` after
+  one bounded backward, gradient clipping, `optimizer.step`, `scheduler.step`,
+  and post-step `zero_grad` probe from the clean training-step loss. It is
+  first-step wiring evidence only and must not enter an epoch loop, perform
+  gradient accumulation, publish a checkpoint, or set `will_launch_training=true`.
 - `clean_prepare_execution_command.sh` is the runnable clean handoff command;
   `clean_training_command.sh` stays non-executable until the trainer loop is
   ported.

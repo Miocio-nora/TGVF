@@ -599,6 +599,9 @@ def test_stage1_training_executor_prepare_execution_cli(tmp_path, capsys) -> Non
     assert gate_status["construct_optimizer_and_scheduler_from_plan"] == (
         "pending_real_trainer_loop"
     )
+    assert gate_status["run_backward_optimizer_scheduler_step_from_plan"] == (
+        "pending_real_trainer_loop"
+    )
     assert audit_status["status"] == "blocked_before_training_loop"
     assert trainable_parameters["actual_model_parameters_loaded"] is False
     assert trainable_parameters["must_be_replaced_before_first_optimizer_step"] is True
@@ -979,6 +982,9 @@ def test_stage2_training_executor_prepare_execution_cli(tmp_path, capsys) -> Non
     assert gate_status["construct_optimizer_and_scheduler_from_plan"] == (
         "pending_real_trainer_loop"
     )
+    assert gate_status["run_backward_optimizer_scheduler_step_from_plan"] == (
+        "pending_real_trainer_loop"
+    )
     assert trainable_parameters["expected_trainable_policy"] == [
         "qwen_lora_adapters",
         "tgvf_module_continued_from_stage1",
@@ -1156,6 +1162,135 @@ def test_stage2_training_executor_runtime_audit_can_write_actual_optimizer_audit
         "actual_optimizer_scheduler_audit"
     )
     assert gate_status["construct_optimizer_and_scheduler_from_plan"] == "identity_validated"
+    assert gate_status["run_backward_optimizer_scheduler_step_from_plan"] == (
+        "pending_real_trainer_loop"
+    )
+    assert gate_status["save_checkpoint_with_clean_contract"] == "pending_real_trainer_loop"
+
+
+def test_stage2_training_executor_runtime_audit_can_write_optimizer_step_probe(
+    tmp_path,
+    monkeypatch,
+    capsys,
+) -> None:
+    import torch
+
+    train_file = tmp_path / "stage2.train.jsonl"
+    checkpoint = tmp_path / "stage1.pt"
+    train_file.write_text(
+        '{"image": "/tmp/image.jpg", "question": "q", "answer": "a", '
+        '"need_focus": true, "evidence_state": "need_local_visual_evidence"}\n',
+        encoding="utf-8",
+    )
+    _write_minimal_stage1_checkpoint(checkpoint)
+    output_dir = tmp_path / "stage2_plan"
+    qwen = torch.nn.Linear(2, 2)
+    qwen.bias.requires_grad_(False)
+    tgvf = torch.nn.Sequential(torch.nn.Linear(2, 1))
+
+    def fake_loader(bundle, *, expected_stage):
+        assert expected_stage.value == "stage2"
+        assert bundle["stage"] == "stage2"
+        return {
+            "modules": {"qwen_lora": qwen, "tgvf": tgvf},
+            "loader": {"backend": "fake_optimizer_step_audit_loader"},
+        }
+
+    def fake_step_probe(*, bundle, artifacts, loaded_modules):
+        assert bundle["stage"] == "stage2"
+        assert artifacts["optimizer_groups"]["status"] == "validated"
+        parameters = [
+            parameter
+            for module in (qwen, tgvf)
+            for parameter in module.parameters()
+            if parameter.requires_grad
+        ]
+        loss_tensor = sum(parameter.square().sum() for parameter in parameters)
+        return {
+            "forward_completed": True,
+            "sample_count": 1,
+            "loss_total": float(loss_tensor.detach()),
+            "loss_tensor": loss_tensor,
+            "loss_focus": 1.0,
+            "loss_no_focus": 0.0,
+            "loss_visual_token_manifold": 0.0,
+            "mask_original_image_after_tgvf": True,
+            "debug": {
+                "fast_batched_stage2": True,
+                "focus_count": 1,
+                "no_focus_count": 0,
+                "focus_loss_token_weight": 3.5,
+                "no_focus_loss_token_weight": 0.0,
+                "mask_original_image_after_tgvf_prob": 1.0,
+                "mask_original_image_after_tgvf_scope": "through_answer",
+                "focus_sample_mask_active_rate": 1.0,
+                "no_focus_mask_active_rate": 0.0,
+            },
+        }
+
+    monkeypatch.setattr(training_executor, "_load_training_parameter_audit_modules", fake_loader)
+    monkeypatch.setattr(training_executor, "_run_stage2_training_step_probe", fake_step_probe)
+    assert (
+        stage2_main(
+            [
+                "--run-id",
+                "stage2_optimizer_step_audit",
+                "--train-file",
+                str(train_file),
+                "--stage1-checkpoint",
+                str(checkpoint),
+                "--output-dir",
+                str(output_dir),
+                "--write-plan",
+            ]
+        )
+        == 0
+    )
+
+    assert (
+        stage2_executor_main(
+            [
+                "--plan",
+                str(output_dir / "training_plan.json"),
+                "--prepare-execution",
+                "--audit-runtime",
+                "--audit-optimizer-step",
+            ]
+        )
+        == 0
+    )
+    payload = capsys.readouterr().out
+    assert '"optimizer_step_runtime"' in payload
+    execution_dir = output_dir / "clean_training_execution"
+    optimizer_runtime = json.loads((execution_dir / "optimizer_runtime.json").read_text())
+    training_step_runtime = json.loads((execution_dir / "training_step_runtime.json").read_text())
+    optimizer_step_runtime = json.loads(
+        (execution_dir / "optimizer_step_runtime.json").read_text()
+    )
+    runtime_audit = json.loads((execution_dir / "clean_training_runtime_audit.json").read_text())
+    assert optimizer_runtime["status"] == "actual_optimizer_scheduler_audit"
+    assert optimizer_runtime["optimizer"]["max_grad_norm"] == 1.0
+    assert training_step_runtime["actual_training_step_forward"] is True
+    assert training_step_runtime["backward_called"] is False
+    assert optimizer_step_runtime["status"] == "actual_backward_optimizer_scheduler_step_audit"
+    assert optimizer_step_runtime["backward_called"] is True
+    assert optimizer_step_runtime["optimizer_step_called"] is True
+    assert optimizer_step_runtime["scheduler_step_called"] is True
+    assert optimizer_step_runtime["checkpoint_published"] is False
+    assert optimizer_step_runtime["training_loop_launched"] is False
+    assert optimizer_step_runtime["max_grad_norm"] == 1.0
+    assert optimizer_step_runtime["grad_before_clip"]["tensors_with_grad"] > 0
+    assert optimizer_step_runtime["grad_after_zero"]["tensors_with_grad"] == 0
+    gate_status = {
+        gate["name"]: gate["status"] for gate in runtime_audit["launch_gates"]["gates"]
+    }
+    assert runtime_audit["launch_gates"]["optimizer_step_runtime_status"] == (
+        "actual_backward_optimizer_scheduler_step_audit"
+    )
+    assert gate_status["construct_optimizer_and_scheduler_from_plan"] == "identity_validated"
+    assert gate_status["run_backward_optimizer_scheduler_step_from_plan"] == (
+        "identity_validated"
+    )
     assert gate_status["save_checkpoint_with_clean_contract"] == "pending_real_trainer_loop"
 
 
@@ -1533,6 +1668,121 @@ def test_stage1_training_executor_runtime_audit_can_write_training_step_probe(
     assert gate_status["stage1_readout_context_uses_qwen_v_merge"] == "identity_validated"
     assert gate_status["stage1_position_ids_use_real_qwen3_mrope"] == "identity_validated"
     assert gate_status["stage1_matrix_ce_and_manifold_losses_match_plan"] == (
+        "identity_validated"
+    )
+
+
+def test_stage1_training_executor_runtime_audit_can_write_optimizer_step_probe(
+    tmp_path,
+    monkeypatch,
+    capsys,
+) -> None:
+    import torch
+
+    train_file = tmp_path / "stage1.train.jsonl"
+    train_file.write_text(
+        '{"image": "/tmp/image.jpg", "question": "q", "target": "mark", '
+        '"evidence_description": "The mark is visible."}\n',
+        encoding="utf-8",
+    )
+    output_dir = tmp_path / "stage1_plan"
+    qwen = torch.nn.Linear(2, 2)
+    tgvf = torch.nn.Sequential(torch.nn.Linear(2, 1))
+
+    def fake_loader(bundle, *, expected_stage):
+        assert expected_stage.value == "stage1"
+        assert bundle["stage"] == "stage1"
+        return {
+            "modules": {"qwen": qwen, "tgvf": tgvf},
+            "loader": {"backend": "fake_stage1_optimizer_step_audit_loader"},
+        }
+
+    def fake_step_probe(*, bundle, artifacts, loaded_modules):
+        assert bundle["stage"] == "stage1"
+        assert artifacts["optimizer_groups"]["status"] == "validated"
+        parameters = [
+            parameter
+            for module in (qwen, tgvf)
+            for parameter in module.parameters()
+            if parameter.requires_grad
+        ]
+        loss_tensor = sum(parameter.square().sum() for parameter in parameters)
+        return {
+            "forward_completed": True,
+            "sample_count": 1,
+            "loss_total": float(loss_tensor.detach()),
+            "loss_tensor": loss_tensor,
+            "loss_gen": 1.0,
+            "loss_visual_token_manifold": 0.5,
+            "loss_same_image_negative": 0.25,
+            "debug": {
+                "stage": "tgvf_v3_stage1",
+                "loss_weights": {
+                    "gen": 1.0,
+                    "visual_token_manifold": 0.1,
+                    "same_image_negative": 1.0,
+                    "contrastive_alignment": 0.0,
+                },
+                "same_image_negative_mode": "matrix_ce",
+                "readout_append_mode": "qwen3_visual_special_tokens_embedding_replace",
+                "position_ids_source": "qwen3_native_source_grid_full_trajectory",
+                "attention_mask_mode": "weak_strict_after_tgvf",
+                "image_keys_blocked_for_tgvf_evidence_answer": True,
+                "visual_token_manifold_active": True,
+            },
+        }
+
+    monkeypatch.setattr(training_executor, "_load_training_parameter_audit_modules", fake_loader)
+    monkeypatch.setattr(training_executor, "_run_stage1_training_step_probe", fake_step_probe)
+    assert (
+        stage1_main(
+            [
+                "--run-id",
+                "stage1_optimizer_step_audit",
+                "--train-file",
+                str(train_file),
+                "--output-dir",
+                str(output_dir),
+                "--write-plan",
+            ]
+        )
+        == 0
+    )
+
+    assert (
+        stage1_executor_main(
+            [
+                "--plan",
+                str(output_dir / "training_plan.json"),
+                "--prepare-execution",
+                "--audit-runtime",
+                "--audit-optimizer-step",
+            ]
+        )
+        == 0
+    )
+    payload = capsys.readouterr().out
+    assert '"optimizer_step_runtime"' in payload
+    execution_dir = output_dir / "clean_training_execution"
+    optimizer_step_runtime = json.loads(
+        (execution_dir / "optimizer_step_runtime.json").read_text()
+    )
+    runtime_audit = json.loads((execution_dir / "clean_training_runtime_audit.json").read_text())
+    assert optimizer_step_runtime["status"] == "actual_backward_optimizer_scheduler_step_audit"
+    assert optimizer_step_runtime["backward_called"] is True
+    assert optimizer_step_runtime["optimizer_step_called"] is True
+    assert optimizer_step_runtime["scheduler_step_called"] is True
+    assert optimizer_step_runtime["grad_before_clip"]["tensors_with_grad"] > 0
+    assert optimizer_step_runtime["grad_after_zero"]["tensors_with_grad"] == 0
+    gate_status = {
+        gate["name"]: gate["status"] for gate in runtime_audit["launch_gates"]["gates"]
+    }
+    assert gate_status["stage1_readout_context_uses_qwen_v_merge"] == "identity_validated"
+    assert gate_status["stage1_position_ids_use_real_qwen3_mrope"] == "identity_validated"
+    assert gate_status["stage1_matrix_ce_and_manifold_losses_match_plan"] == (
+        "identity_validated"
+    )
+    assert gate_status["run_backward_optimizer_scheduler_step_from_plan"] == (
         "identity_validated"
     )
 
