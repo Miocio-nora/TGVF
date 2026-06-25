@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import subprocess
 from dataclasses import replace
 
 from revisit_vlm_clean.benchmark_data import (
@@ -115,6 +116,7 @@ def main(argv: list[str] | None = None) -> int:
         get_population(args.population_id)
     if args.subset_id:
         get_subset(args.subset_id)
+    git_commit, dirty_worktree = _git_identity()
     config = RunConfig(
         run_id=args.run_id,
         checkpoint_path=args.checkpoint_path,
@@ -136,6 +138,8 @@ def main(argv: list[str] | None = None) -> int:
             enabled=bool(args.deepstack_enabled),
             original_image_scope=DeepStackScope(args.deepstack_original_image_scope),
         ),
+        git_commit=git_commit,
+        dirty_worktree=dirty_worktree,
     )
     config.validate()
     if args.dry_run:
@@ -280,6 +284,23 @@ def _stage2_runtime_config(args: argparse.Namespace, config: RunConfig) -> Stage
         max_action_tokens=config.max_action_tokens,
         max_answer_tokens=config.max_answer_tokens,
     )
+
+
+def _git_identity() -> tuple[str | None, bool | None]:
+    try:
+        commit = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"],
+            text=True,
+            stderr=subprocess.DEVNULL,
+        ).strip()
+        status = subprocess.check_output(
+            ["git", "status", "--porcelain", "--untracked-files=no"],
+            text=True,
+            stderr=subprocess.DEVNULL,
+        )
+    except Exception:
+        return None, None
+    return commit or None, bool(status.strip())
 
 
 if __name__ == "__main__":
