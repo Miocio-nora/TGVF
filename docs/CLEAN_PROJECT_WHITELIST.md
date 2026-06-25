@@ -410,6 +410,8 @@ Still required for implementation:
 - expose DeepStack state in canonical `run_config.json` and merged summaries;
 - real model execution with `deepstack.enabled=true` must fail fast until
   original-image DeepStack injection/masking semantics are implemented;
+- the fail-fast path must expose a structured `deepstack_execution_plan`
+  recording scope-specific masking/restoration semantics and remaining blockers;
 - keep prompt/continuation/parser/sample identity fixed when comparing forward
   paths;
 - add a smoke check that native no-DeepStack and manual no-DeepStack are

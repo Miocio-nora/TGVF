@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import io
+import json
 import time
 from collections.abc import Iterable
 from dataclasses import dataclass, field
@@ -13,7 +14,7 @@ from typing import Any
 from .benchmark_data import BenchmarkSample
 from .legacy_stage2_adapter import build_legacy_stage2_args, make_legacy_stage2_sample
 from .rendering import RenderedBenchmarkInput
-from .schema import EvalFamily, EvalMode, EvalSummary, RunConfig
+from .schema import DeepStackScope, EvalFamily, EvalMode, EvalSummary, RunConfig
 from .scoring import score_output_rows
 from .stage2_native import (
     NativeStage2Engine,
@@ -513,12 +514,47 @@ def make_backend(
 def _reject_unported_deepstack_execution(config: RunConfig, *, backend: str) -> None:
     if not config.deepstack.enabled:
         return
+    plan = build_deepstack_execution_plan(config, backend=backend)
     raise NotImplementedError(
         "DeepStack execution is not implemented for clean Stage2 benchmark backends yet "
-        f"(backend={backend}, scope={config.deepstack.original_image_scope}). "
+        f"(backend={backend}, scope={config.deepstack.original_image_scope}, "
+        f"answer_restore={plan['original_image_deepstack']['restore_for_answer']}). "
         "The run config may record DeepStack identity, but real evaluation must not "
-        "claim DeepStack behavior until original-image DeepStack injection/masking is ported."
+        "claim DeepStack behavior until original-image DeepStack injection/masking is ported. "
+        f"deepstack_execution_plan={json.dumps(plan, sort_keys=True)}"
     )
+
+
+def build_deepstack_execution_plan(config: RunConfig, *, backend: str) -> dict[str, Any]:
+    state = config.deepstack
+    scope = state.original_image_scope
+    restore_for_answer = scope == DeepStackScope.EVIDENCE_ONLY
+    block_through_answer = scope == DeepStackScope.THROUGH_ANSWER
+    return {
+        "backend": backend,
+        "enabled": bool(state.enabled),
+        "execution_supported": False,
+        "status": "not_ported",
+        "original_image_scope": scope.value,
+        "original_image_deepstack": {
+            "injection_source": "native_qwen3_original_image_deepstack_features",
+            "block_after_tgvf_append": True,
+            "block_scope": "through_answer" if block_through_answer else "evidence_only",
+            "restore_for_answer": restore_for_answer,
+            "must_follow_attention_mask_scope": True,
+        },
+        "d_deepstack_features": {
+            "enabled": bool(state.d_features_enabled),
+            "clean_default": False,
+            "required_for_current_mainline": False,
+        },
+        "fvt_visual_token_path": "v_merge_level_visual_tokens",
+        "blocking_items": [
+            "native Qwen3 DeepStack feature injection for original image is not ported",
+            "post-D DeepStack masking/restoration by scope is not ported",
+            "equivalence with no-DeepStack native Stage2 path is not proven",
+        ],
+    }
 
 
 def run_benchmark_rows(

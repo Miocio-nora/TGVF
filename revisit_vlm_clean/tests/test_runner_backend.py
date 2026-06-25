@@ -13,6 +13,7 @@ from revisit_vlm_clean.runner import (
     ModelRunResult,
     TGVFStage2Qwen3Backend,
     TGVFStage2Qwen3NativeBackend,
+    build_deepstack_execution_plan,
     make_backend,
     resolve_backend_name,
 )
@@ -193,8 +194,38 @@ def test_stage2_native_backend_rejects_unported_deepstack_execution(tmp_path) ->
         config=_deepstack_run_config(),
     )
 
-    with pytest.raises(NotImplementedError, match="DeepStack execution is not implemented"):
+    with pytest.raises(NotImplementedError, match="deepstack_execution_plan"):
         backend.prepare(_deepstack_run_config())
+
+
+def test_deepstack_execution_plan_records_scope_semantics() -> None:
+    through_answer = build_deepstack_execution_plan(
+        _deepstack_run_config(),
+        backend=STAGE2_NATIVE_BACKEND,
+    )
+    assert through_answer["execution_supported"] is False
+    assert through_answer["original_image_scope"] == "through_answer"
+    assert through_answer["original_image_deepstack"]["block_after_tgvf_append"] is True
+    assert through_answer["original_image_deepstack"]["restore_for_answer"] is False
+    assert through_answer["d_deepstack_features"]["required_for_current_mainline"] is False
+
+    evidence_only_config = RunConfig(
+        run_id="stage2_deepstack_evidence",
+        checkpoint_path="outputs/checkpoint.pt",
+        mode=EvalMode.TGVF_FORCE,
+        post_tgvf_forward_mode=ForwardMode.KV_CACHE,
+        subset_id="core_smoke_256_seed20260625",
+        deepstack=DeepStackState(
+            enabled=True,
+            original_image_scope=DeepStackScope.EVIDENCE_ONLY,
+        ),
+    )
+    evidence_only = build_deepstack_execution_plan(
+        evidence_only_config,
+        backend=STAGE2_NATIVE_BACKEND,
+    )
+    assert evidence_only["original_image_scope"] == "evidence_only"
+    assert evidence_only["original_image_deepstack"]["restore_for_answer"] is True
 
 
 def test_stage2_legacy_backend_rejects_unported_deepstack_execution(tmp_path) -> None:

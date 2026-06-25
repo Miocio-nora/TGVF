@@ -1413,6 +1413,25 @@ Implemented after Phase 52.
   `trainer_loop_ported=false`. It is the stable clean handoff surface for the
   future trainer loop, not a fake training launch.
 
+## Phase 54: Structured DeepStack Execution Plan
+
+Implemented after Phase 53.
+
+- Stage2 benchmark backends still reject `deepstack.enabled=true` for real
+  execution;
+- the rejection now includes a structured `deepstack_execution_plan` instead of
+  only a generic error string;
+- the plan records:
+  - backend;
+  - `execution_supported=false`;
+  - original-image DeepStack injection source;
+  - scope-specific masking semantics;
+  - `through_answer` means no answer restoration;
+  - `evidence_only` means restore original-image DeepStack for answer;
+  - D DeepStack-like features remain disabled and not required for the current
+    mainline;
+  - the remaining blocking items before real DeepStack execution can be enabled.
+
 ## Later Phases
 
 1. Replace training launch plans with clean-native training execution.
