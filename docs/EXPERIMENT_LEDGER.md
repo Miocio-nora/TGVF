@@ -2521,7 +2521,7 @@ entry, update this file immediately.
 
 ### EXP-20260626-002759-clean-stage2-vstar1-smoke
 
-- Status: PLANNED.
+- Status: RUNNING.
 - Question:
   - Can the new `revisit_vlm_clean` executable runner load a real historical Qwen3 Stage2 checkpoint through the narrow legacy adapter and run one deterministic path-backed VStar sample end to end?
 - Baseline anchor:
@@ -2579,9 +2579,9 @@ entry, update this file immediately.
 - GPUs:
   - Planned: GPU 0 only.
 - tmux:
-  - Planned: `clean_stage2_vstar1_20260626_002759`.
+  - `clean_stage2_vstar1_20260626_002759`.
 - Started:
-  - Pending.
+  - 2026-06-26T00:30:36+09:00.
 - Finished:
   - Pending.
 - Metrics:
