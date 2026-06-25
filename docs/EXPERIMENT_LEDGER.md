@@ -2723,7 +2723,7 @@ entry, update this file immediately.
 
 ### EXP-20260626-010550-clean-stage2-vstar32-smoke
 
-- Status: RUNNING.
+- Status: DONE.
 - Question:
   - Does the clean `tgvf_stage2_qwen3` bridge remain stable on the full VStar allocation from `CoreSmoke-256`, before moving toward larger clean benchmark subsets?
 - Baseline anchor:
@@ -2788,13 +2788,51 @@ entry, update this file immediately.
 - Started:
   - 2026-06-26T01:07:55+09:00.
 - Finished:
-  - Pending.
+  - 2026-06-26T01:10:14+09:00.
 - Metrics:
-  - Pending.
+  - `n_rows=32`.
+  - `n_scored=32`.
+  - `accuracy=0.4375`.
+  - `answer_parse_rate=1.0`.
+  - `trigger_rate=1.0`.
+  - `focus_valid_rate=1.0`.
+  - `append_success_rate=1.0`.
+  - `malformed_rate=0.0`.
+  - Correct rows:
+    `14/32`.
+  - Wrong rows:
+    `18/32`.
+  - `target_answer_leakage_flag=true` on 30/32 legacy debug rows.
+  - Wrong sample ids:
+    - `vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/9_000009`
+    - `vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/145_000145`
+    - `vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/162_000162`
+    - `vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/12_000012`
+    - `vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/63_000063`
+    - `vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/155_000155`
+    - `vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/51_000051`
+    - `vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/41_000041`
+    - `vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/110_000110`
+    - `vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/168_000168`
+    - `vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/81_000081`
+    - `vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/18_000018`
+    - `vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/190_000190`
+    - `vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/80_000080`
+    - `vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/78_000078`
+    - `vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/15_000015`
+    - `vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/164_000164`
+    - `vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/48_000048`
 - Analysis:
-  - Pending.
+  - The clean Stage2 bridge remained stable across all 32 rows: no errors, no malformed rows, all focus captures valid, and all D appends succeeded.
+  - `run_config.txt`, `run_config.json`, `sample_manifest.json`, `rows.jsonl`, and `summary.json` were written.
+  - Runtime code identity was recorded in `run_config.txt` as commit `25e239e68d441f1ea56ac78a4db8d77ea3765dec` with `dirty_worktree=False`.
+  - Output path:
+    `outputs/clean_smokes/stage2_tgvf_force_vstar32_20260626_010550`.
+  - The 43.75% accuracy is a diagnostic row result only; this manifest is the VStar slice of CoreSmoke and is not a benchmark table.
+  - The mostly universal legacy `target_answer_leakage_flag` means this smoke should not be used for focus-target quality claims.
 - Conclusion:
-  - Pending.
+  - Clean Stage2 larger path-backed force smoke passed.
+  - The basic bridge now looks stable on the full VStar allocation of CoreSmoke; next work should move to remaining official scorer wrappers or explicit clean benchmark subset boundaries.
 - Comparable to baseline:
   - No; diagnostic larger path-backed launch smoke only.
 - Follow-up:

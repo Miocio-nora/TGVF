@@ -339,9 +339,55 @@ Remaining scorer gap:
 - MMMU-Pro, OCRBench-v2, MathVista, and MathVerse official wrappers are still
   not ported into the clean runner.
 
+## Phase 14: Larger Path-Backed Stage2 Smoke
+
+Implemented on 2026-06-26.
+
+- committed deterministic manifest
+  `benchmark_manifests/diagnostic_vstar_core_smoke_32_20260626.json`;
+- manifest rule:
+  all 32 VStar samples from committed `CoreSmoke-256`;
+- preflight verified:
+  - 32 rows materialized;
+  - all image paths exist;
+  - no `Choices:` duplication in rendered prompts;
+  - dry execution `accuracy=1.0`;
+- ran `tgvf_stage2_qwen3` on all 32 rows with the same 20260617 row-only
+  Stage2 checkpoint used in Phase 10/11.
+
+Smoke result:
+
+```text
+output:
+  outputs/clean_smokes/stage2_tgvf_force_vstar32_20260626_010550
+manifest:
+  diagnostic_vstar_core_smoke_32_20260626
+manifest_hash:
+  d18563b8d2c1392295e80f7e3a8c4453cb7f725aebbba9b714fa58822be8ace7
+mode:
+  tgvf_force
+backend:
+  tgvf_stage2_qwen3
+n_rows:
+  32
+accuracy:
+  0.4375
+trigger_rate:
+  1.0
+focus_valid_rate:
+  1.0
+append_success_rate:
+  1.0
+malformed_rate:
+  0.0
+```
+
+This validates larger path-backed bridge stability only. It is not a benchmark
+comparison. Legacy `target_answer_leakage_flag` fired on 30/32 rows.
+
 ## Later Phases
 
 1. Official wrapper parity for MMMU-Pro, OCRBench-v2, MathVista, and MathVerse.
-2. Larger clean path-backed subset smoke before CoreDev-scale runs.
+2. Clean benchmark subset boundaries for CoreSmoke/CoreDev execution.
 3. Stage1/Stage2 launchers.
 4. DeepStack training/eval support.
