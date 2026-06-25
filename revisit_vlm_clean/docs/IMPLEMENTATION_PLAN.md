@@ -732,6 +732,45 @@ Validation:
   `PYTHONPATH=revisit_vlm_clean/src pytest -q revisit_vlm_clean/tests`
   -> 68 tests.
 
+## Phase 25: Stage2 Native Engine Boundary
+
+Implemented after Phase 24.
+
+- added `revisit_vlm_clean.stage2_native.NativeStage2Engine` as the owner of
+  the final clean-native Stage2 runtime contract;
+- `tgvf_stage2_qwen3_native` now prepares through this native engine instead of
+  failing immediately in the runner;
+- native prepare records:
+  - Stage2 runtime config;
+  - run mode/forward/protocol/deepstack/parser identity;
+  - checkpoint file hash;
+  - eval JSONL identity;
+  - backend dtype/device options;
+- native execution remains explicitly unported. Calling the backend produces a
+  structured row error with `native_stage2_execution_ported=false` instead of
+  silently falling back to the legacy bridge;
+- tests assert that the native module does not import the historical Stage2
+  evaluator module.
+
+This phase still does not claim clean-native Stage2 capture, D construction, or
+post-TGVF continuation are complete. It creates the place where that code must
+land.
+
+Data generation remains a clean first-class asset in this tree. The deterministic
+Stage2/Stage1 transforms should be preserved; only heavy teacher trajectory
+generation remains to be ported.
+
+Validation:
+
+- targeted runner/backend tests passed:
+  `PYTHONPATH=revisit_vlm_clean/src pytest -q revisit_vlm_clean/tests/test_runner_backend.py -q`
+  -> 6 tests;
+- targeted ruff passed for runner, native Stage2 engine, and runner backend
+  tests;
+- full clean test suite passed:
+  `PYTHONPATH=revisit_vlm_clean/src pytest -q revisit_vlm_clean/tests`
+  -> 71 tests.
+
 ## Later Phases
 
 1. Port teacher trajectory generation into `tgvf_generate_data`.

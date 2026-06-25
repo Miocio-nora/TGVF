@@ -15,6 +15,11 @@ from .legacy_stage2_adapter import build_legacy_stage2_args, make_legacy_stage2_
 from .rendering import RenderedBenchmarkInput
 from .schema import EvalMode, EvalSummary, RunConfig
 from .scoring import score_output_rows
+from .stage2_native import (
+    NativeStage2Engine,
+    NativeStage2ExecutionNotPortedError,
+    NativeStage2RunResult,
+)
 from .stage2_runtime import Stage2RuntimeConfig
 
 STAGE2_NATIVE_BACKEND = "tgvf_stage2_qwen3_native"
@@ -398,12 +403,7 @@ class TGVFStage2Qwen3Backend(CleanRunnerBackend):
 
 
 class TGVFStage2Qwen3NativeBackend(CleanRunnerBackend):
-    """Placeholder for the final clean-native Stage2 runner.
-
-    This backend name is reserved so experiment configs can stop treating the
-    legacy bridge as the final implementation. It deliberately fails fast until
-    the native capture/append path is ported into the clean tree.
-    """
+    """Final clean-native Stage2 backend boundary."""
 
     def __init__(
         self,
@@ -415,15 +415,67 @@ class TGVFStage2Qwen3NativeBackend(CleanRunnerBackend):
             raise ValueError("Stage2 Qwen3 native backend requires Stage2RuntimeConfig")
         self.stage2_config = stage2_config
         self.backend_config = backend_config
+        self._engine = NativeStage2Engine(
+            stage2_config=stage2_config,
+            backend_options={
+                "dtype": backend_config.dtype,
+                "device": backend_config.device,
+                "device_map": backend_config.device_map,
+                "attn_implementation": backend_config.attn_implementation,
+                "trust_remote_code": backend_config.trust_remote_code,
+            },
+        )
 
     def prepare(self, config: RunConfig) -> None:
-        del config
-        self.stage2_config.validate()
-        raise NotImplementedError(
-            "tgvf_stage2_qwen3_native is reserved for the final clean-native "
-            "Stage2 runner; use tgvf_stage2_qwen3_legacy only for diagnostic "
-            "bridge runs until native capture/append is ported."
-        )
+        self._engine.prepare(config)
+
+    def run(
+        self,
+        sample: BenchmarkSample,
+        rendered: RenderedBenchmarkInput,
+        config: RunConfig,
+    ) -> ModelRunResult:
+        started = time.perf_counter()
+        try:
+            return _native_stage2_result_to_model_run_result(
+                self._engine.run(sample, rendered, config),
+                started=started,
+            )
+        except NativeStage2ExecutionNotPortedError as exc:
+            return ModelRunResult(
+                raw_output="",
+                wall_time_sec=time.perf_counter() - started,
+                error=f"{type(exc).__name__}: {exc}",
+                debug={
+                    "native_stage2": self._engine.identity(),
+                    "native_stage2_execution_ported": False,
+                },
+            )
+        except Exception as exc:
+            return ModelRunResult(
+                raw_output="",
+                wall_time_sec=time.perf_counter() - started,
+                error=f"{type(exc).__name__}: {exc}",
+                debug={"native_stage2": self._engine.identity()},
+            )
+
+
+def _native_stage2_result_to_model_run_result(
+    result: NativeStage2RunResult,
+    *,
+    started: float,
+) -> ModelRunResult:
+    return ModelRunResult(
+        raw_output=result.raw_output,
+        triggered=result.triggered,
+        focus_target=result.focus_target,
+        focus_valid=result.focus_valid,
+        append_success=result.append_success,
+        output_tokens=result.output_tokens,
+        wall_time_sec=time.perf_counter() - started,
+        error=result.error,
+        debug=result.debug,
+    )
 
 
 def resolve_backend_name(name: str) -> str:

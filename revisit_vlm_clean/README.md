@@ -47,7 +47,9 @@ The data-generation entrypoint records source files, hashes, protocol,
 transform, field weights, mask policy, and output intent. It can currently
 execute the deterministic `v4_to_protocol_c`,
 `v4_to_stage1_protocol_c_focus`, `choice_to_open_answer`, and `clean_imend`
-transforms. Teacher trajectory generation still remains outside the clean tree.
+transforms. This path is treated as a clean first-class asset rather than a
+legacy bridge. Teacher trajectory generation still remains outside the clean
+tree.
 
 The training entrypoints currently produce auditable launch plans with
 dataset/checkpoint hashes, batch math, mask policy, weighted losses, DeepStack
@@ -90,8 +92,10 @@ Diagnostic manifests are for runner validation only, not benchmark reporting.
   native clean TGVF runner is still being ported.
 - `tgvf_stage2_qwen3`: deprecated alias for `tgvf_stage2_qwen3_legacy`;
   outputs record both names.
-- `tgvf_stage2_qwen3_native`: reserved final backend name. It currently fails
-  fast until clean-native capture/append is ported.
+- `tgvf_stage2_qwen3_native`: final clean-native backend name. It now owns a
+  native engine boundary and records checkpoint/eval identity without using the
+  legacy evaluator; model capture/append execution is still to be ported and
+  currently returns structured row errors.
 
 ## Clean-Native Exit Criteria
 
