@@ -19,6 +19,7 @@ from revisit_vlm_clean.runner import (
 from revisit_vlm_clean.schema import (
     DeepStackScope,
     DeepStackState,
+    EvalFamily,
     EvalMode,
     ForwardMode,
     RunConfig,
@@ -38,6 +39,17 @@ def _run_config(mode: EvalMode = EvalMode.TGVF_FORCE) -> RunConfig:
         mode=mode,
         post_tgvf_forward_mode=ForwardMode.KV_CACHE,
         subset_id="core_smoke_256_seed20260625",
+    )
+
+
+def _diagnostic_run_config(mode: EvalMode = EvalMode.TGVF_FORCE) -> RunConfig:
+    return RunConfig(
+        run_id="stage2_diagnostic",
+        checkpoint_path="outputs/checkpoint.pt",
+        eval_family=EvalFamily.INTERNAL_DIAGNOSTIC,
+        mode=mode,
+        post_tgvf_forward_mode=ForwardMode.KV_CACHE,
+        subset_id="diagnostic_vstar_first_1_20260626",
     )
 
 
@@ -79,15 +91,26 @@ def _sample() -> BenchmarkSample:
     )
 
 
-def test_make_tgvf_stage2_backend_without_prepare(tmp_path) -> None:
+def test_stage2_legacy_backend_requires_internal_diagnostic_family(tmp_path) -> None:
     runtime = Stage2RuntimeConfig(
         stage2_checkpoint=str(tmp_path / "ckpt.pt"),
         eval_jsonl=str(tmp_path / "eval.jsonl"),
     )
-    config = _run_config()
+    with pytest.raises(ValueError, match="diagnostic-only"):
+        make_backend(
+            BackendConfig(backend=STAGE2_LEGACY_BACKEND, stage2=runtime),
+            config=_run_config(),
+        )
+
+
+def test_make_tgvf_stage2_legacy_backend_without_prepare_for_diagnostic(tmp_path) -> None:
+    runtime = Stage2RuntimeConfig(
+        stage2_checkpoint=str(tmp_path / "ckpt.pt"),
+        eval_jsonl=str(tmp_path / "eval.jsonl"),
+    )
     backend = make_backend(
         BackendConfig(backend=STAGE2_LEGACY_BACKEND, stage2=runtime),
-        config=config,
+        config=_diagnostic_run_config(),
     )
 
     assert isinstance(backend, TGVFStage2Qwen3Backend)
@@ -177,11 +200,23 @@ def test_stage2_native_backend_rejects_unported_deepstack_execution(tmp_path) ->
 def test_stage2_legacy_backend_rejects_unported_deepstack_execution(tmp_path) -> None:
     backend = make_backend(
         BackendConfig(backend=STAGE2_LEGACY_BACKEND, stage2=_runtime(tmp_path)),
-        config=_deepstack_run_config(),
+        config=_diagnostic_run_config(),
     )
 
     with pytest.raises(NotImplementedError, match="DeepStack execution is not implemented"):
-        backend.prepare(_deepstack_run_config())
+        diagnostic_deepstack = RunConfig(
+            run_id="stage2_deepstack",
+            checkpoint_path="outputs/checkpoint.pt",
+            eval_family=EvalFamily.INTERNAL_DIAGNOSTIC,
+            mode=EvalMode.TGVF_FORCE,
+            post_tgvf_forward_mode=ForwardMode.KV_CACHE,
+            subset_id="diagnostic_vstar_first_1_20260626",
+            deepstack=DeepStackState(
+                enabled=True,
+                original_image_scope=DeepStackScope.THROUGH_ANSWER,
+            ),
+        )
+        backend.prepare(diagnostic_deepstack)
 
 
 def test_stage2_native_engine_records_identity_without_loading_runtime(tmp_path) -> None:

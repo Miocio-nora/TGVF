@@ -13,7 +13,7 @@ from typing import Any
 from .benchmark_data import BenchmarkSample
 from .legacy_stage2_adapter import build_legacy_stage2_args, make_legacy_stage2_sample
 from .rendering import RenderedBenchmarkInput
-from .schema import EvalMode, EvalSummary, RunConfig
+from .schema import EvalFamily, EvalMode, EvalSummary, RunConfig
 from .scoring import score_output_rows
 from .stage2_native import (
     NativeStage2Engine,
@@ -498,6 +498,11 @@ def make_backend(
             backend_config=backend_config,
         )
     if backend_name == STAGE2_LEGACY_BACKEND:
+        if config.eval_family != EvalFamily.INTERNAL_DIAGNOSTIC:
+            raise ValueError(
+                "tgvf_stage2_qwen3_legacy is diagnostic-only; set "
+                "eval_family='internal_diagnostic' or use tgvf_stage2_qwen3/native"
+            )
         return TGVFStage2Qwen3Backend(
             stage2_config=backend_config.stage2,
             backend_config=backend_config,

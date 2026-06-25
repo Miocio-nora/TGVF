@@ -560,6 +560,9 @@ Clean-project target:
   identity, `natural_continue`, explicit forward mode, and DeepStack state.
 - Internal Stage2 protocol and Stage1/FVT diagnostics should remain separate
   probe CLIs, not benchmark-table runners.
+- The historical Stage2 bridge backend may remain only as an
+  `internal_diagnostic` backend. It must be rejected for
+  `project_native_external` benchmark runs.
 - VLMEvalKit should remain a first-class preserved eval family, but not silently
   interchangeable with project-native external benchmark results unless its
   runner emits the same identity fields and sample definitions.

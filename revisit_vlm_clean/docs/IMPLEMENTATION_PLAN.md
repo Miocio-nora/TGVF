@@ -1260,6 +1260,22 @@ Implemented after Phase 43.
 - this keeps training launch fail-safe while making executor validation
   auditable as a file artifact, not just terminal output.
 
+## Phase 45: Legacy Stage2 Backend Diagnostic Gate
+
+Implemented after Phase 44.
+
+- benchmark CLI now exposes explicit `--eval-family`;
+- `tgvf_stage2_qwen3_legacy` can only be constructed when
+  `eval_family=internal_diagnostic`;
+- clean project-native external benchmark runs must use
+  `tgvf_stage2_qwen3` or `tgvf_stage2_qwen3_native`;
+- row/run identity still records requested and resolved backend names;
+- tests assert:
+  - default benchmark dry-run remains `project_native_external`;
+  - explicit diagnostic eval family is accepted;
+  - legacy Stage2 backend rejects non-diagnostic configs;
+  - legacy Stage2 backend remains available for explicit diagnostic configs.
+
 ## Later Phases
 
 1. Replace training launch plans with clean-native training execution.

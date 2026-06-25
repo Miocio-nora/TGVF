@@ -108,8 +108,8 @@ Diagnostic manifests are for runner validation only, not benchmark reporting.
   `--max-answer-tokens` for smoke checks.
 - `tgvf_stage2_qwen3_legacy`: diagnostic bridge to the historical Stage2
   evaluator for `tgvf_force`, `tgvf_free`, and `tgvf_softforce` on path-backed
-  image samples. It preserves clean manifest/render/output identity while the
-  native clean TGVF runner is still being ported.
+  image samples. It is gated to `eval_family=internal_diagnostic` so it cannot
+  silently enter clean benchmark tables.
 - `tgvf_stage2_qwen3`: generic clean Stage2 backend name. It resolves to the
   clean-native backend.
 - `tgvf_stage2_qwen3_native`: explicit clean-native backend name. It now owns a

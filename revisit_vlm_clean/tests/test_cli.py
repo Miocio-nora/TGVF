@@ -42,8 +42,33 @@ def test_benchmark_dry_run_cli(capsys) -> None:
     assert '"run_id": "dry"' in captured.out
     assert '"benchmark_root": "/home/dredvpn009/Flash_Storage/datasets/benchmarks"' in captured.out
     assert '"fallback_allowed": false' in captured.out
+    assert '"eval_family": "project_native_external"' in captured.out
     assert '"scoring_backend": "project"' in captured.out
     assert '"tgvf_protocol": "protocol_c_tool_observation_qwen2_no_think"' in captured.out
+
+
+def test_benchmark_dry_run_cli_accepts_explicit_internal_diagnostic_family(capsys) -> None:
+    assert (
+        benchmark_main(
+            [
+                "--run-id",
+                "diagnostic",
+                "--checkpoint-path",
+                "outputs/checkpoint.pt",
+                "--eval-family",
+                "internal_diagnostic",
+                "--mode",
+                "tgvf_force",
+                "--post-tgvf-forward-mode",
+                "kv_cache",
+                "--subset-id",
+                "diagnostic_vstar_first_1_20260626",
+                "--dry-run",
+            ]
+        )
+        == 0
+    )
+    assert '"eval_family": "internal_diagnostic"' in capsys.readouterr().out
 
 
 def test_benchmark_write_empty_output_cli(tmp_path) -> None:

@@ -56,6 +56,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--checkpoint-path", required=True)
     parser.add_argument("--model-id", default="Qwen/Qwen3-VL-8B-Thinking")
     parser.add_argument("--processor-id", default=None)
+    parser.add_argument(
+        "--eval-family",
+        choices=[item.value for item in EvalFamily],
+        default=EvalFamily.PROJECT_NATIVE_EXTERNAL.value,
+    )
     parser.add_argument("--mode", choices=[item.value for item in EvalMode], required=True)
     parser.add_argument(
         "--post-tgvf-forward-mode",
@@ -159,7 +164,7 @@ def main(argv: list[str] | None = None) -> int:
         shard_index=args.shard_index,
         model_id=args.model_id,
         processor_id=args.processor_id,
-        eval_family=EvalFamily.PROJECT_NATIVE_EXTERNAL,
+        eval_family=EvalFamily(args.eval_family),
         mode=EvalMode(args.mode),
         population_id=args.population_id,
         subset_id=args.subset_id,
