@@ -460,12 +460,14 @@ def test_stage1_training_executor_prepare_execution_cli(tmp_path, capsys) -> Non
                 "--prepare-execution",
                 "--execution-dir",
                 str(execution_dir),
+                "--audit-runtime",
             ]
         )
         == 0
     )
     payload = capsys.readouterr().out
     assert '"will_launch_training": false' in payload
+    assert '"runtime_audit"' in payload
     bundle = json.loads((execution_dir / "clean_training_execution_bundle.json").read_text())
     status = json.loads((execution_dir / "clean_training_execution_status.json").read_text())
     assert bundle["training_execution_bundle_schema_version"] == (
@@ -503,6 +505,27 @@ def test_stage1_training_executor_prepare_execution_cli(tmp_path, capsys) -> Non
     assert status["trainer_runtime_contract_status"] == "not_ported"
     assert status["will_launch_training"] is False
     assert (execution_dir / "clean_training_execution_bundle.txt").exists()
+    runtime_audit = json.loads((execution_dir / "clean_training_runtime_audit.json").read_text())
+    audit_status = json.loads(
+        (execution_dir / "clean_training_runtime_audit_status.json").read_text()
+    )
+    trainable_parameters = json.loads((execution_dir / "trainable_parameters.json").read_text())
+    assert runtime_audit["status"] == "blocked_before_training_loop"
+    assert runtime_audit["will_launch_training"] is False
+    assert runtime_audit["launch_gates"]["checkpoint_contract_status"] == (
+        "no_input_checkpoint_required"
+    )
+    assert runtime_audit["launch_gates"]["optimizer_groups_status"] == "validated"
+    assert runtime_audit["launch_gates"]["trainable_parameters_status"] == (
+        "pending_model_load_not_actual_parameter_audit"
+    )
+    assert audit_status["status"] == "blocked_before_training_loop"
+    assert trainable_parameters["actual_model_parameters_loaded"] is False
+    assert trainable_parameters["must_be_replaced_before_first_optimizer_step"] is True
+    assert trainable_parameters["expected_trainable_policy"] == [
+        "tgvf_module",
+        "protocol_c_token_rows_row_only",
+    ]
 
 
 def test_training_executor_rejects_executable_legacy_reference(tmp_path) -> None:
@@ -814,12 +837,14 @@ def test_stage2_training_executor_prepare_execution_cli(tmp_path, capsys) -> Non
                 "--plan",
                 str(output_dir / "training_plan.json"),
                 "--prepare-execution",
+                "--audit-runtime",
             ]
         )
         == 0
     )
     payload = capsys.readouterr().out
     assert '"training_runtime_ported": false' in payload
+    assert '"runtime_audit"' in payload
     execution_dir = output_dir / "clean_training_execution"
     bundle = json.loads((execution_dir / "clean_training_execution_bundle.json").read_text())
     assert bundle["stage"] == "stage2"
@@ -860,6 +885,19 @@ def test_stage2_training_executor_prepare_execution_cli(tmp_path, capsys) -> Non
     assert status["checkpoint_contract_status"] == "validated"
     assert status["optimizer_groups_status"] == "validated"
     assert status["will_launch_training"] is False
+    runtime_audit = json.loads((execution_dir / "clean_training_runtime_audit.json").read_text())
+    trainable_parameters = json.loads((execution_dir / "trainable_parameters.json").read_text())
+    assert runtime_audit["stage"] == "stage2"
+    assert runtime_audit["status"] == "blocked_before_training_loop"
+    assert runtime_audit["launch_gates"]["checkpoint_contract_status"] == "validated"
+    assert runtime_audit["launch_gates"]["optimizer_groups_status"] == "validated"
+    assert runtime_audit["launch_gates"]["pending_real_trainer_loop"] > 0
+    assert trainable_parameters["expected_trainable_policy"] == [
+        "qwen_lora_adapters",
+        "tgvf_module_continued_from_stage1",
+        "protocol_c_token_rows_restored_from_stage1",
+    ]
+    assert trainable_parameters["status"] == "pending_model_load_not_actual_parameter_audit"
 
 
 def test_stage2_prepare_execution_rejects_missing_required_dataset_fields(tmp_path) -> None:

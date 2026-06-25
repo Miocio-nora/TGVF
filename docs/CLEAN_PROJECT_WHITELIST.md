@@ -98,6 +98,12 @@ the current execution cleanup.
 - Prepare-execution must write `optimizer_groups.json` from clean plan identity,
   including Stage1 `tgvf_module` / `protocol_c_token_rows` groups and Stage2
   `llm_lora` / `tgvf_refiner` / `fvt_calibration` groups.
+- Runtime audit must validate the execution bundle plus prepared artifacts and
+  write `clean_training_runtime_audit.json`,
+  `clean_training_runtime_audit_status.json`, and `trainable_parameters.json`.
+  Until the real model is loaded, `trainable_parameters.json` must be marked as
+  `pending_model_load_not_actual_parameter_audit` and must not be treated as an
+  actual trainable-parameter audit.
 - `clean_prepare_execution_command.sh` is the runnable clean handoff command;
   `clean_training_command.sh` stays non-executable until the trainer loop is
   ported.
@@ -188,6 +194,12 @@ the current execution cleanup.
 - Prepare-execution must write `optimizer_groups.json` from clean plan identity,
   including Stage1 `tgvf_module` / `protocol_c_token_rows` groups and Stage2
   `llm_lora` / `tgvf_refiner` / `fvt_calibration` groups.
+- Runtime audit must validate the execution bundle plus prepared artifacts and
+  write `clean_training_runtime_audit.json`,
+  `clean_training_runtime_audit_status.json`, and `trainable_parameters.json`.
+  Until the real model is loaded, `trainable_parameters.json` must be marked as
+  `pending_model_load_not_actual_parameter_audit` and must not be treated as an
+  actual trainable-parameter audit.
 - `clean_prepare_execution_command.sh` is the runnable clean handoff command;
   `clean_training_command.sh` stays non-executable until the trainer loop is
   ported.

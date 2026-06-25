@@ -1550,6 +1550,33 @@ Implemented after Phase 60.
   norm, scheduler identity, warmup, and min-LR ratio;
 - execution status now reports `optimizer_groups_status=validated`.
 
+## Phase 62: Training Runtime Audit Gate
+
+Implemented after Phase 61.
+
+- Stage1/Stage2 executors now support `--audit-runtime`;
+- the audit validates `clean_training_execution_bundle.json` plus the prepared
+  runtime artifacts:
+  - `dataset_runtime_identity.json`;
+  - `first_batch_identity.json`;
+  - `checkpoint_contract.json`;
+  - `optimizer_groups.json`;
+- the audit writes:
+  - `clean_training_runtime_audit.json`;
+  - `clean_training_runtime_audit_status.json`;
+  - `clean_training_runtime_audit.txt`;
+  - `trainable_parameters.json`;
+- `trainable_parameters.json` is deliberately a blocking placeholder with
+  `status=pending_model_load_not_actual_parameter_audit`; it records expected
+  trainable/frozen module policy but must be overwritten by the real trainer
+  after model load and before the first optimizer step;
+- launch gates are split into identity-validated gates and
+  `pending_real_trainer_loop` gates, so checkpoint-save, model-load, protocol
+  rows, Stage1 readout execution, Stage2 LoRA attachment, weighted losses, mask
+  scope, and DeepStack semantics are not falsely reported as implemented;
+- the runtime audit still records `will_launch_training=false` and
+  `training_runtime_ported=false`.
+
 ## Later Phases
 
 1. Replace training launch plans with clean-native training execution.

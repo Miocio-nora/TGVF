@@ -54,6 +54,30 @@ def build_parser(stage: TrainingStage) -> argparse.ArgumentParser:
             "<plan-dir>/clean_training_execution."
         ),
     )
+    parser.add_argument(
+        "--audit-runtime",
+        action="store_true",
+        help=(
+            "Validate an execution bundle plus runtime artifacts and write a "
+            "clean runtime audit report. This does not launch training."
+        ),
+    )
+    parser.add_argument(
+        "--bundle",
+        default=None,
+        help=(
+            "Execution bundle to audit. Defaults to "
+            "<execution-dir>/clean_training_execution_bundle.json."
+        ),
+    )
+    parser.add_argument(
+        "--runtime-audit-report",
+        default=None,
+        help=(
+            "Path for --audit-runtime report. Defaults to "
+            "<execution-dir>/clean_training_runtime_audit.json."
+        ),
+    )
     return parser
 
 
@@ -77,7 +101,29 @@ def main_for_stage(stage: TrainingStage, argv: list[str] | None = None) -> int:
             execution_dir=args.execution_dir,
         )
         prepared["preflight_report"] = str(report_path)
+        if args.audit_runtime:
+            audit = audit_training_runtime(
+                bundle_path=prepared["execution_bundle"],
+                expected_stage=stage,
+                report_path=args.runtime_audit_report,
+            )
+            prepared["runtime_audit"] = audit["runtime_audit"]
+            prepared["trainable_parameters"] = audit["trainable_parameters"]
         print_json(prepared)
+        return 0
+    if args.audit_runtime:
+        bundle_path = _execution_bundle_path(
+            plan_path=plan_path,
+            execution_dir=args.execution_dir,
+            requested=args.bundle,
+        )
+        audit = audit_training_runtime(
+            bundle_path=bundle_path,
+            expected_stage=stage,
+            report_path=args.runtime_audit_report,
+        )
+        audit["preflight_report"] = str(report_path)
+        print_json(audit)
         return 0
     print_json(report)
     if args.preflight_only:
@@ -161,6 +207,53 @@ def prepare_training_execution(
     }
 
 
+def audit_training_runtime(
+    *,
+    bundle_path: str | Path,
+    expected_stage: TrainingStage,
+    report_path: str | Path | None = None,
+) -> dict[str, Any]:
+    bundle_file = Path(bundle_path)
+    if not bundle_file.exists():
+        raise FileNotFoundError(f"training execution bundle does not exist: {bundle_file}")
+    bundle = json.loads(bundle_file.read_text(encoding="utf-8"))
+    _validate_execution_bundle(bundle, expected_stage=expected_stage)
+    execution_dir = Path(str(bundle.get("execution_dir") or bundle_file.parent))
+    artifacts = _load_runtime_artifacts(bundle, expected_stage=expected_stage)
+    trainable_parameters = _write_trainable_parameters_placeholder(
+        execution_dir=execution_dir,
+        bundle=bundle,
+    )
+    audit = _runtime_audit_report(
+        bundle_path=bundle_file,
+        bundle=bundle,
+        artifacts=artifacts,
+        trainable_parameters=trainable_parameters,
+        expected_stage=expected_stage,
+    )
+    resolved_report_path = (
+        Path(report_path)
+        if report_path is not None
+        else execution_dir / "clean_training_runtime_audit.json"
+    )
+    _write_json(resolved_report_path, audit)
+    text_path = resolved_report_path.with_suffix(".txt")
+    text_path.write_text(_runtime_audit_text(audit), encoding="utf-8")
+    status_path = execution_dir / "clean_training_runtime_audit_status.json"
+    _write_json(status_path, _runtime_audit_status(audit))
+    return {
+        "runtime_audit": str(resolved_report_path),
+        "runtime_audit_txt": str(text_path),
+        "runtime_audit_status": str(status_path),
+        "trainable_parameters": trainable_parameters["path"],
+        "stage": str(expected_stage),
+        "run_id": bundle.get("run_id"),
+        "will_launch_training": False,
+        "training_runtime_ported": False,
+        "runner_status": audit["status"],
+    }
+
+
 def _load_training_plan(path: str | Path) -> tuple[Path, dict[str, Any]]:
     plan_path = Path(path)
     if not plan_path.exists():
@@ -210,6 +303,19 @@ def _execution_dir_path(
     if requested:
         return Path(requested)
     return Path(plan_path).resolve().parent / "clean_training_execution"
+
+
+def _execution_bundle_path(
+    *,
+    plan_path: str | Path,
+    execution_dir: str | Path | None,
+    requested: str | Path | None,
+) -> Path:
+    if requested:
+        return Path(requested)
+    return _execution_dir_path(plan_path=plan_path, requested=execution_dir) / (
+        "clean_training_execution_bundle.json"
+    )
 
 
 def _build_execution_bundle(
@@ -405,6 +511,265 @@ def _write_json(path: Path, payload: dict[str, Any]) -> None:
         json.dumps(_to_jsonable(payload), indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
+
+
+def _validate_execution_bundle(bundle: dict[str, Any], *, expected_stage: TrainingStage) -> None:
+    if bundle.get("training_execution_bundle_schema_version") != (
+        TRAINING_EXECUTION_BUNDLE_SCHEMA_VERSION
+    ):
+        raise ValueError("training execution bundle schema mismatch")
+    stage = TrainingStage(str(bundle.get("stage")))
+    if stage != expected_stage:
+        raise ValueError(
+            f"execution bundle stage mismatch: {stage.value} != {expected_stage.value}"
+        )
+    plan_path = Path(str(bundle.get("plan_path") or ""))
+    if not plan_path.exists():
+        raise ValueError(f"execution bundle plan_path does not exist: {plan_path}")
+    recorded_plan_sha = (bundle.get("plan_identity") or {}).get("sha256")
+    current_plan_sha = file_identity(plan_path).sha256
+    if recorded_plan_sha != current_plan_sha:
+        raise ValueError("execution bundle plan identity no longer matches plan_path")
+    executor = bundle.get("clean_executor") or {}
+    if executor.get("final_clean_native") is not True:
+        raise ValueError("execution bundle clean_executor must be final clean-native")
+    if executor.get("owns_execution_bundle") is not True:
+        raise ValueError("execution bundle must be owned by the clean executor")
+    if executor.get("will_launch_training") is not False:
+        raise ValueError("execution bundle must not launch training during audit")
+    safety = bundle.get("safety") or {}
+    if safety.get("will_launch_training") is not False:
+        raise ValueError("execution bundle safety must keep will_launch_training=false")
+    if safety.get("legacy_reference_allowed") is not False:
+        raise ValueError("execution bundle must not allow legacy reference execution")
+
+
+def _load_runtime_artifacts(
+    bundle: dict[str, Any],
+    *,
+    expected_stage: TrainingStage,
+) -> dict[str, dict[str, Any]]:
+    artifact_paths = bundle.get("runtime_artifacts") or {}
+    required = {
+        "dataset_runtime_identity",
+        "first_batch_identity",
+        "checkpoint_contract",
+        "optimizer_groups",
+    }
+    missing = sorted(required - set(artifact_paths))
+    if missing:
+        raise ValueError(f"execution bundle missing runtime artifact paths: {missing}")
+    artifacts: dict[str, dict[str, Any]] = {}
+    for name in sorted(required):
+        path = Path(str(artifact_paths[name]))
+        if not path.exists():
+            raise FileNotFoundError(f"runtime artifact does not exist: {name}: {path}")
+        artifacts[name] = json.loads(path.read_text(encoding="utf-8"))
+    _validate_runtime_artifact_payloads(artifacts, expected_stage=expected_stage)
+    return artifacts
+
+
+def _validate_runtime_artifact_payloads(
+    artifacts: dict[str, dict[str, Any]],
+    *,
+    expected_stage: TrainingStage,
+) -> None:
+    for name in ("dataset_runtime_identity", "first_batch_identity", "optimizer_groups"):
+        if artifacts[name].get("stage") != str(expected_stage):
+            raise ValueError(f"{name} stage mismatch")
+    checkpoint = artifacts["checkpoint_contract"]
+    if checkpoint.get("stage") != str(expected_stage):
+        raise ValueError("checkpoint_contract stage mismatch")
+    expected_checkpoint_status = (
+        "no_input_checkpoint_required"
+        if expected_stage == TrainingStage.STAGE1
+        else "validated"
+    )
+    if checkpoint.get("status") != expected_checkpoint_status:
+        raise ValueError(
+            "checkpoint_contract status mismatch: "
+            f"{checkpoint.get('status')!r} != {expected_checkpoint_status!r}"
+        )
+    if artifacts["optimizer_groups"].get("status") != "validated":
+        raise ValueError("optimizer_groups must be validated before runtime audit")
+    dataset = artifacts["dataset_runtime_identity"]
+    first_batch = artifacts["first_batch_identity"]
+    if dataset.get("global_batch_size") != first_batch.get("requested_global_batch_size"):
+        raise ValueError("dataset runtime and first batch global batch mismatch")
+    if int(first_batch.get("materialized_batch_size") or 0) < 1:
+        raise ValueError("first_batch_identity must contain at least one row")
+
+
+def _write_trainable_parameters_placeholder(
+    *,
+    execution_dir: Path,
+    bundle: dict[str, Any],
+) -> dict[str, Any]:
+    module_policy = bundle.get("module_policy") or {}
+    payload = {
+        "schema_version": "clean_trainable_parameters_audit_v1",
+        "stage": bundle.get("stage"),
+        "run_id": bundle.get("run_id"),
+        "status": "pending_model_load_not_actual_parameter_audit",
+        "actual_model_parameters_loaded": False,
+        "must_be_replaced_before_first_optimizer_step": True,
+        "expected_trainable_policy": list(module_policy.get("trainable") or []),
+        "expected_frozen_policy": list(module_policy.get("frozen") or []),
+        "visual_merger": module_policy.get("visual_merger"),
+        "training_runtime": module_policy.get("training_runtime"),
+        "notes": [
+            "clean runtime audit has not loaded the model",
+            "the real trainer loop must overwrite this file with actual named parameters",
+        ],
+    }
+    path = execution_dir / "trainable_parameters.json"
+    _write_json(path, payload)
+    return {"path": str(path), "payload": payload}
+
+
+def _runtime_audit_report(
+    *,
+    bundle_path: Path,
+    bundle: dict[str, Any],
+    artifacts: dict[str, dict[str, Any]],
+    trainable_parameters: dict[str, Any],
+    expected_stage: TrainingStage,
+) -> dict[str, Any]:
+    artifact_checks = _runtime_artifact_checks(bundle, artifacts, trainable_parameters)
+    launch_gates = _launch_gate_audit(bundle, artifacts, trainable_parameters)
+    return {
+        "schema_version": "clean_training_runtime_audit_v1",
+        "stage": str(expected_stage),
+        "run_id": bundle.get("run_id"),
+        "status": "blocked_before_training_loop",
+        "will_launch_training": False,
+        "training_runtime_ported": False,
+        "bundle_path": str(bundle_path),
+        "bundle_identity": file_identity(bundle_path).to_dict(),
+        "plan_identity": bundle.get("plan_identity"),
+        "artifact_checks": artifact_checks,
+        "launch_gates": launch_gates,
+        "blocking_items": [
+            "native trainer loop has not been ported into revisit_vlm_clean",
+            "actual trainable parameter audit requires loading the model",
+            "checkpoint save/load parity must be proven before launch_permitted=true",
+        ],
+    }
+
+
+def _runtime_artifact_checks(
+    bundle: dict[str, Any],
+    artifacts: dict[str, dict[str, Any]],
+    trainable_parameters: dict[str, Any],
+) -> list[dict[str, Any]]:
+    artifact_paths = dict(bundle.get("runtime_artifacts") or {})
+    artifact_paths["trainable_parameters"] = trainable_parameters["path"]
+    checks = []
+    for name, path_text in sorted(artifact_paths.items()):
+        path = Path(str(path_text))
+        payload = (
+            trainable_parameters["payload"]
+            if name == "trainable_parameters"
+            else artifacts.get(name, {})
+        )
+        checks.append(
+            {
+                "name": name,
+                "path": str(path),
+                "exists": path.exists(),
+                "sha256": file_identity(path).sha256 if path.exists() else None,
+                "schema_version": payload.get("schema_version"),
+                "status": payload.get("status"),
+            }
+        )
+    return checks
+
+
+def _launch_gate_audit(
+    bundle: dict[str, Any],
+    artifacts: dict[str, dict[str, Any]],
+    trainable_parameters: dict[str, Any],
+) -> dict[str, Any]:
+    required = list(
+        (bundle.get("trainer_runtime_contract") or {}).get("required_launch_gates") or []
+    )
+    satisfied = {
+        "build_dataset_loader_from_plan_identity",
+        "construct_optimizer_and_scheduler_from_plan",
+    }
+    pending_model_load = {
+        "load_model_and_processor",
+        "ensure_protocol_token_rows",
+        "set_training_use_cache_false",
+        "emit_trainable_parameter_audit",
+        "save_checkpoint_with_clean_contract",
+    }
+    stage_pending = {
+        "build_tgvf_module_from_stage1_plan",
+        "stage1_readout_context_uses_qwen_v_merge",
+        "stage1_position_ids_use_real_qwen3_mrope",
+        "stage1_matrix_ce_and_manifold_losses_match_plan",
+        "load_stage1_checkpoint_tgvf_and_protocol_rows",
+        "attach_lora_modules_from_plan",
+        "use_fast_batched_stage2_path",
+        "apply_weighted_span_losses_from_plan",
+        "apply_original_image_mask_scope_from_plan",
+        "apply_deepstack_training_scope_when_enabled",
+    }
+    gates = []
+    for gate in required:
+        if gate in satisfied:
+            status = "identity_validated"
+        elif gate in pending_model_load or gate in stage_pending:
+            status = "pending_real_trainer_loop"
+        else:
+            status = "unknown_gate"
+        gates.append({"name": gate, "status": status})
+    return {
+        "total": len(gates),
+        "identity_validated": sum(1 for gate in gates if gate["status"] == "identity_validated"),
+        "pending_real_trainer_loop": sum(
+            1 for gate in gates if gate["status"] == "pending_real_trainer_loop"
+        ),
+        "unknown": sum(1 for gate in gates if gate["status"] == "unknown_gate"),
+        "dataset_runtime_schema": artifacts["dataset_runtime_identity"].get("schema_version"),
+        "optimizer_groups_status": artifacts["optimizer_groups"].get("status"),
+        "checkpoint_contract_status": artifacts["checkpoint_contract"].get("status"),
+        "trainable_parameters_status": trainable_parameters["payload"].get("status"),
+        "gates": gates,
+    }
+
+
+def _runtime_audit_status(audit: dict[str, Any]) -> dict[str, Any]:
+    gates = audit.get("launch_gates") or {}
+    return {
+        "schema_version": "clean_training_runtime_audit_status_v1",
+        "stage": audit.get("stage"),
+        "run_id": audit.get("run_id"),
+        "status": audit.get("status"),
+        "will_launch_training": audit.get("will_launch_training"),
+        "training_runtime_ported": audit.get("training_runtime_ported"),
+        "identity_validated_gates": gates.get("identity_validated"),
+        "pending_real_trainer_loop_gates": gates.get("pending_real_trainer_loop"),
+        "blocking_items": list(audit.get("blocking_items") or []),
+    }
+
+
+def _runtime_audit_text(audit: dict[str, Any]) -> str:
+    gates = audit.get("launch_gates") or {}
+    lines = [
+        f"schema: {audit.get('schema_version')}",
+        f"run_id: {audit.get('run_id')}",
+        f"stage: {audit.get('stage')}",
+        f"status: {audit.get('status')}",
+        f"will_launch_training: {audit.get('will_launch_training')}",
+        f"training_runtime_ported: {audit.get('training_runtime_ported')}",
+        f"identity_validated_gates: {gates.get('identity_validated')}",
+        f"pending_real_trainer_loop_gates: {gates.get('pending_real_trainer_loop')}",
+        "blocking_items:",
+    ]
+    lines.extend(f"- {item}" for item in audit.get("blocking_items") or [])
+    return "\n".join(lines) + "\n"
 
 
 def _write_dataset_runtime_artifacts(

@@ -87,12 +87,13 @@ tgvf_train_stage1_executor --plan /path/to/training_plan.json --preflight-only
 tgvf_train_stage2_executor --plan /path/to/training_plan.json --preflight-only
 tgvf_train_stage1_executor --plan /path/to/training_plan.json --prepare-execution
 tgvf_train_stage2_executor --plan /path/to/training_plan.json --prepare-execution
+tgvf_train_stage2_executor --plan /path/to/training_plan.json --prepare-execution --audit-runtime
 ```
 
-Without `--preflight-only` or `--prepare-execution`, these executors fail fast
-instead of launching a partial or legacy training path. Preflight writes a JSON
-report next to the plan by default, or to `--preflight-report` when that path is
-provided.
+Without `--preflight-only`, `--prepare-execution`, or `--audit-runtime`, these
+executors fail fast instead of launching a partial or legacy training path.
+Preflight writes a JSON report next to the plan by default, or to
+`--preflight-report` when that path is provided.
 `--prepare-execution` writes executor-owned
 `clean_training_execution_bundle.json`, `clean_training_execution_status.json`,
 `dataset_runtime_identity.json`, `first_batch_identity.json`,
@@ -101,6 +102,12 @@ launching training. These artifacts are the clean handoff surface for the
 future trainer loop; they still record `will_launch_training=false` until that
 loop is ported. Stage2 prepare-execution loads and validates the Stage1
 checkpoint contract before the handoff is accepted.
+`--audit-runtime` validates the execution bundle plus runtime artifacts and
+writes `clean_training_runtime_audit.json`,
+`clean_training_runtime_audit_status.json`, and `trainable_parameters.json`.
+That trainable-parameter artifact is explicitly marked
+`pending_model_load_not_actual_parameter_audit`; the real trainer loop must
+overwrite it after loading the model and before the first optimizer step.
 
 ## Fixed Manifests
 
