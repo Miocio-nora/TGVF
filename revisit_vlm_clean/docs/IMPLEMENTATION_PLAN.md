@@ -891,13 +891,42 @@ This phase validates clean-native free/softforce runtime and parser/scorer
 output on the no-trigger branch. It does not validate trigger-positive
 free/softforce post-D behavior.
 
+## Phase 29: Stage2 Native Trigger-Positive Legacy Comparison
+
+Implemented after Phase 28.
+
+- added a fixed trigger-positive VStar diagnostic manifest:
+  - `diagnostic_vstar_softforce_trigger_row10_20260626`;
+  - manifest hash:
+    `6421ea792f5db73555c895a7b28a4bacfb8eefa6046b1d35080b17b5081cfb44`;
+  - sample:
+    `vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/10_000010`;
+  - selection evidence: historical ckpt19 VStar softforce row triggered focus
+    with `append_success=true`;
+- ran clean-native softforce on the trigger-positive manifest:
+  - output:
+    `outputs/clean_native_smoke/qwen3_stage2_native_vstar1_trigger_softforce_20260626_032556`;
+  - trigger rate: 1.0;
+  - focus valid rate: 1.0;
+  - append success rate: 1.0;
+  - parsed answer: `C`;
+  - score: 1.0;
+- ran the same manifest through the diagnostic legacy bridge:
+  - backend: `tgvf_stage2_qwen3_legacy`;
+  - output:
+    `outputs/clean_native_smoke/qwen3_stage2_legacy_vstar1_trigger_softforce_20260626_032925`;
+  - trigger/focus/append/answer/score matched clean-native;
+  - focus target and raw output matched clean-native exactly.
+
+This phase proves the clean-native triggered softforce post-D path aligns with
+the historical bridge on one fixed real sample. It is still diagnostic; a small
+fixed manifest is the next step before benchmark-scale claims.
+
 ## Later Phases
 
 1. Port teacher trajectory generation into `tgvf_generate_data`.
 2. Replace training launch plans with clean-native training execution.
-3. Find or create a trigger-positive fixed diagnostic for native
-   `tgvf_softforce` and compare it against the legacy bridge.
-4. Compare clean-native and legacy bridge on a fixed diagnostic manifest before
-   benchmark claims.
-5. Clean benchmark subset boundaries for CoreSmoke/CoreDev execution.
-6. Full DeepStack training/eval execution support.
+3. Run clean-native vs legacy on a small fixed manifest such as
+   `diagnostic_vstar_core_smoke_first_8_20260626`.
+4. Clean benchmark subset boundaries for CoreSmoke/CoreDev execution.
+5. Full DeepStack training/eval execution support.

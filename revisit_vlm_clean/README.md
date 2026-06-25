@@ -98,9 +98,10 @@ Diagnostic manifests are for runner validation only, not benchmark reporting.
   softforce control flow, lazy checkpoint/model loading, D construction, visual
   D append, and post-TGVF continuation are ported into the clean tree. A
   one-sample Qwen3 force-path GPU smoke has passed, and one-sample
-  free/softforce no-trigger GPU smokes have passed. Trigger-positive
-  free/softforce, no-KV, and fixed legacy-bridge comparison are still required
-  before benchmark claims.
+  free/softforce no-trigger GPU smokes have passed. A trigger-positive
+  softforce smoke also matches the legacy bridge on the same fixed sample.
+  No-KV and small fixed-manifest validation are still required before benchmark
+  claims.
 
 ## Clean-Native Exit Criteria
 
