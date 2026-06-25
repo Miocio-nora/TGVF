@@ -99,9 +99,9 @@ Diagnostic manifests are for runner validation only, not benchmark reporting.
   D append, and post-TGVF continuation are ported into the clean tree. A
   one-sample Qwen3 force-path GPU smoke has passed, and one-sample
   free/softforce no-trigger GPU smokes have passed. A trigger-positive
-  softforce smoke also matches the legacy bridge on the same fixed sample.
-  No-KV and small fixed-manifest validation are still required before benchmark
-  claims.
+  softforce smoke also matches the legacy bridge on the same fixed sample. An
+  8-row fixed VStar softforce manifest now matches the legacy bridge exactly at
+  row-output level. No-KV validation is still required before benchmark claims.
 
 ## Clean-Native Exit Criteria
 

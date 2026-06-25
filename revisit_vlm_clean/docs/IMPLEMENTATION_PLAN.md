@@ -922,11 +922,48 @@ This phase proves the clean-native triggered softforce post-D path aligns with
 the historical bridge on one fixed real sample. It is still diagnostic; a small
 fixed manifest is the next step before benchmark-scale claims.
 
+## Phase 30: Stage2 Native VStar-8 Legacy Comparison
+
+Implemented after Phase 29.
+
+- ran clean-native and legacy bridge on the same fixed 8-row VStar manifest:
+  - manifest: `diagnostic_vstar_core_smoke_first_8_20260626`;
+  - manifest hash:
+    `3a6020b145c1543be3fc8a5541c17d00b4fc5d27aeddbecb90a10417d25c84f4`;
+  - mode: `tgvf_softforce`;
+  - prompt text: `Use focus tool.`;
+  - forward mode: `kv_cache`;
+  - checkpoint: `BASE-20260619-open-answer-rowonly` Stage2 checkpoint;
+- outputs:
+  - native:
+    `outputs/clean_native_smoke/qwen3_stage2_native_vstar8_softforce_20260626_033554`;
+  - legacy:
+    `outputs/clean_native_smoke/qwen3_stage2_legacy_vstar8_softforce_20260626_033554`;
+- aggregate metrics matched exactly:
+  - n: 8;
+  - accuracy: 0.625;
+  - answer parse rate: 1.0;
+  - trigger rate: 0.25;
+  - focus valid rate: 0.25;
+  - append success rate: 1.0 over triggered rows;
+  - malformed rate: 0.0;
+- per-row outputs matched exactly for:
+  - trigger decision;
+  - focus validity;
+  - append success;
+  - parsed answer;
+  - score;
+  - focus target;
+  - raw output.
+
+This phase validates clean-native Stage2 softforce against the legacy bridge on
+a small mixed manifest with both triggered and no-trigger rows. It is still not
+a benchmark claim; no-KV and clean benchmark subset boundaries remain pending.
+
 ## Later Phases
 
 1. Port teacher trajectory generation into `tgvf_generate_data`.
 2. Replace training launch plans with clean-native training execution.
-3. Run clean-native vs legacy on a small fixed manifest such as
-   `diagnostic_vstar_core_smoke_first_8_20260626`.
+3. Run clean-native no-KV validation on a fixed diagnostic manifest.
 4. Clean benchmark subset boundaries for CoreSmoke/CoreDev execution.
 5. Full DeepStack training/eval execution support.
