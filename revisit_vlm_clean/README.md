@@ -49,10 +49,11 @@ The ValKit entrypoint is separate:
 
 ```bash
 tgvf_eval_valkit --run-id valkit_preflight --checkpoint-path /path/to/model.pt --output-dir /tmp/valkit --benchmark vstar --preflight-only
+tgvf_eval_valkit --run-id valkit_preflight --checkpoint-path /path/to/model.pt --output-dir /tmp/valkit --benchmark vstar --prepare-execution
 ```
 
-It currently writes a clean ValKit plan/preflight report and refuses to call
-historical shell wrappers.
+It currently writes a clean ValKit plan/preflight report plus an optional
+prepare-execution bundle, and refuses to call historical shell wrappers.
 
 Scoring is applied after all rows are produced. This is intentional: some
 official scorers, including OCRBench-v2, need batch-level prediction files
@@ -64,8 +65,10 @@ execute the deterministic `v4_to_protocol_c`,
 `v4_to_stage1_protocol_c_focus`, `choice_to_open_answer`, and `clean_imend`
 transforms. Executed transforms write output file identities and split hashes
 beside the generated JSONL. This path is treated as a clean first-class asset
-rather than a legacy bridge. Teacher trajectory generation still remains
-outside the clean tree.
+rather than a legacy bridge. Because these deterministic transforms are already
+the clean part of the data path, the current cleanup preserves and wraps them
+instead of rewriting them. Teacher trajectory generation still remains outside
+the clean tree until regeneration is intentionally needed.
 
 The training entrypoints currently produce auditable launch plans with
 dataset/checkpoint hashes, batch math, mask policy, weighted losses, DeepStack

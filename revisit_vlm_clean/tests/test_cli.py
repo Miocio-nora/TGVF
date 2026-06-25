@@ -129,6 +129,51 @@ def test_valkit_preflight_write_plan_cli(tmp_path) -> None:
     assert report["will_launch_valkit"] is False
 
 
+def test_valkit_prepare_execution_cli(tmp_path) -> None:
+    checkpoint = tmp_path / "model.pt"
+    checkpoint.write_bytes(b"checkpoint\n")
+    output_dir = tmp_path / "valkit_plan"
+
+    assert (
+        valkit_main(
+            [
+                "--run-id",
+                "valkit_prepare",
+                "--checkpoint-path",
+                str(checkpoint),
+                "--output-dir",
+                str(output_dir),
+                "--benchmark",
+                "vstar",
+                "--benchmark",
+                "blink",
+                "--prepare-execution",
+            ]
+        )
+        == 0
+    )
+
+    command_path = output_dir / "valkit_prepare_execution_command.sh"
+    assert command_path.exists()
+    command_text = command_path.read_text()
+    assert "--prepare-execution" in command_text
+    assert "--benchmark vstar" in command_text
+    execution_dir = output_dir / "clean_valkit_execution"
+    bundle = json.loads((execution_dir / "valkit_execution_bundle.json").read_text())
+    assert (
+        bundle["valkit_execution_bundle_schema_version"]
+        == "clean_valkit_execution_bundle_v1"
+    )
+    assert bundle["eval_family"] == "valkit"
+    assert bundle["run"]["benchmarks"] == ["vstar", "blink"]
+    assert bundle["runner"]["will_launch_valkit"] is False
+    assert bundle["runner"]["valkit_runtime_ported"] is False
+    assert bundle["runner"]["legacy_shell_wrapper_allowed"] is False
+    status = json.loads((execution_dir / "valkit_execution_status.json").read_text())
+    assert status["runner_status"] == "handoff_supported_valkit_runner_not_ported"
+    assert status["will_launch_valkit"] is False
+
+
 def test_valkit_tgvf_mode_requires_stage2_checkpoint(tmp_path) -> None:
     checkpoint = tmp_path / "model.pt"
     checkpoint.write_bytes(b"checkpoint\n")

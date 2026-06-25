@@ -1447,12 +1447,30 @@ Implemented after Phase 54.
 - `clean_training_command.sh` remains commented and non-executable because the
   trainer loop still has not been ported.
 
+## Phase 56: ValKit Prepare-Execution Handoff
+
+Implemented after Phase 55.
+
+- `tgvf_eval_valkit` now supports `--prepare-execution`;
+- `write_valkit_plan` emits `valkit_prepare_execution_command.sh`;
+- `--prepare-execution` writes:
+  - `valkit_execution_bundle.json`;
+  - `valkit_execution_status.json`;
+  - `valkit_execution_bundle.txt`;
+- the bundle records plan SHA-256, checkpoint identity, benchmark names, mode,
+  protocol, forward mode, ValKit root/work-dir identity, and runner handoff
+  state;
+- the handoff still records `will_launch_valkit=false`,
+  `valkit_runtime_ported=false`, and `legacy_shell_wrapper_allowed=false`.
+  Real ValKit execution remains unported.
+
 ## Later Phases
 
 1. Replace training launch plans with clean-native training execution.
 2. Port DeepStack original-image injection/masking into clean training and eval
    execution.
 3. Keep data generation first-class:
-   - deterministic Stage1/Stage2 transforms stay in `tgvf_generate_data`;
+   - deterministic Stage1/Stage2 transforms stay in `tgvf_generate_data` and
+     are preserved rather than rewritten in the current execution cleanup;
    - heavy teacher trajectory generation is ported only when regeneration is
      needed, with source manifest/hash and prompt/schema identity recorded.

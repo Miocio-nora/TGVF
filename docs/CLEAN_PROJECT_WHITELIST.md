@@ -16,7 +16,10 @@ executable code from this repository just because an item is marked out here.
 
 ### Data Generation Mainline
 
-Data generation is a first-class clean-project surface, not a side branch.
+Data generation is a first-class clean-project surface, not a side branch. The
+deterministic dataset builders are already relatively clean, so the clean
+project should preserve and wrap that path rather than rewrite it as part of
+the current execution cleanup.
 
 - Keep the clean `tgvf_generate_data` entry point.
 - Keep deterministic, local transforms as clean-native code:
@@ -35,9 +38,11 @@ Data generation is a first-class clean-project surface, not a side branch.
   - focus/no-focus rules;
   - mask behavior, mask probability, and mask scope;
   - `im_end` policy.
-- Heavy teacher trajectory generation should remain available, but it is only
-  required in the clean project when we regenerate teacher traces. Existing
-  generated runs can be consumed by explicit path/hash identity.
+- Heavy teacher trajectory generation should remain available as the upstream
+  trace-production path, but it is not part of the immediate clean-native
+  execution port. Existing generated runs can be consumed by explicit
+  path/hash identity, and teacher-trace regeneration should only be ported when
+  we intentionally regenerate traces.
 - Do not mix generated-data identity with training launch defaults. Training
   launchers must consume generated JSONL by explicit path/hash and print that
   identity before launch.
@@ -586,9 +591,10 @@ Clean-project target:
   runner emits the same identity fields and sample definitions.
 - `tgvf_eval_benchmark` is not the ValKit runner and must reject
   `eval_family=valkit`.
-- ValKit's clean surface is `tgvf_eval_valkit`. It may write identity/preflight
-  artifacts before real execution is ported, but it must not shell out to
-  historical wrapper scripts as the clean mainline.
+- ValKit's clean surface is `tgvf_eval_valkit`. It may write identity,
+  preflight, and prepare-execution handoff artifacts before real execution is
+  ported, but it must not shell out to historical wrapper scripts as the clean
+  mainline.
 
 Clean prompt policy:
 
