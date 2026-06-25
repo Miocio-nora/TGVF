@@ -264,6 +264,7 @@ def _write_run_config_text(
         f"subset_id: {config.subset_id}",
         f"manifest_path: {config.manifest_path}",
         f"manifest_hash: {manifest_info.get('manifest_hash') or config.manifest_hash}",
+        f"benchmark_root: {config.benchmark_root}",
         f"max_image_resolution: {config.max_image_resolution}",
         f"max_action_tokens: {config.max_action_tokens}",
         f"max_answer_tokens: {config.max_answer_tokens}",

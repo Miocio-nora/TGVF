@@ -10,6 +10,7 @@ from typing import Any, TypeVar
 
 from .defaults import (
     DEFAULT_CHOICE_PARSER_IDENTITY,
+    DEFAULT_BENCHMARK_ROOT,
     DEFAULT_CONTINUATION,
     DEFAULT_MAX_IMAGE_RESOLUTION,
     DEFAULT_MODEL_ID,
@@ -109,6 +110,7 @@ class RunConfig:
     subset_id: str | None = None
     manifest_path: str | None = None
     manifest_hash: str | None = None
+    benchmark_root: str = DEFAULT_BENCHMARK_ROOT
     max_image_resolution: int = DEFAULT_MAX_IMAGE_RESOLUTION
     max_action_tokens: int = 64
     max_answer_tokens: int = 128
@@ -128,6 +130,8 @@ class RunConfig:
             raise ValueError("checkpoint_path is required")
         if bool(self.population_id) == bool(self.subset_id):
             raise ValueError("exactly one of population_id or subset_id is required")
+        if not self.benchmark_root:
+            raise ValueError("benchmark_root is required")
         if self.post_tgvf_continuation != ContinuationMode.NATURAL_CONTINUE:
             raise ValueError("clean benchmark continuation must be natural_continue")
         if self.mode in {EvalMode.ORIGINAL, EvalMode.TGVF_FREE} and (

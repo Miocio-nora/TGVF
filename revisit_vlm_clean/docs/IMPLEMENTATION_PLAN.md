@@ -287,6 +287,29 @@ This validates multi-row bridge stability. It is still not a benchmark
 comparison. The legacy debug field `target_answer_leakage_flag` fired on all 8
 rows, so these rows should not be used for focus-target quality claims.
 
+## Phase 12: Benchmark Identity and Scorer Backend Wiring
+
+Implemented after the multi-row smoke.
+
+- `RunConfig` now records `benchmark_root`, so benchmark source identity is
+  visible in both `run_config.json` and `run_config.txt`;
+- benchmark CLI exposes `--scoring-backend auto|project|official`;
+- explicit `project` and `official` scoring disable fallback in
+  `ParserScorerIdentity`, while `auto` keeps fallback enabled;
+- runner scoring now uses `config.parser_scorer.scoring_backend` instead of a
+  hard-coded project scorer;
+- per-row outputs include scorer metadata:
+  - `scorer_name`;
+  - `official_tool_used`;
+  - `official_compatible`.
+
+Current limitation:
+
+- `official` scoring is still intentionally not ported in the clean runner and
+  fails fast instead of silently falling back. The next scorer phase must compare
+  clean rows against historical `src/tgvf_eval/official_tools.py` behavior on
+  fixed rows before any benchmark table claims.
+
 ## Later Phases
 
 1. Official scorer wrapper parity against historical project/official scoring.

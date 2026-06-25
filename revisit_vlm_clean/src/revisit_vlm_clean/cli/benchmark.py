@@ -11,6 +11,7 @@ from revisit_vlm_clean.benchmark_data import (
     materialize_samples_from_manifest_payload,
 )
 from revisit_vlm_clean.cli.common import exit_not_implemented, print_json
+from revisit_vlm_clean.defaults import DEFAULT_BENCHMARK_ROOT
 from revisit_vlm_clean.manifest import build_manifest, manifest_payload
 from revisit_vlm_clean.outputs import (
     write_executed_benchmark_output,
@@ -27,7 +28,9 @@ from revisit_vlm_clean.schema import (
     EvalFamily,
     EvalMode,
     ForwardMode,
+    ParserScorerIdentity,
     RunConfig,
+    ScoringBackend,
 )
 from revisit_vlm_clean.stage2_runtime import (
     Stage2RuntimeConfig,
@@ -50,7 +53,7 @@ def build_parser() -> argparse.ArgumentParser:
     group.add_argument("--subset-id")
     parser.add_argument("--manifest-path", default=None)
     parser.add_argument("--manifest-hash", default=None)
-    parser.add_argument("--benchmark-root", default="/home/dredvpn009/Flash_Storage/datasets/benchmarks")
+    parser.add_argument("--benchmark-root", default=DEFAULT_BENCHMARK_ROOT)
     parser.add_argument("--output-dir", default=None)
     parser.add_argument("--max-image-resolution", type=int, default=512)
     parser.add_argument("--max-action-tokens", type=int, default=64)
@@ -59,6 +62,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--tgvf-protocol",
         choices=SUPPORTED_PROTOCOLS,
         default="protocol_c_tool_observation",
+    )
+    parser.add_argument(
+        "--scoring-backend",
+        choices=[item.value for item in ScoringBackend],
+        default=ScoringBackend.AUTO.value,
     )
     parser.add_argument("--softforce-prompt-text", default="")
     parser.add_argument(
@@ -128,6 +136,7 @@ def main(argv: list[str] | None = None) -> int:
         subset_id=args.subset_id,
         manifest_path=args.manifest_path,
         manifest_hash=args.manifest_hash,
+        benchmark_root=args.benchmark_root,
         max_image_resolution=args.max_image_resolution,
         max_action_tokens=args.max_action_tokens,
         max_answer_tokens=args.max_answer_tokens,
@@ -137,6 +146,10 @@ def main(argv: list[str] | None = None) -> int:
         deepstack=DeepStackState(
             enabled=bool(args.deepstack_enabled),
             original_image_scope=DeepStackScope(args.deepstack_original_image_scope),
+        ),
+        parser_scorer=ParserScorerIdentity(
+            scoring_backend=ScoringBackend(args.scoring_backend),
+            fallback_allowed=ScoringBackend(args.scoring_backend) == ScoringBackend.AUTO,
         ),
         git_commit=git_commit,
         dirty_worktree=dirty_worktree,

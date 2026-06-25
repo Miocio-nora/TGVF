@@ -4,6 +4,7 @@ DEFAULT_MODEL_FAMILY = "Qwen3-VL-8B-Thinking"
 DEFAULT_MODEL_ID = "Qwen/Qwen3-VL-8B-Thinking"
 DEFAULT_PROTOCOL = "protocol_c_tool_observation"
 DEFAULT_CONTINUATION = "natural_continue"
+DEFAULT_BENCHMARK_ROOT = "/home/dredvpn009/Flash_Storage/datasets/benchmarks"
 DEFAULT_MAX_IMAGE_RESOLUTION = 512
 DEFAULT_STAGE1_GLOBAL_BATCH = 32
 DEFAULT_STAGE2_GLOBAL_BATCH = 128

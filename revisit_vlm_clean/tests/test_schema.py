@@ -19,6 +19,7 @@ def test_run_config_json_roundtrip() -> None:
     )
     restored = RunConfig.from_json(config.to_json())
     assert restored == config
+    assert restored.benchmark_root == "/home/dredvpn009/Flash_Storage/datasets/benchmarks"
 
 
 def test_free_mode_rejects_prompt_suffix() -> None:

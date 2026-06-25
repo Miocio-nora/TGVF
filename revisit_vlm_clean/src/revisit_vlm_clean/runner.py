@@ -12,7 +12,7 @@ from typing import Any, Iterable
 from .benchmark_data import BenchmarkSample
 from .legacy_stage2_adapter import build_legacy_stage2_args, make_legacy_stage2_sample
 from .rendering import RenderedBenchmarkInput
-from .schema import EvalMode, EvalSummary, RunConfig, ScoringBackend
+from .schema import EvalMode, EvalSummary, RunConfig
 from .scoring import parse_and_score
 from .stage2_runtime import Stage2RuntimeConfig
 
@@ -375,16 +375,22 @@ def run_benchmark_rows(
             parsed_answer = ""
             score = None
             answer_parse_success = False
+            scorer_name = ""
+            official_tool_used = False
+            official_compatible = False
         else:
             parsed = parse_and_score(
                 result.raw_output,
                 choices=list(sample.choices),
                 gold_answer=sample.gold_answer,
-                scoring_backend=ScoringBackend.PROJECT,
+                scoring_backend=config.parser_scorer.scoring_backend,
             )
             parsed_answer = parsed.parsed_answer
             score = parsed.score
             answer_parse_success = parsed.answer_parse_success
+            scorer_name = parsed.scorer_name
+            official_tool_used = parsed.official_tool_used
+            official_compatible = parsed.official_compatible
         rows.append(
             {
                 "sample_id": sample.sample_id,
@@ -401,6 +407,9 @@ def run_benchmark_rows(
                 "parsed_answer": parsed_answer,
                 "score": score,
                 "answer_parse_success": answer_parse_success,
+                "scorer_name": scorer_name,
+                "official_tool_used": official_tool_used,
+                "official_compatible": official_compatible,
                 "malformed": bool(result.error),
                 "trigger_focus_decision": result.triggered,
                 "focus_valid": result.focus_valid,

@@ -183,6 +183,8 @@ def test_benchmark_execute_dry_run_cli(tmp_path) -> None:
     row = json.loads(rows[0])
     assert row["raw_output"] == "B"
     assert row["score"] == 1.0
+    assert row["scorer_name"] == "project_choice_exact_match"
+    assert row["official_tool_used"] is False
     summary = json.loads((output_dir / "summary.json").read_text())
     assert summary["accuracy"] == 1.0
     assert summary["runner_backend"]["backend"] == "dry_run"

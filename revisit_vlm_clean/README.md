@@ -15,6 +15,9 @@ later phases after each contract is validated.
 - Main parser/scorer identity: `v3_external_parse_and_score`.
 - Main fast dev subset: `CoreDev-2511`.
 - DeepStack support: supported by schema, default disabled.
+- Benchmark root and scoring backend are recorded in `run_config.json` and
+  `run_config.txt`; explicit `official` scoring still fails fast until wrapper
+  parity is completed.
 
 ## Entry Points
 
