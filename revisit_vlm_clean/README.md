@@ -29,6 +29,7 @@ later phases after each contract is validated.
 tgvf_build_manifest --list
 tgvf_generate_data --help
 tgvf_eval_benchmark --help
+tgvf_eval_valkit --help
 tgvf_train_stage1 --print-defaults
 tgvf_train_stage2 --print-defaults
 tgvf_train_stage1_executor --help
@@ -42,6 +43,15 @@ bridge backend for path-backed samples; full benchmark claims still require
 explicit manifest and ledger identity. This entrypoint is for
 `project_native_external` and `internal_diagnostic` eval families only; ValKit
 must use a separate runner surface.
+
+The ValKit entrypoint is separate:
+
+```bash
+tgvf_eval_valkit --run-id valkit_preflight --checkpoint-path /path/to/model.pt --output-dir /tmp/valkit --benchmark vstar --preflight-only
+```
+
+It currently writes a clean ValKit plan/preflight report and refuses to call
+historical shell wrappers.
 
 Scoring is applied after all rows are produced. This is intentional: some
 official scorers, including OCRBench-v2, need batch-level prediction files

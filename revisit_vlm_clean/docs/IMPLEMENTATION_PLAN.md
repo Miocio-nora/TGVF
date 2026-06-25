@@ -1289,6 +1289,26 @@ Implemented after Phase 45.
 - this prevents ValKit results from being silently produced through the
   project-native runner with incompatible sample/scoring semantics.
 
+## Phase 47: ValKit Preflight Surface
+
+Implemented after Phase 46.
+
+- added `tgvf_eval_valkit` as the clean ValKit/VLMEvalKit entrypoint;
+- added `valkit_plan_schema_version=clean_valkit_plan_v1`;
+- ValKit preflight records:
+  - checkpoint identity;
+  - optional Stage2 checkpoint identity for TGVF modes;
+  - benchmark names;
+  - mode, protocol, forward mode, max image resolution;
+  - ValKit root/work-dir identity fields;
+  - runner status and `legacy_shell_wrapper_allowed=false`;
+- `--write-plan` and `--preflight-only` write:
+  - `valkit_plan.json`;
+  - `valkit_plan.txt`;
+  - `valkit_preflight_report.json`;
+- clean ValKit execution is still not ported. The new surface is identity-only
+  and explicitly refuses to shell out to historical wrappers.
+
 ## Later Phases
 
 1. Replace training launch plans with clean-native training execution.

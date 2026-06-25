@@ -6,6 +6,7 @@ from revisit_vlm_clean.cli.generate_data import main as generate_data_main
 from revisit_vlm_clean.cli.manifest import main as manifest_main
 from revisit_vlm_clean.cli.train_stage1 import main as stage1_main
 from revisit_vlm_clean.cli.train_stage2 import main as stage2_main
+from revisit_vlm_clean.cli.valkit import main as valkit_main
 from revisit_vlm_clean.training.stage1_executor import main as stage1_executor_main
 from revisit_vlm_clean.training.stage2_executor import main as stage2_executor_main
 
@@ -88,6 +89,62 @@ def test_benchmark_cli_rejects_valkit_eval_family() -> None:
                 "kv_cache",
                 "--subset-id",
                 "core_smoke_256_seed20260625",
+                "--dry-run",
+            ]
+        )
+
+
+def test_valkit_preflight_write_plan_cli(tmp_path) -> None:
+    checkpoint = tmp_path / "model.pt"
+    checkpoint.write_bytes(b"checkpoint\n")
+    output_dir = tmp_path / "valkit_plan"
+
+    assert (
+        valkit_main(
+            [
+                "--run-id",
+                "valkit_unit",
+                "--checkpoint-path",
+                str(checkpoint),
+                "--output-dir",
+                str(output_dir),
+                "--benchmark",
+                "vstar",
+                "--benchmark",
+                "blink",
+                "--write-plan",
+            ]
+        )
+        == 0
+    )
+
+    plan = json.loads((output_dir / "valkit_plan.json").read_text())
+    assert plan["valkit_plan_schema_version"] == "clean_valkit_plan_v1"
+    assert plan["eval_family"] == "valkit"
+    assert plan["run"]["benchmarks"] == ["vstar", "blink"]
+    assert plan["runner"]["executable"] is False
+    assert plan["runner"]["legacy_shell_wrapper_allowed"] is False
+    report = json.loads((output_dir / "valkit_preflight_report.json").read_text())
+    assert report["plan_valid"] is True
+    assert report["will_launch_valkit"] is False
+
+
+def test_valkit_tgvf_mode_requires_stage2_checkpoint(tmp_path) -> None:
+    checkpoint = tmp_path / "model.pt"
+    checkpoint.write_bytes(b"checkpoint\n")
+    with pytest.raises(ValueError, match="stage2-checkpoint"):
+        valkit_main(
+            [
+                "--run-id",
+                "valkit_tgvf",
+                "--checkpoint-path",
+                str(checkpoint),
+                "--output-dir",
+                str(tmp_path / "out"),
+                "--benchmark",
+                "vstar",
+                "--mode",
+                "tgvf_force",
                 "--dry-run",
             ]
         )

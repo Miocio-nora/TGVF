@@ -568,6 +568,9 @@ Clean-project target:
   runner emits the same identity fields and sample definitions.
 - `tgvf_eval_benchmark` is not the ValKit runner and must reject
   `eval_family=valkit`.
+- ValKit's clean surface is `tgvf_eval_valkit`. It may write identity/preflight
+  artifacts before real execution is ported, but it must not shell out to
+  historical wrapper scripts as the clean mainline.
 
 Clean prompt policy:
 
