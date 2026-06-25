@@ -458,6 +458,24 @@ def test_benchmark_execute_dry_run_cli(tmp_path) -> None:
         "enabled": False,
         "original_image_scope": "off",
     }
+    assert row["deepstack_execution"] == {
+        "backend": "dry_run",
+        "deepstack_caution": None,
+        "execution_supported_for_requested_state": True,
+        "fvt_append_path": None,
+        "fvt_append_uses_deepstack": None,
+        "fvt_position_mode": None,
+        "notes": [],
+        "requested": {
+            "d_features_enabled": False,
+            "enabled": False,
+            "original_image_scope": "off",
+        },
+        "requested_enabled": False,
+        "requested_scope": "off",
+        "resolved_backend": "dry_run",
+        "schema_version": "clean_deepstack_execution_row_v1",
+    }
     assert row["parser_scorer"]["scoring_backend"] == "auto"
     assert (
         row["parser_scorer"]["model_output_parser"]
@@ -471,6 +489,17 @@ def test_benchmark_execute_dry_run_cli(tmp_path) -> None:
     summary = json.loads((output_dir / "summary.json").read_text())
     assert summary["accuracy"] == 1.0
     assert summary["runner_backend"]["backend"] == "dry_run"
+    assert summary["deepstack_execution"] == {
+        "all_reported_fvt_append_uses_deepstack": None,
+        "any_fvt_append_uses_deepstack": False,
+        "deepstack_caution_rows": 0,
+        "fvt_append_reported_rows": 0,
+        "fvt_append_uses_deepstack_rows": 0,
+        "n_rows": 1,
+        "requested_enabled_rows": 0,
+        "schema_version": "clean_deepstack_execution_summary_v1",
+        "unsupported_requested_rows": 0,
+    }
     assert (
         summary["parser_scorer"]["model_output_parser"]
         == "revisit_vlm_clean.scoring.parse_and_score:v3_external"
@@ -603,6 +632,9 @@ def test_merge_benchmark_shards_restores_source_manifest_order(tmp_path) -> None
     assert summary["n_rows"] == 2
     assert summary["accuracy"] == 1.0
     assert summary["manifest_hash"] == "twohash"
+    assert summary["deepstack_execution"]["n_rows"] == 2
+    assert summary["deepstack_execution"]["fvt_append_reported_rows"] == 0
+    assert summary["deepstack_execution"]["any_fvt_append_uses_deepstack"] is False
     assert summary["merge_metadata"]["shard_indices"] == [0, 1]
     assert summary["merge_metadata"]["merge_order"] == "source_manifest_order_modulo"
     sample_manifest = json.loads((merged / "sample_manifest.json").read_text())

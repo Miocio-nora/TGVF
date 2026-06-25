@@ -287,6 +287,10 @@ class NativeStage2Engine:
                 D_shape=append_result.debug_metadata.get("fvt_shape"),
                 mask_mode=append_result.debug_metadata.get("fvt_append_path"),
                 fvt_position_mode=append_result.debug_metadata.get("fvt_position_mode"),
+                uses_deepstack_for_fvt=append_result.debug_metadata.get(
+                    "uses_deepstack_for_fvt"
+                ),
+                deepstack_caution=append_result.debug_metadata.get("deepstack_caution"),
                 second_full_forward_used=bool(
                     getattr(capture, "second_full_forward_used", False)
                     or append_result.debug_metadata.get("second_full_forward_used")
@@ -691,6 +695,11 @@ class NativeStage2Engine:
                 "past_key_values_preserved": (
                     capture.past_key_values is not None and outputs.past_key_values is not None
                 ),
+                "deepstack_caution": (
+                    "clean-native FVT append uses Qwen3 visual special tokens and real "
+                    "3D positions, but does not provide native Qwen3 DeepStack visual "
+                    "features."
+                ),
             },
         )
 
@@ -839,6 +848,11 @@ class NativeStage2Engine:
                 "native_qwen3_position_compute_used": True,
                 "second_full_forward_used": True,
                 "past_key_values_preserved": False,
+                "deepstack_caution": (
+                    "clean-native full-sequence FVT append uses Qwen3 visual special "
+                    "tokens and real 3D positions, but does not provide native Qwen3 "
+                    "DeepStack visual features."
+                ),
             },
         )
 

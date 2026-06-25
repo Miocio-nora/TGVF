@@ -556,6 +556,12 @@ merged/summary.json
 - append success, D shape, continuation metadata;
 - parser identity, scorer identity, official scorer status;
 - DeepStack state and forward mode.
+- DeepStack execution evidence:
+  - requested DeepStack state/scope;
+  - whether the requested state is executable;
+  - FVT append path and position mode;
+  - whether FVT append actually used DeepStack visual features;
+  - any DeepStack caution/blocking note.
 
 `summary.json` required fields:
 
@@ -566,6 +572,8 @@ merged/summary.json
 - prediction counts and gold counts for choice benchmarks;
 - parser/scorer identity and official scorer status;
 - manifest path/hash and merged row-count verification;
+- DeepStack execution summary, including reported FVT rows and rows whose FVT
+  append actually used DeepStack visual features;
 - comparability flags, including whether the run is clean-core, subset,
   side-result, or invalid for a named baseline.
 

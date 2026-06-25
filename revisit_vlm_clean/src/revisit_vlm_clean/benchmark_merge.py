@@ -8,6 +8,7 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
+from .runner import summarize_deepstack_execution
 from .schema import EvalSummary, RunConfig, _to_jsonable
 
 
@@ -228,6 +229,7 @@ def _summarize_rows(
         comparability_note="deterministically merged clean benchmark shards",
     ).to_dict()
     summary["merged_shards"] = True
+    summary["deepstack_execution"] = summarize_deepstack_execution(rows)
     return summary
 
 

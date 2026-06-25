@@ -9,7 +9,7 @@ from typing import Any
 from .benchmark_data import BenchmarkSample
 from .manifest import SampleManifest, manifest_payload
 from .rendering import RenderedBenchmarkInput
-from .runner import BackendConfig
+from .runner import BackendConfig, summarize_deepstack_execution
 from .schema import EvalSummary, RunConfig, _to_jsonable
 
 
@@ -213,6 +213,7 @@ def write_executed_benchmark_output(
     summary_payload = summary.to_dict()
     summary_payload["parser_scorer"] = config.parser_scorer.to_dict()
     summary_payload["deepstack"] = config.deepstack.to_dict()
+    summary_payload["deepstack_execution"] = summarize_deepstack_execution(rows)
     summary_payload["post_tgvf_forward_mode"] = str(config.post_tgvf_forward_mode)
     summary_payload["post_tgvf_continuation"] = str(config.post_tgvf_continuation)
     summary_payload["runner_backend"] = backend_config.to_dict()

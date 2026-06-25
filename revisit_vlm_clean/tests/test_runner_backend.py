@@ -312,6 +312,8 @@ def test_stage2_native_engine_force_flow_with_fake_runtime(tmp_path) -> None:
     assert result.output_tokens == 1
     assert result.debug["block"] == "clean_native_force_end2end"
     assert result.debug["mask_mode"] == "fake_append"
+    assert result.debug["uses_deepstack_for_fvt"] is False
+    assert "does not provide" in result.debug["deepstack_caution"]
 
 
 def test_stage2_native_engine_free_flow_with_fake_runtime(tmp_path) -> None:
@@ -402,6 +404,8 @@ class _FakeAppend:
         "fvt_shape": [4, 8],
         "fvt_append_path": "fake_append",
         "fvt_position_mode": "native_source_grid",
+        "uses_deepstack_for_fvt": False,
+        "deepstack_caution": "fake append does not provide DeepStack features",
         "second_full_forward_used": False,
     }
 

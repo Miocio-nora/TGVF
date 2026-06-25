@@ -575,6 +575,12 @@ def run_benchmark_rows(
     resolved_backend = resolve_backend_name(backend_config.backend)
     for sample, rendered in zip(samples, rendered_inputs, strict=True):
         result = backend.run(sample, rendered, config)
+        deepstack_execution = _row_deepstack_execution(
+            config=config,
+            backend_config=backend_config,
+            resolved_backend=resolved_backend,
+            debug=result.debug,
+        )
         rows.append(
             {
                 "sample_id": sample.sample_id,
@@ -590,6 +596,7 @@ def run_benchmark_rows(
                 "post_tgvf_continuation": config.post_tgvf_continuation.value,
                 "post_tgvf_forward_mode": config.post_tgvf_forward_mode.value,
                 "deepstack": config.deepstack.to_dict(),
+                "deepstack_execution": deepstack_execution,
                 "parser_scorer": config.parser_scorer.to_dict(),
                 "d_condition": (
                     backend_config.stage2.d_condition if backend_config.stage2 is not None else None
@@ -669,6 +676,69 @@ def summarize_executed_rows(
         comparable=True,
         comparability_note="clean executable runner output",
     )
+
+
+def summarize_deepstack_execution(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    executions = [row.get("deepstack_execution") or {} for row in rows]
+    requested_enabled_values = [
+        bool(item.get("requested_enabled"))
+        for item in executions
+        if item.get("requested_enabled") is not None
+    ]
+    fvt_values = [
+        bool(item.get("fvt_append_uses_deepstack"))
+        for item in executions
+        if item.get("fvt_append_uses_deepstack") is not None
+    ]
+    unsupported_requested = [
+        item
+        for item in executions
+        if item.get("requested_enabled")
+        and item.get("execution_supported_for_requested_state") is False
+    ]
+    return {
+        "schema_version": "clean_deepstack_execution_summary_v1",
+        "n_rows": len(rows),
+        "requested_enabled_rows": sum(requested_enabled_values),
+        "fvt_append_reported_rows": len(fvt_values),
+        "fvt_append_uses_deepstack_rows": sum(fvt_values),
+        "any_fvt_append_uses_deepstack": any(fvt_values) if fvt_values else False,
+        "all_reported_fvt_append_uses_deepstack": (
+            all(fvt_values) if fvt_values else None
+        ),
+        "unsupported_requested_rows": len(unsupported_requested),
+        "deepstack_caution_rows": sum(
+            bool(item.get("deepstack_caution")) for item in executions
+        ),
+    }
+
+
+def _row_deepstack_execution(
+    *,
+    config: RunConfig,
+    backend_config: BackendConfig,
+    resolved_backend: str,
+    debug: dict[str, Any],
+) -> dict[str, Any]:
+    requested_enabled = bool(config.deepstack.enabled)
+    return {
+        "schema_version": "clean_deepstack_execution_row_v1",
+        "requested": config.deepstack.to_dict(),
+        "requested_enabled": requested_enabled,
+        "requested_scope": str(config.deepstack.original_image_scope),
+        "execution_supported_for_requested_state": not requested_enabled,
+        "backend": backend_config.backend,
+        "resolved_backend": resolved_backend,
+        "fvt_append_path": debug.get("mask_mode") or debug.get("fvt_append_path"),
+        "fvt_position_mode": debug.get("fvt_position_mode"),
+        "fvt_append_uses_deepstack": _optional_bool(debug.get("uses_deepstack_for_fvt")),
+        "deepstack_caution": debug.get("deepstack_caution"),
+        "notes": (
+            ["DeepStack was requested but clean Stage2 execution rejects it before rows"]
+            if requested_enabled
+            else []
+        ),
+    }
 
 
 def _dry_output(sample: BenchmarkSample) -> str:
@@ -767,3 +837,9 @@ def _mean(values: Iterable[float]) -> float | None:
 def _mean_bool(values: Iterable[bool]) -> float | None:
     values = list(values)
     return None if not values else sum(1.0 for item in values if item) / len(values)
+
+
+def _optional_bool(value: Any) -> bool | None:
+    if value is None:
+        return None
+    return bool(value)

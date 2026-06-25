@@ -1491,6 +1491,28 @@ Implemented after Phase 62.
 - ValKit results remain a separate `eval_family=valkit` surface and are not
   silently comparable with project-native benchmark rows.
 
+## Phase 64: DeepStack Execution Evidence in Benchmark Rows
+
+Implemented after Phase 63.
+
+- clean benchmark rows now include a first-class `deepstack_execution` field
+  separate from the raw `debug_metadata` blob;
+- each row records:
+  - requested DeepStack state/scope;
+  - whether that requested state is executable by the current clean runner;
+  - runner backend and resolved backend;
+  - FVT append path and FVT position mode;
+  - whether FVT append actually used DeepStack visual features;
+  - any DeepStack caution emitted by the Stage2 native append path;
+- clean Stage2 native append debug now promotes `uses_deepstack_for_fvt` and
+  `deepstack_caution` from append metadata into the row debug payload;
+- executed `summary.json` and merged shard `summary.json` now include
+  `deepstack_execution` aggregation, so benchmark tables cannot silently mix
+  DeepStack-enabled and no-DeepStack FVT execution;
+- this phase does not implement DeepStack feature injection. Current clean
+  Stage2 FVT append still reports `uses_deepstack_for_fvt=false`; requests with
+  `deepstack.enabled=true` remain rejected before model execution.
+
 ## Phase 57: Lazy Legacy Stage2 Bridge Isolation
 
 Implemented after Phase 56.
