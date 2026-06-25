@@ -1941,7 +1941,7 @@ entry, update this file immediately.
 
 ### AUDIT-20260625-formal-benchmark-default-nokv
 
-- Status: RUNNING.
+- Status: DONE.
 - Question:
   - Move the Qwen2/Qwen3 post-D benchmark path from the old KV continuation to a training-equivalent no-KV full-sequence continuation by default.
 - Motivation:
@@ -2583,13 +2583,36 @@ entry, update this file immediately.
 - Started:
   - 2026-06-26T00:30:36+09:00.
 - Finished:
-  - Pending.
+  - 2026-06-26T00:31:59+09:00.
 - Metrics:
-  - Pending.
+  - `n_rows=1`.
+  - `accuracy=1.0`.
+  - `answer_parse_rate=1.0`.
+  - `trigger_rate=1.0`.
+  - `focus_valid_rate=1.0`.
+  - `append_success_rate=1.0`.
+  - `malformed_rate=0.0`.
+  - Row wall time: 16.11 seconds.
+  - Captured D shape: `[234, 4096]`.
+  - Captured H_q shape: `[17, 4096]`.
+  - Focus target:
+    `close-up of the blue glove on the vendor's hand with its smooth surface and fit`.
+  - Raw final answer:
+    `The glove looks like a standard disposable rubber glove used in food service.\n</think>\n(A) rubber<|im_end|>`.
+  - Parsed answer:
+    `A`.
+  - Score:
+    `1.0`.
 - Analysis:
-  - Pending.
+  - The clean executable runner successfully loaded the historical Qwen3 Stage2 checkpoint and LoRA adapter through `tgvf_stage2_qwen3`.
+  - `run_config.txt`, `run_config.json`, `sample_manifest.json`, `rows.jsonl`, and `summary.json` were written.
+  - Runtime code identity was recorded in `run_config.txt` as commit `f3984ee37bb5212a3ff1b32b160cec46ddefbe0b` with `dirty_worktree=False`.
+  - The bridge used the checkpoint-consistent Stage2 validation jsonl under `tgvf_v4_teacher_50k_clean_imend`, not the open-answer split.
+  - The earlier bridge issue where clean choices could be passed into legacy `prompt_question` and duplicate answer choices was fixed before launch.
+  - Legacy debug emitted `target_answer_leakage_flag=true`; this one-row smoke is therefore not evidence about focus-target quality statistics.
 - Conclusion:
-  - Pending.
+  - Clean Stage2 one-row force smoke passed.
+  - The clean wrapper, diagnostic manifest, launch identity output, Stage2 runtime validation, and legacy bridge are now executable on a real checkpoint.
 - Comparable to baseline:
   - No; diagnostic launch smoke only.
 - Follow-up:
