@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from .benchmark_data import BenchmarkSample
+from .legacy_stage2_adapter import build_legacy_stage2_args
 from .rendering import RenderedBenchmarkInput
 from .schema import EvalMode, EvalSummary, RunConfig, ScoringBackend
 from .scoring import parse_and_score
@@ -231,8 +232,12 @@ class TGVFStage2Qwen3Backend(CleanRunnerBackend):
         self.stage2_config = stage2_config
 
     def prepare(self, config: RunConfig) -> None:
-        del config
         self.stage2_config.validate()
+        build_legacy_stage2_args(
+            runtime=self.stage2_config,
+            run_config=config,
+            output_dir="/tmp/revisit_vlm_clean_stage2_identity",
+        )
         raise NotImplementedError(
             "tgvf_stage2_qwen3 execution is not ported yet; Stage2 identity validation passed"
         )
