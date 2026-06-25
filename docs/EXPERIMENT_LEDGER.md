@@ -2620,7 +2620,7 @@ entry, update this file immediately.
 
 ### EXP-20260626-004135-clean-stage2-vstar8-smoke
 
-- Status: PLANNED.
+- Status: RUNNING.
 - Question:
   - Does the clean `tgvf_stage2_qwen3` bridge remain stable on a deterministic multi-row path-backed VStar manifest, beyond the one-row smoke?
 - Baseline anchor:
@@ -2680,9 +2680,9 @@ entry, update this file immediately.
 - GPUs:
   - Planned: GPU 0 only.
 - tmux:
-  - Planned: `clean_stage2_vstar8_20260626_004135`.
+  - `clean_stage2_vstar8_20260626_004135`.
 - Started:
-  - Pending.
+  - 2026-06-26T00:44:03+09:00.
 - Finished:
   - Pending.
 - Metrics:
