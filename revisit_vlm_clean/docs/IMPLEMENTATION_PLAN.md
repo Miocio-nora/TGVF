@@ -862,12 +862,41 @@ Validation:
   `PYTHONPATH=revisit_vlm_clean/src pytest -q revisit_vlm_clean/tests`
   -> 75 tests.
 
+## Phase 28: Stage2 Native Free/Softforce No-Trigger Smoke
+
+Implemented after Phase 27.
+
+- launched two additional clean-native Qwen3 Stage2 smokes on the same fixed
+  one-row VStar diagnostic manifest:
+  - `tgvf_free`;
+  - `tgvf_softforce` with prompt text `Use focus tool.`;
+- held fixed:
+  - checkpoint: `BASE-20260619-open-answer-rowonly` Stage2 checkpoint;
+  - manifest: `diagnostic_vstar_first_1_20260626`;
+  - forward mode: `kv_cache`;
+  - protocol: `protocol_c_tool_observation`;
+  - max image resolution: 512;
+  - DeepStack: off;
+- outputs:
+  - `outputs/clean_native_smoke/qwen3_stage2_native_vstar1_free_20260626_031442`;
+  - `outputs/clean_native_smoke/qwen3_stage2_native_vstar1_softforce_20260626_031442`;
+- confirmed both runs produced one scored row with no row error:
+  - free accuracy: 1.0;
+  - softforce accuracy: 1.0;
+  - answer parse rate: 1.0 for both;
+  - trigger rate: 0.0 for both;
+  - append success rate: null for both because focus was not triggered.
+
+This phase validates clean-native free/softforce runtime and parser/scorer
+output on the no-trigger branch. It does not validate trigger-positive
+free/softforce post-D behavior.
+
 ## Later Phases
 
 1. Port teacher trajectory generation into `tgvf_generate_data`.
 2. Replace training launch plans with clean-native training execution.
-3. Run native Stage2 `tgvf_free` and `tgvf_softforce` smoke on the same fixed
-   diagnostic manifest.
+3. Find or create a trigger-positive fixed diagnostic for native
+   `tgvf_softforce` and compare it against the legacy bridge.
 4. Compare clean-native and legacy bridge on a fixed diagnostic manifest before
    benchmark claims.
 5. Clean benchmark subset boundaries for CoreSmoke/CoreDev execution.

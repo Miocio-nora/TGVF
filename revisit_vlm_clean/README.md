@@ -96,8 +96,10 @@ Diagnostic manifests are for runner validation only, not benchmark reporting.
   native engine and does not use the legacy evaluator class. Force/free/
   softforce control flow, lazy checkpoint/model loading, D construction, visual
   D append, and post-TGVF continuation are ported into the clean tree. A
-  one-sample Qwen3 force-path GPU smoke has passed; free/softforce, no-KV, and
-  fixed legacy-bridge comparison are still required before benchmark claims.
+  one-sample Qwen3 force-path GPU smoke has passed, and one-sample
+  free/softforce no-trigger GPU smokes have passed. Trigger-positive
+  free/softforce, no-KV, and fixed legacy-bridge comparison are still required
+  before benchmark claims.
 
 ## Clean-Native Exit Criteria
 
