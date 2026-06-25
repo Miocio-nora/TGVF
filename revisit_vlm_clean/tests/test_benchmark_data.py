@@ -49,6 +49,69 @@ def _write_toy_manifest(path):
     return path
 
 
+def _write_toy_ocrbench(root):
+    snapshot = root / "ocrbench_v2" / "snapshot"
+    snapshot.mkdir(parents=True)
+    source = snapshot / "toy.jsonl"
+    source.write_text(
+        json.dumps(
+            {
+                "id": "ocr-0",
+                "question": "Read the word.",
+                "type": "text recognition en",
+                "answers": ["blue", "BLUE"],
+                "eval": "case sensitive",
+                "dataset_name": "toy_ocr",
+                "precision": 0,
+            }
+        )
+        + "\n"
+    )
+    return source
+
+
+def _write_toy_ocrbench_manifest(path):
+    payload = {
+        "manifest_id": "ocrbench_toy",
+        "manifest_hash": "ocrhash",
+        "samples": [
+            {
+                "sample_id": "ocrbench_v2/toy/0",
+                "benchmark": "ocrbench_v2",
+                "population_id": "ocrbench_v2_data_test_10000",
+                "source_file": "ocrbench_v2/snapshot/toy.jsonl",
+                "metadata": {"row_index": 0, "raw_id": "ocr-0"},
+            }
+        ],
+    }
+    path.write_text(json.dumps(payload) + "\n")
+    return path
+
+
+def _write_fake_ocrbench_official(root):
+    eval_path = root / "ocrbench_v2" / "official_code" / "OCRBench_v2" / "eval_scripts" / "eval.py"
+    eval_path.parent.mkdir(parents=True)
+    eval_path.write_text(
+        """
+import json
+
+
+def process_predictions(input_path, output_path):
+    with open(input_path, encoding="utf-8") as handle:
+        rows = json.load(handle)
+    for row in rows:
+        answers = row.get("answers") or []
+        if not isinstance(answers, list):
+            answers = [answers]
+        row["score"] = 1.0 if str(row.get("predict") or "") in {str(item) for item in answers} else 0.0
+    with open(output_path, "w", encoding="utf-8") as handle:
+        json.dump(rows, handle)
+""".strip()
+        + "\n"
+    )
+    return eval_path
+
+
 def test_materialize_samples_from_manifest_path(tmp_path) -> None:
     root = tmp_path / "benchmarks"
     _write_toy_vstar(root)
@@ -62,6 +125,22 @@ def test_materialize_samples_from_manifest_path(tmp_path) -> None:
     assert sample.choices == ("red", "blue")
     assert sample.gold_answer == "B"
     assert sample.primary_media["exists"] is True
+
+
+def test_materialize_samples_preserves_official_scorer_metadata(tmp_path) -> None:
+    root = tmp_path / "benchmarks"
+    _write_toy_ocrbench(root)
+    manifest_path = _write_toy_ocrbench_manifest(tmp_path / "ocr_manifest.json")
+
+    samples = materialize_samples_from_manifest_path(manifest_path, benchmark_root=root)
+
+    assert len(samples) == 1
+    sample = samples[0]
+    assert sample.gold_answer == "blue"
+    assert sample.metadata["answers"] == ["blue", "BLUE"]
+    assert sample.metadata["type"] == "text recognition en"
+    assert sample.metadata["eval"] == "case sensitive"
+    assert sample.metadata["precision"] == 0
 
 
 def test_benchmark_materialize_samples_cli(tmp_path) -> None:
@@ -242,4 +321,56 @@ def test_benchmark_execute_dry_run_auto_uses_blink_official_choice(tmp_path) -> 
     assert rows[0]["benchmark"] == "blink"
     assert rows[0]["scorer_name"] == "official_blink_exact_match"
     assert rows[0]["official_tool_used"] is True
+    assert summary.accuracy == 1.0
+
+
+def test_benchmark_execute_dry_run_uses_ocrbench_official_batch_scorer(tmp_path) -> None:
+    root = tmp_path / "benchmarks"
+    eval_path = _write_fake_ocrbench_official(root)
+
+    from revisit_vlm_clean.benchmark_data import BenchmarkSample
+    from revisit_vlm_clean.rendering import render_benchmark_inputs
+    from revisit_vlm_clean.runner import BackendConfig, run_benchmark_rows
+    from revisit_vlm_clean.schema import (
+        EvalMode,
+        ForwardMode,
+        ParserScorerIdentity,
+        RunConfig,
+        ScoringBackend,
+    )
+
+    sample = BenchmarkSample(
+        sample_id="ocrbench_v2/sample/0",
+        benchmark="ocrbench_v2",
+        population_id="ocrbench_v2_data_test_10000",
+        source_file="ocrbench_v2/snapshot/toy.jsonl",
+        question="Read the word.",
+        choices=(),
+        gold_answer="blue",
+        metadata={"type": "text recognition en", "answers": ["blue"]},
+    )
+    config = RunConfig(
+        run_id="ocrbench",
+        checkpoint_path="outputs/checkpoint.pt",
+        mode=EvalMode.ORIGINAL,
+        post_tgvf_forward_mode=ForwardMode.KV_CACHE,
+        population_id="ocrbench_v2_data_test_10000",
+        benchmark_root=str(root),
+        parser_scorer=ParserScorerIdentity(
+            scoring_backend=ScoringBackend.OFFICIAL,
+            fallback_allowed=False,
+        ),
+    )
+    rows, summary = run_benchmark_rows(
+        [sample],
+        render_benchmark_inputs([sample], config),
+        config=config,
+        backend_config=BackendConfig(backend="dry_run"),
+    )
+
+    assert rows[0]["raw_output"] == "blue"
+    assert rows[0]["score"] == 1.0
+    assert rows[0]["scorer_name"] == "official_ocrbench_v2"
+    assert rows[0]["official_tool_used"] is True
+    assert rows[0]["official_tool_path"] == str(eval_path)
     assert summary.accuracy == 1.0

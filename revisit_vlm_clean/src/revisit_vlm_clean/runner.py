@@ -389,6 +389,7 @@ def run_benchmark_rows(
                 "answer_parse_success": False,
                 "scorer_name": "",
                 "official_tool_used": False,
+                "official_tool_path": None,
                 "official_compatible": False,
                 "malformed": bool(result.error),
                 "trigger_focus_decision": result.triggered,
@@ -402,7 +403,11 @@ def run_benchmark_rows(
                 "error": result.error,
             }
         )
-    score_output_rows(rows, scoring_backend=config.parser_scorer.scoring_backend)
+    score_output_rows(
+        rows,
+        scoring_backend=config.parser_scorer.scoring_backend,
+        benchmark_root=config.benchmark_root,
+    )
     summary = summarize_executed_rows(rows, config=config, manifest_hash=config.manifest_hash)
     return rows, summary
 

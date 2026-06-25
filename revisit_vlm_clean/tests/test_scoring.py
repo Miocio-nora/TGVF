@@ -26,6 +26,30 @@ def _legacy_official_tools():
     return module
 
 
+def _write_fake_ocrbench_official(root: Path) -> Path:
+    eval_path = root / "ocrbench_v2" / "official_code" / "OCRBench_v2" / "eval_scripts" / "eval.py"
+    eval_path.parent.mkdir(parents=True)
+    eval_path.write_text(
+        """
+import json
+
+
+def process_predictions(input_path, output_path):
+    with open(input_path, encoding="utf-8") as handle:
+        rows = json.load(handle)
+    for row in rows:
+        answers = row.get("answers") or []
+        if not isinstance(answers, list):
+            answers = [answers]
+        row["score"] = 1.0 if str(row.get("predict") or "") in {str(item) for item in answers} else 0.0
+    with open(output_path, "w", encoding="utf-8") as handle:
+        json.dump(rows, handle)
+""".strip()
+        + "\n"
+    )
+    return eval_path
+
+
 def test_extract_choice_strict_answer_tag() -> None:
     assert extract_choice_strict("<ANSWER>(B)</ANSWER>", ["red", "blue", "green"]) == "B"
 
@@ -168,3 +192,62 @@ def test_score_output_rows_batch_scores_and_skips_error_rows() -> None:
     assert rows[1]["score"] is None
     assert rows[1]["answer_parse_success"] is False
     assert rows[1]["scorer_name"] == ""
+
+
+def test_score_output_rows_ocrbench_v2_official_batch_matches_legacy(tmp_path) -> None:
+    eval_path = _write_fake_ocrbench_official(tmp_path)
+    rows = [
+        {
+            "sample_id": "ocrbench_v2/sample/0",
+            "benchmark": "ocrbench_v2",
+            "question": "Read the word.",
+            "raw_output": "<THINK>ignore</THINK><ANSWER>blue</ANSWER>",
+            "choices": [],
+            "gold_answer": "blue",
+            "metadata": {"type": "text recognition en", "answers": ["blue"]},
+            "error": None,
+        }
+    ]
+
+    score_output_rows(rows, scoring_backend=ScoringBackend.OFFICIAL, benchmark_root=tmp_path)
+
+    legacy = _legacy_official_tools()
+    legacy_info = legacy.OfficialToolInfo(
+        official_tool_used=False,
+        official_tool_path=str(tmp_path / "ocrbench_v2" / "official_code"),
+        scorer_name="fallback",
+        prompt_source="project",
+    )
+    legacy_scorer = legacy.OCRBenchV2OfficialScorer(legacy_info)
+    legacy_rows = [
+        {
+            "sample_id": rows[0]["sample_id"],
+            "question": rows[0]["question"],
+            "raw_output": rows[0]["raw_output"],
+            "parsed_answer": legacy_scorer.parse_prediction(rows[0]["raw_output"], object()),
+            "gold_answer": rows[0]["gold_answer"],
+            "metadata": rows[0]["metadata"],
+        }
+    ]
+    legacy_scorer.score_predictions(legacy_rows)
+
+    assert rows[0]["parsed_answer"] == "blue"
+    assert rows[0]["score"] == legacy_rows[0]["score"] == 1.0
+    assert rows[0]["scorer_name"] == "official_ocrbench_v2"
+    assert rows[0]["official_tool_used"] is True
+    assert rows[0]["official_tool_path"] == str(eval_path)
+
+
+def test_score_output_rows_ocrbench_v2_official_requires_local_tool(tmp_path) -> None:
+    rows = [
+        {
+            "benchmark": "ocrbench_v2",
+            "raw_output": "blue",
+            "gold_answer": "blue",
+            "metadata": {"type": "text recognition en", "answers": ["blue"]},
+            "error": None,
+        }
+    ]
+
+    with pytest.raises(NotImplementedError):
+        score_output_rows(rows, scoring_backend=ScoringBackend.OFFICIAL, benchmark_root=tmp_path)

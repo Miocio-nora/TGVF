@@ -121,6 +121,8 @@ def _record_to_sample(ref: dict[str, Any], record: dict[str, Any], *, root: Path
     question = _question_with_choices(question, choices)
     gold = _extract_gold(record)
     metadata = _metadata_for_sample(ref, record)
+    if choices:
+        metadata.setdefault("choices", list(choices))
     media = _extract_media(
         record,
         base_dir=source_path.parent,
@@ -330,6 +332,17 @@ def _metadata_for_sample(ref: dict[str, Any], record: dict[str, Any]) -> dict[st
         "task",
         "task_type",
         "ability",
+        "answer",
+        "answers",
+        "bbox",
+        "content",
+        "eval",
+        "id",
+        "image_shape",
+        "options",
+        "pid",
+        "precision",
+        "problem_index",
         "subject",
         "mode",
         "subset",
@@ -337,12 +350,18 @@ def _metadata_for_sample(ref: dict[str, Any], record: dict[str, Any]) -> dict[st
         "source",
         "split",
         "sub_task",
+        "subdomain",
+        "sample_index",
         "dataset_name",
         "type",
         "question_type",
         "answer_type",
         "problem_version",
         "cycle_category",
+        "query",
+        "raw_text",
+        "unit",
+        "uid",
     ):
         if key in record and record[key] not in (None, ""):
             metadata.setdefault(key, record[key])

@@ -2,9 +2,17 @@
 
 from __future__ import annotations
 
+import importlib.util
+import json
 import re
+import sys
 import string
+import tempfile
+from contextlib import contextmanager
 from dataclasses import dataclass
+from pathlib import Path
+from types import ModuleType
+from typing import Any
 
 from .defaults import DEFAULT_CHOICE_PARSER_IDENTITY, DEFAULT_PARSER_IDENTITY
 from .schema import ScoringBackend
@@ -79,7 +87,10 @@ def score_output_rows(
     rows: list[dict],
     *,
     scoring_backend: ScoringBackend | str = ScoringBackend.AUTO,
+    benchmark_root: str | Path | None = None,
 ) -> None:
+    backend = ScoringBackend(str(scoring_backend))
+    pending_rows: list[dict] = []
     for row in rows:
         if row.get("error"):
             row.setdefault("parsed_answer", "")
@@ -88,13 +99,33 @@ def score_output_rows(
             row.setdefault("scorer_name", "")
             row.setdefault("official_tool_used", False)
             row.setdefault("official_compatible", False)
+            row.setdefault("official_tool_path", None)
+            continue
+        pending_rows.append(row)
+
+    consumed_row_ids: set[int] = set()
+    if backend != ScoringBackend.PROJECT:
+        ocrbench_rows = [row for row in pending_rows if row.get("benchmark") == "ocrbench_v2"]
+        if ocrbench_rows:
+            official_path = _ocrbench_v2_eval_path(benchmark_root)
+            if official_path is None:
+                if backend == ScoringBackend.OFFICIAL:
+                    raise NotImplementedError(
+                        "official OCRBench-v2 scoring requires benchmark_root/ocrbench_v2/official_code"
+                    )
+            else:
+                _score_ocrbench_v2_rows(ocrbench_rows, official_eval_path=official_path)
+                consumed_row_ids.update(id(row) for row in ocrbench_rows)
+
+    for row in pending_rows:
+        if id(row) in consumed_row_ids:
             continue
         parsed = parse_and_score(
             str(row.get("raw_output") or ""),
             choices=list(row.get("choices") or []),
             gold_answer=row.get("gold_answer"),
             benchmark=row.get("benchmark"),
-            scoring_backend=scoring_backend,
+            scoring_backend=backend,
         )
         row["parsed_answer"] = parsed.parsed_answer
         row["score"] = parsed.score
@@ -102,6 +133,7 @@ def score_output_rows(
         row["scorer_name"] = parsed.scorer_name
         row["official_tool_used"] = parsed.official_tool_used
         row["official_compatible"] = parsed.official_compatible
+        row["official_tool_path"] = None
 
 
 def extract_answer_text(text: str) -> str:
@@ -110,6 +142,20 @@ def extract_answer_text(text: str) -> str:
     if matches:
         return matches[-1].group(1).strip()
     return ""
+
+
+def extract_final_answer(text: Any) -> str:
+    cleaned = str(text or "").strip()
+    answer = extract_answer_text(cleaned)
+    if answer:
+        return answer
+    answer_matches = list(re.finditer(r"(?i)(?:final\s+answer|answer)\s*(?:is|:|=)\s*(.+)$", cleaned))
+    if answer_matches:
+        return answer_matches[-1].group(1).strip().strip(". ")
+    numbers = re.findall(r"-?\d+(?:\.\d+)?", cleaned.replace(",", ""))
+    if numbers:
+        return numbers[-1]
+    return clean_answer(cleaned)
 
 
 def extract_choice_strict(text: str, choices: list[str]) -> str:
@@ -230,3 +276,119 @@ def clean_answer(text: str) -> str:
     cleaned = str(text or "").strip()
     cleaned = re.sub(r"<[^>]+>", " ", cleaned)
     return re.sub(r"\s+", " ", cleaned).strip()
+
+
+def _ocrbench_v2_eval_path(benchmark_root: str | Path | None) -> Path | None:
+    if benchmark_root is None:
+        return None
+    path = (
+        Path(benchmark_root)
+        / "ocrbench_v2"
+        / "official_code"
+        / "OCRBench_v2"
+        / "eval_scripts"
+        / "eval.py"
+    )
+    return path if path.exists() else None
+
+
+def _score_ocrbench_v2_rows(rows: list[dict], *, official_eval_path: Path) -> None:
+    module = _load_module_from_path(
+        official_eval_path,
+        extra_sys_paths=[official_eval_path.parent],
+        stub_modules=["ipdb"],
+    )
+    items: list[dict[str, Any]] = []
+    scored_rows: list[dict] = []
+    for row in rows:
+        row["scorer_name"] = "official_ocrbench_v2"
+        row["official_tool_used"] = True
+        row["official_tool_path"] = str(official_eval_path)
+        row["official_compatible"] = False
+        metadata = dict(row.get("metadata") or {})
+        answers = _as_list(metadata.get("answers"))
+        if not answers and row.get("gold_answer") not in (None, ""):
+            answers = [row["gold_answer"]]
+        task_type = metadata.get("type") or metadata.get("task")
+        prediction = row.get("parsed_answer") or extract_final_answer(row.get("raw_output") or "")
+        row["parsed_answer"] = str(prediction or "")
+        row["answer_parse_success"] = bool(row["parsed_answer"])
+        if not task_type or not answers:
+            row["score"] = None
+            continue
+        item = dict(metadata)
+        item.update(
+            type=task_type,
+            question=row.get("question") or metadata.get("question") or "",
+            answers=answers,
+            predict=row["parsed_answer"],
+        )
+        items.append(item)
+        scored_rows.append(row)
+
+    if not items:
+        return
+
+    with tempfile.TemporaryDirectory(prefix="tgvf_clean_ocrbench_official_") as tmp:
+        input_path = Path(tmp) / "predictions.json"
+        output_path = Path(tmp) / "scores.json"
+        input_path.write_text(json.dumps(items, ensure_ascii=False), encoding="utf-8")
+        module.process_predictions(str(input_path), str(output_path))
+        scored_items = json.loads(output_path.read_text(encoding="utf-8"))
+
+    for row, item in zip(scored_rows, scored_items, strict=True):
+        row["score"] = float(item.get("score") or 0.0)
+
+
+def _as_list(value: Any) -> list[Any]:
+    if value in (None, ""):
+        return []
+    if isinstance(value, list):
+        return value
+    if isinstance(value, tuple):
+        return list(value)
+    return [value]
+
+
+@contextmanager
+def _temporary_sys_path(paths: list[Path] | None):
+    if not paths:
+        yield
+        return
+    additions = [str(path) for path in paths]
+    old = list(sys.path)
+    sys.path[:0] = additions
+    try:
+        yield
+    finally:
+        sys.path[:] = old
+
+
+def _load_module_from_path(
+    path: Path,
+    *,
+    extra_sys_paths: list[Path] | None = None,
+    stub_modules: list[str] | None = None,
+) -> ModuleType:
+    spec = importlib.util.spec_from_file_location(
+        f"revisit_vlm_clean_official_{path.stem}_{abs(hash(str(path)))}",
+        path,
+    )
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"could not load official scorer module from {path}")
+    module = importlib.util.module_from_spec(spec)
+    previous_stubs: dict[str, ModuleType | None] = {}
+    for name in stub_modules or []:
+        previous_stubs[name] = sys.modules.get(name)
+        if name not in sys.modules:
+            sys.modules[name] = ModuleType(name)
+    try:
+        with _temporary_sys_path(extra_sys_paths):
+            spec.loader.exec_module(module)
+    finally:
+        for name, previous in previous_stubs.items():
+            if previous is None:
+                sys.modules.pop(name, None)
+            else:
+                sys.modules[name] = previous
+    return module

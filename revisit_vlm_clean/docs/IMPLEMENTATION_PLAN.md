@@ -334,7 +334,7 @@ Validation:
 - runner-level dry backend test verifies that `benchmark=blink` under `auto`
   records `official_blink_exact_match`.
 
-Remaining scorer gap:
+Remaining scorer gap at the end of Phase 13:
 
 - MMMU-Pro, OCRBench-v2, MathVista, and MathVerse official wrappers are still
   not ported into the clean runner.
@@ -404,9 +404,42 @@ Validation:
 - `PYTHONPATH=revisit_vlm_clean/src pytest -q revisit_vlm_clean/tests`
   passed with 44 tests.
 
+## Phase 16: OCRBench-v2 Official Batch Scorer Parity
+
+Implemented after Phase 15.
+
+- clean sample materialization now preserves scorer-critical metadata from
+  source records, including `answers`, `type`, `eval`, `precision`, `pid`,
+  `query`, and related benchmark identifiers;
+- `score_output_rows(...)` now receives `benchmark_root` from the clean runner,
+  so batch scorers can resolve local official-code paths without relying on
+  global state;
+- OCRBench-v2 official scoring is wired through the local official
+  `OCRBench_v2/eval_scripts/eval.py::process_predictions` entrypoint when
+  `benchmark_root/ocrbench_v2/official_code` exists;
+- OCRBench-v2 predictions are first normalized with the same final-answer
+  extraction semantics used by the historical wrapper before being passed to
+  the official scorer;
+- per-row outputs now include `official_tool_path` when an official scorer is
+  used.
+
+Validation:
+
+- unit tests preserve OCRBench-v2 metadata through clean materialization;
+- scorer tests compare clean OCRBench-v2 behavior against the historical
+  `src/tgvf_eval/official_tools.py::OCRBenchV2OfficialScorer` on a fixed fake
+  official scorer tree;
+- runner-level dry backend test verifies that
+  `RunConfig.benchmark_root -> score_output_rows -> official_tool_path` is
+  connected;
+- explicit `official` OCRBench-v2 scoring fails fast if local official code is
+  not present;
+- `PYTHONPATH=revisit_vlm_clean/src pytest -q revisit_vlm_clean/tests`
+  passed with 48 tests.
+
 ## Later Phases
 
-1. Official wrapper parity for MMMU-Pro, OCRBench-v2, MathVista, and MathVerse.
+1. Official wrapper parity for MMMU-Pro, MathVista, and MathVerse.
 2. Clean benchmark subset boundaries for CoreSmoke/CoreDev execution.
 3. Stage1/Stage2 launchers.
 4. DeepStack training/eval support.

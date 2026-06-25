@@ -18,8 +18,10 @@ later phases after each contract is validated.
 - Benchmark root and scoring backend are recorded in `run_config.json` and
   `run_config.txt`.
 - `official` scoring currently supports official-compatible multiple-choice
-  parsing/scoring for BLINK and HR-Bench-4K; other official scorers still fail
-  fast until wrapper parity is completed.
+  parsing/scoring for BLINK and HR-Bench-4K, plus the OCRBench-v2 official
+  batch scorer when `benchmark_root/ocrbench_v2/official_code` is present.
+  MMMU-Pro, MathVista, and MathVerse still fail fast until wrapper parity is
+  completed.
 
 ## Entry Points
 
@@ -35,6 +37,10 @@ manifests, render model input rows for smoke checks, and execute the dry-run or
 original-Qwen backend. It can also execute the diagnostic Qwen3 Stage2 TGVF
 bridge backend for path-backed samples; full benchmark claims still require
 explicit manifest and ledger identity.
+
+Scoring is applied after all rows are produced. This is intentional: some
+official scorers, including OCRBench-v2, need batch-level prediction files
+rather than one isolated row at a time.
 
 ## Fixed Manifests
 
