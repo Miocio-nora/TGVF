@@ -108,6 +108,8 @@ def _validate_training_plan(plan: dict[str, Any], *, expected_stage: TrainingSta
         raise ValueError(f"training plan stage mismatch: {stage.value} != {expected_stage.value}")
     _validate_batch(plan.get("batch") or {})
     _validate_dataset(plan.get("dataset") or {}, stage=stage)
+    if stage == TrainingStage.STAGE1:
+        _validate_stage1_readout_context(plan.get("readout_context") or {})
     _validate_module_policy(plan.get("module_policy") or {}, stage=stage)
     _validate_clean_command(plan.get("clean_training_command") or {}, stage=stage)
     legacy = plan.get("legacy_reference_command") or {}
@@ -171,6 +173,28 @@ def _validate_module_policy(policy: dict[str, Any], *, stage: TrainingStage) -> 
         raise ValueError("training runtime must require trainable-parameter printing")
     if stage == TrainingStage.STAGE2 and runtime.get("gradient_checkpointing") is not True:
         raise ValueError("Stage2 training runtime must record gradient_checkpointing=true")
+
+
+def _validate_stage1_readout_context(context: dict[str, Any]) -> None:
+    expected = {
+        "original_image_placeholder_embeddings": "replace_with_qwen_v_merge",
+        "d_append_path": "native_qwen_visual_span",
+        "position_ids": "real_qwen3_mrope_full_trajectory",
+        "fvt_position_mode": "native_source_grid",
+        "d_token_count": "dynamic_source_image_visual_token_count",
+        "visual_merger_path": "frozen_finalize_path",
+    }
+    for key, value in expected.items():
+        if context.get(key) != value:
+            raise ValueError(f"Stage1 readout_context.{key} must be {value!r}")
+    attention_mask = context.get("attention_mask") or {}
+    if attention_mask.get("mask_original_image_after_tgvf") is not True:
+        raise ValueError("Stage1 readout_context attention mask must enable original-image masking")
+    if (
+        attention_mask.get("blocking")
+        != "weak_strict_original_image_key_blocking_after_tgvf_append"
+    ):
+        raise ValueError("Stage1 readout_context attention mask blocking identity mismatch")
 
 
 def _validate_clean_command(command: dict[str, Any], *, stage: TrainingStage) -> None:

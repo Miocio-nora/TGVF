@@ -246,6 +246,19 @@ def test_stage1_training_write_plan_cli(tmp_path) -> None:
     assert plan["optimizer"]["warmup_steps"] == 100
     assert plan["optimizer"]["min_lr_ratio"] == 0.1
     assert plan["optimizer"]["max_grad_norm"] == 1.0
+    assert plan["readout_context"] == {
+        "attention_mask": {
+            "blocking": "weak_strict_original_image_key_blocking_after_tgvf_append",
+            "mask_original_image_after_tgvf": True,
+            "scope": "stage1_readout_after_tgvf_append",
+        },
+        "d_append_path": "native_qwen_visual_span",
+        "d_token_count": "dynamic_source_image_visual_token_count",
+        "fvt_position_mode": "native_source_grid",
+        "original_image_placeholder_embeddings": "replace_with_qwen_v_merge",
+        "position_ids": "real_qwen3_mrope_full_trajectory",
+        "visual_merger_path": "frozen_finalize_path",
+    }
     assert plan["module_policy"]["trainable"] == [
         "tgvf_module",
         "protocol_c_token_rows_row_only",
@@ -350,6 +363,33 @@ def test_training_executor_rejects_executable_legacy_reference(tmp_path) -> None
     plan_path.write_text(json.dumps(plan), encoding="utf-8")
 
     with pytest.raises(ValueError, match="legacy_reference_command must be non-executable"):
+        stage1_executor_main(["--plan", str(plan_path), "--preflight-only"])
+
+
+def test_stage1_executor_rejects_bad_readout_context(tmp_path) -> None:
+    train_file = tmp_path / "stage1.train.jsonl"
+    train_file.write_text('{"image": "/tmp/image.jpg", "question": "q"}\n', encoding="utf-8")
+    output_dir = tmp_path / "stage1_plan"
+    assert (
+        stage1_main(
+            [
+                "--run-id",
+                "stage1_bad_readout",
+                "--train-file",
+                str(train_file),
+                "--output-dir",
+                str(output_dir),
+                "--write-plan",
+            ]
+        )
+        == 0
+    )
+    plan_path = output_dir / "training_plan.json"
+    plan = json.loads(plan_path.read_text())
+    plan["readout_context"]["position_ids"] = "legacy_flat_positions"
+    plan_path.write_text(json.dumps(plan), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="readout_context.position_ids"):
         stage1_executor_main(["--plan", str(plan_path), "--preflight-only"])
 
 

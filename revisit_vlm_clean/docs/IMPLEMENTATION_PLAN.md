@@ -1375,6 +1375,23 @@ Implemented after Phase 50.
 - Stage1 optimizer identity now records `max_grad_norm=1.0` and passes it in
   the reference command.
 
+## Phase 52: Stage1 Readout Context Identity
+
+Implemented after Phase 51.
+
+- Stage1 launch plans now include `readout_context` as a machine-readable field;
+- the readout context records:
+  - original image placeholder embeddings are replaced with Qwen `V_merge`;
+  - D is appended as a native Qwen visual span;
+  - position ids are real Qwen3 M-RoPE over the full trajectory;
+  - `fvt_position_mode=native_source_grid`;
+  - D token count is dynamic/source-image visual token count;
+  - visual merger path remains frozen finalize;
+  - Stage1 readout attention mask uses weak-strict original-image-key blocking
+    after the TGVF append point;
+- executor preflight rejects Stage1 plans missing these readout-context
+  identities.
+
 ## Later Phases
 
 1. Replace training launch plans with clean-native training execution.

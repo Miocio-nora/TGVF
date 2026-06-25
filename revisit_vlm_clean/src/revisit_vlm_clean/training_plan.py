@@ -362,6 +362,7 @@ def build_stage1_launch_plan(
             "mask_original_image_after_tgvf": config.mask_original_image_after_tgvf,
             "same_image_negative_mode": config.same_image_negative_mode,
         },
+        "readout_context": _stage1_readout_context(config),
         "module_policy": _stage1_module_policy(),
         "loss": {
             "gen": config.loss_gen,
@@ -674,6 +675,22 @@ def _stage1_module_policy() -> dict[str, Any]:
         "training_runtime": {
             "use_cache": False,
             "print_trainable_parameter_names_before_launch": True,
+        },
+    }
+
+
+def _stage1_readout_context(config: Stage1LaunchConfig) -> dict[str, Any]:
+    return {
+        "original_image_placeholder_embeddings": "replace_with_qwen_v_merge",
+        "d_append_path": "native_qwen_visual_span",
+        "position_ids": "real_qwen3_mrope_full_trajectory",
+        "fvt_position_mode": config.fvt_position_mode,
+        "d_token_count": "dynamic_source_image_visual_token_count",
+        "visual_merger_path": "frozen_finalize_path",
+        "attention_mask": {
+            "mask_original_image_after_tgvf": config.mask_original_image_after_tgvf,
+            "blocking": "weak_strict_original_image_key_blocking_after_tgvf_append",
+            "scope": "stage1_readout_after_tgvf_append",
         },
     }
 
