@@ -188,3 +188,58 @@ def test_benchmark_execute_dry_run_cli(tmp_path) -> None:
     summary = json.loads((output_dir / "summary.json").read_text())
     assert summary["accuracy"] == 1.0
     assert summary["runner_backend"]["backend"] == "dry_run"
+
+
+def test_benchmark_execute_dry_run_auto_uses_blink_official_choice(tmp_path) -> None:
+    manifest = {
+        "manifest_id": "blink_toy",
+        "manifest_hash": "blinkhash",
+        "samples": [
+            {
+                "sample_id": "blink/sample/0",
+                "benchmark": "blink",
+                "population_id": "blink_val_all_subtasks_1901",
+                "source_file": "blink/snapshot/Counting/val-00000-of-00001.parquet",
+                "metadata": {"row_index": 0, "raw_id": "0"},
+            }
+        ],
+    }
+    manifest_path = tmp_path / "blink_manifest.json"
+    manifest_path.write_text(json.dumps(manifest) + "\n")
+
+    from revisit_vlm_clean.benchmark_data import BenchmarkSample
+    from revisit_vlm_clean.rendering import render_benchmark_inputs
+    from revisit_vlm_clean.runner import BackendConfig, run_benchmark_rows
+    from revisit_vlm_clean.schema import EvalMode, ForwardMode, RunConfig
+
+    sample = BenchmarkSample(
+        sample_id="blink/sample/0",
+        benchmark="blink",
+        population_id="blink_val_all_subtasks_1901",
+        source_file="blink/snapshot/Counting/val-00000-of-00001.parquet",
+        question="Count the circles.\n(A) one\n(B) two",
+        media=({"kind": "path", "path": "/tmp/nonexistent.jpg", "exists": False},),
+        choices=("one", "two"),
+        gold_answer="B",
+        metadata={"row_index": 0},
+    )
+    config = RunConfig(
+        run_id="blink",
+        checkpoint_path="outputs/checkpoint.pt",
+        mode=EvalMode.ORIGINAL,
+        post_tgvf_forward_mode=ForwardMode.KV_CACHE,
+        population_id="blink_val_all_subtasks_1901",
+        manifest_path=str(manifest_path),
+        manifest_hash="blinkhash",
+    )
+    rows, summary = run_benchmark_rows(
+        [sample],
+        render_benchmark_inputs([sample], config),
+        config=config,
+        backend_config=BackendConfig(backend="dry_run"),
+    )
+
+    assert rows[0]["benchmark"] == "blink"
+    assert rows[0]["scorer_name"] == "official_blink_exact_match"
+    assert rows[0]["official_tool_used"] is True
+    assert summary.accuracy == 1.0

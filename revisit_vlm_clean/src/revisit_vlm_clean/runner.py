@@ -383,6 +383,7 @@ def run_benchmark_rows(
                 result.raw_output,
                 choices=list(sample.choices),
                 gold_answer=sample.gold_answer,
+                benchmark=sample.benchmark,
                 scoring_backend=config.parser_scorer.scoring_backend,
             )
             parsed_answer = parsed.parsed_answer

@@ -10,6 +10,12 @@ from .defaults import DEFAULT_CHOICE_PARSER_IDENTITY, DEFAULT_PARSER_IDENTITY
 from .schema import ScoringBackend
 
 
+OFFICIAL_COMPATIBLE_CHOICE_SCORERS = {
+    "blink": ("official_blink_exact_match", False),
+    "hr_bench_4k": ("official_compatible_hrbench4k_mc", True),
+}
+
+
 @dataclass(frozen=True)
 class ParseScoreResult:
     parsed_answer: str
@@ -27,13 +33,25 @@ def parse_and_score(
     *,
     choices: list[str] | None = None,
     gold_answer: str | None = None,
+    benchmark: str | None = None,
     scoring_backend: ScoringBackend | str = ScoringBackend.AUTO,
 ) -> ParseScoreResult:
     backend = ScoringBackend(str(scoring_backend))
-    if backend == ScoringBackend.OFFICIAL:
-        raise NotImplementedError("official scorer execution is not ported in the clean skeleton")
-
     choices = choices or []
+    official_choice = _official_choice_scorer(benchmark)
+    if official_choice is not None and backend in {ScoringBackend.AUTO, ScoringBackend.OFFICIAL}:
+        return _parse_and_score_official_choice(
+            text,
+            choices=choices,
+            gold_answer=gold_answer,
+            scorer_name=official_choice[0],
+            official_compatible=official_choice[1],
+        )
+    if backend == ScoringBackend.OFFICIAL:
+        raise NotImplementedError(
+            f"official scorer execution is not ported for benchmark={benchmark!r} in the clean runner"
+        )
+
     if choices:
         parsed = extract_choice_strict(text, choices)
         scorer_name = "project_choice_exact_match"
@@ -96,6 +114,25 @@ def extract_choice_strict(text: str, choices: list[str]) -> str:
     return ""
 
 
+def extract_choice_official_compatible(text: str, choices: list[str]) -> str:
+    cleaned = str(text or "")
+    cleaned = re.sub(r"<\|[^>]+\|>", " ", cleaned)
+    valid = {chr(ord("A") + index) for index in range(max(len(choices), 1))}
+    for pattern in (
+        r"<ANSWER>\s*\(?\s*([A-Z])\s*\)?",
+        r"(?i)(?:final\s+answer|answer|option|choice)\s*(?:is|:|=)?\s*\(?\s*([A-Z])\s*\)?",
+        r"\(([A-Z])\)",
+        r"(?m)^\s*([A-Z])\s*$",
+    ):
+        match = re.search(pattern, cleaned.strip())
+        if match:
+            letter = match.group(1).upper()
+            if letter in valid:
+                return letter
+    compact = choice_letter(cleaned)
+    return compact if compact in valid else ""
+
+
 def score_choice(prediction: str, gold: str, choices: list[str]) -> float:
     pred_letter = choice_letter(prediction)
     gold_letter = choice_letter(gold)
@@ -112,6 +149,34 @@ def score_choice(prediction: str, gold: str, choices: list[str]) -> float:
         if 0 <= gold_index < len(choices):
             gold_text = choices[gold_index]
     return 1.0 if normalize_open_answer(pred) == normalize_open_answer(gold_text) else 0.0
+
+
+def _parse_and_score_official_choice(
+    text: str,
+    *,
+    choices: list[str],
+    gold_answer: str | None,
+    scorer_name: str,
+    official_compatible: bool,
+) -> ParseScoreResult:
+    parsed = extract_choice_official_compatible(text, choices)
+    score = None
+    if gold_answer not in (None, ""):
+        score = score_choice(parsed, str(gold_answer), choices)
+    return ParseScoreResult(
+        parsed_answer=choice_letter(parsed) or parsed,
+        score=score,
+        answer_parse_success=bool(parsed),
+        scorer_name=scorer_name,
+        official_tool_used=True,
+        official_compatible=official_compatible,
+    )
+
+
+def _official_choice_scorer(benchmark: str | None) -> tuple[str, bool] | None:
+    if not benchmark:
+        return None
+    return OFFICIAL_COMPATIBLE_CHOICE_SCORERS.get(str(benchmark))
 
 
 def choice_letter(text: str) -> str:

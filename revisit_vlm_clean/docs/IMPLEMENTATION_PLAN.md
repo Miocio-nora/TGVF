@@ -310,9 +310,38 @@ Current limitation:
   clean rows against historical `src/tgvf_eval/official_tools.py` behavior on
   fixed rows before any benchmark table claims.
 
+## Phase 13: Official-Compatible Choice Scorer Parity
+
+Implemented after Phase 12.
+
+- clean scorer now supports the historical official-compatible multiple-choice
+  path for:
+  - `blink` with scorer name `official_blink_exact_match`;
+  - `hr_bench_4k` with scorer name `official_compatible_hrbench4k_mc`;
+- `auto` scoring uses this official-compatible path for those benchmarks;
+- explicit `official` scoring uses this path for those benchmarks and still
+  fails fast for unsupported benchmarks;
+- project scoring remains separate and can differ from official-compatible
+  choice parsing, because project scoring allows option-text fallback while the
+  historical official-compatible helper primarily extracts letters.
+
+Validation:
+
+- tests dynamically load `src/tgvf_eval/official_tools.py` and compare clean
+  `extract_choice_official_compatible` against historical `_extract_choice`;
+- tests compare clean BLINK official-compatible score against historical
+  `_score_choice`;
+- runner-level dry backend test verifies that `benchmark=blink` under `auto`
+  records `official_blink_exact_match`.
+
+Remaining scorer gap:
+
+- MMMU-Pro, OCRBench-v2, MathVista, and MathVerse official wrappers are still
+  not ported into the clean runner.
+
 ## Later Phases
 
-1. Official scorer wrapper parity against historical project/official scoring.
+1. Official wrapper parity for MMMU-Pro, OCRBench-v2, MathVista, and MathVerse.
 2. Larger clean path-backed subset smoke before CoreDev-scale runs.
 3. Stage1/Stage2 launchers.
 4. DeepStack training/eval support.

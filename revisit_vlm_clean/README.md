@@ -16,8 +16,10 @@ later phases after each contract is validated.
 - Main fast dev subset: `CoreDev-2511`.
 - DeepStack support: supported by schema, default disabled.
 - Benchmark root and scoring backend are recorded in `run_config.json` and
-  `run_config.txt`; explicit `official` scoring still fails fast until wrapper
-  parity is completed.
+  `run_config.txt`.
+- `official` scoring currently supports official-compatible multiple-choice
+  parsing/scoring for BLINK and HR-Bench-4K; other official scorers still fail
+  fast until wrapper parity is completed.
 
 ## Entry Points
 
