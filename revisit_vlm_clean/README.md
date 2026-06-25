@@ -60,6 +60,16 @@ showing the intended final clean entrypoint, but that command is explicitly
 not executable until the native training executors are ported. They do not
 start training jobs yet.
 
+The planned clean training modules are importable:
+
+```bash
+python -m revisit_vlm_clean.training.stage1_executor --plan /path/to/training_plan.json --preflight-only
+python -m revisit_vlm_clean.training.stage2_executor --plan /path/to/training_plan.json --preflight-only
+```
+
+Without `--preflight-only`, these executors fail fast instead of launching a
+partial or legacy training path.
+
 ## Fixed Manifests
 
 Committed benchmark manifests:

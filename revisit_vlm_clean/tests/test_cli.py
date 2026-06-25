@@ -5,6 +5,8 @@ from revisit_vlm_clean.cli.generate_data import main as generate_data_main
 from revisit_vlm_clean.cli.manifest import main as manifest_main
 from revisit_vlm_clean.cli.train_stage1 import main as stage1_main
 from revisit_vlm_clean.cli.train_stage2 import main as stage2_main
+from revisit_vlm_clean.training.stage1_executor import main as stage1_executor_main
+from revisit_vlm_clean.training.stage2_executor import main as stage2_executor_main
 
 
 def test_manifest_list_cli(capsys) -> None:
@@ -152,6 +154,46 @@ def test_stage1_training_write_plan_cli(tmp_path) -> None:
     assert "--protocol-token-row-mode row_only" in command
 
 
+def test_stage1_training_executor_preflight_cli(tmp_path, capsys) -> None:
+    train_file = tmp_path / "stage1.train.jsonl"
+    train_file.write_text(
+        '{"image": "/tmp/image.jpg", "question": "q", "target": "mark", '
+        '"evidence_description": "The mark is blue."}\n',
+        encoding="utf-8",
+    )
+    output_dir = tmp_path / "stage1_plan"
+    assert (
+        stage1_main(
+            [
+                "--run-id",
+                "stage1_unit",
+                "--train-file",
+                str(train_file),
+                "--output-dir",
+                str(output_dir),
+                "--write-plan",
+            ]
+        )
+        == 0
+    )
+
+    assert (
+        stage1_executor_main(
+            [
+                "--plan",
+                str(output_dir / "training_plan.json"),
+                "--preflight-only",
+            ]
+        )
+        == 0
+    )
+    payload = capsys.readouterr().out
+    assert '"plan_valid": true' in payload
+    assert '"will_launch_training": false' in payload
+    assert '"stage": "stage1"' in payload
+    assert stage1_executor_main(["--plan", str(output_dir / "training_plan.json")]) == 2
+
+
 def test_stage2_training_write_plan_cli(tmp_path) -> None:
     train_file = tmp_path / "stage2.train.jsonl"
     val_file = tmp_path / "stage2.test.jsonl"
@@ -226,6 +268,55 @@ def test_stage2_training_write_plan_cli(tmp_path) -> None:
     command = (output_dir / "legacy_reference_command.sh").read_text()
     assert "--mask-original-image-after-tgvf-scope through_answer" in command
     assert "--loss-focus-target 1.5" in command
+
+
+def test_stage2_training_executor_preflight_cli(tmp_path, capsys) -> None:
+    train_file = tmp_path / "stage2.train.jsonl"
+    val_file = tmp_path / "stage2.test.jsonl"
+    checkpoint = tmp_path / "stage1.pt"
+    train_file.write_text(
+        '{"image": "/tmp/image.jpg", "question": "q", "answer": "a"}\n',
+        encoding="utf-8",
+    )
+    val_file.write_text(
+        '{"image": "/tmp/image.jpg", "question": "q", "answer": "a"}\n',
+        encoding="utf-8",
+    )
+    checkpoint.write_bytes(b"checkpoint\n")
+    output_dir = tmp_path / "stage2_plan"
+    assert (
+        stage2_main(
+            [
+                "--run-id",
+                "stage2_unit",
+                "--train-file",
+                str(train_file),
+                "--val-file",
+                str(val_file),
+                "--stage1-checkpoint",
+                str(checkpoint),
+                "--output-dir",
+                str(output_dir),
+                "--write-plan",
+            ]
+        )
+        == 0
+    )
+
+    assert (
+        stage2_executor_main(
+            [
+                "--plan",
+                str(output_dir / "training_plan.json"),
+                "--preflight-only",
+            ]
+        )
+        == 0
+    )
+    payload = capsys.readouterr().out
+    assert '"plan_valid": true' in payload
+    assert '"will_launch_training": false' in payload
+    assert '"stage": "stage2"' in payload
 
 
 def test_stage2_deepstack_plan_disables_legacy_command(tmp_path, capsys) -> None:

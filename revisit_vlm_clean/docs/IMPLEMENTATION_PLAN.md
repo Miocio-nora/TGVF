@@ -1224,6 +1224,26 @@ Implemented after Phase 41.
 - tests assert the generic backend constructs the clean-native backend rather
   than the historical bridge.
 
+## Phase 43: Clean Training Executor Preflight Entrypoints
+
+Implemented after Phase 42.
+
+- added importable clean training modules:
+  - `revisit_vlm_clean.training.stage1_executor`;
+  - `revisit_vlm_clean.training.stage2_executor`;
+- both modules accept `--plan training_plan.json`;
+- both modules support `--preflight-only` to validate:
+  - training plan schema and stage;
+  - batch math;
+  - dataset/checkpoint file identities;
+  - module policy;
+  - clean command identity;
+  - legacy command is not final clean-native;
+- without `--preflight-only`, the modules fail fast and do not launch training;
+- this makes the planned clean entrypoints real and testable while preserving
+  the rule that incomplete native training must not silently fall back to old
+  scripts.
+
 ## Later Phases
 
 1. Replace training launch plans with clean-native training execution.
