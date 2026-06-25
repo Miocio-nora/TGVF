@@ -282,6 +282,7 @@ def test_generate_data_dry_run_cli(tmp_path, capsys) -> None:
     )
     captured = capsys.readouterr()
     assert '"run_id": "data_plan"' in captured.out
+    assert '"output_schema_version": "clean_data_generation_v1"' in captured.out
     assert '"stage": "stage2_protocol_c"' in captured.out
     assert '"line_count": 2' in captured.out
     assert '"focus_target": 1.5' in captured.out
@@ -319,10 +320,12 @@ def test_generate_data_write_plan_cli(tmp_path) -> None:
     assert (output_dir / "data_generation_config.txt").exists()
     assert (output_dir / "input_files.json").exists()
     assert (output_dir / "data_generation_report.json").exists()
+    config = json.loads((output_dir / "data_generation_config.json").read_text())
+    assert config["output_schema_version"] == "clean_data_generation_v1"
     assert "identity_only: true" in (output_dir / "data_generation_config.txt").read_text()
-    assert "generated_data_written: false" in (
-        output_dir / "data_generation_config.txt"
-    ).read_text()
+    assert (
+        "generated_data_written: false" in (output_dir / "data_generation_config.txt").read_text()
+    )
 
 
 def test_generate_data_execute_choice_to_open_answer(tmp_path) -> None:
@@ -367,6 +370,14 @@ def test_generate_data_execute_choice_to_open_answer(tmp_path) -> None:
     report = (output_dir / "data_generation_report.json").read_text()
     assert '"generated_data_written": true' in report
     assert '"converted_choice": 1' in report
+    report_json = json.loads(report)
+    assert report_json["summary"]["total_generated_lines"] == 1
+    assert report_json["output_files"][0]["line_count"] == 1
+    assert len(report_json["split_hashes"]["stage2.train.jsonl"]) == 64
+    config_txt = (output_dir / "data_generation_config.txt").read_text()
+    assert "identity_only: false" in config_txt
+    assert "generated_data_written: true" in config_txt
+    assert "split_hash[stage2.train.jsonl]:" in config_txt
 
 
 def test_generate_data_execute_clean_imend(tmp_path) -> None:

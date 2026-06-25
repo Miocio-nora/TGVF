@@ -53,6 +53,7 @@ class DataGenerationConfig:
     run_id: str
     stage: DataGenerationStage
     output_dir: str
+    output_schema_version: str = "clean_data_generation_v1"
     input_root: str = "."
     input_files: tuple[str, ...] = ()
     protocol: str = DEFAULT_PROTOCOL
@@ -110,8 +111,7 @@ BAD_TEXT_SUBSTRINGS = (
 def build_data_generation_plan(config: DataGenerationConfig) -> dict[str, Any]:
     config.validate()
     identities = [
-        file_identity(_resolve_input_path(config.input_root, rel))
-        for rel in config.input_files
+        file_identity(_resolve_input_path(config.input_root, rel)) for rel in config.input_files
     ]
     missing = [item.path for item in identities if not item.exists]
     if missing:
@@ -120,7 +120,9 @@ def build_data_generation_plan(config: DataGenerationConfig) -> dict[str, Any]:
     if config.source_manifest_path:
         manifest_identity = file_identity(Path(config.source_manifest_path))
         if not manifest_identity.exists:
-            raise FileNotFoundError(f"source_manifest_path does not exist: {config.source_manifest_path}")
+            raise FileNotFoundError(
+                f"source_manifest_path does not exist: {config.source_manifest_path}"
+            )
     return {
         "config": config.to_dict(),
         "input_files": [item.to_dict() for item in identities],
@@ -142,7 +144,6 @@ def execute_data_generation(config: DataGenerationConfig) -> dict[str, str]:
         raise NotImplementedError("data generation execution requires a concrete --transform")
     out = Path(config.output_dir)
     out.mkdir(parents=True, exist_ok=True)
-    plan = build_data_generation_plan(config)
     generated_files: list[dict[str, Any]] = []
     reports: dict[str, Any] = {}
     for rel in config.input_files:
@@ -158,11 +159,13 @@ def execute_data_generation(config: DataGenerationConfig) -> dict[str, str]:
             report = _convert_v4_to_stage1_protocol_c_focus_file(input_path, output_path)
         else:
             raise NotImplementedError(f"transform execution is not ported: {config.transform}")
+        output_identity = file_identity(output_path)
         reports[rel] = report
         generated_files.append(
             {
                 "input": str(input_path),
                 "output": str(output_path),
+                "output_identity": output_identity.to_dict(),
                 "report": report,
             }
         )
@@ -178,9 +181,21 @@ def execute_data_generation(config: DataGenerationConfig) -> dict[str, str]:
     report["summary"]["identity_only"] = False
     report["summary"]["generated_data_written"] = True
     report["summary"]["n_generated_files"] = len(generated_files)
+    report["summary"]["total_generated_lines"] = sum(
+        int(item["output_identity"].get("line_count") or 0) for item in generated_files
+    )
+    report["summary"]["total_generated_bytes"] = sum(
+        int(item["output_identity"].get("size_bytes") or 0) for item in generated_files
+    )
     report["generated_files"] = generated_files
+    report["output_files"] = [item["output_identity"] for item in generated_files]
+    report["split_hashes"] = {
+        rel: item["output_identity"].get("sha256")
+        for rel, item in zip(config.input_files, generated_files, strict=True)
+    }
     report["transform_report"] = reports
     _write_json(report_path, report)
+    Path(paths["data_generation_config_txt"]).write_text(_config_text(report), encoding="utf-8")
     return {
         **paths,
         "generated_files": str(generated_files_path),
@@ -188,7 +203,9 @@ def execute_data_generation(config: DataGenerationConfig) -> dict[str, str]:
     }
 
 
-def write_data_generation_plan(output_dir: str | Path, *, config: DataGenerationConfig) -> dict[str, str]:
+def write_data_generation_plan(
+    output_dir: str | Path, *, config: DataGenerationConfig
+) -> dict[str, str]:
     out = Path(output_dir)
     out.mkdir(parents=True, exist_ok=True)
     plan = build_data_generation_plan(config)
@@ -236,7 +253,9 @@ def _resolve_input_path(input_root: str, rel: str) -> Path:
 
 
 def _write_json(path: Path, payload: Any) -> None:
-    path.write_text(json.dumps(_to_jsonable(payload), indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    path.write_text(
+        json.dumps(_to_jsonable(payload), indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
 
 
 def _config_text(plan: dict[str, Any]) -> str:
@@ -244,6 +263,7 @@ def _config_text(plan: dict[str, Any]) -> str:
     summary = plan["summary"]
     lines = [
         f"run_id: {config['run_id']}",
+        f"output_schema_version: {config['output_schema_version']}",
         f"stage: {config['stage']}",
         f"transform: {config['transform']}",
         f"protocol: {config['protocol']}",
@@ -254,10 +274,22 @@ def _config_text(plan: dict[str, Any]) -> str:
         f"input_files: {', '.join(config['input_files'])}",
         f"split_policy: {config['split_policy']}",
         f"total_input_lines: {summary['total_input_lines']}",
-        "identity_only: true",
-        "generated_data_written: false",
+        f"identity_only: {_bool_text(summary['identity_only'])}",
+        f"generated_data_written: {_bool_text(summary['generated_data_written'])}",
     ]
+    if "n_generated_files" in summary:
+        lines.append(f"n_generated_files: {summary['n_generated_files']}")
+    if "total_generated_lines" in summary:
+        lines.append(f"total_generated_lines: {summary['total_generated_lines']}")
+    if "total_generated_bytes" in summary:
+        lines.append(f"total_generated_bytes: {summary['total_generated_bytes']}")
+    for rel, digest in (plan.get("split_hashes") or {}).items():
+        lines.append(f"split_hash[{rel}]: {digest}")
     return "\n".join(lines) + "\n"
+
+
+def _bool_text(value: Any) -> str:
+    return "true" if bool(value) else "false"
 
 
 def _clean_protocol_split_file(input_path: Path, output_path: Path) -> dict[str, Any]:
@@ -307,7 +339,9 @@ def _convert_v4_to_protocol_c_file(input_path: Path, output_path: Path) -> dict[
     return dict(counts)
 
 
-def _convert_v4_to_stage1_protocol_c_focus_file(input_path: Path, output_path: Path) -> dict[str, Any]:
+def _convert_v4_to_stage1_protocol_c_focus_file(
+    input_path: Path, output_path: Path
+) -> dict[str, Any]:
     counts: Counter[str] = Counter()
     unique_images: set[str] = set()
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -343,7 +377,9 @@ def _convert_v4_record_to_stage1_focus_rows(record: dict[str, Any]) -> list[dict
         return []
     steps = _v4_focus_steps(record, include_confidence=True)
     rows: list[dict[str, Any]] = []
-    source_uid = str(record.get("uid") or record.get("source_uid") or record.get("v4_uid") or "").strip()
+    source_uid = str(
+        record.get("uid") or record.get("source_uid") or record.get("v4_uid") or ""
+    ).strip()
     for index, step in enumerate(steps, start=1):
         target = str(step.get("target") or "").strip()
         evidence = str(step.get("evidence_description") or "").strip()
@@ -362,9 +398,14 @@ def _convert_v4_record_to_stage1_focus_rows(record: dict[str, Any]) -> list[dict
             "confidence": step.get("confidence", record.get("confidence")),
             "target_style": record.get("target_style") or "visual_descriptor",
             "target_cues": step.get("target_cues") or record.get("focus_descriptor_cues") or [],
-            "target_leakage_risk": step.get("target_leakage_risk") or record.get("target_leakage_risk") or "low",
+            "target_leakage_risk": step.get("target_leakage_risk")
+            or record.get("target_leakage_risk")
+            or "low",
             "evidence_specificity": record.get("evidence_specificity") or "specific",
-            "evidence_type": step.get("evidence_type") or _first_value(record.get("evidence_types")) or record.get("evidence_type") or "other",
+            "evidence_type": step.get("evidence_type")
+            or _first_value(record.get("evidence_types"))
+            or record.get("evidence_type")
+            or "other",
         }
         rows.append(row)
     return rows
@@ -375,11 +416,15 @@ def _v4_stage1_common_fields(record: dict[str, Any]) -> dict[str, Any]:
     short_answer = str(record.get("short_answer") or record.get("answer_text") or "").strip()
     if not short_answer:
         short_answer = _strip_choice_letter_prefix(answer)
-    value_span = str(record.get("value_span_text") or record.get("answer_text") or short_answer or answer).strip()
+    value_span = str(
+        record.get("value_span_text") or record.get("answer_text") or short_answer or answer
+    ).strip()
     trace = record.get("source_trace") if "source_trace" in record else record.get("trace")
     return {
         "schema_version": "tgvf_teacher_schema_v4_stage1_compat",
-        "teacher_version": record.get("teacher_version") or record.get("teacher_prompt_version") or "tgvf_v4_teacher",
+        "teacher_version": record.get("teacher_version")
+        or record.get("teacher_prompt_version")
+        or "tgvf_v4_teacher",
         "source_schema_version": record.get("source_schema_version")
         or record.get("schema_version")
         or record.get("teacher_schema_version"),
@@ -422,13 +467,17 @@ def _convert_v4_record(record: dict[str, Any], *, line_no: int) -> dict[str, Any
             "post_focus_think": trace_parts.get("post_focus_think"),
             "target_style": "visual_descriptor",
             "target_cues": focus.get("target_cues") or record.get("focus_descriptor_cues") or [],
-            "target_leakage_risk": focus.get("target_leakage_risk") or record.get("target_leakage_risk") or "low",
+            "target_leakage_risk": focus.get("target_leakage_risk")
+            or record.get("target_leakage_risk")
+            or "low",
             "evidence_specificity": "specific",
         }
     if item_type == "multi_refocus":
         steps = _v4_focus_steps(record)
         if len(steps) != 2:
-            raise ValueError(f"{line_no}: V4 cold-start multi_refocus must have exactly two focus steps")
+            raise ValueError(
+                f"{line_no}: V4 cold-start multi_refocus must have exactly two focus steps"
+            )
         trace_parts = _v4_trace_parts_for_multi(record)
         for index, step in enumerate(steps):
             if index < len(trace_parts):
@@ -441,7 +490,9 @@ def _convert_v4_record(record: dict[str, Any], *, line_no: int) -> dict[str, Any
             "evidence_description": steps[-1]["evidence_description"],
             "target_style": "visual_descriptor",
             "target_cues": sorted({cue for step in steps for cue in step.get("target_cues", [])}),
-            "target_leakage_risk": max((step.get("target_leakage_risk") or "low" for step in steps), default="low"),
+            "target_leakage_risk": max(
+                (step.get("target_leakage_risk") or "low" for step in steps), default="low"
+            ),
             "evidence_specificity": "specific",
             "focus_steps": steps,
         }
@@ -466,7 +517,9 @@ def _v4_common_fields(record: dict[str, Any]) -> dict[str, Any]:
     answer = _v4_answer_text(record)
     return {
         "schema_version": "tgvf_teacher_schema_v4_stage2_compat",
-        "teacher_prompt_version": record.get("teacher_prompt_version") or record.get("teacher_version") or "tgvf_v4_teacher",
+        "teacher_prompt_version": record.get("teacher_prompt_version")
+        or record.get("teacher_version")
+        or "tgvf_v4_teacher",
         "image": record.get("image"),
         "image_id": record.get("image_id") or record.get("stable_image_uid"),
         "source_dataset": record.get("source_dataset"),
@@ -475,9 +528,13 @@ def _v4_common_fields(record: dict[str, Any]) -> dict[str, Any]:
         "choices": record.get("choices") or [],
         "answer": answer,
         "short_answer": record.get("answer_text") or answer,
-        "answer_format": "multiple_choice" if record.get("answer_format") == "multiple_choice" else "short_text",
+        "answer_format": "multiple_choice"
+        if record.get("answer_format") == "multiple_choice"
+        else "short_text",
         "value_span_text": record.get("answer_text") or answer,
-        "evidence_type": _first_value(record.get("evidence_types")) or record.get("evidence_type") or "other",
+        "evidence_type": _first_value(record.get("evidence_types"))
+        or record.get("evidence_type")
+        or "other",
         "confidence": record.get("confidence"),
         "v4_item_type": record.get("item_type"),
         "v4_uid": record.get("uid"),
@@ -491,7 +548,9 @@ def _v4_first_focus(record: dict[str, Any]) -> dict[str, Any] | None:
     return steps[0] if steps else None
 
 
-def _v4_focus_steps(record: dict[str, Any], *, include_confidence: bool = False) -> list[dict[str, Any]]:
+def _v4_focus_steps(
+    record: dict[str, Any], *, include_confidence: bool = False
+) -> list[dict[str, Any]]:
     steps = []
     for step in record.get("trace") or []:
         if step.get("type") != "focus":
@@ -506,7 +565,9 @@ def _v4_focus_steps(record: dict[str, Any], *, include_confidence: bool = False)
             "evidence_description": evidence,
             "target_cues": metadata.get("focus_descriptor_cues") or [],
             "target_leakage_risk": metadata.get("target_leakage_risk") or "low",
-            "evidence_type": metadata.get("evidence_type") or _first_value(record.get("evidence_types")) or "other",
+            "evidence_type": metadata.get("evidence_type")
+            or _first_value(record.get("evidence_types"))
+            or "other",
             "value_span_text": record.get("answer_text"),
         }
         if include_confidence:
@@ -594,7 +655,11 @@ def _bad_text_reason(value: Any, *, path: str = "") -> str:
         return ""
     if not isinstance(value, str):
         return ""
-    if path.split(".")[-1] not in TEXT_KEYS_FOR_CLEANING and not path.endswith(".text") and not path.endswith(".focus_text"):
+    if (
+        path.split(".")[-1] not in TEXT_KEYS_FOR_CLEANING
+        and not path.endswith(".text")
+        and not path.endswith(".focus_text")
+    ):
         return ""
     text = value.strip()
     if not text:
@@ -628,8 +693,12 @@ def _convert_choice_to_open_answer_file(input_path: Path, output_path: Path) -> 
                 counts["output_choice_like"] += 1
             fout.write(json.dumps(row, ensure_ascii=False) + "\n")
             counts["output"] += 1
-    counts["input_choice_ratio"] = counts["converted_choice"] / counts["input"] if counts["input"] else 0.0
-    counts["output_choice_ratio"] = counts["output_choice_like"] / counts["output"] if counts["output"] else 0.0
+    counts["input_choice_ratio"] = (
+        counts["converted_choice"] / counts["input"] if counts["input"] else 0.0
+    )
+    counts["output_choice_ratio"] = (
+        counts["output_choice_like"] / counts["output"] if counts["output"] else 0.0
+    )
     return dict(counts)
 
 
@@ -710,7 +779,12 @@ def _strip_answer_choices(question: str) -> str:
     lines = []
     for line in question.splitlines():
         stripped = line.strip()
-        if len(stripped) > 3 and stripped[0] == "(" and stripped[2] == ")" and stripped[1].isalpha():
+        if (
+            len(stripped) > 3
+            and stripped[0] == "("
+            and stripped[2] == ")"
+            and stripped[1].isalpha()
+        ):
             continue
         if len(stripped) > 2 and stripped[0].isalpha() and stripped[1] == ".":
             continue

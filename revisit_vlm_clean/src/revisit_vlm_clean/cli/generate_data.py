@@ -21,7 +21,9 @@ from revisit_vlm_clean.tgvf_protocol import SUPPORTED_PROTOCOLS
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Clean TGVF data-generation planner.")
     parser.add_argument("--run-id", required=True)
-    parser.add_argument("--stage", choices=[item.value for item in DataGenerationStage], required=True)
+    parser.add_argument(
+        "--stage", choices=[item.value for item in DataGenerationStage], required=True
+    )
     parser.add_argument("--output-dir", required=True)
     parser.add_argument("--input-root", default=".")
     parser.add_argument("--input-files", nargs="*", default=[])
@@ -35,11 +37,19 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--source-manifest-hash", default=None)
     parser.add_argument("--source-run-id", default=None)
     parser.add_argument("--split-policy", default="preserve_input")
-    parser.add_argument("--field-weight", action="append", default=[], help="Field loss weight as name=value.")
-    parser.add_argument("--mask-policy", action="append", default=[], help="Mask policy entry as name=value.")
-    parser.add_argument("--dry-run", action="store_true", help="Print resolved identity plan without writing files.")
+    parser.add_argument(
+        "--field-weight", action="append", default=[], help="Field loss weight as name=value."
+    )
+    parser.add_argument(
+        "--mask-policy", action="append", default=[], help="Mask policy entry as name=value."
+    )
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Print resolved identity plan without writing files."
+    )
     parser.add_argument("--write-plan", action="store_true", help="Write identity-only plan files.")
-    parser.add_argument("--execute", action="store_true", help="Execute a ported deterministic data transform.")
+    parser.add_argument(
+        "--execute", action="store_true", help="Execute a ported deterministic data transform."
+    )
     return parser
 
 

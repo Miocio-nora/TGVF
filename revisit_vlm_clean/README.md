@@ -47,9 +47,10 @@ The data-generation entrypoint records source files, hashes, protocol,
 transform, field weights, mask policy, and output intent. It can currently
 execute the deterministic `v4_to_protocol_c`,
 `v4_to_stage1_protocol_c_focus`, `choice_to_open_answer`, and `clean_imend`
-transforms. This path is treated as a clean first-class asset rather than a
-legacy bridge. Teacher trajectory generation still remains outside the clean
-tree.
+transforms. Executed transforms write output file identities and split hashes
+beside the generated JSONL. This path is treated as a clean first-class asset
+rather than a legacy bridge. Teacher trajectory generation still remains
+outside the clean tree.
 
 The training entrypoints currently produce auditable launch plans with
 dataset/checkpoint hashes, batch math, mask policy, weighted losses, DeepStack

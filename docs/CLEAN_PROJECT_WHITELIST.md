@@ -25,10 +25,12 @@ Data generation is a first-class clean-project surface, not a side branch.
   - V4 teacher rows to Protocol-C Stage1 focus data;
   - V4 teacher rows to Protocol-C Stage2 conversation data.
 - Each generated dataset must record:
+  - clean data-generation output schema version;
   - source manifest path/hash or source run id;
   - prompt/schema/protocol version;
   - transform names and parameters;
   - split policy and split hashes;
+  - generated output file identities: path, SHA-256, byte size, and line count;
   - field/span weights;
   - focus/no-focus rules;
   - mask behavior, mask probability, and mask scope;
