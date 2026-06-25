@@ -26,8 +26,8 @@ tgvf_train_stage2 --print-defaults
 ```
 
 The benchmark entrypoint can now validate identity, build/materialize fixed
-manifests, and render model input rows for smoke checks. It does not run model
-training or benchmark inference yet.
+manifests, render model input rows for smoke checks, and execute the dry-run or
+original-Qwen backend. It does not run TGVF benchmark inference yet.
 
 ## Fixed Manifests
 
@@ -48,3 +48,10 @@ generation is deterministic and tested by count/hash.
 - `tgvf_free`: question/media only; no extra prompt text.
 - `tgvf_force`: question/media only plus a protocol control prefix.
 - `tgvf_softforce`: question/media plus the configured short prompt text.
+
+## Executable Backends
+
+- `dry_run`: validates rows, parser, scorer, and summaries without loading a
+  model.
+- `qwen3_original`: runs `mode=original` only. Use a small
+  `--max-answer-tokens` for smoke checks.

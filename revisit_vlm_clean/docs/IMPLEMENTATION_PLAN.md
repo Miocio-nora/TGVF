@@ -107,9 +107,40 @@ Validated on 2026-06-25 with `CoreSmoke-256`:
 - `tgvf_force`: 256/256 have force control prefix, prompt unchanged;
 - `tgvf_softforce`: 256/256 append `Use focus tool.`, no force prefix.
 
+## Phase 7: Executable Runner Skeleton
+
+Implemented in commit `f240a7f`.
+
+- benchmark CLI supports `--execute`;
+- `dry_run` backend executes the full manifest -> materialize -> render ->
+  parse/score -> rows/summary path without model loading;
+- `qwen3_original` backend loads a Qwen2-VL/Qwen3-VL model and runs only
+  `mode=original`;
+- TGVF modes are intentionally not silently downgraded to direct generation.
+
+Validated on 2026-06-25:
+
+```text
+CoreSmoke-256 dry_run:
+  n_rows=256
+  n_scored=256
+  accuracy=1.0
+  answer_parse_rate=1.0
+  malformed_rate=0.0
+
+1-row Qwen3-VL-2B original smoke:
+  model=/nvmesv/dredvpn009/models/hf/Qwen3-VL-2B-Thinking
+  sample=vstar first CoreSmoke row
+  accuracy=1.0
+  output_tokens=97
+  wall_time_sec=117.0
+```
+
+For future real-model smoke, pass a small `--max-answer-tokens` explicitly.
+
 ## Later Phases
 
-1. Full benchmark runner with model inference.
+1. TGVF Stage2 controller inference path.
 2. Official scorer wrapper port.
 3. Stage1/Stage2 launchers.
 4. DeepStack training/eval support.
