@@ -74,6 +74,9 @@ class DeepStackState:
         if not self.enabled and self.original_image_scope != DeepStackScope.OFF:
             raise ValueError("disabled DeepStack must use original_image_scope='off'")
 
+    def to_dict(self) -> dict[str, Any]:
+        return _to_jsonable(self)
+
 
 @dataclass(frozen=True)
 class ParserScorerIdentity:
@@ -88,6 +91,9 @@ class ParserScorerIdentity:
             raise ValueError("model_output_parser is required")
         if self.scoring_backend != ScoringBackend.AUTO and self.fallback_allowed:
             raise ValueError("fallback_allowed should be true only for scoring_backend='auto'")
+
+    def to_dict(self) -> dict[str, Any]:
+        return _to_jsonable(self)
 
 
 @dataclass(frozen=True)

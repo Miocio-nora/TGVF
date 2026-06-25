@@ -5,7 +5,9 @@ from __future__ import annotations
 import argparse
 
 from revisit_vlm_clean.cli.common import exit_not_implemented, print_json
-from revisit_vlm_clean.manifest import describe_subset
+from pathlib import Path
+
+from revisit_vlm_clean.manifest import build_manifest, describe_subset, manifest_payload, write_manifest
 from revisit_vlm_clean.populations import iter_core_populations, iter_subsets
 
 
@@ -33,7 +35,13 @@ def main(argv: list[str] | None = None) -> int:
     if args.describe_subset:
         print_json(describe_subset(args.describe_subset))
         return 0
-    return exit_not_implemented("manifest build is phase 2; phase 1 only defines the interface")
+    manifest = build_manifest(subset_id=args.build, benchmark_root=args.benchmark_root)
+    if args.output:
+        write_manifest(args.output, manifest)
+        print_json({"output": str(Path(args.output)), "manifest_hash": manifest.stable_hash(), "n": len(manifest.samples)})
+    else:
+        print_json(manifest_payload(manifest))
+    return 0
 
 
 if __name__ == "__main__":

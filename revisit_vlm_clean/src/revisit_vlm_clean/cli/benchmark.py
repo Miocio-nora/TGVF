@@ -5,6 +5,8 @@ from __future__ import annotations
 import argparse
 
 from revisit_vlm_clean.cli.common import exit_not_implemented, print_json
+from revisit_vlm_clean.manifest import build_manifest
+from revisit_vlm_clean.outputs import write_empty_benchmark_output
 from revisit_vlm_clean.populations import get_population, get_subset
 from revisit_vlm_clean.schema import (
     DeepStackScope,
@@ -29,6 +31,8 @@ def build_parser() -> argparse.ArgumentParser:
     group.add_argument("--subset-id")
     parser.add_argument("--manifest-path", default=None)
     parser.add_argument("--manifest-hash", default=None)
+    parser.add_argument("--benchmark-root", default="/home/dredvpn009/Flash_Storage/datasets/benchmarks")
+    parser.add_argument("--output-dir", default=None)
     parser.add_argument("--max-image-resolution", type=int, default=512)
     parser.add_argument("--max-action-tokens", type=int, default=64)
     parser.add_argument("--max-answer-tokens", type=int, default=128)
@@ -40,6 +44,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=DeepStackScope.OFF.value,
     )
     parser.add_argument("--dry-run", action="store_true", help="Print resolved run_config.json and exit.")
+    parser.add_argument(
+        "--write-empty-output",
+        action="store_true",
+        help="Write run_config/rows/summary/sample_manifest schema files without model inference.",
+    )
     return parser
 
 
@@ -73,6 +82,14 @@ def main(argv: list[str] | None = None) -> int:
     config.validate()
     if args.dry_run:
         print_json(config)
+        return 0
+    if args.write_empty_output:
+        if not args.output_dir:
+            raise ValueError("--write-empty-output requires --output-dir")
+        manifest = None
+        if args.subset_id and not args.manifest_path:
+            manifest = build_manifest(subset_id=args.subset_id, benchmark_root=args.benchmark_root)
+        print_json(write_empty_benchmark_output(args.output_dir, config=config, manifest=manifest))
         return 0
     return exit_not_implemented("benchmark execution is phase 4; phase 1 only validates run identity")
 

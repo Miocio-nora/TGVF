@@ -27,3 +27,16 @@ tgvf_train_stage2 --print-defaults
 
 The entrypoints are stubs in this phase. They parse and validate identity, but
 they do not run model training or benchmark inference yet.
+
+## Fixed Manifests
+
+Committed benchmark manifests:
+
+```text
+benchmark_manifests/core_smoke_256_seed20260625.json
+benchmark_manifests/core_balanced_dev_2511_seed20260625.json
+benchmark_manifests/core_full_19562.json
+```
+
+`CoreDev-2511` is the default fast development comparison subset. Manifest
+generation is deterministic and tested by count/hash.

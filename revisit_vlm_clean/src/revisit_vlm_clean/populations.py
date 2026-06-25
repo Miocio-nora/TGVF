@@ -55,7 +55,7 @@ CORE_POPULATIONS: dict[str, PopulationSpec] = {
     "ocrbench_v2_data_test_10000": PopulationSpec(
         population_id="ocrbench_v2_data_test_10000",
         benchmark="ocrbench_v2",
-        source_files=("ocrbench_v2/snapshot/data/test-00000-of-00004.parquet..test-00003-of-00004.parquet",),
+        source_files=("ocrbench_v2/snapshot/data/test-*.parquet",),
         n=10000,
     ),
     "mmmu_pro_standard10_test_1730": PopulationSpec(
@@ -88,6 +88,15 @@ SUBSETS: dict[str, SubsetSpec] = {
         short_name="CoreSmoke-256",
         n=256,
         purpose="Fast code/parser/scorer/DeepStack field smoke. Not for effect conclusions.",
+        allocations=(
+            SubsetAllocation("vstar_test_questions_191", 32, "stratified smoke slice"),
+            SubsetAllocation("hr_bench_4k_800", 32, "stratified smoke slice"),
+            SubsetAllocation("blink_val_all_subtasks_1901", 48, "stratified smoke slice"),
+            SubsetAllocation("ocrbench_v2_data_test_10000", 48, "stratified smoke slice"),
+            SubsetAllocation("mmmu_pro_standard10_test_1730", 32, "stratified smoke slice"),
+            SubsetAllocation("mathvista_testmini_1000", 32, "stratified smoke slice"),
+            SubsetAllocation("mathverse_testmini_3940", 32, "stratified smoke slice"),
+        ),
     ),
     DEFAULT_CORE_DEV_SUBSET_ID: SubsetSpec(
         subset_id=DEFAULT_CORE_DEV_SUBSET_ID,

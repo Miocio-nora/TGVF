@@ -33,6 +33,37 @@ def test_benchmark_dry_run_cli(capsys) -> None:
     assert '"run_id": "dry"' in captured.out
 
 
+def test_benchmark_write_empty_output_cli(tmp_path) -> None:
+    output_dir = tmp_path / "run"
+    assert (
+        benchmark_main(
+            [
+                "--run-id",
+                "empty",
+                "--checkpoint-path",
+                "outputs/checkpoint.pt",
+                "--mode",
+                "tgvf_force",
+                "--post-tgvf-forward-mode",
+                "kv_cache",
+                "--subset-id",
+                "core_smoke_256_seed20260625",
+                "--manifest-path",
+                "benchmark_manifests/core_smoke_256_seed20260625.json",
+                "--manifest-hash",
+                "abc123",
+                "--output-dir",
+                str(output_dir),
+                "--write-empty-output",
+            ]
+        )
+        == 0
+    )
+    assert (output_dir / "run_config.json").exists()
+    assert (output_dir / "rows.jsonl").read_text() == ""
+    assert "schema smoke output" in (output_dir / "summary.json").read_text()
+
+
 def test_training_default_clis(capsys) -> None:
     assert stage1_main(["--print-defaults"]) == 0
     assert "matrix_ce" in capsys.readouterr().out
