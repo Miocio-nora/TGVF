@@ -5,9 +5,10 @@ from __future__ import annotations
 import base64
 import io
 import time
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 from .benchmark_data import BenchmarkSample
 from .legacy_stage2_adapter import build_legacy_stage2_args, make_legacy_stage2_sample
@@ -15,6 +16,17 @@ from .rendering import RenderedBenchmarkInput
 from .schema import EvalMode, EvalSummary, RunConfig
 from .scoring import score_output_rows
 from .stage2_runtime import Stage2RuntimeConfig
+
+STAGE2_NATIVE_BACKEND = "tgvf_stage2_qwen3_native"
+STAGE2_LEGACY_BACKEND = "tgvf_stage2_qwen3_legacy"
+STAGE2_LEGACY_ALIAS = "tgvf_stage2_qwen3"
+RUNNER_BACKENDS = (
+    "dry_run",
+    "qwen3_original",
+    STAGE2_NATIVE_BACKEND,
+    STAGE2_LEGACY_BACKEND,
+    STAGE2_LEGACY_ALIAS,
+)
 
 
 @dataclass(frozen=True)
@@ -28,8 +40,11 @@ class BackendConfig:
     stage2: Stage2RuntimeConfig | None = None
 
     def to_dict(self) -> dict[str, Any]:
+        resolved_backend = resolve_backend_name(self.backend)
         return {
             "backend": self.backend,
+            "resolved_backend": resolved_backend,
+            "deprecated_alias": self.backend == STAGE2_LEGACY_ALIAS,
             "dtype": self.dtype,
             "device": self.device,
             "device_map": self.device_map,
@@ -56,12 +71,22 @@ class CleanRunnerBackend:
     def prepare(self, config: RunConfig) -> None:
         del config
 
-    def run(self, sample: BenchmarkSample, rendered: RenderedBenchmarkInput, config: RunConfig) -> ModelRunResult:
+    def run(
+        self,
+        sample: BenchmarkSample,
+        rendered: RenderedBenchmarkInput,
+        config: RunConfig,
+    ) -> ModelRunResult:
         raise NotImplementedError
 
 
 class DryRunBackend(CleanRunnerBackend):
-    def run(self, sample: BenchmarkSample, rendered: RenderedBenchmarkInput, config: RunConfig) -> ModelRunResult:
+    def run(
+        self,
+        sample: BenchmarkSample,
+        rendered: RenderedBenchmarkInput,
+        config: RunConfig,
+    ) -> ModelRunResult:
         del rendered, config
         started = time.perf_counter()
         output = _dry_output(sample)
@@ -92,14 +117,23 @@ class Qwen3OriginalBackend(CleanRunnerBackend):
 
     def prepare(self, config: RunConfig) -> None:
         if config.mode != EvalMode.ORIGINAL:
-            raise NotImplementedError("qwen3_original backend currently supports only mode='original'")
+            raise NotImplementedError(
+                "qwen3_original backend currently supports only mode='original'"
+            )
         self._load()
 
-    def run(self, sample: BenchmarkSample, rendered: RenderedBenchmarkInput, config: RunConfig) -> ModelRunResult:
+    def run(
+        self,
+        sample: BenchmarkSample,
+        rendered: RenderedBenchmarkInput,
+        config: RunConfig,
+    ) -> ModelRunResult:
         started = time.perf_counter()
         try:
             if config.mode != EvalMode.ORIGINAL:
-                raise NotImplementedError("qwen3_original backend currently supports only mode='original'")
+                raise NotImplementedError(
+                    "qwen3_original backend currently supports only mode='original'"
+                )
             model, processor = self._load()
             messages = [
                 {
@@ -141,7 +175,12 @@ class Qwen3OriginalBackend(CleanRunnerBackend):
         if self._loaded is not None:
             return self._loaded
         import torch
-        from transformers import AutoConfig, AutoProcessor, Qwen2VLForConditionalGeneration, Qwen3VLForConditionalGeneration
+        from transformers import (
+            AutoConfig,
+            AutoProcessor,
+            Qwen2VLForConditionalGeneration,
+            Qwen3VLForConditionalGeneration,
+        )
 
         dtype = _torch_dtype(torch, self.backend_config.dtype)
         model_kwargs: dict[str, Any] = {
@@ -182,7 +221,9 @@ class Qwen3OriginalBackend(CleanRunnerBackend):
             tokenize=False,
             add_generation_prompt=True,
         )
-        image_patch_size = int(getattr(getattr(processor, "image_processor", None), "patch_size", 16) or 16)
+        image_patch_size = int(
+            getattr(getattr(processor, "image_processor", None), "patch_size", 16) or 16
+        )
         try:
             image_inputs, video_inputs, video_kwargs = process_vision_info(
                 messages,
@@ -195,7 +236,7 @@ class Qwen3OriginalBackend(CleanRunnerBackend):
             video_kwargs = {}
         video_metadatas = None
         if video_inputs is not None and video_inputs and isinstance(video_inputs[0], tuple):
-            video_inputs, video_metadatas = zip(*video_inputs)
+            video_inputs, video_metadatas = zip(*video_inputs, strict=True)
             video_inputs, video_metadatas = list(video_inputs), list(video_metadatas)
         kwargs = dict(video_kwargs or {})
         if video_metadatas is not None:
@@ -226,9 +267,14 @@ class Qwen3OriginalBackend(CleanRunnerBackend):
 
 
 class TGVFStage2Qwen3Backend(CleanRunnerBackend):
-    def __init__(self, *, stage2_config: Stage2RuntimeConfig | None, backend_config: BackendConfig) -> None:
+    def __init__(
+        self,
+        *,
+        stage2_config: Stage2RuntimeConfig | None,
+        backend_config: BackendConfig,
+    ) -> None:
         if stage2_config is None:
-            raise ValueError("tgvf_stage2_qwen3 backend requires Stage2RuntimeConfig")
+            raise ValueError("Stage2 Qwen3 legacy backend requires Stage2RuntimeConfig")
         self.stage2_config = stage2_config
         self.backend_config = backend_config
         self._evaluator: Any | None = None
@@ -241,7 +287,9 @@ class TGVFStage2Qwen3Backend(CleanRunnerBackend):
             output_dir=f"/tmp/revisit_vlm_clean_stage2_runtime/{config.run_id}",
         )
         args.dtype = self.backend_config.dtype
-        args.device = self.backend_config.device if self.backend_config.device != "auto" else "cuda:0"
+        args.device = (
+            self.backend_config.device if self.backend_config.device != "auto" else "cuda:0"
+        )
         args.device_map = self.backend_config.device_map or args.device
         args.attn_implementation = self.backend_config.attn_implementation
         try:
@@ -254,7 +302,12 @@ class TGVFStage2Qwen3Backend(CleanRunnerBackend):
         evaluator.load()
         self._evaluator = evaluator
 
-    def run(self, sample: BenchmarkSample, rendered: RenderedBenchmarkInput, config: RunConfig) -> ModelRunResult:
+    def run(
+        self,
+        sample: BenchmarkSample,
+        rendered: RenderedBenchmarkInput,
+        config: RunConfig,
+    ) -> ModelRunResult:
         del config
         if self._evaluator is None:
             raise RuntimeError("TGVFStage2Qwen3Backend.prepare must be called before run")
@@ -266,11 +319,18 @@ class TGVFStage2Qwen3Backend(CleanRunnerBackend):
             elif rendered.mode in {EvalMode.TGVF_FREE, EvalMode.TGVF_SOFTFORCE}:
                 result_row = self._run_free(legacy_sample)
             else:
-                raise ValueError(f"tgvf_stage2_qwen3 does not support mode={rendered.mode.value!r}")
+                raise ValueError(
+                    "Stage2 Qwen3 legacy backend does not support "
+                    f"mode={rendered.mode.value!r}"
+                )
             return ModelRunResult(
-                raw_output=str(result_row.get("final_raw_output") or result_row.get("raw_output") or ""),
+                raw_output=str(
+                    result_row.get("final_raw_output") or result_row.get("raw_output") or ""
+                ),
                 triggered=bool(result_row.get("trigger_focus_decision")),
-                focus_target=str(result_row.get("parsed_focus_target") or result_row.get("focus_target") or ""),
+                focus_target=str(
+                    result_row.get("parsed_focus_target") or result_row.get("focus_target") or ""
+                ),
                 focus_valid=result_row.get("focus_valid"),
                 append_success=result_row.get("append_success"),
                 wall_time_sec=time.perf_counter() - started,
@@ -337,14 +397,50 @@ class TGVFStage2Qwen3Backend(CleanRunnerBackend):
         )
 
 
+class TGVFStage2Qwen3NativeBackend(CleanRunnerBackend):
+    """Placeholder for the final clean-native Stage2 runner.
+
+    This backend name is reserved so experiment configs can stop treating the
+    legacy bridge as the final implementation. It deliberately fails fast until
+    the native capture/append path is ported into the clean tree.
+    """
+
+    def __init__(
+        self,
+        *,
+        stage2_config: Stage2RuntimeConfig | None,
+        backend_config: BackendConfig,
+    ) -> None:
+        if stage2_config is None:
+            raise ValueError("Stage2 Qwen3 native backend requires Stage2RuntimeConfig")
+        self.stage2_config = stage2_config
+        self.backend_config = backend_config
+
+    def prepare(self, config: RunConfig) -> None:
+        del config
+        self.stage2_config.validate()
+        raise NotImplementedError(
+            "tgvf_stage2_qwen3_native is reserved for the final clean-native "
+            "Stage2 runner; use tgvf_stage2_qwen3_legacy only for diagnostic "
+            "bridge runs until native capture/append is ported."
+        )
+
+
+def resolve_backend_name(name: str) -> str:
+    if name == STAGE2_LEGACY_ALIAS:
+        return STAGE2_LEGACY_BACKEND
+    return name
+
+
 def make_backend(
     backend_config: BackendConfig,
     *,
     config: RunConfig,
 ) -> CleanRunnerBackend:
-    if backend_config.backend == "dry_run":
+    backend_name = resolve_backend_name(backend_config.backend)
+    if backend_name == "dry_run":
         return DryRunBackend()
-    if backend_config.backend == "qwen3_original":
+    if backend_name == "qwen3_original":
         return Qwen3OriginalBackend(
             model_id=config.model_id,
             processor_id=config.processor_id,
@@ -352,8 +448,16 @@ def make_backend(
             max_image_resolution=config.max_image_resolution,
             max_answer_tokens=config.max_answer_tokens,
         )
-    if backend_config.backend == "tgvf_stage2_qwen3":
-        return TGVFStage2Qwen3Backend(stage2_config=backend_config.stage2, backend_config=backend_config)
+    if backend_name == STAGE2_NATIVE_BACKEND:
+        return TGVFStage2Qwen3NativeBackend(
+            stage2_config=backend_config.stage2,
+            backend_config=backend_config,
+        )
+    if backend_name == STAGE2_LEGACY_BACKEND:
+        return TGVFStage2Qwen3Backend(
+            stage2_config=backend_config.stage2,
+            backend_config=backend_config,
+        )
     raise ValueError(f"unknown clean runner backend: {backend_config.backend}")
 
 
@@ -369,6 +473,7 @@ def run_benchmark_rows(
     backend = make_backend(backend_config, config=config)
     backend.prepare(config)
     rows = []
+    resolved_backend = resolve_backend_name(backend_config.backend)
     for sample, rendered in zip(samples, rendered_inputs, strict=True):
         result = backend.run(sample, rendered, config)
         rows.append(
@@ -380,6 +485,8 @@ def run_benchmark_rows(
                 "source_file": sample.source_file,
                 "method": config.mode.value,
                 "runner_backend": backend_config.backend,
+                "resolved_runner_backend": resolved_backend,
+                "runner_backend_deprecated_alias": backend_config.backend == STAGE2_LEGACY_ALIAS,
                 "question": sample.question,
                 "choices": list(sample.choices),
                 "gold_answer": sample.gold_answer,
@@ -426,8 +533,16 @@ def summarize_executed_rows(
         for row in rows
         if row.get("trigger_focus_decision") is not None
     ]
-    focus_values = [bool(row.get("focus_valid")) for row in rows if row.get("focus_valid") is not None]
-    append_values = [bool(row.get("append_success")) for row in rows if row.get("append_success") is not None]
+    focus_values = [
+        bool(row.get("focus_valid"))
+        for row in rows
+        if row.get("focus_valid") is not None
+    ]
+    append_values = [
+        bool(row.get("append_success"))
+        for row in rows
+        if row.get("append_success") is not None
+    ]
     return EvalSummary(
         run_id=config.run_id,
         n_rows=len(rows),

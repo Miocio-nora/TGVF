@@ -103,7 +103,11 @@ def process_predictions(input_path, output_path):
         answers = row.get("answers") or []
         if not isinstance(answers, list):
             answers = [answers]
-        row["score"] = 1.0 if str(row.get("predict") or "") in {str(item) for item in answers} else 0.0
+        row["score"] = (
+            1.0
+            if str(row.get("predict") or "") in {str(item) for item in answers}
+            else 0.0
+        )
     with open(output_path, "w", encoding="utf-8") as handle:
         json.dump(rows, handle)
 """.strip()
@@ -366,6 +370,9 @@ def test_benchmark_execute_dry_run_auto_uses_blink_official_choice(tmp_path) -> 
     )
 
     assert rows[0]["benchmark"] == "blink"
+    assert rows[0]["runner_backend"] == "dry_run"
+    assert rows[0]["resolved_runner_backend"] == "dry_run"
+    assert rows[0]["runner_backend_deprecated_alias"] is False
     assert rows[0]["scorer_name"] == "official_blink_exact_match"
     assert rows[0]["official_tool_used"] is True
     assert summary.accuracy == 1.0

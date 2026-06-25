@@ -84,11 +84,14 @@ Diagnostic manifests are for runner validation only, not benchmark reporting.
   model.
 - `qwen3_original`: runs `mode=original` only. Use a small
   `--max-answer-tokens` for smoke checks.
-- `tgvf_stage2_qwen3`: diagnostic bridge to the historical Stage2 evaluator for
-  `tgvf_force`, `tgvf_free`, and `tgvf_softforce` on path-backed image samples.
-  It preserves clean manifest/render/output identity while the native clean
-  TGVF runner is still being ported. This backend is temporary and cannot be
-  the final clean-native Stage2 implementation.
+- `tgvf_stage2_qwen3_legacy`: diagnostic bridge to the historical Stage2
+  evaluator for `tgvf_force`, `tgvf_free`, and `tgvf_softforce` on path-backed
+  image samples. It preserves clean manifest/render/output identity while the
+  native clean TGVF runner is still being ported.
+- `tgvf_stage2_qwen3`: deprecated alias for `tgvf_stage2_qwen3_legacy`;
+  outputs record both names.
+- `tgvf_stage2_qwen3_native`: reserved final backend name. It currently fails
+  fast until clean-native capture/append is ported.
 
 ## Clean-Native Exit Criteria
 

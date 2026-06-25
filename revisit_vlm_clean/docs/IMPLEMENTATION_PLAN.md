@@ -174,7 +174,7 @@ eval_jsonl:
 
 Implemented in commit `cbacf10`.
 
-- `tgvf_stage2_qwen3` backend is wired to the historical
+- `tgvf_stage2_qwen3` backend name was initially wired to the historical
   `Stage2ProtocolEvaluator`;
 - clean runner still owns manifest/sample/render/rows/summary identity;
 - legacy bridge maps clean modes as:
@@ -498,9 +498,11 @@ Validation:
 
 ## Clean-Native Exit Criteria
 
-- `tgvf_stage2_qwen3` is a diagnostic bridge only. The final clean project must
-  replace it with a native clean Stage2 runner before first-class benchmark or
-  training claims rely on the clean tree.
+- `tgvf_stage2_qwen3_legacy` is a diagnostic bridge only. The final clean
+  project must replace it with a native clean Stage2 runner before first-class
+  benchmark or training claims rely on the clean tree.
+- `tgvf_stage2_qwen3` is a deprecated alias for the legacy bridge, not a final
+  backend.
 - Data generation must be part of the clean project, because it is already a
   natural pure pipeline:
   - fixed source manifests and sample ids;
@@ -691,10 +693,49 @@ Validation:
   `PYTHONPATH=revisit_vlm_clean/src pytest -q revisit_vlm_clean/tests`
   -> 66 tests.
 
+## Phase 24: Stage2 Backend Identity Split
+
+Implemented after Phase 23.
+
+- introduced explicit Stage2 backend identities:
+  - `tgvf_stage2_qwen3_legacy`: diagnostic bridge to the historical
+    `Stage2ProtocolEvaluator`;
+  - `tgvf_stage2_qwen3_native`: reserved final clean-native backend name;
+  - `tgvf_stage2_qwen3`: deprecated alias resolving to
+    `tgvf_stage2_qwen3_legacy`;
+- `BackendConfig.to_dict()` now records:
+  - requested backend;
+  - resolved backend;
+  - whether the requested backend was a deprecated alias;
+- executed row outputs now include `resolved_runner_backend` and
+  `runner_backend_deprecated_alias`;
+- benchmark CLI backend choices now expose both explicit Stage2 names and the
+  deprecated compatibility alias;
+- native Stage2 backend currently validates runtime identity then fails fast,
+  because clean-native capture/append has not yet been ported.
+
+This phase does not claim native Stage2 execution is complete. It prevents the
+legacy bridge from looking like the final backend and gives the remaining port a
+stable target name.
+
+Validation:
+
+- runner backend tests cover explicit legacy backend construction, deprecated
+  alias resolution, `BackendConfig` resolved-backend metadata, and native
+  backend fast-fail behavior;
+- targeted runner/backend tests passed:
+  `PYTHONPATH=revisit_vlm_clean/src pytest -q revisit_vlm_clean/tests/test_runner_backend.py revisit_vlm_clean/tests/test_legacy_stage2_adapter.py revisit_vlm_clean/tests/test_stage2_runtime.py revisit_vlm_clean/tests/test_benchmark_data.py -q`
+  -> 20 tests;
+- targeted ruff passed for runner, benchmark CLI, runner backend tests, and the
+  touched benchmark-data test;
+- full clean test suite passed:
+  `PYTHONPATH=revisit_vlm_clean/src pytest -q revisit_vlm_clean/tests`
+  -> 68 tests.
+
 ## Later Phases
 
 1. Port teacher trajectory generation into `tgvf_generate_data`.
 2. Replace training launch plans with clean-native training execution.
-3. Native clean Stage2 runner replacing the legacy bridge.
+3. Port native Stage2 capture/append execution behind `tgvf_stage2_qwen3_native`.
 4. Clean benchmark subset boundaries for CoreSmoke/CoreDev execution.
 5. Full DeepStack training/eval execution support.

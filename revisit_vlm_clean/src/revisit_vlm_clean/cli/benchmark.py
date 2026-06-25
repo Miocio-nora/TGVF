@@ -14,14 +14,21 @@ from revisit_vlm_clean.cli.common import exit_not_implemented, print_json
 from revisit_vlm_clean.defaults import DEFAULT_BENCHMARK_ROOT
 from revisit_vlm_clean.manifest import build_manifest, manifest_payload
 from revisit_vlm_clean.outputs import (
-    write_executed_benchmark_output,
     write_empty_benchmark_output,
+    write_executed_benchmark_output,
     write_materialized_sample_output,
     write_rendered_input_output,
 )
 from revisit_vlm_clean.populations import get_population, get_subset
 from revisit_vlm_clean.rendering import render_benchmark_inputs
-from revisit_vlm_clean.runner import BackendConfig, run_benchmark_rows
+from revisit_vlm_clean.runner import (
+    RUNNER_BACKENDS,
+    STAGE2_LEGACY_BACKEND,
+    STAGE2_NATIVE_BACKEND,
+    BackendConfig,
+    resolve_backend_name,
+    run_benchmark_rows,
+)
 from revisit_vlm_clean.schema import (
     DeepStackScope,
     DeepStackState,
@@ -47,7 +54,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--model-id", default="Qwen/Qwen3-VL-8B-Thinking")
     parser.add_argument("--processor-id", default=None)
     parser.add_argument("--mode", choices=[item.value for item in EvalMode], required=True)
-    parser.add_argument("--post-tgvf-forward-mode", choices=[item.value for item in ForwardMode], required=True)
+    parser.add_argument(
+        "--post-tgvf-forward-mode",
+        choices=[item.value for item in ForwardMode],
+        required=True,
+    )
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--population-id")
     group.add_argument("--subset-id")
@@ -76,7 +87,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--runner-backend",
-        choices=("dry_run", "qwen3_original", "tgvf_stage2_qwen3"),
+        choices=RUNNER_BACKENDS,
         default="dry_run",
     )
     parser.add_argument("--dtype", default="bfloat16")
@@ -99,7 +110,11 @@ def build_parser() -> argparse.ArgumentParser:
         choices=[item.value for item in DeepStackScope],
         default=DeepStackScope.OFF.value,
     )
-    parser.add_argument("--dry-run", action="store_true", help="Print resolved run_config.json and exit.")
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Print resolved run_config.json and exit.",
+    )
     parser.add_argument(
         "--write-empty-output",
         action="store_true",
@@ -108,12 +123,18 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--materialize-samples",
         action="store_true",
-        help="Write materialized benchmark sample rows from a clean manifest without model inference.",
+        help=(
+            "Write materialized benchmark sample rows from a clean manifest "
+            "without model inference."
+        ),
     )
     parser.add_argument(
         "--render-inputs",
         action="store_true",
-        help="Write rendered prompt/media/control rows from a clean manifest without model inference.",
+        help=(
+            "Write rendered prompt/media/control rows from a clean manifest "
+            "without model inference."
+        ),
     )
     return parser
 
@@ -222,6 +243,7 @@ def main(argv: list[str] | None = None) -> int:
             config,
             manifest_hash=config.manifest_hash or resolved_manifest.get("manifest_hash"),
         )
+        resolved_backend = resolve_backend_name(args.runner_backend)
         samples = materialize_samples_from_manifest_payload(
             resolved_manifest,
             benchmark_root=args.benchmark_root,
@@ -241,7 +263,7 @@ def main(argv: list[str] | None = None) -> int:
             trust_remote_code=bool(args.trust_remote_code),
             stage2=(
                 _stage2_runtime_config(args, runtime_config)
-                if args.runner_backend == "tgvf_stage2_qwen3"
+                if resolved_backend in {STAGE2_NATIVE_BACKEND, STAGE2_LEGACY_BACKEND}
                 else None
             ),
         )
@@ -262,7 +284,9 @@ def main(argv: list[str] | None = None) -> int:
             )
         )
         return 0
-    return exit_not_implemented("benchmark execution is phase 4; phase 1 only validates run identity")
+    return exit_not_implemented(
+        "benchmark execution is phase 4; phase 1 only validates run identity"
+    )
 
 
 def _resolve_manifest_payload(args: argparse.Namespace) -> dict:
@@ -273,7 +297,9 @@ def _resolve_manifest_payload(args: argparse.Namespace) -> dict:
             build_manifest(subset_id=args.subset_id, benchmark_root=args.benchmark_root)
         )
     else:
-        raise ValueError("manifest-backed smoke output with --population-id requires --manifest-path")
+        raise ValueError(
+            "manifest-backed smoke output with --population-id requires --manifest-path"
+        )
     if args.manifest_hash and resolved_manifest.get("manifest_hash") != args.manifest_hash:
         raise ValueError(
             f"manifest hash mismatch: expected {args.manifest_hash}, "
