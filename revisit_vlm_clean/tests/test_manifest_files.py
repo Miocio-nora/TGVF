@@ -19,6 +19,10 @@ def test_committed_manifest_counts_and_hashes() -> None:
             19562,
             "1b2942590ff4eada644b51507acfde461f6049e87a96486d061d71a3f1de0352",
         ),
+        "diagnostic_vstar_first_1_20260626.json": (
+            1,
+            "851e301ea0730ee90086c83565135fa5c5fcc5d33b962fd074444d85241d6995",
+        ),
     }
     for name, (count, digest) in expected.items():
         payload = json.loads((MANIFEST_DIR / name).read_text())

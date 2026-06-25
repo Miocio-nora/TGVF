@@ -82,13 +82,14 @@ def stage2_record_from_clean_sample(
         "target": "",
         "evidence_description": "",
         "image_id": sample.sample_id,
-        "choices": list(sample.choices) if sample.choices else None,
+        "choices": None,
         "answer_format": "multiple_choice" if sample.choices else "open",
         "source_dataset": sample.benchmark,
         "source_profile": str(sample.metadata.get("category") or sample.population_id),
         "metadata": {
             "population_id": sample.population_id,
             "source_file": sample.source_file,
+            "choices": list(sample.choices),
             **sample.metadata,
         },
     }

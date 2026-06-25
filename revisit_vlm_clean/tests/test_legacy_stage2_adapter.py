@@ -79,6 +79,9 @@ def test_stage2_record_from_clean_sample_requires_path_media() -> None:
     assert record["image"] == "/tmp/image.jpg"
     assert record["need_focus"] is True
     assert record["answer_format"] == "multiple_choice"
+    assert record["choices"] is None
+    assert "Choices:" not in record["question"]
+    assert record["metadata"]["choices"] == ["red", "blue"]
 
 
 def test_stage2_record_from_clean_sample_rejects_embedded_media() -> None:
