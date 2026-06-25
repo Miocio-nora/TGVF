@@ -27,7 +27,9 @@ tgvf_train_stage2 --print-defaults
 
 The benchmark entrypoint can now validate identity, build/materialize fixed
 manifests, render model input rows for smoke checks, and execute the dry-run or
-original-Qwen backend. It does not run TGVF benchmark inference yet.
+original-Qwen backend. It can also execute the diagnostic Qwen3 Stage2 TGVF
+bridge backend for path-backed samples; full benchmark claims still require
+explicit manifest and ledger identity.
 
 ## Fixed Manifests
 
@@ -55,3 +57,7 @@ generation is deterministic and tested by count/hash.
   model.
 - `qwen3_original`: runs `mode=original` only. Use a small
   `--max-answer-tokens` for smoke checks.
+- `tgvf_stage2_qwen3`: diagnostic bridge to the historical Stage2 evaluator for
+  `tgvf_force`, `tgvf_free`, and `tgvf_softforce` on path-backed image samples.
+  It preserves clean manifest/render/output identity while the native clean
+  TGVF runner is still being ported.

@@ -186,12 +186,63 @@ Implemented in commit `cbacf10`.
 - only `correct_D`, `target_hint`, `native_source_grid`, path-backed images are
   currently allowed.
 
-Not yet validated with real TGVF execution. A real smoke is an evaluation
-launch and needs the normal preflight gate first.
+Validated with real one-row TGVF execution in Phase 10.
+
+Important follow-up from validation:
+
+- the bridge must not pass clean `choices` into legacy `prompt_question`, because
+  clean benchmark questions are already rendered with answer choices and the
+  legacy sample object otherwise appends a second `Choices:` block;
+- answer-choice metadata is preserved under `metadata.choices` while clean
+  runner scoring still uses the original clean `BenchmarkSample.choices`.
+
+## Phase 10: Real One-Row Stage2 Smoke
+
+Implemented on 2026-06-26.
+
+- added `run_config.txt` beside JSON output files so launch identity is readable
+  without ad hoc parsing;
+- benchmark CLI now records git commit and tracked dirty-worktree state in
+  `RunConfig`;
+- benchmark CLI exposes `--tgvf-protocol` explicitly;
+- committed deterministic manifest
+  `benchmark_manifests/diagnostic_vstar_first_1_20260626.json`;
+- ran `tgvf_stage2_qwen3` on one path-backed VStar row with the historical
+  20260617 row-only Stage2 checkpoint.
+
+Smoke result:
+
+```text
+output:
+  outputs/clean_smokes/stage2_tgvf_force_vstar1_20260626_002759
+manifest:
+  diagnostic_vstar_first_1_20260626
+manifest_hash:
+  851e301ea0730ee90086c83565135fa5c5fcc5d33b962fd074444d85241d6995
+mode:
+  tgvf_force
+backend:
+  tgvf_stage2_qwen3
+n_rows:
+  1
+accuracy:
+  1.0
+trigger_rate:
+  1.0
+focus_valid_rate:
+  1.0
+append_success_rate:
+  1.0
+malformed_rate:
+  0.0
+```
+
+This validates executable wiring only. It is not a benchmark comparison or
+evidence about focus-target quality.
 
 ## Later Phases
 
-1. Real one-sample TGVF Stage2 execution smoke.
+1. Multi-row TGVF Stage2 smoke on a deterministic path-backed manifest.
 2. Official scorer wrapper port.
 3. Stage1/Stage2 launchers.
 4. DeepStack training/eval support.
