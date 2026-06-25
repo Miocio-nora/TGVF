@@ -300,12 +300,40 @@ def _resolve_manifest_payload(args: argparse.Namespace) -> dict:
         raise ValueError(
             "manifest-backed smoke output with --population-id requires --manifest-path"
         )
+    _validate_manifest_identity(args, resolved_manifest)
     if args.manifest_hash and resolved_manifest.get("manifest_hash") != args.manifest_hash:
         raise ValueError(
             f"manifest hash mismatch: expected {args.manifest_hash}, "
             f"got {resolved_manifest.get('manifest_hash')}"
         )
     return resolved_manifest
+
+
+def _validate_manifest_identity(args: argparse.Namespace, resolved_manifest: dict) -> None:
+    if args.subset_id:
+        manifest_id = resolved_manifest.get("manifest_id")
+        if manifest_id != args.subset_id:
+            raise ValueError(
+                f"manifest id mismatch: --subset-id {args.subset_id} "
+                f"but manifest_id is {manifest_id}"
+            )
+        return
+
+    if not args.population_id:
+        return
+
+    populations = set(resolved_manifest.get("source_population_ids") or [])
+    if not populations:
+        populations = {
+            sample.get("population_id")
+            for sample in resolved_manifest.get("samples", [])
+            if sample.get("population_id")
+        }
+    if populations != {args.population_id}:
+        raise ValueError(
+            f"manifest population mismatch: --population-id {args.population_id} "
+            f"but manifest populations are {sorted(populations)}"
+        )
 
 
 def _stage2_runtime_config(args: argparse.Namespace, config: RunConfig) -> Stage2RuntimeConfig:

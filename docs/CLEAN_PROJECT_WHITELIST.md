@@ -251,6 +251,10 @@ Clean runner requirements:
 
 - each adapter exposes a population id, not just a benchmark name;
 - each run writes the exact source-file manifest;
+- when a run supplies `--subset-id` plus `--manifest-path`, the manifest
+  `manifest_id` must equal the subset id;
+- when a run supplies `--population-id` plus `--manifest-path`, every manifest
+  sample must come from that single population id;
 - each row writes a stable sample id including subtask/shard where needed;
 - shard merge verifies the merged row count equals the declared population
   count;

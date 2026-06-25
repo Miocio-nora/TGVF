@@ -1000,12 +1000,34 @@ and scores were unchanged. One triggered row changed only explanatory wording.
 This validates clean-native no-KV/full-sequence parity with the legacy bridge on
 the fixed diagnostic manifest; it is still not a benchmark-scale effect claim.
 
+## Phase 32: Benchmark Manifest Identity Guard
+
+Implemented after Phase 31.
+
+- verified that rebuilding committed clean image-core manifests from the current
+  benchmark root reproduces committed counts, stable hashes, and sample ids:
+  - `core_smoke_256_seed20260625`: n=256,
+    `7da4963199c7d75baee224e52049625129a0f9335d156dd84efd652b2df0c036`;
+  - `core_balanced_dev_2511_seed20260625`: n=2511,
+    `a461d9b482b7165b42b9bbb0fbf0ea6aff31fde0a838c13d953f070e770b0579`;
+  - `core_full_19562`: n=19562,
+    `1b2942590ff4eada644b51507acfde461f6049e87a96486d061d71a3f1de0352`;
+- added benchmark CLI manifest identity validation:
+  - when `--subset-id` is used with `--manifest-path`, the manifest payload
+    `manifest_id` must exactly equal the requested subset id;
+  - when `--population-id` is used with `--manifest-path`, the manifest samples
+    must contain exactly that one population id;
+- updated the manifest CLI help text so `--build` no longer claims to be
+  unimplemented.
+
+This prevents a run from recording one clean subset/population name while
+actually materializing a different manifest.
+
 ## Later Phases
 
 1. Replace training launch plans with clean-native training execution.
-2. Clean benchmark subset boundaries for CoreSmoke/CoreDev execution.
-3. Full DeepStack training/eval execution support.
-4. Keep data generation first-class:
+2. Full DeepStack training/eval execution support.
+3. Keep data generation first-class:
    - deterministic Stage1/Stage2 transforms stay in `tgvf_generate_data`;
    - heavy teacher trajectory generation is ported only when regeneration is
      needed, with source manifest/hash and prompt/schema identity recorded.

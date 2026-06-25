@@ -1,5 +1,6 @@
 import json
 
+import pytest
 from revisit_vlm_clean.benchmark_data import materialize_samples_from_manifest_path
 from revisit_vlm_clean.cli.benchmark import main as benchmark_main
 
@@ -230,6 +231,68 @@ def test_benchmark_materialize_samples_cli(tmp_path) -> None:
     assert len(rows) == 1
     assert json.loads(rows[0])["gold_answer"] == "B"
     assert "sample materialization smoke" in (output_dir / "summary.json").read_text()
+
+
+def test_benchmark_manifest_subset_id_mismatch_fails(tmp_path) -> None:
+    root = tmp_path / "benchmarks"
+    _write_toy_vstar(root)
+    manifest_path = _write_toy_manifest(tmp_path / "manifest.json")
+
+    with pytest.raises(ValueError, match="manifest id mismatch"):
+        benchmark_main(
+            [
+                "--run-id",
+                "bad_subset",
+                "--checkpoint-path",
+                "outputs/checkpoint.pt",
+                "--mode",
+                "tgvf_force",
+                "--post-tgvf-forward-mode",
+                "kv_cache",
+                "--subset-id",
+                "core_smoke_256_seed20260625",
+                "--manifest-path",
+                str(manifest_path),
+                "--manifest-hash",
+                "toyhash",
+                "--benchmark-root",
+                str(root),
+                "--output-dir",
+                str(tmp_path / "out"),
+                "--materialize-samples",
+            ]
+        )
+
+
+def test_benchmark_manifest_population_id_mismatch_fails(tmp_path) -> None:
+    root = tmp_path / "benchmarks"
+    _write_toy_vstar(root)
+    manifest_path = _write_toy_manifest(tmp_path / "manifest.json")
+
+    with pytest.raises(ValueError, match="manifest population mismatch"):
+        benchmark_main(
+            [
+                "--run-id",
+                "bad_population",
+                "--checkpoint-path",
+                "outputs/checkpoint.pt",
+                "--mode",
+                "tgvf_force",
+                "--post-tgvf-forward-mode",
+                "kv_cache",
+                "--population-id",
+                "hr_bench_4k_800",
+                "--manifest-path",
+                str(manifest_path),
+                "--manifest-hash",
+                "toyhash",
+                "--benchmark-root",
+                str(root),
+                "--output-dir",
+                str(tmp_path / "out"),
+                "--materialize-samples",
+            ]
+        )
 
 
 def test_benchmark_render_inputs_cli(tmp_path) -> None:
