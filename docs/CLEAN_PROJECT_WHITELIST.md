@@ -515,7 +515,9 @@ Current code-backed classification:
 
 - Clean benchmark runner source material:
   - `eval/eval_v3_mmmu_force.py`
-  - merge helper: `scripts/merge_tgvf_v3_external_benchmark_shards.py`
+  - clean merge helper: `tgvf_merge_benchmark`
+  - historical merge reference:
+    `scripts/merge_tgvf_v3_external_benchmark_shards.py`
 - Benchmark-specific archive/reference scripts:
   - `eval/eval_v3_vstar_force.py`
   - `eval/eval_qwen3_mmmu_base_direct.py`
@@ -652,9 +654,10 @@ Resolved clean mainline:
   multiple-choice parser before adapter fallback.
 - Use `src/tgvf_eval/official_tools.py` for official/official-compatible scorer
   wrappers under `scoring_backend=auto`.
-- Use `scripts/merge_tgvf_v3_external_benchmark_shards.py` summary fields as the
-  starting point for clean merged summaries: accuracy, answer parse rate,
-  trigger rate, focus-valid rate, prediction counts, and gold counts.
+- Use `tgvf_merge_benchmark` for clean deterministic shard merge. The historical
+  `scripts/merge_tgvf_v3_external_benchmark_shards.py` remains only a summary
+  field reference: accuracy, answer parse rate, trigger rate, focus-valid rate,
+  prediction counts, and gold counts.
 
 Archive/reference:
 

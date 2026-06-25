@@ -1125,8 +1125,35 @@ Implemented after Phase 36.
   - selection rule `source_manifest_order_modulo`;
 - run config and rows carry the shard identity.
 
-This implements deterministic shard selection. Deterministic shard merge remains
-pending.
+This implements deterministic shard selection. Deterministic shard merge is
+implemented in the next phase.
+
+## Phase 38: Deterministic Benchmark Shard Merge
+
+Implemented after Phase 37.
+
+- added `benchmark_merge.py` and CLI `tgvf_merge_benchmark`;
+- merge input is a set of shard output directories containing:
+  - `run_config.json`;
+  - `sample_manifest.json`;
+  - `rows.jsonl`;
+  - `summary.json`;
+- merge validates:
+  - shard indices cover `0..num_shards-1`;
+  - shard run configs agree on `num_shards`;
+  - shard manifests agree on source manifest hash;
+  - each shard row order matches its shard sample manifest;
+  - merged row ids match the reconstructed merged sample manifest;
+- merged output writes:
+  - `rows.jsonl`;
+  - `summary.json`;
+  - `run_config.json`;
+  - `sample_manifest.json`;
+  - `merge_metadata.json`;
+- rows and samples are restored using the same source-manifest-order modulo
+  rule used by shard selection;
+- tests run two dry-run shards and merge them in reversed directory order to
+  prove deterministic ordering.
 
 ## Later Phases
 

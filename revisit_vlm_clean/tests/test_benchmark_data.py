@@ -3,6 +3,8 @@ import json
 import pytest
 from revisit_vlm_clean.benchmark_data import materialize_samples_from_manifest_path
 from revisit_vlm_clean.cli.benchmark import main as benchmark_main
+from revisit_vlm_clean.cli.merge_benchmark import main as merge_main
+from revisit_vlm_clean.schema import RunConfig
 
 
 def _write_toy_vstar(root):
@@ -511,6 +513,88 @@ def test_benchmark_execute_dry_run_shards_manifest_deterministically(tmp_path) -
     assert run_config["manifest_hash"] == sample_manifest["manifest_hash"]
     assert run_config["num_shards"] == 2
     assert run_config["shard_index"] == 1
+
+
+def test_merge_benchmark_shards_restores_source_manifest_order(tmp_path) -> None:
+    root = tmp_path / "benchmarks"
+    _write_two_toy_vstar(root)
+    manifest_path = _write_two_toy_manifest(tmp_path / "manifest.json")
+    shard_dirs = [tmp_path / "shard0", tmp_path / "shard1"]
+    for shard_index, output_dir in enumerate(shard_dirs):
+        assert (
+            benchmark_main(
+                [
+                    "--run-id",
+                    f"exec_shard_{shard_index}",
+                    "--checkpoint-path",
+                    "outputs/checkpoint.pt",
+                    "--mode",
+                    "original",
+                    "--post-tgvf-forward-mode",
+                    "kv_cache",
+                    "--population-id",
+                    "vstar_test_questions_191",
+                    "--manifest-path",
+                    str(manifest_path),
+                    "--manifest-hash",
+                    "twohash",
+                    "--num-shards",
+                    "2",
+                    "--shard-index",
+                    str(shard_index),
+                    "--benchmark-root",
+                    str(root),
+                    "--output-dir",
+                    str(output_dir),
+                    "--execute",
+                    "--runner-backend",
+                    "dry_run",
+                ]
+            )
+            == 0
+        )
+
+    merged = tmp_path / "merged"
+    assert (
+        merge_main(
+            [
+                "--output-dir",
+                str(merged),
+                "--run-id",
+                "merged_two_toy",
+                "--expected-num-shards",
+                "2",
+                "--expected-source-manifest-hash",
+                "twohash",
+                str(shard_dirs[1]),
+                str(shard_dirs[0]),
+            ]
+        )
+        == 0
+    )
+
+    rows = [json.loads(line) for line in (merged / "rows.jsonl").read_text().splitlines()]
+    assert [row["sample_id"] for row in rows] == [
+        "vstar_test_questions_191/toy/toy_000000",
+        "vstar_test_questions_191/toy/toy_000001",
+    ]
+    assert [row["gold_answer"] for row in rows] == ["A", "B"]
+    summary = json.loads((merged / "summary.json").read_text())
+    assert summary["n_rows"] == 2
+    assert summary["accuracy"] == 1.0
+    assert summary["manifest_hash"] == "twohash"
+    assert summary["merge_metadata"]["shard_indices"] == [0, 1]
+    assert summary["merge_metadata"]["merge_order"] == "source_manifest_order_modulo"
+    sample_manifest = json.loads((merged / "sample_manifest.json").read_text())
+    assert sample_manifest["manifest_hash"] == "twohash"
+    assert sample_manifest["merged_from_shards"]["merged_row_count"] == 2
+    run_config = RunConfig.from_json((merged / "run_config.json").read_text())
+    assert run_config.run_id == "merged_two_toy"
+    assert run_config.manifest_hash == "twohash"
+    assert run_config.num_shards == 2
+    assert run_config.shard_index == 0
+    merge_metadata = json.loads((merged / "merge_metadata.json").read_text())
+    assert merge_metadata["source_manifest_hash"] == "twohash"
 
 
 def test_benchmark_execute_dry_run_auto_uses_blink_official_choice(tmp_path) -> None:
