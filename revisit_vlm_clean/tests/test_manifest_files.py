@@ -1,7 +1,6 @@
 import json
 from pathlib import Path
 
-
 MANIFEST_DIR = Path(__file__).resolve().parents[1] / "benchmark_manifests"
 
 
@@ -30,6 +29,10 @@ def test_committed_manifest_counts_and_hashes() -> None:
         "diagnostic_vstar_core_smoke_32_20260626.json": (
             32,
             "d18563b8d2c1392295e80f7e3a8c4453cb7f725aebbba9b714fa58822be8ace7",
+        ),
+        "diagnostic_vstar_softforce_trigger_row10_20260626.json": (
+            1,
+            "6421ea792f5db73555c895a7b28a4bacfb8eefa6046b1d35080b17b5081cfb44",
         ),
     }
     for name, (count, digest) in expected.items():

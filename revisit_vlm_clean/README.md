@@ -67,6 +67,7 @@ benchmark_manifests/core_full_19562.json
 benchmark_manifests/diagnostic_vstar_first_1_20260626.json
 benchmark_manifests/diagnostic_vstar_core_smoke_first_8_20260626.json
 benchmark_manifests/diagnostic_vstar_core_smoke_32_20260626.json
+benchmark_manifests/diagnostic_vstar_softforce_trigger_row10_20260626.json
 ```
 
 `CoreDev-2511` is the default fast development comparison subset. Manifest

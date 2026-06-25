@@ -24,3 +24,12 @@ def test_diagnostic_vstar_subsets_are_registered() -> None:
     assert first_8.n == 8
     assert smoke_32.n == 32
     assert "smoke validation only" in smoke_32.purpose
+
+
+def test_trigger_positive_vstar_diagnostic_subset_is_registered() -> None:
+    subset = get_subset("diagnostic_vstar_softforce_trigger_row10_20260626")
+
+    assert subset.short_name == "DiagVStarSoftforceTriggerRow10-1"
+    assert subset.n == 1
+    assert subset.allocations[0].population_id == "vstar_test_questions_191"
+    assert "historical ckpt19 softforce triggered" in subset.purpose

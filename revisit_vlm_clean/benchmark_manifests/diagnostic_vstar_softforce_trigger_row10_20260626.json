@@ -1,0 +1,41 @@
+{
+  "manifest_hash": "6421ea792f5db73555c895a7b28a4bacfb8eefa6046b1d35080b17b5081cfb44",
+  "manifest_id": "diagnostic_vstar_softforce_trigger_row10_20260626",
+  "samples": [
+    {
+      "benchmark": "vstar_bench",
+      "metadata": {
+        "category": "direct_attributes",
+        "label": "C",
+        "question_id": "10",
+        "raw_id": "10",
+        "row_index": 10
+      },
+      "population_id": "vstar_test_questions_191",
+      "sample_id": "vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/10_000010",
+      "source_file": "vstar_bench/snapshot/test_questions.jsonl"
+    }
+  ],
+  "seed": 20260626,
+  "source_population_ids": [
+    "vstar_test_questions_191"
+  ],
+  "stratification": {
+    "allocations": [
+      {
+        "population_id": "vstar_test_questions_191",
+        "requested_n": 1,
+        "selected_n": 1,
+        "source_files": [
+          "vstar_bench/snapshot/test_questions.jsonl"
+        ],
+        "stratification_rule": "fixed trigger-positive VStar row_index=10 from historical ckpt19 softforce run"
+      }
+    ],
+    "seed": 20260626,
+    "selection_rule": "VStar row_index=10 selected because ckpt19 softforce history triggered focus with append_success=true",
+    "short_name": "DiagVStarSoftforceTriggerRow10-1",
+    "source_evidence": "outputs/no_kv_benchmarks/qwen3_other_benchmarks_19_vs_075_nokv_20260625_191315/ckpt19/vstar_bench/free_softforce_focus/merged_rows.jsonl",
+    "subset_id": "diagnostic_vstar_softforce_trigger_row10_20260626"
+  }
+}

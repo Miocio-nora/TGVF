@@ -187,6 +187,22 @@ SUBSETS: dict[str, SubsetSpec] = {
             ),
         ),
     ),
+    "diagnostic_vstar_softforce_trigger_row10_20260626": SubsetSpec(
+        subset_id="diagnostic_vstar_softforce_trigger_row10_20260626",
+        short_name="DiagVStarSoftforceTriggerRow10-1",
+        n=1,
+        purpose=(
+            "One fixed VStar row where historical ckpt19 softforce triggered "
+            "focus; runner/backend smoke validation only."
+        ),
+        allocations=(
+            SubsetAllocation(
+                "vstar_test_questions_191",
+                1,
+                "fixed trigger-positive VStar row_index=10 from historical ckpt19 softforce run",
+            ),
+        ),
+    ),
 }
 
 
