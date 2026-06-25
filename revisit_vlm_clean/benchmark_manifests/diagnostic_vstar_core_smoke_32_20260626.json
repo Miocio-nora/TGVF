@@ -1,0 +1,455 @@
+{
+  "manifest_hash": "d18563b8d2c1392295e80f7e3a8c4453cb7f725aebbba9b714fa58822be8ace7",
+  "manifest_id": "diagnostic_vstar_core_smoke_32_20260626",
+  "samples": [
+    {
+      "benchmark": "vstar_bench",
+      "metadata": {
+        "category": "direct_attributes",
+        "label": "A",
+        "question_id": "0",
+        "raw_id": "0",
+        "row_index": 0
+      },
+      "population_id": "vstar_test_questions_191",
+      "sample_id": "vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/0_000000",
+      "source_file": "vstar_bench/snapshot/test_questions.jsonl"
+    },
+    {
+      "benchmark": "vstar_bench",
+      "metadata": {
+        "category": "direct_attributes",
+        "label": "B",
+        "question_id": "87",
+        "raw_id": "87",
+        "row_index": 87
+      },
+      "population_id": "vstar_test_questions_191",
+      "sample_id": "vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/87_000087",
+      "source_file": "vstar_bench/snapshot/test_questions.jsonl"
+    },
+    {
+      "benchmark": "vstar_bench",
+      "metadata": {
+        "category": "direct_attributes",
+        "label": "C",
+        "question_id": "53",
+        "raw_id": "53",
+        "row_index": 53
+      },
+      "population_id": "vstar_test_questions_191",
+      "sample_id": "vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/53_000053",
+      "source_file": "vstar_bench/snapshot/test_questions.jsonl"
+    },
+    {
+      "benchmark": "vstar_bench",
+      "metadata": {
+        "category": "direct_attributes",
+        "label": "D",
+        "question_id": "9",
+        "raw_id": "9",
+        "row_index": 9
+      },
+      "population_id": "vstar_test_questions_191",
+      "sample_id": "vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/9_000009",
+      "source_file": "vstar_bench/snapshot/test_questions.jsonl"
+    },
+    {
+      "benchmark": "vstar_bench",
+      "metadata": {
+        "category": "relative_position",
+        "label": "A",
+        "question_id": "145",
+        "raw_id": "145",
+        "row_index": 145
+      },
+      "population_id": "vstar_test_questions_191",
+      "sample_id": "vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/145_000145",
+      "source_file": "vstar_bench/snapshot/test_questions.jsonl"
+    },
+    {
+      "benchmark": "vstar_bench",
+      "metadata": {
+        "category": "relative_position",
+        "label": "B",
+        "question_id": "162",
+        "raw_id": "162",
+        "row_index": 162
+      },
+      "population_id": "vstar_test_questions_191",
+      "sample_id": "vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/162_000162",
+      "source_file": "vstar_bench/snapshot/test_questions.jsonl"
+    },
+    {
+      "benchmark": "vstar_bench",
+      "metadata": {
+        "category": "direct_attributes",
+        "label": "A",
+        "question_id": "65",
+        "raw_id": "65",
+        "row_index": 65
+      },
+      "population_id": "vstar_test_questions_191",
+      "sample_id": "vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/65_000065",
+      "source_file": "vstar_bench/snapshot/test_questions.jsonl"
+    },
+    {
+      "benchmark": "vstar_bench",
+      "metadata": {
+        "category": "direct_attributes",
+        "label": "B",
+        "question_id": "103",
+        "raw_id": "103",
+        "row_index": 103
+      },
+      "population_id": "vstar_test_questions_191",
+      "sample_id": "vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/103_000103",
+      "source_file": "vstar_bench/snapshot/test_questions.jsonl"
+    },
+    {
+      "benchmark": "vstar_bench",
+      "metadata": {
+        "category": "direct_attributes",
+        "label": "C",
+        "question_id": "12",
+        "raw_id": "12",
+        "row_index": 12
+      },
+      "population_id": "vstar_test_questions_191",
+      "sample_id": "vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/12_000012",
+      "source_file": "vstar_bench/snapshot/test_questions.jsonl"
+    },
+    {
+      "benchmark": "vstar_bench",
+      "metadata": {
+        "category": "direct_attributes",
+        "label": "D",
+        "question_id": "63",
+        "raw_id": "63",
+        "row_index": 63
+      },
+      "population_id": "vstar_test_questions_191",
+      "sample_id": "vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/63_000063",
+      "source_file": "vstar_bench/snapshot/test_questions.jsonl"
+    },
+    {
+      "benchmark": "vstar_bench",
+      "metadata": {
+        "category": "relative_position",
+        "label": "A",
+        "question_id": "155",
+        "raw_id": "155",
+        "row_index": 155
+      },
+      "population_id": "vstar_test_questions_191",
+      "sample_id": "vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/155_000155",
+      "source_file": "vstar_bench/snapshot/test_questions.jsonl"
+    },
+    {
+      "benchmark": "vstar_bench",
+      "metadata": {
+        "category": "relative_position",
+        "label": "B",
+        "question_id": "146",
+        "raw_id": "146",
+        "row_index": 146
+      },
+      "population_id": "vstar_test_questions_191",
+      "sample_id": "vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/146_000146",
+      "source_file": "vstar_bench/snapshot/test_questions.jsonl"
+    },
+    {
+      "benchmark": "vstar_bench",
+      "metadata": {
+        "category": "direct_attributes",
+        "label": "A",
+        "question_id": "51",
+        "raw_id": "51",
+        "row_index": 51
+      },
+      "population_id": "vstar_test_questions_191",
+      "sample_id": "vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/51_000051",
+      "source_file": "vstar_bench/snapshot/test_questions.jsonl"
+    },
+    {
+      "benchmark": "vstar_bench",
+      "metadata": {
+        "category": "direct_attributes",
+        "label": "B",
+        "question_id": "70",
+        "raw_id": "70",
+        "row_index": 70
+      },
+      "population_id": "vstar_test_questions_191",
+      "sample_id": "vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/70_000070",
+      "source_file": "vstar_bench/snapshot/test_questions.jsonl"
+    },
+    {
+      "benchmark": "vstar_bench",
+      "metadata": {
+        "category": "direct_attributes",
+        "label": "C",
+        "question_id": "41",
+        "raw_id": "41",
+        "row_index": 41
+      },
+      "population_id": "vstar_test_questions_191",
+      "sample_id": "vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/41_000041",
+      "source_file": "vstar_bench/snapshot/test_questions.jsonl"
+    },
+    {
+      "benchmark": "vstar_bench",
+      "metadata": {
+        "category": "direct_attributes",
+        "label": "D",
+        "question_id": "110",
+        "raw_id": "110",
+        "row_index": 110
+      },
+      "population_id": "vstar_test_questions_191",
+      "sample_id": "vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/110_000110",
+      "source_file": "vstar_bench/snapshot/test_questions.jsonl"
+    },
+    {
+      "benchmark": "vstar_bench",
+      "metadata": {
+        "category": "relative_position",
+        "label": "A",
+        "question_id": "127",
+        "raw_id": "127",
+        "row_index": 127
+      },
+      "population_id": "vstar_test_questions_191",
+      "sample_id": "vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/127_000127",
+      "source_file": "vstar_bench/snapshot/test_questions.jsonl"
+    },
+    {
+      "benchmark": "vstar_bench",
+      "metadata": {
+        "category": "relative_position",
+        "label": "B",
+        "question_id": "168",
+        "raw_id": "168",
+        "row_index": 168
+      },
+      "population_id": "vstar_test_questions_191",
+      "sample_id": "vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/168_000168",
+      "source_file": "vstar_bench/snapshot/test_questions.jsonl"
+    },
+    {
+      "benchmark": "vstar_bench",
+      "metadata": {
+        "category": "direct_attributes",
+        "label": "A",
+        "question_id": "81",
+        "raw_id": "81",
+        "row_index": 81
+      },
+      "population_id": "vstar_test_questions_191",
+      "sample_id": "vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/81_000081",
+      "source_file": "vstar_bench/snapshot/test_questions.jsonl"
+    },
+    {
+      "benchmark": "vstar_bench",
+      "metadata": {
+        "category": "direct_attributes",
+        "label": "B",
+        "question_id": "3",
+        "raw_id": "3",
+        "row_index": 3
+      },
+      "population_id": "vstar_test_questions_191",
+      "sample_id": "vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/3_000003",
+      "source_file": "vstar_bench/snapshot/test_questions.jsonl"
+    },
+    {
+      "benchmark": "vstar_bench",
+      "metadata": {
+        "category": "direct_attributes",
+        "label": "C",
+        "question_id": "18",
+        "raw_id": "18",
+        "row_index": 18
+      },
+      "population_id": "vstar_test_questions_191",
+      "sample_id": "vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/18_000018",
+      "source_file": "vstar_bench/snapshot/test_questions.jsonl"
+    },
+    {
+      "benchmark": "vstar_bench",
+      "metadata": {
+        "category": "direct_attributes",
+        "label": "D",
+        "question_id": "112",
+        "raw_id": "112",
+        "row_index": 112
+      },
+      "population_id": "vstar_test_questions_191",
+      "sample_id": "vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/112_000112",
+      "source_file": "vstar_bench/snapshot/test_questions.jsonl"
+    },
+    {
+      "benchmark": "vstar_bench",
+      "metadata": {
+        "category": "relative_position",
+        "label": "A",
+        "question_id": "190",
+        "raw_id": "190",
+        "row_index": 190
+      },
+      "population_id": "vstar_test_questions_191",
+      "sample_id": "vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/190_000190",
+      "source_file": "vstar_bench/snapshot/test_questions.jsonl"
+    },
+    {
+      "benchmark": "vstar_bench",
+      "metadata": {
+        "category": "relative_position",
+        "label": "B",
+        "question_id": "120",
+        "raw_id": "120",
+        "row_index": 120
+      },
+      "population_id": "vstar_test_questions_191",
+      "sample_id": "vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/120_000120",
+      "source_file": "vstar_bench/snapshot/test_questions.jsonl"
+    },
+    {
+      "benchmark": "vstar_bench",
+      "metadata": {
+        "category": "direct_attributes",
+        "label": "A",
+        "question_id": "80",
+        "raw_id": "80",
+        "row_index": 80
+      },
+      "population_id": "vstar_test_questions_191",
+      "sample_id": "vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/80_000080",
+      "source_file": "vstar_bench/snapshot/test_questions.jsonl"
+    },
+    {
+      "benchmark": "vstar_bench",
+      "metadata": {
+        "category": "direct_attributes",
+        "label": "B",
+        "question_id": "11",
+        "raw_id": "11",
+        "row_index": 11
+      },
+      "population_id": "vstar_test_questions_191",
+      "sample_id": "vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/11_000011",
+      "source_file": "vstar_bench/snapshot/test_questions.jsonl"
+    },
+    {
+      "benchmark": "vstar_bench",
+      "metadata": {
+        "category": "direct_attributes",
+        "label": "C",
+        "question_id": "78",
+        "raw_id": "78",
+        "row_index": 78
+      },
+      "population_id": "vstar_test_questions_191",
+      "sample_id": "vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/78_000078",
+      "source_file": "vstar_bench/snapshot/test_questions.jsonl"
+    },
+    {
+      "benchmark": "vstar_bench",
+      "metadata": {
+        "category": "direct_attributes",
+        "label": "D",
+        "question_id": "15",
+        "raw_id": "15",
+        "row_index": 15
+      },
+      "population_id": "vstar_test_questions_191",
+      "sample_id": "vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/15_000015",
+      "source_file": "vstar_bench/snapshot/test_questions.jsonl"
+    },
+    {
+      "benchmark": "vstar_bench",
+      "metadata": {
+        "category": "relative_position",
+        "label": "A",
+        "question_id": "164",
+        "raw_id": "164",
+        "row_index": 164
+      },
+      "population_id": "vstar_test_questions_191",
+      "sample_id": "vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/164_000164",
+      "source_file": "vstar_bench/snapshot/test_questions.jsonl"
+    },
+    {
+      "benchmark": "vstar_bench",
+      "metadata": {
+        "category": "relative_position",
+        "label": "B",
+        "question_id": "163",
+        "raw_id": "163",
+        "row_index": 163
+      },
+      "population_id": "vstar_test_questions_191",
+      "sample_id": "vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/163_000163",
+      "source_file": "vstar_bench/snapshot/test_questions.jsonl"
+    },
+    {
+      "benchmark": "vstar_bench",
+      "metadata": {
+        "category": "direct_attributes",
+        "label": "A",
+        "question_id": "93",
+        "raw_id": "93",
+        "row_index": 93
+      },
+      "population_id": "vstar_test_questions_191",
+      "sample_id": "vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/93_000093",
+      "source_file": "vstar_bench/snapshot/test_questions.jsonl"
+    },
+    {
+      "benchmark": "vstar_bench",
+      "metadata": {
+        "category": "direct_attributes",
+        "label": "B",
+        "question_id": "48",
+        "raw_id": "48",
+        "row_index": 48
+      },
+      "population_id": "vstar_test_questions_191",
+      "sample_id": "vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/48_000048",
+      "source_file": "vstar_bench/snapshot/test_questions.jsonl"
+    }
+  ],
+  "seed": 20260626,
+  "source_population_ids": [
+    "vstar_test_questions_191"
+  ],
+  "stratification": {
+    "allocations": [
+      {
+        "counts_by_category": {
+          "direct_attributes": 22,
+          "relative_position": 10
+        },
+        "counts_by_label": {
+          "A": 11,
+          "B": 11,
+          "C": 5,
+          "D": 5
+        },
+        "population_id": "vstar_test_questions_191",
+        "requested_n": 32,
+        "selected_n": 32,
+        "source_files": [
+          "vstar_bench/snapshot/test_questions.jsonl"
+        ],
+        "stratification_rule": "fixed committed CoreSmoke VStar allocation"
+      }
+    ],
+    "seed": 20260626,
+    "selection_rule": "all 32 vstar samples from committed core_smoke_256_seed20260625 manifest",
+    "short_name": "DiagVStarCoreSmoke-32",
+    "source_manifest_hash": "7da4963199c7d75baee224e52049625129a0f9335d156dd84efd652b2df0c036",
+    "source_manifest_id": "core_smoke_256_seed20260625",
+    "subset_id": "diagnostic_vstar_core_smoke_32_20260626"
+  }
+}

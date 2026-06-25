@@ -27,6 +27,10 @@ def test_committed_manifest_counts_and_hashes() -> None:
             8,
             "3a6020b145c1543be3fc8a5541c17d00b4fc5d27aeddbecb90a10417d25c84f4",
         ),
+        "diagnostic_vstar_core_smoke_32_20260626.json": (
+            32,
+            "d18563b8d2c1392295e80f7e3a8c4453cb7f725aebbba9b714fa58822be8ace7",
+        ),
     }
     for name, (count, digest) in expected.items():
         payload = json.loads((MANIFEST_DIR / name).read_text())
