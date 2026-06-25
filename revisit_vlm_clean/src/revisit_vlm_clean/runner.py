@@ -13,6 +13,7 @@ from .benchmark_data import BenchmarkSample
 from .rendering import RenderedBenchmarkInput
 from .schema import EvalMode, EvalSummary, RunConfig, ScoringBackend
 from .scoring import parse_and_score
+from .stage2_runtime import Stage2RuntimeConfig
 
 
 @dataclass(frozen=True)
@@ -23,6 +24,7 @@ class BackendConfig:
     device_map: str | None = "auto"
     attn_implementation: str | None = "sdpa"
     trust_remote_code: bool = True
+    stage2: Stage2RuntimeConfig | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -32,6 +34,7 @@ class BackendConfig:
             "device_map": self.device_map,
             "attn_implementation": self.attn_implementation,
             "trust_remote_code": self.trust_remote_code,
+            "stage2": None if self.stage2 is None else self.stage2.to_dict(),
         }
 
 
@@ -221,6 +224,20 @@ class Qwen3OriginalBackend(CleanRunnerBackend):
         return items
 
 
+class TGVFStage2Qwen3Backend(CleanRunnerBackend):
+    def __init__(self, *, stage2_config: Stage2RuntimeConfig | None) -> None:
+        if stage2_config is None:
+            raise ValueError("tgvf_stage2_qwen3 backend requires Stage2RuntimeConfig")
+        self.stage2_config = stage2_config
+
+    def prepare(self, config: RunConfig) -> None:
+        del config
+        self.stage2_config.validate()
+        raise NotImplementedError(
+            "tgvf_stage2_qwen3 execution is not ported yet; Stage2 identity validation passed"
+        )
+
+
 def make_backend(
     backend_config: BackendConfig,
     *,
@@ -236,6 +253,8 @@ def make_backend(
             max_image_resolution=config.max_image_resolution,
             max_answer_tokens=config.max_answer_tokens,
         )
+    if backend_config.backend == "tgvf_stage2_qwen3":
+        return TGVFStage2Qwen3Backend(stage2_config=backend_config.stage2)
     raise ValueError(f"unknown clean runner backend: {backend_config.backend}")
 
 

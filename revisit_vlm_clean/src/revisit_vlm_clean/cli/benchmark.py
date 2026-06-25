@@ -28,6 +28,11 @@ from revisit_vlm_clean.schema import (
     ForwardMode,
     RunConfig,
 )
+from revisit_vlm_clean.stage2_runtime import (
+    Stage2RuntimeConfig,
+    checkpoint_identity,
+    eval_jsonl_identity,
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -54,12 +59,25 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Execute a clean runner backend and write scored rows.",
     )
-    parser.add_argument("--runner-backend", choices=("dry_run", "qwen3_original"), default="dry_run")
+    parser.add_argument(
+        "--runner-backend",
+        choices=("dry_run", "qwen3_original", "tgvf_stage2_qwen3"),
+        default="dry_run",
+    )
     parser.add_argument("--dtype", default="bfloat16")
     parser.add_argument("--device", default="auto")
     parser.add_argument("--device-map", default="auto")
     parser.add_argument("--attn-implementation", default="sdpa")
     parser.add_argument("--trust-remote-code", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--stage2-checkpoint", default="")
+    parser.add_argument("--stage2-eval-jsonl", default="")
+    parser.add_argument("--stage2-d-condition", default="correct_D")
+    parser.add_argument("--force-prefix-mode", default="target_hint")
+    parser.add_argument(
+        "--validate-stage2-runtime",
+        action="store_true",
+        help="Validate and print Stage2 checkpoint/eval_jsonl identity without running inference.",
+    )
     parser.add_argument("--deepstack-enabled", action="store_true")
     parser.add_argument(
         "--deepstack-original-image-scope",
@@ -115,6 +133,17 @@ def main(argv: list[str] | None = None) -> int:
     config.validate()
     if args.dry_run:
         print_json(config)
+        return 0
+    if args.validate_stage2_runtime:
+        stage2_config = _stage2_runtime_config(args, config)
+        stage2_config.validate()
+        print_json(
+            {
+                "stage2_runtime": stage2_config.to_dict(),
+                "checkpoint": checkpoint_identity(stage2_config.stage2_checkpoint),
+                "eval_jsonl": eval_jsonl_identity(stage2_config.eval_jsonl),
+            }
+        )
         return 0
     if args.write_empty_output:
         if not args.output_dir:
@@ -186,6 +215,11 @@ def main(argv: list[str] | None = None) -> int:
                 else args.attn_implementation
             ),
             trust_remote_code=bool(args.trust_remote_code),
+            stage2=(
+                _stage2_runtime_config(args, runtime_config)
+                if args.runner_backend == "tgvf_stage2_qwen3"
+                else None
+            ),
         )
         rows, summary = run_benchmark_rows(
             samples,
@@ -222,6 +256,23 @@ def _resolve_manifest_payload(args: argparse.Namespace) -> dict:
             f"got {resolved_manifest.get('manifest_hash')}"
         )
     return resolved_manifest
+
+
+def _stage2_runtime_config(args: argparse.Namespace, config: RunConfig) -> Stage2RuntimeConfig:
+    if not args.stage2_checkpoint:
+        raise ValueError("--stage2-checkpoint is required for Stage2 runtime validation")
+    if not args.stage2_eval_jsonl:
+        raise ValueError("--stage2-eval-jsonl is required for Stage2 runtime validation")
+    return Stage2RuntimeConfig(
+        stage2_checkpoint=args.stage2_checkpoint,
+        eval_jsonl=args.stage2_eval_jsonl,
+        protocol=config.tgvf_protocol,
+        d_condition=args.stage2_d_condition,
+        force_prefix_mode=args.force_prefix_mode,
+        append_forward_mode=config.post_tgvf_forward_mode,
+        max_action_tokens=config.max_action_tokens,
+        max_answer_tokens=config.max_answer_tokens,
+    )
 
 
 if __name__ == "__main__":
