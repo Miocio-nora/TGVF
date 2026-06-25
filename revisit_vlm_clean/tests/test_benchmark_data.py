@@ -373,6 +373,10 @@ def test_benchmark_execute_dry_run_cli(tmp_path) -> None:
     )
     rows = (output_dir / "rows.jsonl").read_text().splitlines()
     assert len(rows) == 1
+    run_config = json.loads((output_dir / "run_config.json").read_text())
+    assert run_config["output_schema_version"] == "clean_benchmark_run_v1"
+    assert run_config["started_at"].endswith("+00:00")
+    assert "started_at:" in (output_dir / "run_config.txt").read_text()
     row = json.loads(rows[0])
     assert row["raw_output"] == "B"
     assert row["score"] == 1.0

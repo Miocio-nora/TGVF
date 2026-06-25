@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 import json
-from dataclasses import asdict, dataclass, fields, is_dataclass
+from dataclasses import dataclass, fields, is_dataclass
 from enum import Enum
 from pathlib import Path
 from typing import Any, TypeVar
 
 from .defaults import (
-    DEFAULT_CHOICE_PARSER_IDENTITY,
     DEFAULT_BENCHMARK_ROOT,
+    DEFAULT_CHOICE_PARSER_IDENTITY,
     DEFAULT_CONTINUATION,
     DEFAULT_MAX_IMAGE_RESOLUTION,
     DEFAULT_MODEL_ID,
@@ -102,6 +102,8 @@ class RunConfig:
     run_id: str
     checkpoint_path: str
     post_tgvf_forward_mode: ForwardMode
+    output_schema_version: str = "clean_benchmark_run_v1"
+    started_at: str | None = None
     eval_family: EvalFamily = EvalFamily.PROJECT_NATIVE_EXTERNAL
     mode: EvalMode = EvalMode.ORIGINAL
     model_id: str = DEFAULT_MODEL_ID
@@ -150,9 +152,12 @@ class RunConfig:
         return json.dumps(self.to_dict(), indent=indent, sort_keys=True)
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "RunConfig":
+    def from_dict(cls, payload: dict[str, Any]) -> RunConfig:
         data = dict(payload)
-        data["eval_family"] = _coerce_enum(EvalFamily, data.get("eval_family", EvalFamily.PROJECT_NATIVE_EXTERNAL))
+        data["eval_family"] = _coerce_enum(
+            EvalFamily,
+            data.get("eval_family", EvalFamily.PROJECT_NATIVE_EXTERNAL),
+        )
         data["mode"] = _coerce_enum(EvalMode, data.get("mode", EvalMode.ORIGINAL))
         data["post_tgvf_forward_mode"] = _coerce_enum(ForwardMode, data["post_tgvf_forward_mode"])
         data["post_tgvf_continuation"] = _coerce_enum(
@@ -166,7 +171,7 @@ class RunConfig:
         return config
 
     @classmethod
-    def from_json(cls, text: str) -> "RunConfig":
+    def from_json(cls, text: str) -> RunConfig:
         return cls.from_dict(json.loads(text))
 
 
@@ -243,7 +248,9 @@ def _deepstack_from_dict(payload: dict[str, Any] | DeepStackState) -> DeepStackS
     return state
 
 
-def _parser_scorer_from_dict(payload: dict[str, Any] | ParserScorerIdentity) -> ParserScorerIdentity:
+def _parser_scorer_from_dict(
+    payload: dict[str, Any] | ParserScorerIdentity,
+) -> ParserScorerIdentity:
     if isinstance(payload, ParserScorerIdentity):
         return payload
     data = dict(payload)

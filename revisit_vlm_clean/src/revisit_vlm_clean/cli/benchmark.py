@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import subprocess
 from dataclasses import replace
+from datetime import datetime, timezone
 
 from revisit_vlm_clean.benchmark_data import (
     load_manifest_payload,
@@ -149,6 +150,7 @@ def main(argv: list[str] | None = None) -> int:
     config = RunConfig(
         run_id=args.run_id,
         checkpoint_path=args.checkpoint_path,
+        started_at=datetime.now(timezone.utc).isoformat(),
         model_id=args.model_id,
         processor_id=args.processor_id,
         eval_family=EvalFamily.PROJECT_NATIVE_EXTERNAL,

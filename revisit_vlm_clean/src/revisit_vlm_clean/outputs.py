@@ -253,6 +253,8 @@ def _write_run_config_text(
 
     lines = [
         f"run_id: {config.run_id}",
+        f"output_schema_version: {config.output_schema_version}",
+        f"started_at: {config.started_at}",
         f"checkpoint_path: {config.checkpoint_path}",
         f"model_id: {config.model_id}",
         f"processor_id: {config.processor_id}",

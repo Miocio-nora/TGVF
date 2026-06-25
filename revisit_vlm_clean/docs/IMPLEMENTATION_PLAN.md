@@ -1075,6 +1075,21 @@ Implemented after Phase 33.
 This closes part of the clean output-schema gap: row-level analysis no longer
 has to recover forward mode, parser/scorer, or DeepStack state from side files.
 
+## Phase 35: Run-Level Output Schema Identity
+
+Implemented after Phase 34.
+
+- `RunConfig` now includes:
+  - `output_schema_version="clean_benchmark_run_v1"`;
+  - `started_at`;
+- benchmark CLI fills `started_at` with a UTC ISO timestamp when constructing
+  run config;
+- `run_config.txt` also prints `output_schema_version` and `started_at`;
+- tests assert CLI-produced executed outputs contain these fields.
+
+This closes another clean output-schema gap: new benchmark outputs now carry
+the run start time and schema version in the canonical run config.
+
 ## Later Phases
 
 1. Replace training launch plans with clean-native training execution.

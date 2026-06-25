@@ -1,5 +1,4 @@
 import pytest
-
 from revisit_vlm_clean.schema import (
     DeepStackScope,
     DeepStackState,
@@ -20,6 +19,8 @@ def test_run_config_json_roundtrip() -> None:
     restored = RunConfig.from_json(config.to_json())
     assert restored == config
     assert restored.benchmark_root == "/home/dredvpn009/Flash_Storage/datasets/benchmarks"
+    assert restored.output_schema_version == "clean_benchmark_run_v1"
+    assert restored.started_at is None
 
 
 def test_free_mode_rejects_prompt_suffix() -> None:
