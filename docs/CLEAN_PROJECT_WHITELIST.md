@@ -112,6 +112,11 @@ before training/eval cleanup can proceed.
 - Explicit model-parameter audit may load model components and write
   `status=actual_model_parameter_audit`, but it still must not launch optimizer
   steps or set `will_launch_training=true`.
+- Explicit optimizer audit may write `optimizer_runtime.json` after constructing
+  AdamW and LambdaLR from actual loaded modules. `optimizer_groups.json` is only
+  the plan contract; `optimizer_runtime.json` is the real construction evidence.
+  This still must not run backward, optimizer steps, scheduler steps, or
+  checkpoint saving.
 - `clean_prepare_execution_command.sh` is the runnable clean handoff command;
   `clean_training_command.sh` stays non-executable until the trainer loop is
   ported.
@@ -211,6 +216,11 @@ before training/eval cleanup can proceed.
 - Explicit model-parameter audit may load model components and write
   `status=actual_model_parameter_audit`, but it still must not launch optimizer
   steps or set `will_launch_training=true`.
+- Explicit optimizer audit may write `optimizer_runtime.json` after constructing
+  AdamW and LambdaLR from actual loaded modules. `optimizer_groups.json` is only
+  the plan contract; `optimizer_runtime.json` is the real construction evidence.
+  This still must not run backward, optimizer steps, scheduler steps, or
+  checkpoint saving.
 - `clean_prepare_execution_command.sh` is the runnable clean handoff command;
   `clean_training_command.sh` stays non-executable until the trainer loop is
   ported.

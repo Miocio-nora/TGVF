@@ -1672,6 +1672,29 @@ Implemented after Phase 64.
   save/load parity, or DeepStack training execution. `will_launch_training`
   remains `false`.
 
+## Phase 66: Actual Optimizer/Scheduler Audit Gate
+
+Implemented after Phase 65.
+
+- Stage1/Stage2 executors now support explicit `--audit-optimizer` together
+  with `--audit-runtime`;
+- `--audit-optimizer` loads the planned model components when needed, reuses the
+  same loaded modules for the trainable-parameter audit, and writes
+  `optimizer_runtime.json`;
+- `optimizer_runtime.json` records:
+  - `status=actual_optimizer_scheduler_audit`;
+  - planned optimizer group names from `optimizer_groups.json`;
+  - constructed optimizer group names;
+  - empty planned groups;
+  - per-group parameter names, tensor counts, numel, LR, and weight decay;
+  - AdamW betas/epsilon/weight decay and LambdaLR scheduler identity;
+- `optimizer_groups.json` remains only a plan contract. Runtime launch gates now
+  mark `construct_optimizer_and_scheduler_from_plan` as `identity_validated`
+  only when `optimizer_runtime.json` proves actual construction;
+- this phase still does not run backward, optimizer steps, scheduler steps,
+  weighted losses, checkpoint save/load parity, or DeepStack training execution.
+  `will_launch_training` remains `false`.
+
 ## Later Phases
 
 1. Replace training launch plans with clean-native training execution.

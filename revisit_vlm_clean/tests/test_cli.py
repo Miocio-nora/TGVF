@@ -589,8 +589,15 @@ def test_stage1_training_executor_prepare_execution_cli(tmp_path, capsys) -> Non
         "no_input_checkpoint_required"
     )
     assert runtime_audit["launch_gates"]["optimizer_groups_status"] == "validated"
+    assert runtime_audit["launch_gates"]["optimizer_runtime_status"] == "not_requested"
     assert runtime_audit["launch_gates"]["trainable_parameters_status"] == (
         "pending_model_load_not_actual_parameter_audit"
+    )
+    gate_status = {
+        gate["name"]: gate["status"] for gate in runtime_audit["launch_gates"]["gates"]
+    }
+    assert gate_status["construct_optimizer_and_scheduler_from_plan"] == (
+        "pending_real_trainer_loop"
     )
     assert audit_status["status"] == "blocked_before_training_loop"
     assert trainable_parameters["actual_model_parameters_loaded"] is False
@@ -964,7 +971,14 @@ def test_stage2_training_executor_prepare_execution_cli(tmp_path, capsys) -> Non
     assert runtime_audit["status"] == "blocked_before_training_loop"
     assert runtime_audit["launch_gates"]["checkpoint_contract_status"] == "validated"
     assert runtime_audit["launch_gates"]["optimizer_groups_status"] == "validated"
+    assert runtime_audit["launch_gates"]["optimizer_runtime_status"] == "not_requested"
     assert runtime_audit["launch_gates"]["pending_real_trainer_loop"] > 0
+    gate_status = {
+        gate["name"]: gate["status"] for gate in runtime_audit["launch_gates"]["gates"]
+    }
+    assert gate_status["construct_optimizer_and_scheduler_from_plan"] == (
+        "pending_real_trainer_loop"
+    )
     assert trainable_parameters["expected_trainable_policy"] == [
         "qwen_lora_adapters",
         "tgvf_module_continued_from_stage1",
@@ -1048,7 +1062,100 @@ def test_stage2_training_executor_runtime_audit_can_write_actual_parameter_audit
         gate["name"]: gate["status"] for gate in runtime_audit["launch_gates"]["gates"]
     }
     assert gate_status["load_model_and_processor"] == "identity_validated"
+    assert gate_status["construct_optimizer_and_scheduler_from_plan"] == (
+        "pending_real_trainer_loop"
+    )
     assert gate_status["emit_trainable_parameter_audit"] == "identity_validated"
+    assert gate_status["save_checkpoint_with_clean_contract"] == "pending_real_trainer_loop"
+    assert runtime_audit["launch_gates"]["optimizer_runtime_status"] == "not_requested"
+
+
+def test_stage2_training_executor_runtime_audit_can_write_actual_optimizer_audit(
+    tmp_path,
+    monkeypatch,
+    capsys,
+) -> None:
+    import torch
+
+    train_file = tmp_path / "stage2.train.jsonl"
+    checkpoint = tmp_path / "stage1.pt"
+    train_file.write_text(
+        '{"image": "/tmp/image.jpg", "question": "q", "answer": "a", '
+        '"need_focus": true, "evidence_state": "need_local_visual_evidence"}\n',
+        encoding="utf-8",
+    )
+    _write_minimal_stage1_checkpoint(checkpoint)
+    output_dir = tmp_path / "stage2_plan"
+    qwen = torch.nn.Linear(2, 2)
+    qwen.bias.requires_grad_(False)
+    tgvf = torch.nn.Sequential(torch.nn.Linear(2, 1))
+
+    def fake_loader(bundle, *, expected_stage):
+        assert expected_stage.value == "stage2"
+        assert bundle["stage"] == "stage2"
+        return {
+            "modules": {"qwen_lora": qwen, "tgvf": tgvf},
+            "loader": {"backend": "fake_parameter_optimizer_audit_loader"},
+        }
+
+    monkeypatch.setattr(training_executor, "_load_training_parameter_audit_modules", fake_loader)
+    assert (
+        stage2_main(
+            [
+                "--run-id",
+                "stage2_actual_optimizer_audit",
+                "--train-file",
+                str(train_file),
+                "--stage1-checkpoint",
+                str(checkpoint),
+                "--output-dir",
+                str(output_dir),
+                "--write-plan",
+            ]
+        )
+        == 0
+    )
+
+    assert (
+        stage2_executor_main(
+            [
+                "--plan",
+                str(output_dir / "training_plan.json"),
+                "--prepare-execution",
+                "--audit-runtime",
+                "--audit-optimizer",
+            ]
+        )
+        == 0
+    )
+    payload = capsys.readouterr().out
+    assert '"optimizer_runtime"' in payload
+    execution_dir = output_dir / "clean_training_execution"
+    trainable_parameters = json.loads((execution_dir / "trainable_parameters.json").read_text())
+    optimizer_runtime = json.loads((execution_dir / "optimizer_runtime.json").read_text())
+    runtime_audit = json.loads((execution_dir / "clean_training_runtime_audit.json").read_text())
+    assert trainable_parameters["status"] == "actual_model_parameter_audit"
+    assert trainable_parameters["actual_model_parameters_loaded"] is True
+    assert optimizer_runtime["status"] == "actual_optimizer_scheduler_audit"
+    assert optimizer_runtime["actual_optimizer_constructed"] is True
+    assert optimizer_runtime["actual_scheduler_constructed"] is True
+    assert optimizer_runtime["planned_group_names"] == [
+        "llm_lora",
+        "tgvf_refiner",
+        "fvt_calibration",
+    ]
+    assert optimizer_runtime["constructed_group_names"] == ["llm_lora", "tgvf_refiner"]
+    assert optimizer_runtime["empty_planned_group_names"] == ["fvt_calibration"]
+    assert [group["lr"] for group in optimizer_runtime["constructed_groups"]] == [2e-5, 5e-6]
+    assert optimizer_runtime["optimizer"]["param_group_count"] == 2
+    assert optimizer_runtime["scheduler"]["name"] == "cosine"
+    gate_status = {
+        gate["name"]: gate["status"] for gate in runtime_audit["launch_gates"]["gates"]
+    }
+    assert runtime_audit["launch_gates"]["optimizer_runtime_status"] == (
+        "actual_optimizer_scheduler_audit"
+    )
+    assert gate_status["construct_optimizer_and_scheduler_from_plan"] == "identity_validated"
     assert gate_status["save_checkpoint_with_clean_contract"] == "pending_real_trainer_loop"
 
 

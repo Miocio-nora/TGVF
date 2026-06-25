@@ -92,6 +92,7 @@ tgvf_train_stage1_executor --plan /path/to/training_plan.json --prepare-executio
 tgvf_train_stage2_executor --plan /path/to/training_plan.json --prepare-execution
 tgvf_train_stage2_executor --plan /path/to/training_plan.json --prepare-execution --audit-runtime
 tgvf_train_stage2_executor --plan /path/to/training_plan.json --prepare-execution --audit-runtime --audit-model-parameters
+tgvf_train_stage2_executor --plan /path/to/training_plan.json --prepare-execution --audit-runtime --audit-optimizer
 ```
 
 Without `--preflight-only`, `--prepare-execution`, or `--audit-runtime`, these
@@ -116,6 +117,12 @@ With explicit `--audit-model-parameters`, the runtime audit loads the planned
 Stage1/Stage2 model components and writes an actual trainable/frozen parameter
 audit instead. This is an expensive model-load check and still does not run
 optimizer steps or mark `will_launch_training=true`.
+With explicit `--audit-optimizer`, the runtime audit also writes
+`optimizer_runtime.json` after constructing the planned AdamW optimizer and
+LambdaLR scheduler from the loaded modules. `optimizer_groups.json` remains the
+plan contract; `optimizer_runtime.json` is the actual construction evidence.
+This still does not call `backward`, `optimizer.step`, `scheduler.step`, or
+save a checkpoint.
 
 ## Fixed Manifests
 

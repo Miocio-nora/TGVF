@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 from collections.abc import Mapping
 from hashlib import sha256
 from pathlib import Path
@@ -87,6 +88,15 @@ def build_parser(stage: TrainingStage) -> argparse.ArgumentParser:
             "This can be expensive and still does not launch training."
         ),
     )
+    parser.add_argument(
+        "--audit-optimizer",
+        action="store_true",
+        help=(
+            "During --audit-runtime, load model components if needed, construct the "
+            "planned AdamW optimizer and scheduler, and write optimizer_runtime.json. "
+            "This still does not run optimizer steps or launch training."
+        ),
+    )
     return parser
 
 
@@ -116,9 +126,12 @@ def main_for_stage(stage: TrainingStage, argv: list[str] | None = None) -> int:
                 expected_stage=stage,
                 report_path=args.runtime_audit_report,
                 audit_model_parameters=args.audit_model_parameters,
+                audit_optimizer=args.audit_optimizer,
             )
             prepared["runtime_audit"] = audit["runtime_audit"]
             prepared["trainable_parameters"] = audit["trainable_parameters"]
+            if audit.get("optimizer_runtime"):
+                prepared["optimizer_runtime"] = audit["optimizer_runtime"]
         print_json(prepared)
         return 0
     if args.audit_runtime:
@@ -132,6 +145,7 @@ def main_for_stage(stage: TrainingStage, argv: list[str] | None = None) -> int:
             expected_stage=stage,
             report_path=args.runtime_audit_report,
             audit_model_parameters=args.audit_model_parameters,
+            audit_optimizer=args.audit_optimizer,
         )
         audit["preflight_report"] = str(report_path)
         print_json(audit)
@@ -224,6 +238,7 @@ def audit_training_runtime(
     expected_stage: TrainingStage,
     report_path: str | Path | None = None,
     audit_model_parameters: bool = False,
+    audit_optimizer: bool = False,
 ) -> dict[str, Any]:
     bundle_file = Path(bundle_path)
     if not bundle_file.exists():
@@ -232,23 +247,41 @@ def audit_training_runtime(
     _validate_execution_bundle(bundle, expected_stage=expected_stage)
     execution_dir = Path(str(bundle.get("execution_dir") or bundle_file.parent))
     artifacts = _load_runtime_artifacts(bundle, expected_stage=expected_stage)
+    loaded_modules = (
+        _load_training_parameter_audit_modules(bundle, expected_stage=expected_stage)
+        if audit_model_parameters or audit_optimizer
+        else None
+    )
     trainable_parameters = (
         _write_actual_trainable_parameters_audit(
             execution_dir=execution_dir,
             bundle=bundle,
             expected_stage=expected_stage,
+            loaded_modules=loaded_modules,
         )
-        if audit_model_parameters
+        if audit_model_parameters or audit_optimizer
         else _write_trainable_parameters_placeholder(
             execution_dir=execution_dir,
             bundle=bundle,
         )
+    )
+    optimizer_runtime = (
+        _write_actual_optimizer_scheduler_audit(
+            execution_dir=execution_dir,
+            bundle=bundle,
+            artifacts=artifacts,
+            loaded_modules=loaded_modules,
+            expected_stage=expected_stage,
+        )
+        if audit_optimizer
+        else None
     )
     audit = _runtime_audit_report(
         bundle_path=bundle_file,
         bundle=bundle,
         artifacts=artifacts,
         trainable_parameters=trainable_parameters,
+        optimizer_runtime=optimizer_runtime,
         expected_stage=expected_stage,
     )
     resolved_report_path = (
@@ -261,7 +294,7 @@ def audit_training_runtime(
     text_path.write_text(_runtime_audit_text(audit), encoding="utf-8")
     status_path = execution_dir / "clean_training_runtime_audit_status.json"
     _write_json(status_path, _runtime_audit_status(audit))
-    return {
+    result = {
         "runtime_audit": str(resolved_report_path),
         "runtime_audit_txt": str(text_path),
         "runtime_audit_status": str(status_path),
@@ -272,6 +305,9 @@ def audit_training_runtime(
         "training_runtime_ported": False,
         "runner_status": audit["status"],
     }
+    if optimizer_runtime is not None:
+        result["optimizer_runtime"] = optimizer_runtime["path"]
+    return result
 
 
 def _load_training_plan(path: str | Path) -> tuple[Path, dict[str, Any]]:
@@ -652,8 +688,13 @@ def _write_actual_trainable_parameters_audit(
     execution_dir: Path,
     bundle: dict[str, Any],
     expected_stage: TrainingStage,
+    loaded_modules: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    loaded = _load_training_parameter_audit_modules(bundle, expected_stage=expected_stage)
+    loaded = (
+        loaded_modules
+        if loaded_modules is not None
+        else _load_training_parameter_audit_modules(bundle, expected_stage=expected_stage)
+    )
     modules = dict(loaded.get("modules") or {})
     if not modules:
         raise ValueError("model parameter audit loader returned no modules")
@@ -702,6 +743,237 @@ def _write_actual_trainable_parameters_audit(
     path = execution_dir / "trainable_parameters.json"
     _write_json(path, payload)
     return {"path": str(path), "payload": payload}
+
+
+def _write_actual_optimizer_scheduler_audit(
+    *,
+    execution_dir: Path,
+    bundle: dict[str, Any],
+    artifacts: dict[str, dict[str, Any]],
+    loaded_modules: dict[str, Any] | None,
+    expected_stage: TrainingStage,
+) -> dict[str, Any]:
+    if loaded_modules is None:
+        raise ValueError("optimizer audit requires loaded model modules")
+    try:
+        import torch
+    except Exception as exc:
+        raise RuntimeError("optimizer audit requires torch") from exc
+
+    optimizer_contract = artifacts["optimizer_groups"]
+    group_specs = _actual_optimizer_group_specs(
+        loaded_modules=loaded_modules,
+        optimizer_contract=optimizer_contract,
+        expected_stage=expected_stage,
+    )
+    constructed_specs = [spec for spec in group_specs if spec["params"]]
+    if not constructed_specs:
+        raise ValueError("optimizer audit found no trainable parameters for any planned group")
+    optimizer_kwargs = _adamw_kwargs_from_contract(optimizer_contract)
+    optimizer = torch.optim.AdamW(
+        [
+            {
+                "params": spec["params"],
+                "lr": spec["lr"],
+                "name": spec["name"],
+                "weight_decay": spec["weight_decay"],
+            }
+            for spec in constructed_specs
+        ],
+        **optimizer_kwargs,
+    )
+    scheduler = _build_clean_lr_scheduler(
+        torch_module=torch,
+        optimizer=optimizer,
+        scheduler_contract=optimizer_contract.get("scheduler") or {},
+        max_steps=int(((bundle.get("training") or {}).get("max_steps")) or 0),
+    )
+    optimizer_state = optimizer.state_dict()
+    scheduler_state = scheduler.state_dict()
+    constructed_groups = [
+        {
+            "name": spec["name"],
+            "lr": spec["lr"],
+            "weight_decay": spec["weight_decay"],
+            "parameter_names": spec["parameter_names"],
+            "parameter_tensor_count": len(spec["params"]),
+            "parameter_numel": sum(_numel(parameter) for parameter in spec["params"]),
+        }
+        for spec in constructed_specs
+    ]
+    empty_groups = [spec["name"] for spec in group_specs if not spec["params"]]
+    payload = {
+        "schema_version": "clean_training_optimizer_scheduler_audit_v1",
+        "stage": bundle.get("stage"),
+        "run_id": bundle.get("run_id"),
+        "status": "actual_optimizer_scheduler_audit",
+        "actual_optimizer_constructed": True,
+        "actual_scheduler_constructed": True,
+        "optimizer": {
+            "name": "adamw",
+            "param_group_count": len(optimizer.param_groups),
+            "state_entry_count": len(optimizer_state.get("state") or {}),
+            "betas": list(optimizer.param_groups[0].get("betas")),
+            "eps": optimizer.param_groups[0].get("eps"),
+            "weight_decay": optimizer.param_groups[0].get("weight_decay"),
+        },
+        "scheduler": {
+            "name": (optimizer_contract.get("scheduler") or {}).get("name"),
+            "warmup_steps": (optimizer_contract.get("scheduler") or {}).get("warmup_steps"),
+            "min_lr_ratio": (optimizer_contract.get("scheduler") or {}).get("min_lr_ratio"),
+            "state_dict_keys": sorted(str(key) for key in scheduler_state.keys()),
+            "last_lr": list(scheduler.get_last_lr()),
+        },
+        "planned_group_names": list(optimizer_contract.get("group_names") or []),
+        "constructed_group_names": [group["name"] for group in constructed_groups],
+        "empty_planned_group_names": empty_groups,
+        "constructed_groups": constructed_groups,
+        "notes": [
+            "actual optimizer and scheduler were constructed from loaded model parameters",
+            (
+                "this audit does not call backward, optimizer.step, "
+                "scheduler.step, or save checkpoints"
+            ),
+        ],
+    }
+    path = execution_dir / "optimizer_runtime.json"
+    _write_json(path, payload)
+    return {"path": str(path), "payload": payload}
+
+
+def _actual_optimizer_group_specs(
+    *,
+    loaded_modules: dict[str, Any],
+    optimizer_contract: dict[str, Any],
+    expected_stage: TrainingStage,
+) -> list[dict[str, Any]]:
+    modules = dict(loaded_modules.get("modules") or {})
+    groups_by_name = {
+        str(group.get("name")): group for group in optimizer_contract.get("groups") or []
+    }
+    if expected_stage == TrainingStage.STAGE1:
+        return [
+            _optimizer_group_spec(
+                name="tgvf_module",
+                contract=groups_by_name["tgvf_module"],
+                named_parameters=_named_trainable_parameters(modules.get("tgvf"), prefix="tgvf."),
+            ),
+            _optimizer_group_spec(
+                name="protocol_c_token_rows",
+                contract=groups_by_name.get("protocol_c_token_rows"),
+                named_parameters=_named_trainable_parameters(modules.get("qwen"), prefix="qwen."),
+            ),
+        ]
+    tgvf_named = _named_trainable_parameters(modules.get("tgvf"), prefix="tgvf.")
+    tgvf_refiner = [
+        item for item in tgvf_named if "calib" not in item[0] and "calibration" not in item[0]
+    ]
+    tgvf_calibration = [
+        item for item in tgvf_named if "calib" in item[0] or "calibration" in item[0]
+    ]
+    return [
+        _optimizer_group_spec(
+            name="llm_lora",
+            contract=groups_by_name["llm_lora"],
+            named_parameters=_named_trainable_parameters(
+                modules.get("qwen_lora"),
+                prefix="qwen_lora.",
+            ),
+        ),
+        _optimizer_group_spec(
+            name="tgvf_refiner",
+            contract=groups_by_name["tgvf_refiner"],
+            named_parameters=tgvf_refiner,
+        ),
+        _optimizer_group_spec(
+            name="fvt_calibration",
+            contract=groups_by_name["fvt_calibration"],
+            named_parameters=tgvf_calibration,
+        ),
+    ]
+
+
+def _optimizer_group_spec(
+    *,
+    name: str,
+    contract: dict[str, Any] | None,
+    named_parameters: list[tuple[str, Any]],
+) -> dict[str, Any]:
+    if contract is None:
+        return {
+            "name": name,
+            "lr": None,
+            "weight_decay": None,
+            "params": [],
+            "parameter_names": [],
+        }
+    return {
+        "name": name,
+        "lr": contract.get("lr"),
+        "weight_decay": contract.get("weight_decay"),
+        "params": [parameter for _, parameter in named_parameters],
+        "parameter_names": [parameter_name for parameter_name, _ in named_parameters],
+    }
+
+
+def _named_trainable_parameters(module: Any, *, prefix: str) -> list[tuple[str, Any]]:
+    if module is None:
+        return []
+    if not hasattr(module, "named_parameters"):
+        raise TypeError(f"optimizer audit object is not a torch-style module: {type(module)!r}")
+    return [
+        (prefix + str(name), parameter)
+        for name, parameter in module.named_parameters()
+        if bool(getattr(parameter, "requires_grad", False))
+    ]
+
+
+def _adamw_kwargs_from_contract(optimizer_contract: dict[str, Any]) -> dict[str, Any]:
+    optimizer = optimizer_contract.get("optimizer") or {}
+    betas = optimizer.get("betas")
+    if betas is None:
+        betas = (0.9, 0.999)
+    eps = optimizer.get("eps")
+    if eps is None:
+        eps = 1e-8
+    weight_decay = optimizer.get("weight_decay")
+    if weight_decay is None:
+        weight_decay = 0.01
+    return {
+        "betas": tuple(float(value) for value in betas),
+        "eps": float(eps),
+        "weight_decay": float(weight_decay),
+    }
+
+
+def _build_clean_lr_scheduler(
+    *,
+    torch_module: Any,
+    optimizer: Any,
+    scheduler_contract: dict[str, Any],
+    max_steps: int,
+) -> Any:
+    if max_steps <= 0:
+        raise ValueError("optimizer audit requires positive training.max_steps")
+    scheduler_name = str(scheduler_contract.get("name") or "cosine")
+    warmup_steps = max(0, int(scheduler_contract.get("warmup_steps") or 0))
+    min_lr_ratio = float(scheduler_contract.get("min_lr_ratio") or 0.0)
+
+    def lr_lambda(step: int) -> float:
+        if warmup_steps > 0 and step < warmup_steps:
+            return max(float(step + 1) / float(warmup_steps), 1e-8)
+        if scheduler_name == "constant":
+            return 1.0
+        decay_steps = max(1, int(max_steps) - warmup_steps)
+        progress = min(1.0, max(0.0, float(step - warmup_steps + 1) / float(decay_steps)))
+        if scheduler_name == "linear":
+            return min_lr_ratio + (1.0 - min_lr_ratio) * (1.0 - progress)
+        if scheduler_name == "cosine":
+            cosine = 0.5 * (1.0 + math.cos(progress * math.pi))
+            return min_lr_ratio + (1.0 - min_lr_ratio) * cosine
+        raise ValueError(f"Unsupported lr scheduler: {scheduler_name}")
+
+    return torch_module.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lr_lambda)
 
 
 def _parameter_module_summary(module: Any, *, prefix: str) -> dict[str, Any]:
@@ -963,10 +1235,33 @@ def _runtime_audit_report(
     bundle: dict[str, Any],
     artifacts: dict[str, dict[str, Any]],
     trainable_parameters: dict[str, Any],
+    optimizer_runtime: dict[str, Any] | None,
     expected_stage: TrainingStage,
 ) -> dict[str, Any]:
-    artifact_checks = _runtime_artifact_checks(bundle, artifacts, trainable_parameters)
-    launch_gates = _launch_gate_audit(bundle, artifacts, trainable_parameters)
+    artifact_checks = _runtime_artifact_checks(
+        bundle,
+        artifacts,
+        trainable_parameters,
+        optimizer_runtime,
+    )
+    launch_gates = _launch_gate_audit(
+        bundle,
+        artifacts,
+        trainable_parameters,
+        optimizer_runtime,
+    )
+    blocking_items = [
+        "native trainer loop has not been ported into revisit_vlm_clean",
+        "checkpoint save/load parity must be proven before launch_permitted=true",
+    ]
+    if not trainable_parameters["payload"].get("actual_model_parameters_loaded"):
+        blocking_items.append("actual trainable parameter audit requires loading the model")
+    if not (
+        optimizer_runtime
+        and optimizer_runtime["payload"].get("actual_optimizer_constructed")
+        and optimizer_runtime["payload"].get("actual_scheduler_constructed")
+    ):
+        blocking_items.append("actual optimizer/scheduler construction requires --audit-optimizer")
     return {
         "schema_version": "clean_training_runtime_audit_v1",
         "stage": str(expected_stage),
@@ -979,11 +1274,7 @@ def _runtime_audit_report(
         "plan_identity": bundle.get("plan_identity"),
         "artifact_checks": artifact_checks,
         "launch_gates": launch_gates,
-        "blocking_items": [
-            "native trainer loop has not been ported into revisit_vlm_clean",
-            "actual trainable parameter audit requires loading the model",
-            "checkpoint save/load parity must be proven before launch_permitted=true",
-        ],
+        "blocking_items": blocking_items,
     }
 
 
@@ -991,17 +1282,21 @@ def _runtime_artifact_checks(
     bundle: dict[str, Any],
     artifacts: dict[str, dict[str, Any]],
     trainable_parameters: dict[str, Any],
+    optimizer_runtime: dict[str, Any] | None,
 ) -> list[dict[str, Any]]:
     artifact_paths = dict(bundle.get("runtime_artifacts") or {})
     artifact_paths["trainable_parameters"] = trainable_parameters["path"]
+    if optimizer_runtime is not None:
+        artifact_paths["optimizer_runtime"] = optimizer_runtime["path"]
     checks = []
     for name, path_text in sorted(artifact_paths.items()):
         path = Path(str(path_text))
-        payload = (
-            trainable_parameters["payload"]
-            if name == "trainable_parameters"
-            else artifacts.get(name, {})
-        )
+        if name == "trainable_parameters":
+            payload = trainable_parameters["payload"]
+        elif name == "optimizer_runtime":
+            payload = optimizer_runtime["payload"] if optimizer_runtime else {}
+        else:
+            payload = artifacts.get(name, {})
         checks.append(
             {
                 "name": name,
@@ -1019,17 +1314,22 @@ def _launch_gate_audit(
     bundle: dict[str, Any],
     artifacts: dict[str, dict[str, Any]],
     trainable_parameters: dict[str, Any],
+    optimizer_runtime: dict[str, Any] | None,
 ) -> dict[str, Any]:
     required = list(
         (bundle.get("trainer_runtime_contract") or {}).get("required_launch_gates") or []
     )
-    satisfied = {
-        "build_dataset_loader_from_plan_identity",
-        "construct_optimizer_and_scheduler_from_plan",
-    }
+    satisfied = {"build_dataset_loader_from_plan_identity"}
     actual_parameters_loaded = bool(
         trainable_parameters["payload"].get("actual_model_parameters_loaded")
     )
+    actual_optimizer_constructed = bool(
+        optimizer_runtime
+        and optimizer_runtime["payload"].get("actual_optimizer_constructed")
+        and optimizer_runtime["payload"].get("actual_scheduler_constructed")
+    )
+    if actual_optimizer_constructed:
+        satisfied.add("construct_optimizer_and_scheduler_from_plan")
     if actual_parameters_loaded:
         satisfied.update(
             {
@@ -1052,6 +1352,7 @@ def _launch_gate_audit(
         "load_model_and_processor",
         "ensure_protocol_token_rows",
         "set_training_use_cache_false",
+        "construct_optimizer_and_scheduler_from_plan",
         "emit_trainable_parameter_audit",
         "save_checkpoint_with_clean_contract",
     }
@@ -1085,6 +1386,9 @@ def _launch_gate_audit(
         "unknown": sum(1 for gate in gates if gate["status"] == "unknown_gate"),
         "dataset_runtime_schema": artifacts["dataset_runtime_identity"].get("schema_version"),
         "optimizer_groups_status": artifacts["optimizer_groups"].get("status"),
+        "optimizer_runtime_status": (
+            optimizer_runtime["payload"].get("status") if optimizer_runtime else "not_requested"
+        ),
         "checkpoint_contract_status": artifacts["checkpoint_contract"].get("status"),
         "trainable_parameters_status": trainable_parameters["payload"].get("status"),
         "gates": gates,
