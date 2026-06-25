@@ -1320,6 +1320,116 @@ def test_stage1_training_executor_runtime_audit_checkpoint_includes_protocol_row
     assert gate_status["save_checkpoint_with_clean_contract"] == "identity_validated"
 
 
+def test_stage2_training_executor_runtime_audit_can_write_training_step_probe(
+    tmp_path,
+    monkeypatch,
+    capsys,
+) -> None:
+    import torch
+
+    train_file = tmp_path / "stage2.train.jsonl"
+    checkpoint = tmp_path / "stage1.pt"
+    train_file.write_text(
+        '{"image": "/tmp/image.jpg", "question": "q", "answer": "a", '
+        '"need_focus": true, "evidence_state": "need_local_visual_evidence"}\n',
+        encoding="utf-8",
+    )
+    _write_minimal_stage1_checkpoint(checkpoint)
+    output_dir = tmp_path / "stage2_plan"
+    qwen = torch.nn.Linear(2, 2)
+    qwen.bias.requires_grad_(False)
+    tgvf = torch.nn.Sequential(torch.nn.Linear(2, 1))
+
+    def fake_loader(bundle, *, expected_stage):
+        assert expected_stage.value == "stage2"
+        assert bundle["stage"] == "stage2"
+        return {
+            "modules": {"qwen_lora": qwen, "tgvf": tgvf},
+            "loader": {"backend": "fake_training_step_audit_loader"},
+        }
+
+    def fake_step_probe(*, bundle, artifacts, loaded_modules):
+        assert bundle["stage"] == "stage2"
+        assert artifacts["dataset_runtime_identity"]["stage"] == "stage2"
+        assert loaded_modules["modules"]["qwen_lora"] is qwen
+        return {
+            "forward_completed": True,
+            "sample_count": 1,
+            "loss_total": 1.25,
+            "loss_focus": 1.0,
+            "loss_no_focus": 0.0,
+            "loss_visual_token_manifold": 0.0,
+            "mask_original_image_after_tgvf": True,
+            "debug": {
+                "fast_batched_stage2": True,
+                "focus_count": 1,
+                "no_focus_count": 0,
+                "focus_loss_token_weight": 3.5,
+                "no_focus_loss_token_weight": 0.0,
+                "mask_original_image_after_tgvf_prob": 1.0,
+                "mask_original_image_after_tgvf_scope": "through_answer",
+                "focus_sample_mask_active_rate": 1.0,
+                "no_focus_mask_active_rate": 0.0,
+            },
+        }
+
+    monkeypatch.setattr(training_executor, "_load_training_parameter_audit_modules", fake_loader)
+    monkeypatch.setattr(training_executor, "_run_stage2_training_step_probe", fake_step_probe)
+    assert (
+        stage2_main(
+            [
+                "--run-id",
+                "stage2_training_step_audit",
+                "--train-file",
+                str(train_file),
+                "--stage1-checkpoint",
+                str(checkpoint),
+                "--output-dir",
+                str(output_dir),
+                "--write-plan",
+            ]
+        )
+        == 0
+    )
+
+    assert (
+        stage2_executor_main(
+            [
+                "--plan",
+                str(output_dir / "training_plan.json"),
+                "--prepare-execution",
+                "--audit-runtime",
+                "--audit-training-step",
+            ]
+        )
+        == 0
+    )
+    payload = capsys.readouterr().out
+    assert '"training_step_runtime"' in payload
+    execution_dir = output_dir / "clean_training_execution"
+    step_runtime = json.loads((execution_dir / "training_step_runtime.json").read_text())
+    runtime_audit = json.loads((execution_dir / "clean_training_runtime_audit.json").read_text())
+    assert step_runtime["status"] == "actual_stage2_training_step_forward_audit"
+    assert step_runtime["actual_training_step_forward"] is True
+    assert step_runtime["backward_called"] is False
+    assert step_runtime["optimizer_step_called"] is False
+    assert step_runtime["fast_batched_stage2_used"] is True
+    assert step_runtime["weighted_span_loss_applied"] is True
+    assert step_runtime["mask_scope_applied"] is True
+    assert step_runtime["loss_total_finite"] is True
+    assert step_runtime["expected_weighted_span_loss"]["focus_target"] == 1.5
+    gate_status = {
+        gate["name"]: gate["status"] for gate in runtime_audit["launch_gates"]["gates"]
+    }
+    assert runtime_audit["launch_gates"]["training_step_runtime_status"] == (
+        "actual_stage2_training_step_forward_audit"
+    )
+    assert gate_status["use_fast_batched_stage2_path"] == "identity_validated"
+    assert gate_status["apply_weighted_span_losses_from_plan"] == "identity_validated"
+    assert gate_status["apply_original_image_mask_scope_from_plan"] == "identity_validated"
+    assert gate_status["save_checkpoint_with_clean_contract"] == "pending_real_trainer_loop"
+
+
 def test_stage2_prepare_execution_rejects_missing_required_dataset_fields(tmp_path) -> None:
     train_file = tmp_path / "stage2.train.jsonl"
     checkpoint = tmp_path / "stage1.pt"

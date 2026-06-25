@@ -106,6 +106,15 @@ def build_parser(stage: TrainingStage) -> argparse.ArgumentParser:
             "checkpoint_runtime.json. This still does not launch training."
         ),
     )
+    parser.add_argument(
+        "--audit-training-step",
+        action="store_true",
+        help=(
+            "During --audit-runtime, run a no-backward clean training-step probe "
+            "and write training_step_runtime.json. Currently this is implemented "
+            "for Stage2 only."
+        ),
+    )
     return parser
 
 
@@ -137,6 +146,7 @@ def main_for_stage(stage: TrainingStage, argv: list[str] | None = None) -> int:
                 audit_model_parameters=args.audit_model_parameters,
                 audit_optimizer=args.audit_optimizer,
                 audit_checkpoint=args.audit_checkpoint,
+                audit_training_step=args.audit_training_step,
             )
             prepared["runtime_audit"] = audit["runtime_audit"]
             prepared["trainable_parameters"] = audit["trainable_parameters"]
@@ -144,6 +154,8 @@ def main_for_stage(stage: TrainingStage, argv: list[str] | None = None) -> int:
                 prepared["optimizer_runtime"] = audit["optimizer_runtime"]
             if audit.get("checkpoint_runtime"):
                 prepared["checkpoint_runtime"] = audit["checkpoint_runtime"]
+            if audit.get("training_step_runtime"):
+                prepared["training_step_runtime"] = audit["training_step_runtime"]
         print_json(prepared)
         return 0
     if args.audit_runtime:
@@ -159,6 +171,7 @@ def main_for_stage(stage: TrainingStage, argv: list[str] | None = None) -> int:
             audit_model_parameters=args.audit_model_parameters,
             audit_optimizer=args.audit_optimizer,
             audit_checkpoint=args.audit_checkpoint,
+            audit_training_step=args.audit_training_step,
         )
         audit["preflight_report"] = str(report_path)
         print_json(audit)
@@ -253,6 +266,7 @@ def audit_training_runtime(
     audit_model_parameters: bool = False,
     audit_optimizer: bool = False,
     audit_checkpoint: bool = False,
+    audit_training_step: bool = False,
 ) -> dict[str, Any]:
     bundle_file = Path(bundle_path)
     if not bundle_file.exists():
@@ -263,7 +277,7 @@ def audit_training_runtime(
     artifacts = _load_runtime_artifacts(bundle, expected_stage=expected_stage)
     loaded_modules = (
         _load_training_parameter_audit_modules(bundle, expected_stage=expected_stage)
-        if audit_model_parameters or audit_optimizer or audit_checkpoint
+        if audit_model_parameters or audit_optimizer or audit_checkpoint or audit_training_step
         else None
     )
     trainable_parameters = (
@@ -273,7 +287,7 @@ def audit_training_runtime(
             expected_stage=expected_stage,
             loaded_modules=loaded_modules,
         )
-        if audit_model_parameters or audit_optimizer or audit_checkpoint
+        if audit_model_parameters or audit_optimizer or audit_checkpoint or audit_training_step
         else _write_trainable_parameters_placeholder(
             execution_dir=execution_dir,
             bundle=bundle,
@@ -301,6 +315,17 @@ def audit_training_runtime(
         if audit_checkpoint
         else None
     )
+    training_step_runtime = (
+        _write_actual_training_step_runtime_audit(
+            execution_dir=execution_dir,
+            bundle=bundle,
+            artifacts=artifacts,
+            loaded_modules=loaded_modules,
+            expected_stage=expected_stage,
+        )
+        if audit_training_step
+        else None
+    )
     audit = _runtime_audit_report(
         bundle_path=bundle_file,
         bundle=bundle,
@@ -308,6 +333,7 @@ def audit_training_runtime(
         trainable_parameters=trainable_parameters,
         optimizer_runtime=optimizer_runtime,
         checkpoint_runtime=checkpoint_runtime,
+        training_step_runtime=training_step_runtime,
         expected_stage=expected_stage,
     )
     resolved_report_path = (
@@ -335,6 +361,8 @@ def audit_training_runtime(
         result["optimizer_runtime"] = optimizer_runtime["path"]
     if checkpoint_runtime is not None:
         result["checkpoint_runtime"] = checkpoint_runtime["path"]
+    if training_step_runtime is not None:
+        result["training_step_runtime"] = training_step_runtime["path"]
     return result
 
 
@@ -1017,6 +1045,203 @@ def _protocol_token_rows_payload_from_loaded(
     return payload
 
 
+def _write_actual_training_step_runtime_audit(
+    *,
+    execution_dir: Path,
+    bundle: dict[str, Any],
+    artifacts: dict[str, dict[str, Any]],
+    loaded_modules: dict[str, Any] | None,
+    expected_stage: TrainingStage,
+) -> dict[str, Any]:
+    if loaded_modules is None:
+        raise ValueError("training-step audit requires loaded model modules")
+    if expected_stage != TrainingStage.STAGE2:
+        raise NotImplementedError("training-step runtime audit is currently implemented for Stage2")
+    result = _run_stage2_training_step_probe(
+        bundle=bundle,
+        artifacts=artifacts,
+        loaded_modules=loaded_modules,
+    )
+    debug = dict(result.get("debug") or {})
+    expected_weights = dict((bundle.get("loss") or {}).get("weighted_span_loss") or {})
+    mask_policy = bundle.get("mask_policy") or {}
+    loss_total = result.get("loss_total")
+    loss_total_finite = loss_total is not None and math.isfinite(float(loss_total))
+    fast_path_used = debug.get("fast_batched_stage2") is True
+    weighted_span_loss_applied = bool(
+        result.get("forward_completed")
+        and expected_weights
+        and debug.get("focus_loss_token_weight") is not None
+        and debug.get("no_focus_loss_token_weight") is not None
+    )
+    mask_scope_matches = (
+        bool(mask_policy.get("mask_original_image_after_tgvf"))
+        == bool(result.get("mask_original_image_after_tgvf"))
+        and float(mask_policy.get("mask_original_image_after_tgvf_prob") or 0.0)
+        == float(debug.get("mask_original_image_after_tgvf_prob") or 0.0)
+        and str(mask_policy.get("mask_original_image_after_tgvf_scope"))
+        == str(debug.get("mask_original_image_after_tgvf_scope"))
+    )
+    payload = {
+        "schema_version": "clean_training_step_runtime_audit_v1",
+        "stage": bundle.get("stage"),
+        "run_id": bundle.get("run_id"),
+        "status": "actual_stage2_training_step_forward_audit",
+        "actual_training_step_forward": bool(result.get("forward_completed")),
+        "backward_called": False,
+        "optimizer_step_called": False,
+        "scheduler_step_called": False,
+        "fast_batched_stage2_used": fast_path_used,
+        "weighted_span_loss_applied": weighted_span_loss_applied,
+        "mask_scope_applied": mask_scope_matches,
+        "loss_total": loss_total,
+        "loss_total_finite": loss_total_finite,
+        "loss_focus": result.get("loss_focus"),
+        "loss_no_focus": result.get("loss_no_focus"),
+        "loss_visual_token_manifold": result.get("loss_visual_token_manifold"),
+        "sample_count": result.get("sample_count"),
+        "focus_count": debug.get("focus_count"),
+        "no_focus_count": debug.get("no_focus_count"),
+        "expected_weighted_span_loss": expected_weights,
+        "observed_loss_token_weights": {
+            "focus": debug.get("focus_loss_token_weight"),
+            "no_focus": debug.get("no_focus_loss_token_weight"),
+        },
+        "mask_policy": mask_policy,
+        "observed_mask_policy": {
+            "mask_original_image_after_tgvf": result.get("mask_original_image_after_tgvf"),
+            "mask_original_image_after_tgvf_prob": debug.get(
+                "mask_original_image_after_tgvf_prob"
+            ),
+            "mask_original_image_after_tgvf_scope": debug.get(
+                "mask_original_image_after_tgvf_scope"
+            ),
+            "focus_sample_mask_active_rate": debug.get("focus_sample_mask_active_rate"),
+            "no_focus_mask_active_rate": debug.get("no_focus_mask_active_rate"),
+        },
+        "debug": debug,
+        "notes": [
+            "Stage2 training-step probe ran a forward pass only",
+            (
+                "this audit does not call backward, optimizer.step, "
+                "scheduler.step, or save checkpoints"
+            ),
+        ],
+    }
+    path = execution_dir / "training_step_runtime.json"
+    _write_json(path, payload)
+    return {"path": str(path), "payload": payload}
+
+
+def _run_stage2_training_step_probe(
+    *,
+    bundle: dict[str, Any],
+    artifacts: dict[str, dict[str, Any]],
+    loaded_modules: dict[str, Any],
+) -> dict[str, Any]:
+    try:
+        import torch
+
+        from revisit_vlm.tgvf_v3_stage2 import Stage2LossWeights, TGVFv3Stage2Dataset
+        from revisit_vlm.tgvf_v3_stage2_fast import v3_stage2_batched_training_step
+    except Exception as exc:
+        raise RuntimeError("Stage2 training-step audit dependencies are unavailable") from exc
+    modules = dict(loaded_modules.get("modules") or {})
+    qwen_forward_model = modules.get("qwen_lora")
+    if qwen_forward_model is None:
+        raise ValueError("Stage2 training-step audit requires qwen_lora module")
+    qwen_model = loaded_modules.get("qwen_model")
+    if qwen_model is None and hasattr(qwen_forward_model, "get_base_model"):
+        qwen_model = qwen_forward_model.get_base_model()
+    if qwen_model is None:
+        qwen_model = qwen_forward_model
+    processor = loaded_modules.get("processor")
+    if processor is None:
+        raise ValueError("Stage2 training-step audit requires processor")
+    foveal_module = modules.get("tgvf")
+    if foveal_module is None:
+        raise ValueError("Stage2 training-step audit requires tgvf module")
+    train_file = (((bundle.get("dataset") or {}).get("train_file") or {}).get("path"))
+    if not train_file:
+        raise ValueError("Stage2 training-step audit requires dataset.train_file.path")
+    dataset = TGVFv3Stage2Dataset(train_file)
+    samples = _select_stage2_step_probe_samples(
+        dataset.samples,
+        requested_count=max(1, int(((bundle.get("batch") or {}).get("micro_batch_size")) or 1)),
+    )
+    if not samples:
+        raise ValueError("Stage2 training-step audit found no usable samples")
+    loss = bundle.get("loss") or {}
+    span_weights = dict(loss.get("weighted_span_loss") or {})
+    output = v3_stage2_batched_training_step(
+        qwen_model=qwen_model,
+        qwen_forward_model=qwen_forward_model,
+        processor=processor,
+        foveal_module=foveal_module,
+        samples=samples,
+        loss_weights=Stage2LossWeights(
+            **span_weights,
+            visual_token_manifold=float(loss.get("visual_token_manifold") or 0.0),
+        ),
+        device=_parameter_audit_device(torch),
+        hidden_state_index=int(((bundle.get("training") or {}).get("capture_layer")) or -1),
+        max_image_resolution=(bundle.get("training") or {}).get("max_image_resolution"),
+        position_mode=str((bundle.get("training") or {}).get("fvt_position_mode")),
+        mask_original_image_after_tgvf=bool(
+            (bundle.get("mask_policy") or {}).get("mask_original_image_after_tgvf")
+        ),
+        mask_original_image_after_tgvf_prob=float(
+            (bundle.get("mask_policy") or {}).get("mask_original_image_after_tgvf_prob")
+        ),
+        mask_original_image_after_tgvf_scope=str(
+            (bundle.get("mask_policy") or {}).get("mask_original_image_after_tgvf_scope")
+        ),
+        protocol=str(bundle.get("protocol")),
+    )
+    return {
+        "forward_completed": True,
+        "sample_count": len(samples),
+        "loss_total": _scalar_float(output.loss_total),
+        "loss_focus": _scalar_float(output.loss_focus),
+        "loss_no_focus": _scalar_float(output.loss_no_focus),
+        "loss_visual_token_manifold": _scalar_float(output.loss_visual_token_manifold),
+        "mask_original_image_after_tgvf": bool(
+            (bundle.get("mask_policy") or {}).get("mask_original_image_after_tgvf")
+        ),
+        "debug": output.debug,
+    }
+
+
+def _select_stage2_step_probe_samples(samples: list[Any], *, requested_count: int) -> list[Any]:
+    selected: list[Any] = []
+    focus = next((sample for sample in samples if getattr(sample, "need_focus", False)), None)
+    no_focus = next(
+        (sample for sample in samples if not getattr(sample, "need_focus", False)),
+        None,
+    )
+    if focus is not None:
+        selected.append(focus)
+    if no_focus is not None and len(selected) < requested_count:
+        selected.append(no_focus)
+    for sample in samples:
+        if len(selected) >= requested_count:
+            break
+        if sample not in selected:
+            selected.append(sample)
+    return selected
+
+
+def _scalar_float(value: Any) -> float | None:
+    if value is None:
+        return None
+    try:
+        if hasattr(value, "detach"):
+            return float(value.detach().cpu())
+        return float(value)
+    except Exception:
+        return None
+
+
 def _write_actual_trainable_parameters_audit(
     *,
     execution_dir: Path,
@@ -1555,6 +1780,8 @@ def _load_stage2_parameter_audit_modules(bundle: dict[str, Any]) -> dict[str, An
     tgvf.load_state_dict(stage1_checkpoint["tgvf_module"], strict=True)
     return {
         "modules": {"qwen_lora": model, "tgvf": tgvf},
+        "qwen_model": utility_model,
+        "qwen_forward_model": model,
         "processor": processor,
         "tokenizer": processor.tokenizer,
         "loader": {
@@ -1580,6 +1807,7 @@ def _runtime_audit_report(
     trainable_parameters: dict[str, Any],
     optimizer_runtime: dict[str, Any] | None,
     checkpoint_runtime: dict[str, Any] | None,
+    training_step_runtime: dict[str, Any] | None,
     expected_stage: TrainingStage,
 ) -> dict[str, Any]:
     artifact_checks = _runtime_artifact_checks(
@@ -1588,6 +1816,7 @@ def _runtime_audit_report(
         trainable_parameters,
         optimizer_runtime,
         checkpoint_runtime,
+        training_step_runtime,
     )
     launch_gates = _launch_gate_audit(
         bundle,
@@ -1595,6 +1824,7 @@ def _runtime_audit_report(
         trainable_parameters,
         optimizer_runtime,
         checkpoint_runtime,
+        training_step_runtime,
     )
     blocking_items = [
         "native trainer loop has not been ported into revisit_vlm_clean",
@@ -1614,6 +1844,13 @@ def _runtime_audit_report(
         and checkpoint_runtime["payload"].get("actual_checkpoint_loaded")
     ):
         blocking_items.append("checkpoint save/load parity requires --audit-checkpoint")
+    if expected_stage == TrainingStage.STAGE2 and not (
+        training_step_runtime
+        and training_step_runtime["payload"].get("actual_training_step_forward")
+    ):
+        blocking_items.append(
+            "Stage2 no-backward training-step forward requires --audit-training-step"
+        )
     return {
         "schema_version": "clean_training_runtime_audit_v1",
         "stage": str(expected_stage),
@@ -1636,6 +1873,7 @@ def _runtime_artifact_checks(
     trainable_parameters: dict[str, Any],
     optimizer_runtime: dict[str, Any] | None,
     checkpoint_runtime: dict[str, Any] | None,
+    training_step_runtime: dict[str, Any] | None,
 ) -> list[dict[str, Any]]:
     artifact_paths = dict(bundle.get("runtime_artifacts") or {})
     artifact_paths["trainable_parameters"] = trainable_parameters["path"]
@@ -1643,6 +1881,8 @@ def _runtime_artifact_checks(
         artifact_paths["optimizer_runtime"] = optimizer_runtime["path"]
     if checkpoint_runtime is not None:
         artifact_paths["checkpoint_runtime"] = checkpoint_runtime["path"]
+    if training_step_runtime is not None:
+        artifact_paths["training_step_runtime"] = training_step_runtime["path"]
     checks = []
     for name, path_text in sorted(artifact_paths.items()):
         path = Path(str(path_text))
@@ -1652,6 +1892,8 @@ def _runtime_artifact_checks(
             payload = optimizer_runtime["payload"] if optimizer_runtime else {}
         elif name == "checkpoint_runtime":
             payload = checkpoint_runtime["payload"] if checkpoint_runtime else {}
+        elif name == "training_step_runtime":
+            payload = training_step_runtime["payload"] if training_step_runtime else {}
         else:
             payload = artifacts.get(name, {})
         checks.append(
@@ -1673,6 +1915,7 @@ def _launch_gate_audit(
     trainable_parameters: dict[str, Any],
     optimizer_runtime: dict[str, Any] | None,
     checkpoint_runtime: dict[str, Any] | None,
+    training_step_runtime: dict[str, Any] | None,
 ) -> dict[str, Any]:
     required = list(
         (bundle.get("trainer_runtime_contract") or {}).get("required_launch_gates") or []
@@ -1697,6 +1940,14 @@ def _launch_gate_audit(
     )
     if actual_checkpoint_validated:
         satisfied.add("save_checkpoint_with_clean_contract")
+    if training_step_runtime is not None:
+        step_payload = training_step_runtime["payload"]
+        if step_payload.get("fast_batched_stage2_used"):
+            satisfied.add("use_fast_batched_stage2_path")
+        if step_payload.get("weighted_span_loss_applied"):
+            satisfied.add("apply_weighted_span_losses_from_plan")
+        if step_payload.get("mask_scope_applied"):
+            satisfied.add("apply_original_image_mask_scope_from_plan")
     if actual_parameters_loaded:
         satisfied.update(
             {
@@ -1758,6 +2009,11 @@ def _launch_gate_audit(
         ),
         "checkpoint_runtime_status": (
             checkpoint_runtime["payload"].get("status") if checkpoint_runtime else "not_requested"
+        ),
+        "training_step_runtime_status": (
+            training_step_runtime["payload"].get("status")
+            if training_step_runtime
+            else "not_requested"
         ),
         "checkpoint_contract_status": artifacts["checkpoint_contract"].get("status"),
         "trainable_parameters_status": trainable_parameters["payload"].get("status"),

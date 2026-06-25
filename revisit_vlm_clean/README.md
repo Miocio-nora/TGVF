@@ -94,6 +94,7 @@ tgvf_train_stage2_executor --plan /path/to/training_plan.json --prepare-executio
 tgvf_train_stage2_executor --plan /path/to/training_plan.json --prepare-execution --audit-runtime --audit-model-parameters
 tgvf_train_stage2_executor --plan /path/to/training_plan.json --prepare-execution --audit-runtime --audit-optimizer
 tgvf_train_stage2_executor --plan /path/to/training_plan.json --prepare-execution --audit-runtime --audit-checkpoint
+tgvf_train_stage2_executor --plan /path/to/training_plan.json --prepare-execution --audit-runtime --audit-training-step
 ```
 
 Without `--preflight-only`, `--prepare-execution`, or `--audit-runtime`, these
@@ -130,6 +131,11 @@ saving and reloading the clean checkpoint schema from loaded modules plus
 optimizer/scheduler state. This is checkpoint contract evidence, not a training
 checkpoint, and it still does not call `backward`, `optimizer.step`, or
 `scheduler.step`.
+With explicit `--audit-training-step`, Stage2 runtime audit writes
+`training_step_runtime.json` after running a no-backward forward probe through
+the fast batched Stage2 path. This records evidence for weighted-span loss
+application and original-image mask scope without calling `backward`,
+`optimizer.step`, `scheduler.step`, or checkpoint save.
 
 ## Fixed Manifests
 
