@@ -33,6 +33,7 @@ from revisit_vlm_clean.stage2_runtime import (
     checkpoint_identity,
     eval_jsonl_identity,
 )
+from revisit_vlm_clean.tgvf_protocol import SUPPORTED_PROTOCOLS
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -53,6 +54,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-image-resolution", type=int, default=512)
     parser.add_argument("--max-action-tokens", type=int, default=64)
     parser.add_argument("--max-answer-tokens", type=int, default=128)
+    parser.add_argument(
+        "--tgvf-protocol",
+        choices=SUPPORTED_PROTOCOLS,
+        default="protocol_c_tool_observation",
+    )
     parser.add_argument("--softforce-prompt-text", default="")
     parser.add_argument(
         "--execute",
@@ -123,6 +129,7 @@ def main(argv: list[str] | None = None) -> int:
         max_image_resolution=args.max_image_resolution,
         max_action_tokens=args.max_action_tokens,
         max_answer_tokens=args.max_answer_tokens,
+        tgvf_protocol=args.tgvf_protocol,
         post_tgvf_forward_mode=ForwardMode(args.post_tgvf_forward_mode),
         softforce_prompt_text=args.softforce_prompt_text,
         deepstack=DeepStackState(

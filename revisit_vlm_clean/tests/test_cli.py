@@ -22,6 +22,8 @@ def test_benchmark_dry_run_cli(capsys) -> None:
                 "tgvf_force",
                 "--post-tgvf-forward-mode",
                 "kv_cache",
+                "--tgvf-protocol",
+                "protocol_c_tool_observation_qwen2_no_think",
                 "--subset-id",
                 "core_smoke_256_seed20260625",
                 "--dry-run",
@@ -31,6 +33,7 @@ def test_benchmark_dry_run_cli(capsys) -> None:
     )
     captured = capsys.readouterr()
     assert '"run_id": "dry"' in captured.out
+    assert '"tgvf_protocol": "protocol_c_tool_observation_qwen2_no_think"' in captured.out
 
 
 def test_benchmark_write_empty_output_cli(tmp_path) -> None:
@@ -60,6 +63,7 @@ def test_benchmark_write_empty_output_cli(tmp_path) -> None:
         == 0
     )
     assert (output_dir / "run_config.json").exists()
+    assert (output_dir / "run_config.txt").exists()
     assert (output_dir / "rows.jsonl").read_text() == ""
     assert "schema smoke output" in (output_dir / "summary.json").read_text()
 
