@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
 import subprocess
 from dataclasses import replace
 from datetime import datetime, timezone
@@ -65,6 +67,8 @@ def build_parser() -> argparse.ArgumentParser:
     group.add_argument("--subset-id")
     parser.add_argument("--manifest-path", default=None)
     parser.add_argument("--manifest-hash", default=None)
+    parser.add_argument("--num-shards", type=int, default=1)
+    parser.add_argument("--shard-index", type=int, default=0)
     parser.add_argument("--benchmark-root", default=DEFAULT_BENCHMARK_ROOT)
     parser.add_argument("--output-dir", default=None)
     parser.add_argument("--max-image-resolution", type=int, default=512)
@@ -151,6 +155,8 @@ def main(argv: list[str] | None = None) -> int:
         run_id=args.run_id,
         checkpoint_path=args.checkpoint_path,
         started_at=datetime.now(timezone.utc).isoformat(),
+        num_shards=args.num_shards,
+        shard_index=args.shard_index,
         model_id=args.model_id,
         processor_id=args.processor_id,
         eval_family=EvalFamily.PROJECT_NATIVE_EXTERNAL,
@@ -204,6 +210,15 @@ def main(argv: list[str] | None = None) -> int:
         if not args.output_dir:
             raise ValueError("--materialize-samples requires --output-dir")
         resolved_manifest = _resolve_manifest_payload(args)
+        resolved_manifest = _shard_manifest_payload(
+            resolved_manifest,
+            num_shards=args.num_shards,
+            shard_index=args.shard_index,
+        )
+        runtime_config = replace(
+            config,
+            manifest_hash=resolved_manifest.get("manifest_hash") or config.manifest_hash,
+        )
         samples = materialize_samples_from_manifest_payload(
             resolved_manifest,
             benchmark_root=args.benchmark_root,
@@ -212,7 +227,7 @@ def main(argv: list[str] | None = None) -> int:
         print_json(
             write_materialized_sample_output(
                 args.output_dir,
-                config=config,
+                config=runtime_config,
                 manifest=resolved_manifest,
                 samples=samples,
             )
@@ -222,16 +237,25 @@ def main(argv: list[str] | None = None) -> int:
         if not args.output_dir:
             raise ValueError("--render-inputs requires --output-dir")
         resolved_manifest = _resolve_manifest_payload(args)
+        resolved_manifest = _shard_manifest_payload(
+            resolved_manifest,
+            num_shards=args.num_shards,
+            shard_index=args.shard_index,
+        )
+        runtime_config = replace(
+            config,
+            manifest_hash=resolved_manifest.get("manifest_hash") or config.manifest_hash,
+        )
         samples = materialize_samples_from_manifest_payload(
             resolved_manifest,
             benchmark_root=args.benchmark_root,
             metadata_only=True,
         )
-        rendered_inputs = render_benchmark_inputs(samples, config)
+        rendered_inputs = render_benchmark_inputs(samples, runtime_config)
         print_json(
             write_rendered_input_output(
                 args.output_dir,
-                config=config,
+                config=runtime_config,
                 manifest=resolved_manifest,
                 rendered_inputs=rendered_inputs,
             )
@@ -241,9 +265,14 @@ def main(argv: list[str] | None = None) -> int:
         if not args.output_dir:
             raise ValueError("--execute requires --output-dir")
         resolved_manifest = _resolve_manifest_payload(args)
+        resolved_manifest = _shard_manifest_payload(
+            resolved_manifest,
+            num_shards=args.num_shards,
+            shard_index=args.shard_index,
+        )
         runtime_config = replace(
             config,
-            manifest_hash=config.manifest_hash or resolved_manifest.get("manifest_hash"),
+            manifest_hash=resolved_manifest.get("manifest_hash") or config.manifest_hash,
         )
         resolved_backend = resolve_backend_name(args.runner_backend)
         samples = materialize_samples_from_manifest_payload(
@@ -309,6 +338,61 @@ def _resolve_manifest_payload(args: argparse.Namespace) -> dict:
             f"got {resolved_manifest.get('manifest_hash')}"
         )
     return resolved_manifest
+
+
+def _shard_manifest_payload(
+    manifest: dict,
+    *,
+    num_shards: int,
+    shard_index: int,
+) -> dict:
+    if int(num_shards) < 1:
+        raise ValueError("--num-shards must be >= 1")
+    if not 0 <= int(shard_index) < int(num_shards):
+        raise ValueError("--shard-index must be in [0, num_shards)")
+    if int(num_shards) == 1:
+        return manifest
+
+    source_manifest = dict(manifest)
+    source_samples = list(source_manifest.get("samples") or [])
+    shard_samples = [
+        sample
+        for row_index, sample in enumerate(source_samples)
+        if row_index % int(num_shards) == int(shard_index)
+    ]
+    payload = dict(source_manifest)
+    source_manifest_id = source_manifest.get("manifest_id")
+    source_manifest_hash = source_manifest.get("manifest_hash")
+    payload["manifest_id"] = f"{source_manifest_id}__shard_{shard_index}_of_{num_shards}"
+    payload["samples"] = shard_samples
+    payload["source_manifest_id"] = source_manifest_id
+    payload["source_manifest_hash"] = source_manifest_hash
+    payload["num_shards"] = int(num_shards)
+    payload["shard_index"] = int(shard_index)
+    payload["shard_selection_rule"] = "source_manifest_order_modulo"
+    stratification = dict(payload.get("stratification") or {})
+    stratification.update(
+        {
+            "source_manifest_id": source_manifest_id,
+            "source_manifest_hash": source_manifest_hash,
+            "num_shards": int(num_shards),
+            "shard_index": int(shard_index),
+            "source_sample_count": len(source_samples),
+            "selected_sample_count": len(shard_samples),
+            "shard_selection_rule": "source_manifest_order_modulo",
+        }
+    )
+    payload["stratification"] = stratification
+    payload.pop("manifest_hash", None)
+    payload["manifest_hash"] = _stable_manifest_payload_hash(payload)
+    return payload
+
+
+def _stable_manifest_payload_hash(payload: dict) -> str:
+    data = dict(payload)
+    data.pop("manifest_hash", None)
+    encoded = json.dumps(data, sort_keys=True, separators=(",", ":")).encode()
+    return hashlib.sha256(encoded).hexdigest()
 
 
 def _validate_manifest_identity(args: argparse.Namespace, resolved_manifest: dict) -> None:

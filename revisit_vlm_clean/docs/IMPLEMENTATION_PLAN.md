@@ -1105,6 +1105,29 @@ This does not implement real sharded execution or deterministic merge yet. It
 does make the unsharded case explicit in the same schema that future shard
 outputs will use.
 
+## Phase 37: Deterministic Benchmark Shard Selection
+
+Implemented after Phase 36.
+
+- benchmark CLI now accepts:
+  - `--num-shards`;
+  - `--shard-index`;
+- materialize/render/execute paths apply deterministic source-manifest-order
+  modulo sharding before sample materialization;
+- `--manifest-hash` continues to validate the source full manifest before
+  sharding;
+- shard `sample_manifest.json` records:
+  - shard manifest id/hash;
+  - source manifest id/hash;
+  - `num_shards`;
+  - `shard_index`;
+  - source and selected sample counts;
+  - selection rule `source_manifest_order_modulo`;
+- run config and rows carry the shard identity.
+
+This implements deterministic shard selection. Deterministic shard merge remains
+pending.
+
 ## Later Phases
 
 1. Replace training launch plans with clean-native training execution.

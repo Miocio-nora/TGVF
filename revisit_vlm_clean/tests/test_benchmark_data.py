@@ -50,6 +50,61 @@ def _write_toy_manifest(path):
     return path
 
 
+def _write_two_toy_vstar(root):
+    snapshot = root / "vstar_bench" / "snapshot"
+    image_dir = snapshot / "direct_attributes"
+    image_dir.mkdir(parents=True)
+    (image_dir / "toy0.jpg").write_bytes(b"not-a-real-image")
+    (image_dir / "toy1.jpg").write_bytes(b"not-a-real-image")
+    source = snapshot / "test_questions.jsonl"
+    rows = [
+        {
+            "image": "direct_attributes/toy0.jpg",
+            "text": "What color is toy 0?\n(A) red\n(B) blue",
+            "category": "direct_attributes",
+            "question_id": "toy-0",
+            "label": "A",
+        },
+        {
+            "image": "direct_attributes/toy1.jpg",
+            "text": "What color is toy 1?\n(A) red\n(B) blue",
+            "category": "direct_attributes",
+            "question_id": "toy-1",
+            "label": "B",
+        },
+    ]
+    source.write_text("\n".join(json.dumps(row) for row in rows) + "\n")
+    return source
+
+
+def _write_two_toy_manifest(path):
+    samples = []
+    for row_index, label in enumerate(("A", "B")):
+        samples.append(
+            {
+                "sample_id": f"vstar_test_questions_191/toy/toy_{row_index:06d}",
+                "benchmark": "vstar_bench",
+                "population_id": "vstar_test_questions_191",
+                "source_file": "vstar_bench/snapshot/test_questions.jsonl",
+                "metadata": {
+                    "row_index": row_index,
+                    "raw_id": f"toy-{row_index}",
+                    "question_id": f"toy-{row_index}",
+                    "category": "direct_attributes",
+                    "label": label,
+                },
+            }
+        )
+    payload = {
+        "manifest_id": "two_toy_manifest",
+        "manifest_hash": "twohash",
+        "samples": samples,
+        "source_population_ids": ["vstar_test_questions_191"],
+    }
+    path.write_text(json.dumps(payload) + "\n")
+    return path
+
+
 def _write_toy_ocrbench(root):
     snapshot = root / "ocrbench_v2" / "snapshot"
     snapshot.mkdir(parents=True)
@@ -398,6 +453,64 @@ def test_benchmark_execute_dry_run_cli(tmp_path) -> None:
     summary = json.loads((output_dir / "summary.json").read_text())
     assert summary["accuracy"] == 1.0
     assert summary["runner_backend"]["backend"] == "dry_run"
+
+
+def test_benchmark_execute_dry_run_shards_manifest_deterministically(tmp_path) -> None:
+    root = tmp_path / "benchmarks"
+    _write_two_toy_vstar(root)
+    manifest_path = _write_two_toy_manifest(tmp_path / "manifest.json")
+    output_dir = tmp_path / "exec_shard"
+
+    assert (
+        benchmark_main(
+            [
+                "--run-id",
+                "exec_shard",
+                "--checkpoint-path",
+                "outputs/checkpoint.pt",
+                "--mode",
+                "original",
+                "--post-tgvf-forward-mode",
+                "kv_cache",
+                "--population-id",
+                "vstar_test_questions_191",
+                "--manifest-path",
+                str(manifest_path),
+                "--manifest-hash",
+                "twohash",
+                "--num-shards",
+                "2",
+                "--shard-index",
+                "1",
+                "--benchmark-root",
+                str(root),
+                "--output-dir",
+                str(output_dir),
+                "--execute",
+                "--runner-backend",
+                "dry_run",
+            ]
+        )
+        == 0
+    )
+
+    rows = [json.loads(line) for line in (output_dir / "rows.jsonl").read_text().splitlines()]
+    assert len(rows) == 1
+    assert rows[0]["sample_id"] == "vstar_test_questions_191/toy/toy_000001"
+    assert rows[0]["gold_answer"] == "B"
+    assert rows[0]["num_shards"] == 2
+    assert rows[0]["shard_index"] == 1
+
+    sample_manifest = json.loads((output_dir / "sample_manifest.json").read_text())
+    assert sample_manifest["manifest_id"] == "two_toy_manifest__shard_1_of_2"
+    assert sample_manifest["source_manifest_hash"] == "twohash"
+    assert sample_manifest["num_shards"] == 2
+    assert sample_manifest["shard_index"] == 1
+    assert len(sample_manifest["samples"]) == 1
+    run_config = json.loads((output_dir / "run_config.json").read_text())
+    assert run_config["manifest_hash"] == sample_manifest["manifest_hash"]
+    assert run_config["num_shards"] == 2
+    assert run_config["shard_index"] == 1
 
 
 def test_benchmark_execute_dry_run_auto_uses_blink_official_choice(tmp_path) -> None:
