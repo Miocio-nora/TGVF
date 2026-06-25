@@ -96,6 +96,7 @@ tgvf_train_stage2_executor --plan /path/to/training_plan.json --prepare-executio
 tgvf_train_stage2_executor --plan /path/to/training_plan.json --prepare-execution --audit-runtime --audit-checkpoint
 tgvf_train_stage2_executor --plan /path/to/training_plan.json --prepare-execution --audit-runtime --audit-training-step
 tgvf_train_stage2_executor --plan /path/to/training_plan.json --prepare-execution --audit-runtime --audit-optimizer-step
+tgvf_train_stage2_executor --plan /path/to/training_plan.json --prepare-execution --audit-runtime --audit-trainer-loop
 ```
 
 Without `--preflight-only`, `--prepare-execution`, or `--audit-runtime`, these
@@ -145,6 +146,12 @@ clean training-step loss. It implies model-parameter, optimizer, and
 training-step runtime audits. This is first-step wiring evidence only: it still
 does not enter an epoch loop, perform gradient accumulation, publish a
 checkpoint, or set `will_launch_training=true`.
+With explicit `--audit-trainer-loop`, runtime audit also writes
+`trainer_loop_runtime.json` after one bounded gradient-accumulation probe using
+the planned `gradient_accumulation_steps`. It proves micro-step backward
+accumulation plus one optimizer/scheduler step from the clean training-step
+loss. This is loop-order evidence only: it still does not enter the full epoch
+loop, publish checkpoints, or set `will_launch_training=true`.
 
 ## Fixed Manifests
 

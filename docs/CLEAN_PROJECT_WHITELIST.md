@@ -133,6 +133,11 @@ before training/eval cleanup can proceed.
   and post-step `zero_grad` probe from the clean training-step loss. It is
   first-step wiring evidence only and must not enter an epoch loop, perform
   gradient accumulation, publish a checkpoint, or set `will_launch_training=true`.
+- Explicit trainer-loop audit may write `trainer_loop_runtime.json` after one
+  bounded gradient-accumulation probe using the planned
+  `gradient_accumulation_steps`. It may validate micro-step backward
+  accumulation and one optimizer/scheduler step, but it still must not enter the
+  full epoch loop, publish checkpoints, or set `will_launch_training=true`.
 - `clean_prepare_execution_command.sh` is the runnable clean handoff command;
   `clean_training_command.sh` stays non-executable until the trainer loop is
   ported.
@@ -253,6 +258,11 @@ before training/eval cleanup can proceed.
   and post-step `zero_grad` probe from the clean training-step loss. It is
   first-step wiring evidence only and must not enter an epoch loop, perform
   gradient accumulation, publish a checkpoint, or set `will_launch_training=true`.
+- Explicit trainer-loop audit may write `trainer_loop_runtime.json` after one
+  bounded gradient-accumulation probe using the planned
+  `gradient_accumulation_steps`. It may validate micro-step backward
+  accumulation and one optimizer/scheduler step, but it still must not enter the
+  full epoch loop, publish checkpoints, or set `will_launch_training=true`.
 - `clean_prepare_execution_command.sh` is the runnable clean handoff command;
   `clean_training_command.sh` stays non-executable until the trainer loop is
   ported.

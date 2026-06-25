@@ -1294,6 +1294,134 @@ def test_stage2_training_executor_runtime_audit_can_write_optimizer_step_probe(
     assert gate_status["save_checkpoint_with_clean_contract"] == "pending_real_trainer_loop"
 
 
+def test_stage2_training_executor_runtime_audit_can_write_trainer_loop_probe(
+    tmp_path,
+    monkeypatch,
+    capsys,
+) -> None:
+    import torch
+
+    train_file = tmp_path / "stage2.train.jsonl"
+    checkpoint = tmp_path / "stage1.pt"
+    train_file.write_text(
+        '{"image": "/tmp/image.jpg", "question": "q", "answer": "a", '
+        '"need_focus": true, "evidence_state": "need_local_visual_evidence"}\n',
+        encoding="utf-8",
+    )
+    _write_minimal_stage1_checkpoint(checkpoint)
+    output_dir = tmp_path / "stage2_plan"
+    qwen = torch.nn.Linear(2, 2)
+    qwen.bias.requires_grad_(False)
+    tgvf = torch.nn.Sequential(torch.nn.Linear(2, 1))
+    step_calls = 0
+
+    def fake_loader(bundle, *, expected_stage):
+        assert expected_stage.value == "stage2"
+        assert bundle["stage"] == "stage2"
+        return {
+            "modules": {"qwen_lora": qwen, "tgvf": tgvf},
+            "loader": {"backend": "fake_trainer_loop_audit_loader"},
+        }
+
+    def fake_step_probe(*, bundle, artifacts, loaded_modules):
+        nonlocal step_calls
+        step_calls += 1
+        assert bundle["stage"] == "stage2"
+        assert artifacts["dataset_runtime_identity"]["stage"] == "stage2"
+        parameters = [
+            parameter
+            for module in (qwen, tgvf)
+            for parameter in module.parameters()
+            if parameter.requires_grad
+        ]
+        loss_tensor = torch.stack([parameter.square().sum() for parameter in parameters]).sum()
+        return {
+            "forward_completed": True,
+            "sample_count": 1,
+            "loss_total": float(loss_tensor.detach()),
+            "loss_tensor": loss_tensor,
+            "loss_focus": 1.0,
+            "loss_no_focus": 0.0,
+            "loss_visual_token_manifold": 0.0,
+            "mask_original_image_after_tgvf": True,
+            "debug": {
+                "fast_batched_stage2": True,
+                "focus_count": 1,
+                "no_focus_count": 0,
+                "focus_loss_token_weight": 3.5,
+                "no_focus_loss_token_weight": 0.0,
+                "mask_original_image_after_tgvf_prob": 1.0,
+                "mask_original_image_after_tgvf_scope": "through_answer",
+                "focus_sample_mask_active_rate": 1.0,
+                "no_focus_mask_active_rate": 0.0,
+            },
+        }
+
+    monkeypatch.setattr(training_executor, "_load_training_parameter_audit_modules", fake_loader)
+    monkeypatch.setattr(training_executor, "_run_stage2_training_step_probe", fake_step_probe)
+    assert (
+        stage2_main(
+            [
+                "--run-id",
+                "stage2_trainer_loop_audit",
+                "--train-file",
+                str(train_file),
+                "--stage1-checkpoint",
+                str(checkpoint),
+                "--output-dir",
+                str(output_dir),
+                "--global-batch",
+                "2",
+                "--micro-batch-size",
+                "1",
+                "--write-plan",
+            ]
+        )
+        == 0
+    )
+
+    assert (
+        stage2_executor_main(
+            [
+                "--plan",
+                str(output_dir / "training_plan.json"),
+                "--prepare-execution",
+                "--audit-runtime",
+                "--audit-trainer-loop",
+            ]
+        )
+        == 0
+    )
+    payload = capsys.readouterr().out
+    assert '"trainer_loop_runtime"' in payload
+    execution_dir = output_dir / "clean_training_execution"
+    trainer_loop_runtime = json.loads((execution_dir / "trainer_loop_runtime.json").read_text())
+    runtime_audit = json.loads((execution_dir / "clean_training_runtime_audit.json").read_text())
+    assert trainer_loop_runtime["status"] == "actual_gradient_accumulation_trainer_loop_audit"
+    assert trainer_loop_runtime["actual_trainer_loop_probe"] is True
+    assert trainer_loop_runtime["gradient_accumulation_steps"] == 2
+    assert trainer_loop_runtime["micro_steps_run"] == 2
+    assert trainer_loop_runtime["backward_micro_steps"] == 2
+    assert trainer_loop_runtime["optimizer_steps_completed"] == 1
+    assert trainer_loop_runtime["scheduler_steps_completed"] == 1
+    assert trainer_loop_runtime["checkpoint_published"] is False
+    assert trainer_loop_runtime["training_run_launched"] is False
+    assert trainer_loop_runtime["grad_after_accumulation"]["tensors_with_grad"] > 0
+    assert trainer_loop_runtime["grad_after_zero"]["tensors_with_grad"] == 0
+    assert step_calls == 3
+    gate_status = {
+        gate["name"]: gate["status"] for gate in runtime_audit["launch_gates"]["gates"]
+    }
+    assert runtime_audit["launch_gates"]["trainer_loop_runtime_status"] == (
+        "actual_gradient_accumulation_trainer_loop_audit"
+    )
+    assert gate_status["run_backward_optimizer_scheduler_step_from_plan"] == (
+        "identity_validated"
+    )
+    assert gate_status["run_gradient_accumulation_loop_from_plan"] == "identity_validated"
+    assert gate_status["save_checkpoint_with_clean_contract"] == "pending_real_trainer_loop"
+
+
 def test_stage2_training_executor_runtime_audit_can_write_checkpoint_audit(
     tmp_path,
     monkeypatch,

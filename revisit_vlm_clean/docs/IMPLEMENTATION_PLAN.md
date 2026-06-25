@@ -1793,6 +1793,38 @@ Implemented after Phase 68.
   publish training checkpoints, or implement DeepStack training execution.
   `will_launch_training` remains `false`.
 
+## Phase 70: Bounded Gradient-Accumulation Trainer-Loop Audit Gate
+
+Implemented after Phase 69.
+
+- Stage1/Stage2 executors now support explicit `--audit-trainer-loop` together
+  with `--audit-runtime`;
+- `--audit-trainer-loop` implies:
+  - actual model-parameter audit;
+  - actual optimizer/scheduler construction;
+  - actual training-step forward probe;
+- the audit writes `trainer_loop_runtime.json` after one bounded
+  gradient-accumulation probe that:
+  - uses the planned `gradient_accumulation_steps`;
+  - reruns the clean training-step forward for each micro-step;
+  - scales each micro-step loss before `backward`;
+  - accumulates gradients across micro-steps;
+  - clips gradients with the planned `max_grad_norm` when present;
+  - calls one `optimizer.step`;
+  - calls one `scheduler.step`;
+  - calls post-step `zero_grad`;
+- runtime launch gates now mark
+  `run_gradient_accumulation_loop_from_plan` as `identity_validated` only when
+  the probe proves the planned number of micro-steps, backward calls, and one
+  optimizer/scheduler step without publishing a checkpoint or launching a full
+  training run;
+- a passing trainer-loop audit also satisfies
+  `run_backward_optimizer_scheduler_step_from_plan`, because it contains that
+  ordered step inside the accumulation loop;
+- this phase still does not enter the full epoch loop, publish training
+  checkpoints, enable `clean_training_command.sh`, or implement DeepStack
+  training execution. `will_launch_training` remains `false`.
+
 ## Later Phases
 
 1. Replace training launch plans with clean-native training execution.

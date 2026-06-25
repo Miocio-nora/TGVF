@@ -124,6 +124,16 @@ def build_parser(stage: TrainingStage) -> argparse.ArgumentParser:
             "training loop or publish checkpoints."
         ),
     )
+    parser.add_argument(
+        "--audit-trainer-loop",
+        action="store_true",
+        help=(
+            "During --audit-runtime, run one bounded gradient-accumulation "
+            "trainer-loop probe from the clean training-step loss and write "
+            "trainer_loop_runtime.json. This still does not launch a full "
+            "training run or publish checkpoints."
+        ),
+    )
     return parser
 
 
@@ -157,6 +167,7 @@ def main_for_stage(stage: TrainingStage, argv: list[str] | None = None) -> int:
                 audit_checkpoint=args.audit_checkpoint,
                 audit_training_step=args.audit_training_step,
                 audit_optimizer_step=args.audit_optimizer_step,
+                audit_trainer_loop=args.audit_trainer_loop,
             )
             prepared["runtime_audit"] = audit["runtime_audit"]
             prepared["trainable_parameters"] = audit["trainable_parameters"]
@@ -168,6 +179,8 @@ def main_for_stage(stage: TrainingStage, argv: list[str] | None = None) -> int:
                 prepared["training_step_runtime"] = audit["training_step_runtime"]
             if audit.get("optimizer_step_runtime"):
                 prepared["optimizer_step_runtime"] = audit["optimizer_step_runtime"]
+            if audit.get("trainer_loop_runtime"):
+                prepared["trainer_loop_runtime"] = audit["trainer_loop_runtime"]
         print_json(prepared)
         return 0
     if args.audit_runtime:
@@ -185,6 +198,7 @@ def main_for_stage(stage: TrainingStage, argv: list[str] | None = None) -> int:
             audit_checkpoint=args.audit_checkpoint,
             audit_training_step=args.audit_training_step,
             audit_optimizer_step=args.audit_optimizer_step,
+            audit_trainer_loop=args.audit_trainer_loop,
         )
         audit["preflight_report"] = str(report_path)
         print_json(audit)
@@ -281,6 +295,7 @@ def audit_training_runtime(
     audit_checkpoint: bool = False,
     audit_training_step: bool = False,
     audit_optimizer_step: bool = False,
+    audit_trainer_loop: bool = False,
 ) -> dict[str, Any]:
     bundle_file = Path(bundle_path)
     if not bundle_file.exists():
@@ -297,6 +312,7 @@ def audit_training_runtime(
             or audit_checkpoint
             or audit_training_step
             or audit_optimizer_step
+            or audit_trainer_loop
         )
         else None
     )
@@ -313,6 +329,7 @@ def audit_training_runtime(
             or audit_checkpoint
             or audit_training_step
             or audit_optimizer_step
+            or audit_trainer_loop
         )
         else _write_trainable_parameters_placeholder(
             execution_dir=execution_dir,
@@ -327,7 +344,7 @@ def audit_training_runtime(
             loaded_modules=loaded_modules,
             expected_stage=expected_stage,
         )
-        if audit_optimizer or audit_checkpoint or audit_optimizer_step
+        if audit_optimizer or audit_checkpoint or audit_optimizer_step or audit_trainer_loop
         else None
     )
     checkpoint_runtime = (
@@ -349,7 +366,7 @@ def audit_training_runtime(
             loaded_modules=loaded_modules,
             expected_stage=expected_stage,
         )
-        if audit_training_step or audit_optimizer_step
+        if audit_training_step or audit_optimizer_step or audit_trainer_loop
         else None
     )
     optimizer_step_runtime = (
@@ -362,6 +379,18 @@ def audit_training_runtime(
         if audit_optimizer_step
         else None
     )
+    trainer_loop_runtime = (
+        _write_actual_trainer_loop_runtime_audit(
+            execution_dir=execution_dir,
+            bundle=bundle,
+            artifacts=artifacts,
+            loaded_modules=loaded_modules,
+            optimizer_runtime=optimizer_runtime,
+            expected_stage=expected_stage,
+        )
+        if audit_trainer_loop
+        else None
+    )
     audit = _runtime_audit_report(
         bundle_path=bundle_file,
         bundle=bundle,
@@ -371,6 +400,7 @@ def audit_training_runtime(
         checkpoint_runtime=checkpoint_runtime,
         training_step_runtime=training_step_runtime,
         optimizer_step_runtime=optimizer_step_runtime,
+        trainer_loop_runtime=trainer_loop_runtime,
         expected_stage=expected_stage,
     )
     resolved_report_path = (
@@ -402,6 +432,8 @@ def audit_training_runtime(
         result["training_step_runtime"] = training_step_runtime["path"]
     if optimizer_step_runtime is not None:
         result["optimizer_step_runtime"] = optimizer_step_runtime["path"]
+    if trainer_loop_runtime is not None:
+        result["trainer_loop_runtime"] = trainer_loop_runtime["path"]
     return result
 
 
@@ -635,6 +667,7 @@ def _required_launch_gates(stage: TrainingStage) -> list[str]:
         "build_dataset_loader_from_plan_identity",
         "construct_optimizer_and_scheduler_from_plan",
         "run_backward_optimizer_scheduler_step_from_plan",
+        "run_gradient_accumulation_loop_from_plan",
         "emit_trainable_parameter_audit",
         "save_checkpoint_with_clean_contract",
     ]
@@ -1240,6 +1273,132 @@ def _write_actual_optimizer_step_runtime_audit(
     path = execution_dir / "optimizer_step_runtime.json"
     _write_json(path, payload)
     return {"path": str(path), "payload": payload}
+
+
+def _write_actual_trainer_loop_runtime_audit(
+    *,
+    execution_dir: Path,
+    bundle: dict[str, Any],
+    artifacts: dict[str, dict[str, Any]],
+    loaded_modules: dict[str, Any] | None,
+    optimizer_runtime: dict[str, Any] | None,
+    expected_stage: TrainingStage,
+) -> dict[str, Any]:
+    if loaded_modules is None:
+        raise ValueError("trainer-loop audit requires loaded model modules")
+    if optimizer_runtime is None:
+        raise ValueError("trainer-loop audit requires optimizer runtime construction")
+    optimizer = optimizer_runtime.get("optimizer")
+    scheduler = optimizer_runtime.get("scheduler")
+    if optimizer is None or scheduler is None:
+        raise ValueError("trainer-loop audit requires optimizer and scheduler objects")
+    try:
+        import torch
+    except Exception as exc:
+        raise RuntimeError("trainer-loop audit requires torch") from exc
+
+    batch = bundle.get("batch") or {}
+    accumulation_steps = max(1, int(batch.get("gradient_accumulation_steps") or 1))
+    optimizer.zero_grad(set_to_none=True)
+    micro_losses = []
+    backward_micro_steps = 0
+    for micro_step in range(accumulation_steps):
+        result = _run_training_step_probe_for_stage(
+            bundle=bundle,
+            artifacts=artifacts,
+            loaded_modules=loaded_modules,
+            expected_stage=expected_stage,
+        )
+        loss_tensor = result.get("loss_tensor")
+        if loss_tensor is None:
+            loss_tensor = result.get("_loss_total_tensor")
+        if loss_tensor is None or not hasattr(loss_tensor, "backward"):
+            raise ValueError("trainer-loop audit requires a differentiable loss tensor")
+        if getattr(loss_tensor, "requires_grad", False) is not True:
+            raise ValueError("trainer-loop audit loss tensor must require gradients")
+        loss_value = _scalar_float(loss_tensor)
+        if loss_value is None or not math.isfinite(loss_value):
+            raise ValueError("trainer-loop audit requires finite micro losses")
+        scaled_loss = loss_tensor / float(accumulation_steps)
+        scaled_loss.backward()
+        backward_micro_steps += 1
+        micro_losses.append(
+            {
+                "micro_step": micro_step,
+                "loss_total": loss_value,
+                "scaled_loss_total": _scalar_float(scaled_loss),
+                "sample_count": result.get("sample_count"),
+            }
+        )
+
+    grad_after_accumulation = _optimizer_grad_summary(optimizer)
+    max_grad_norm = _max_grad_norm_from_bundle(bundle, optimizer_runtime)
+    clipped_grad_norm = None
+    if max_grad_norm is not None:
+        clipped_grad_norm = _scalar_float(
+            torch.nn.utils.clip_grad_norm_(_optimizer_parameters(optimizer), max_grad_norm)
+        )
+    grad_after_clip = _optimizer_grad_summary(optimizer)
+    optimizer.step()
+    scheduler.step()
+    scheduler_last_lr = list(scheduler.get_last_lr())
+    optimizer.zero_grad(set_to_none=True)
+    grad_after_zero = _optimizer_grad_summary(optimizer)
+    payload = {
+        "schema_version": "clean_training_trainer_loop_runtime_audit_v1",
+        "stage": bundle.get("stage"),
+        "run_id": bundle.get("run_id"),
+        "status": "actual_gradient_accumulation_trainer_loop_audit",
+        "actual_trainer_loop_probe": True,
+        "training_run_launched": False,
+        "full_epoch_loop_entered": False,
+        "checkpoint_published": False,
+        "optimizer_steps_completed": 1,
+        "scheduler_steps_completed": 1,
+        "gradient_accumulation_steps": accumulation_steps,
+        "micro_steps_run": len(micro_losses),
+        "backward_micro_steps": backward_micro_steps,
+        "micro_losses": micro_losses,
+        "max_grad_norm": max_grad_norm,
+        "clipped_grad_norm": clipped_grad_norm,
+        "grad_after_accumulation": grad_after_accumulation,
+        "grad_after_clip": grad_after_clip,
+        "grad_after_zero": grad_after_zero,
+        "scheduler": {
+            "name": (optimizer_runtime["payload"].get("scheduler") or {}).get("name"),
+            "last_lr_after_step": scheduler_last_lr,
+        },
+        "notes": [
+            "one bounded gradient-accumulation trainer-loop probe ran",
+            (
+                "this audit proves micro-step accumulation and optimizer/scheduler "
+                "ordering only; it does not launch a full training run"
+            ),
+        ],
+    }
+    path = execution_dir / "trainer_loop_runtime.json"
+    _write_json(path, payload)
+    return {"path": str(path), "payload": payload}
+
+
+def _run_training_step_probe_for_stage(
+    *,
+    bundle: dict[str, Any],
+    artifacts: dict[str, dict[str, Any]],
+    loaded_modules: dict[str, Any],
+    expected_stage: TrainingStage,
+) -> dict[str, Any]:
+    if expected_stage == TrainingStage.STAGE1:
+        return _run_stage1_training_step_probe(
+            bundle=bundle,
+            artifacts=artifacts,
+            loaded_modules=loaded_modules,
+        )
+    return _run_stage2_training_step_probe(
+        bundle=bundle,
+        artifacts=artifacts,
+        loaded_modules=loaded_modules,
+    )
 
 
 def _max_grad_norm_from_bundle(
@@ -2149,6 +2308,7 @@ def _runtime_audit_report(
     checkpoint_runtime: dict[str, Any] | None,
     training_step_runtime: dict[str, Any] | None,
     optimizer_step_runtime: dict[str, Any] | None,
+    trainer_loop_runtime: dict[str, Any] | None,
     expected_stage: TrainingStage,
 ) -> dict[str, Any]:
     artifact_checks = _runtime_artifact_checks(
@@ -2159,6 +2319,7 @@ def _runtime_audit_report(
         checkpoint_runtime,
         training_step_runtime,
         optimizer_step_runtime,
+        trainer_loop_runtime,
     )
     launch_gates = _launch_gate_audit(
         bundle,
@@ -2168,6 +2329,7 @@ def _runtime_audit_report(
         checkpoint_runtime,
         training_step_runtime,
         optimizer_step_runtime,
+        trainer_loop_runtime,
     )
     blocking_items = [
         "native trainer loop has not been ported into revisit_vlm_clean",
@@ -2196,15 +2358,33 @@ def _runtime_audit_report(
             "--audit-training-step"
         )
     if not (
-        optimizer_step_runtime
-        and optimizer_step_runtime["payload"].get("actual_optimizer_step_probe")
-        and optimizer_step_runtime["payload"].get("backward_called")
-        and optimizer_step_runtime["payload"].get("optimizer_step_called")
-        and optimizer_step_runtime["payload"].get("scheduler_step_called")
+        (
+            optimizer_step_runtime
+            and optimizer_step_runtime["payload"].get("actual_optimizer_step_probe")
+            and optimizer_step_runtime["payload"].get("backward_called")
+            and optimizer_step_runtime["payload"].get("optimizer_step_called")
+            and optimizer_step_runtime["payload"].get("scheduler_step_called")
+        )
+        or (
+            trainer_loop_runtime
+            and trainer_loop_runtime["payload"].get("actual_trainer_loop_probe")
+            and trainer_loop_runtime["payload"].get("optimizer_steps_completed") == 1
+            and trainer_loop_runtime["payload"].get("scheduler_steps_completed") == 1
+        )
     ):
         blocking_items.append(
             f"{expected_stage.value} backward/optimizer/scheduler step probe requires "
-            "--audit-optimizer-step"
+            "--audit-optimizer-step or --audit-trainer-loop"
+        )
+    if not (
+        trainer_loop_runtime
+        and trainer_loop_runtime["payload"].get("actual_trainer_loop_probe")
+        and trainer_loop_runtime["payload"].get("optimizer_steps_completed") == 1
+        and trainer_loop_runtime["payload"].get("scheduler_steps_completed") == 1
+    ):
+        blocking_items.append(
+            f"{expected_stage.value} gradient-accumulation trainer-loop probe requires "
+            "--audit-trainer-loop"
         )
     return {
         "schema_version": "clean_training_runtime_audit_v1",
@@ -2230,6 +2410,7 @@ def _runtime_artifact_checks(
     checkpoint_runtime: dict[str, Any] | None,
     training_step_runtime: dict[str, Any] | None,
     optimizer_step_runtime: dict[str, Any] | None,
+    trainer_loop_runtime: dict[str, Any] | None,
 ) -> list[dict[str, Any]]:
     artifact_paths = dict(bundle.get("runtime_artifacts") or {})
     artifact_paths["trainable_parameters"] = trainable_parameters["path"]
@@ -2241,6 +2422,8 @@ def _runtime_artifact_checks(
         artifact_paths["training_step_runtime"] = training_step_runtime["path"]
     if optimizer_step_runtime is not None:
         artifact_paths["optimizer_step_runtime"] = optimizer_step_runtime["path"]
+    if trainer_loop_runtime is not None:
+        artifact_paths["trainer_loop_runtime"] = trainer_loop_runtime["path"]
     checks = []
     for name, path_text in sorted(artifact_paths.items()):
         path = Path(str(path_text))
@@ -2254,6 +2437,8 @@ def _runtime_artifact_checks(
             payload = training_step_runtime["payload"] if training_step_runtime else {}
         elif name == "optimizer_step_runtime":
             payload = optimizer_step_runtime["payload"] if optimizer_step_runtime else {}
+        elif name == "trainer_loop_runtime":
+            payload = trainer_loop_runtime["payload"] if trainer_loop_runtime else {}
         else:
             payload = artifacts.get(name, {})
         checks.append(
@@ -2277,6 +2462,7 @@ def _launch_gate_audit(
     checkpoint_runtime: dict[str, Any] | None,
     training_step_runtime: dict[str, Any] | None,
     optimizer_step_runtime: dict[str, Any] | None,
+    trainer_loop_runtime: dict[str, Any] | None,
 ) -> dict[str, Any]:
     required = list(
         (bundle.get("trainer_runtime_contract") or {}).get("required_launch_gates") or []
@@ -2301,14 +2487,31 @@ def _launch_gate_audit(
     )
     if actual_checkpoint_validated:
         satisfied.add("save_checkpoint_with_clean_contract")
+    actual_trainer_loop_validated = bool(
+        trainer_loop_runtime
+        and trainer_loop_runtime["payload"].get("actual_trainer_loop_probe")
+        and trainer_loop_runtime["payload"].get("optimizer_steps_completed") == 1
+        and trainer_loop_runtime["payload"].get("scheduler_steps_completed") == 1
+        and trainer_loop_runtime["payload"].get("micro_steps_run")
+        == trainer_loop_runtime["payload"].get("gradient_accumulation_steps")
+        and trainer_loop_runtime["payload"].get("backward_micro_steps")
+        == trainer_loop_runtime["payload"].get("gradient_accumulation_steps")
+        and not trainer_loop_runtime["payload"].get("checkpoint_published")
+        and not trainer_loop_runtime["payload"].get("training_run_launched")
+    )
+    if actual_trainer_loop_validated:
+        satisfied.add("run_gradient_accumulation_loop_from_plan")
     actual_optimizer_step_validated = bool(
-        optimizer_step_runtime
-        and optimizer_step_runtime["payload"].get("actual_optimizer_step_probe")
-        and optimizer_step_runtime["payload"].get("backward_called")
-        and optimizer_step_runtime["payload"].get("optimizer_step_called")
-        and optimizer_step_runtime["payload"].get("scheduler_step_called")
-        and not optimizer_step_runtime["payload"].get("checkpoint_published")
-        and not optimizer_step_runtime["payload"].get("training_loop_launched")
+        (
+            optimizer_step_runtime
+            and optimizer_step_runtime["payload"].get("actual_optimizer_step_probe")
+            and optimizer_step_runtime["payload"].get("backward_called")
+            and optimizer_step_runtime["payload"].get("optimizer_step_called")
+            and optimizer_step_runtime["payload"].get("scheduler_step_called")
+            and not optimizer_step_runtime["payload"].get("checkpoint_published")
+            and not optimizer_step_runtime["payload"].get("training_loop_launched")
+        )
+        or actual_trainer_loop_validated
     )
     if actual_optimizer_step_validated:
         satisfied.add("run_backward_optimizer_scheduler_step_from_plan")
@@ -2350,6 +2553,7 @@ def _launch_gate_audit(
         "set_training_use_cache_false",
         "construct_optimizer_and_scheduler_from_plan",
         "run_backward_optimizer_scheduler_step_from_plan",
+        "run_gradient_accumulation_loop_from_plan",
         "emit_trainable_parameter_audit",
         "save_checkpoint_with_clean_contract",
     }
@@ -2399,6 +2603,11 @@ def _launch_gate_audit(
             if optimizer_step_runtime
             else "not_requested"
         ),
+        "trainer_loop_runtime_status": (
+            trainer_loop_runtime["payload"].get("status")
+            if trainer_loop_runtime
+            else "not_requested"
+        ),
         "checkpoint_contract_status": artifacts["checkpoint_contract"].get("status"),
         "trainable_parameters_status": trainable_parameters["payload"].get("status"),
         "gates": gates,
@@ -2417,6 +2626,7 @@ def _runtime_audit_status(audit: dict[str, Any]) -> dict[str, Any]:
         "identity_validated_gates": gates.get("identity_validated"),
         "pending_real_trainer_loop_gates": gates.get("pending_real_trainer_loop"),
         "optimizer_step_runtime_status": gates.get("optimizer_step_runtime_status"),
+        "trainer_loop_runtime_status": gates.get("trainer_loop_runtime_status"),
         "blocking_items": list(audit.get("blocking_items") or []),
     }
 
