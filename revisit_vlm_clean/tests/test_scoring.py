@@ -50,6 +50,39 @@ def process_predictions(input_path, output_path):
     return eval_path
 
 
+def _write_fake_mmmu_pro_official(root: Path) -> Path:
+    eval_path = root / "mmmu_pro" / "official_code" / "mmmu-pro" / "evaluate.py"
+    eval_path.parent.mkdir(parents=True)
+    eval_path.write_text(
+        """
+def get_multi_choice_info(options):
+    letters = []
+    index2ans = {}
+    for index, option in enumerate(options):
+        letter = chr(ord("A") + index)
+        letters.append(letter)
+        index2ans[letter] = option
+    return index2ans, letters
+
+
+def parse_multi_choice_response(response, all_choices, index2ans):
+    for choice in all_choices:
+        if f"({choice})" in response or response.strip() == choice:
+            return choice
+    for choice, answer in index2ans.items():
+        if str(answer).lower() in str(response).lower():
+            return choice
+    return all_choices[0]
+
+
+def eval_multi_choice(gold_i, pred_i):
+    return gold_i == pred_i
+""".strip()
+        + "\n"
+    )
+    return eval_path
+
+
 def test_extract_choice_strict_answer_tag() -> None:
     assert extract_choice_strict("<ANSWER>(B)</ANSWER>", ["red", "blue", "green"]) == "B"
 
@@ -245,6 +278,66 @@ def test_score_output_rows_ocrbench_v2_official_requires_local_tool(tmp_path) ->
             "raw_output": "blue",
             "gold_answer": "blue",
             "metadata": {"type": "text recognition en", "answers": ["blue"]},
+            "error": None,
+        }
+    ]
+
+    with pytest.raises(NotImplementedError):
+        score_output_rows(rows, scoring_backend=ScoringBackend.OFFICIAL, benchmark_root=tmp_path)
+
+
+def test_score_output_rows_mmmu_pro_official_batch_matches_legacy(tmp_path) -> None:
+    eval_path = _write_fake_mmmu_pro_official(tmp_path)
+    rows = [
+        {
+            "sample_id": "mmmu_pro/sample/0",
+            "benchmark": "mmmu_pro",
+            "raw_output": "After checking the diagram, the answer is (C).",
+            "choices": ["red", "blue", "green"],
+            "gold_answer": "C",
+            "metadata": {"subject": "Art"},
+            "error": None,
+        }
+    ]
+
+    score_output_rows(rows, scoring_backend=ScoringBackend.OFFICIAL, benchmark_root=tmp_path)
+
+    legacy = _legacy_official_tools()
+    legacy_info = legacy.OfficialToolInfo(
+        official_tool_used=False,
+        official_tool_path=str(tmp_path / "mmmu_pro" / "official_code"),
+        scorer_name="fallback",
+        prompt_source="project",
+    )
+    legacy_scorer = legacy.MMMUProOfficialScorer(legacy_info)
+    sample = type("Sample", (), {"choices": rows[0]["choices"]})()
+    legacy_rows = [
+        {
+            "sample_id": rows[0]["sample_id"],
+            "raw_output": rows[0]["raw_output"],
+            "parsed_answer": legacy_scorer.parse_prediction(rows[0]["raw_output"], sample),
+            "choices": rows[0]["choices"],
+            "gold_answer": rows[0]["gold_answer"],
+            "metadata": rows[0]["metadata"],
+        }
+    ]
+    legacy_scorer.score_predictions(legacy_rows)
+
+    assert rows[0]["parsed_answer"] == "C"
+    assert rows[0]["score"] == legacy_rows[0]["score"] == 1.0
+    assert rows[0]["scorer_name"] == "official_mmmu_pro"
+    assert rows[0]["official_tool_used"] is True
+    assert rows[0]["official_tool_path"] == str(eval_path)
+
+
+def test_score_output_rows_mmmu_pro_official_requires_local_tool(tmp_path) -> None:
+    rows = [
+        {
+            "benchmark": "mmmu_pro",
+            "raw_output": "A",
+            "choices": ["red", "blue"],
+            "gold_answer": "A",
+            "metadata": {"subject": "Art"},
             "error": None,
         }
     ]

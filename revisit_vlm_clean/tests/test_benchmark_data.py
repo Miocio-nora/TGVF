@@ -112,6 +112,39 @@ def process_predictions(input_path, output_path):
     return eval_path
 
 
+def _write_fake_mmmu_pro_official(root):
+    eval_path = root / "mmmu_pro" / "official_code" / "mmmu-pro" / "evaluate.py"
+    eval_path.parent.mkdir(parents=True)
+    eval_path.write_text(
+        """
+def get_multi_choice_info(options):
+    letters = []
+    index2ans = {}
+    for index, option in enumerate(options):
+        letter = chr(ord("A") + index)
+        letters.append(letter)
+        index2ans[letter] = option
+    return index2ans, letters
+
+
+def parse_multi_choice_response(response, all_choices, index2ans):
+    for choice in all_choices:
+        if f"({choice})" in response or response.strip() == choice:
+            return choice
+    for choice, answer in index2ans.items():
+        if str(answer).lower() in str(response).lower():
+            return choice
+    return all_choices[0]
+
+
+def eval_multi_choice(gold_i, pred_i):
+    return gold_i == pred_i
+""".strip()
+        + "\n"
+    )
+    return eval_path
+
+
 def test_materialize_samples_from_manifest_path(tmp_path) -> None:
     root = tmp_path / "benchmarks"
     _write_toy_vstar(root)
@@ -371,6 +404,59 @@ def test_benchmark_execute_dry_run_uses_ocrbench_official_batch_scorer(tmp_path)
     assert rows[0]["raw_output"] == "blue"
     assert rows[0]["score"] == 1.0
     assert rows[0]["scorer_name"] == "official_ocrbench_v2"
+    assert rows[0]["official_tool_used"] is True
+    assert rows[0]["official_tool_path"] == str(eval_path)
+    assert summary.accuracy == 1.0
+
+
+def test_benchmark_execute_dry_run_uses_mmmu_pro_official_batch_scorer(tmp_path) -> None:
+    root = tmp_path / "benchmarks"
+    eval_path = _write_fake_mmmu_pro_official(root)
+
+    from revisit_vlm_clean.benchmark_data import BenchmarkSample
+    from revisit_vlm_clean.rendering import render_benchmark_inputs
+    from revisit_vlm_clean.runner import BackendConfig, run_benchmark_rows
+    from revisit_vlm_clean.schema import (
+        EvalMode,
+        ForwardMode,
+        ParserScorerIdentity,
+        RunConfig,
+        ScoringBackend,
+    )
+
+    sample = BenchmarkSample(
+        sample_id="mmmu_pro/sample/0",
+        benchmark="mmmu_pro",
+        population_id="mmmu_pro_standard_10_test_1730",
+        source_file="mmmu_pro/snapshot/standard (10 options)/toy.parquet",
+        question="Which option is correct?",
+        choices=("red", "blue"),
+        gold_answer="B",
+        metadata={"subject": "Art"},
+    )
+    config = RunConfig(
+        run_id="mmmu",
+        checkpoint_path="outputs/checkpoint.pt",
+        mode=EvalMode.ORIGINAL,
+        post_tgvf_forward_mode=ForwardMode.KV_CACHE,
+        population_id="mmmu_pro_standard_10_test_1730",
+        benchmark_root=str(root),
+        parser_scorer=ParserScorerIdentity(
+            scoring_backend=ScoringBackend.OFFICIAL,
+            fallback_allowed=False,
+        ),
+    )
+    rows, summary = run_benchmark_rows(
+        [sample],
+        render_benchmark_inputs([sample], config),
+        config=config,
+        backend_config=BackendConfig(backend="dry_run"),
+    )
+
+    assert rows[0]["raw_output"] == "B"
+    assert rows[0]["parsed_answer"] == "B"
+    assert rows[0]["score"] == 1.0
+    assert rows[0]["scorer_name"] == "official_mmmu_pro"
     assert rows[0]["official_tool_used"] is True
     assert rows[0]["official_tool_path"] == str(eval_path)
     assert summary.accuracy == 1.0

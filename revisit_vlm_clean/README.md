@@ -18,10 +18,9 @@ later phases after each contract is validated.
 - Benchmark root and scoring backend are recorded in `run_config.json` and
   `run_config.txt`.
 - `official` scoring currently supports official-compatible multiple-choice
-  parsing/scoring for BLINK and HR-Bench-4K, plus the OCRBench-v2 official
-  batch scorer when `benchmark_root/ocrbench_v2/official_code` is present.
-  MMMU-Pro, MathVista, and MathVerse still fail fast until wrapper parity is
-  completed.
+  parsing/scoring for BLINK and HR-Bench-4K, plus official batch scorers for
+  OCRBench-v2 and MMMU-Pro when their local `official_code` trees are present.
+  MathVista and MathVerse still fail fast until wrapper parity is completed.
 
 ## Entry Points
 

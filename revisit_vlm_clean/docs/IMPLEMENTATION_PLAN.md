@@ -437,9 +437,36 @@ Validation:
 - `PYTHONPATH=revisit_vlm_clean/src pytest -q revisit_vlm_clean/tests`
   passed with 48 tests.
 
+## Phase 17: MMMU-Pro Official Batch Scorer Parity
+
+Implemented after Phase 16.
+
+- clean official scoring now resolves the local MMMU-Pro official entrypoint at
+  `benchmark_root/mmmu_pro/official_code/mmmu-pro/evaluate.py`;
+- the batch scorer uses the official helper functions:
+  - `get_multi_choice_info`;
+  - `parse_multi_choice_response`;
+  - `eval_multi_choice`;
+- parsing uses deterministic seeding per row before calling the official parser,
+  matching the historical wrapper's behavior for ambiguous predictions;
+- per-row outputs record `scorer_name=official_mmmu_pro`,
+  `official_tool_used=true`, and `official_tool_path`;
+- explicit `official` MMMU-Pro scoring fails fast when the local official code
+  is missing.
+
+Validation:
+
+- scorer tests compare clean MMMU-Pro behavior against the historical
+  `src/tgvf_eval/official_tools.py::MMMUProOfficialScorer` on a fixed fake
+  official scorer tree;
+- runner-level dry backend test verifies that clean `RunConfig.benchmark_root`
+  reaches the MMMU-Pro official scorer path;
+- `PYTHONPATH=revisit_vlm_clean/src pytest -q revisit_vlm_clean/tests`
+  passed with 51 tests.
+
 ## Later Phases
 
-1. Official wrapper parity for MMMU-Pro, MathVista, and MathVerse.
+1. Official wrapper parity for MathVista and MathVerse.
 2. Clean benchmark subset boundaries for CoreSmoke/CoreDev execution.
 3. Stage1/Stage2 launchers.
 4. DeepStack training/eval support.

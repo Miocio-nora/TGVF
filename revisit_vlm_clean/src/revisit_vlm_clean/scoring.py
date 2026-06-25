@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import random
 import re
 import sys
 import string
@@ -105,6 +106,18 @@ def score_output_rows(
 
     consumed_row_ids: set[int] = set()
     if backend != ScoringBackend.PROJECT:
+        mmmu_rows = [row for row in pending_rows if row.get("benchmark") == "mmmu_pro"]
+        if mmmu_rows:
+            official_path = _mmmu_pro_eval_path(benchmark_root)
+            if official_path is None:
+                if backend == ScoringBackend.OFFICIAL:
+                    raise NotImplementedError(
+                        "official MMMU-Pro scoring requires benchmark_root/mmmu_pro/official_code"
+                    )
+            else:
+                _score_mmmu_pro_rows(mmmu_rows, official_eval_path=official_path)
+                consumed_row_ids.update(id(row) for row in mmmu_rows)
+
         ocrbench_rows = [row for row in pending_rows if row.get("benchmark") == "ocrbench_v2"]
         if ocrbench_rows:
             official_path = _ocrbench_v2_eval_path(benchmark_root)
@@ -292,6 +305,45 @@ def _ocrbench_v2_eval_path(benchmark_root: str | Path | None) -> Path | None:
     return path if path.exists() else None
 
 
+def _mmmu_pro_eval_path(benchmark_root: str | Path | None) -> Path | None:
+    if benchmark_root is None:
+        return None
+    path = Path(benchmark_root) / "mmmu_pro" / "official_code" / "mmmu-pro" / "evaluate.py"
+    return path if path.exists() else None
+
+
+def _score_mmmu_pro_rows(rows: list[dict], *, official_eval_path: Path) -> None:
+    module = _load_module_from_path(official_eval_path)
+    random_state = random.getstate()
+    try:
+        for index, row in enumerate(rows):
+            row["scorer_name"] = "official_mmmu_pro"
+            row["official_tool_used"] = True
+            row["official_tool_path"] = str(official_eval_path)
+            row["official_compatible"] = False
+            choices = list(row.get("choices") or (row.get("metadata") or {}).get("choices") or [])
+            gold = row.get("gold_answer")
+            if gold in (None, ""):
+                row["parsed_answer"] = ""
+                row["answer_parse_success"] = False
+                row["score"] = None
+                continue
+            pred = row.get("parsed_answer")
+            if (pred is None or pred == "") and choices and row.get("raw_output") is not None:
+                index2ans, all_choices = module.get_multi_choice_info(choices)
+                random.seed(_stable_seed(row, index))
+                pred = module.parse_multi_choice_response(
+                    str(row.get("raw_output") or ""),
+                    all_choices,
+                    index2ans,
+                )
+            row["parsed_answer"] = str(pred or "")
+            row["answer_parse_success"] = bool(row["parsed_answer"])
+            row["score"] = 1.0 if module.eval_multi_choice(str(gold), row["parsed_answer"]) else 0.0
+    finally:
+        random.setstate(random_state)
+
+
 def _score_ocrbench_v2_rows(rows: list[dict], *, official_eval_path: Path) -> None:
     module = _load_module_from_path(
         official_eval_path,
@@ -348,6 +400,11 @@ def _as_list(value: Any) -> list[Any]:
     if isinstance(value, tuple):
         return list(value)
     return [value]
+
+
+def _stable_seed(row: dict, index: int) -> int:
+    key = str(row.get("sample_id") or row.get("id") or index)
+    return sum((offset + 1) * ord(char) for offset, char in enumerate(key)) % (2**32)
 
 
 @contextmanager
