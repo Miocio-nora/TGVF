@@ -95,8 +95,9 @@ Diagnostic manifests are for runner validation only, not benchmark reporting.
 - `tgvf_stage2_qwen3_native`: final clean-native backend name. It now owns a
   native engine and does not use the legacy evaluator class. Force/free/
   softforce control flow, lazy checkpoint/model loading, D construction, visual
-  D append, and post-TGVF continuation are ported into the clean tree. Heavy
-  GPU smoke validation is still required before using it for benchmark claims.
+  D append, and post-TGVF continuation are ported into the clean tree. A
+  one-sample Qwen3 force-path GPU smoke has passed; free/softforce, no-KV, and
+  fixed legacy-bridge comparison are still required before benchmark claims.
 
 ## Clean-Native Exit Criteria
 

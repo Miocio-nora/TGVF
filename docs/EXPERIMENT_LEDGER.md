@@ -2462,7 +2462,7 @@ entry, update this file immediately.
 
 ### EXP-20260626-030329-clean-native-stage2-vstar1-smoke
 
-- Status: PLANNED.
+- Status: DONE.
 - Question:
   - Does the clean-native `tgvf_stage2_qwen3_native` backend load and execute a
     one-sample Qwen3 Stage2 TGVF force smoke without using the historical
@@ -2489,8 +2489,8 @@ entry, update this file immediately.
   - Max image resolution: 512.
   - Scoring backend: `auto`.
 - Code commit / worktree:
-  - Commit: `b9f73886bc7a360231a7c932ee89ad0f78e16dad`.
-  - Worktree will be dirty only from this ledger preflight entry during launch.
+  - Commit: `09247b2ff6834b93e63e03e7fa3b53489c4cd029`.
+  - Worktree dirty only from this RUNNING ledger update at launch.
 - Stage1 checkpoint:
   - Not used directly by benchmark runner.
 - Stage1 processor:
@@ -2522,14 +2522,49 @@ entry, update this file immediately.
 - tmux:
   - None planned unless foreground command exceeds interactive runtime.
 - Started:
+  - 2026-06-26T03:09:27+09:00.
 - Finished:
+  - 2026-06-26T03:11:38+09:00.
 - Metrics:
+  - n: 1.
+  - accuracy: 1.0.
+  - answer parse rate: 1.0.
+  - trigger rate: 1.0.
+  - focus valid rate: 1.0.
+  - append success rate: 1.0.
+  - row error: null.
+  - wall time for row: 37.41 seconds.
+  - parsed answer: `A`.
+  - score: 1.0.
+  - generated focus target:
+    `close-up of the glove surface, sheen, and fit on the hand`.
+  - FVT shape: `[234, 4096]`.
+  - append path:
+    `clean_native_qwen3_visual_special_tokens_embedding_replace`.
 - Analysis:
+  - The clean-native backend loaded the Qwen3 model, Stage2 LoRA, and foveal
+    module, captured a forced focus target, produced D, appended visual D, and
+    continued generation without row error.
+  - `summary.json` and `run_config.txt` record
+    `runner_backend=tgvf_stage2_qwen3_native`,
+    `resolved_backend=tgvf_stage2_qwen3_native`, `kv_cache`, DeepStack off, and
+    the diagnostic manifest hash.
+  - Checkpoint validation showed the checkpoint config processor points to the
+    20260619 Stage1 processor; `diff -qr` confirmed that processor directory is
+    identical to the Stage2 `processor_step_1200` directory used in the command.
+  - This is a one-sample forced-path runtime smoke only. It does not validate
+    free/softforce trigger behavior, no-KV full-sequence behavior, or benchmark
+    accuracy.
 - Conclusion:
+  - PASS for clean-native Stage2 Qwen3 forced-path GPU smoke.
+  - The native backend is no longer merely import/test clean; it can execute a
+    real checkpoint on a real image through post-D continuation.
 - Comparable to baseline:
   - No. Diagnostic smoke only.
 - Follow-up:
-  - If native smoke fails, fix clean-native runtime before any benchmark claim.
+  - Run the same diagnostic manifest for `tgvf_free` and `tgvf_softforce`.
+  - Add a fixed diagnostic comparison against `tgvf_stage2_qwen3_legacy`.
+  - Then run a small fixed manifest before any benchmark-scale claim.
 
 ### DIAG-20260625-qwen3-native-vs-manual-prefix-cache
 

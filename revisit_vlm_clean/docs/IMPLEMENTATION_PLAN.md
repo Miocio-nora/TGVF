@@ -814,11 +814,61 @@ Validation:
   `PYTHONPATH=revisit_vlm_clean/src pytest -q revisit_vlm_clean/tests`
   -> 74 tests.
 
+## Phase 27: Stage2 Native Force GPU Smoke
+
+Implemented after Phase 26.
+
+- registered committed diagnostic VStar manifests as clean subsets so the CLI
+  can execute them by subset id:
+  - `diagnostic_vstar_first_1_20260626`;
+  - `diagnostic_vstar_core_smoke_first_8_20260626`;
+  - `diagnostic_vstar_core_smoke_32_20260626`;
+- launched one clean-native Qwen3 Stage2 force-path smoke on physical GPU 2:
+  - backend: `tgvf_stage2_qwen3_native`;
+  - checkpoint: `BASE-20260619-open-answer-rowonly` Stage2 checkpoint;
+  - manifest: `diagnostic_vstar_first_1_20260626`;
+  - mode: `tgvf_force`;
+  - forward mode: `kv_cache`;
+  - max image resolution: 512;
+  - DeepStack: off;
+  - output:
+    `outputs/clean_native_smoke/qwen3_stage2_native_vstar1_force_20260626_030329`;
+- confirmed the run produced one scored row with no row error:
+  - accuracy: 1.0;
+  - answer parse rate: 1.0;
+  - trigger rate: 1.0;
+  - focus valid rate: 1.0;
+  - append success rate: 1.0;
+  - FVT shape: `[234, 4096]`;
+  - append path: `clean_native_qwen3_visual_special_tokens_embedding_replace`.
+
+This is still a runtime smoke, not a benchmark result. It proves the
+clean-native forced post-D path can execute a real checkpoint on a real image.
+It does not yet validate free/softforce trigger behavior, no-KV full-sequence
+behavior, or equivalence/differences versus the legacy bridge.
+
+Validation:
+
+- Stage2 runtime identity validation passed:
+  - checkpoint global step: 1200;
+  - checkpoint protocol: `protocol_c_tool_observation`;
+  - Stage2 eval JSONL rows: 1002;
+  - need_focus/no_focus: 857/145;
+- processor note:
+  - checkpoint config points to the 20260619 Stage1 processor;
+  - `diff -qr` confirmed that directory is identical to the Stage2
+    `processor_step_1200` directory used for the smoke;
+- full clean test suite passed before launch:
+  `PYTHONPATH=revisit_vlm_clean/src pytest -q revisit_vlm_clean/tests`
+  -> 75 tests.
+
 ## Later Phases
 
 1. Port teacher trajectory generation into `tgvf_generate_data`.
 2. Replace training launch plans with clean-native training execution.
-3. Run native Stage2 GPU smoke validation and compare against the legacy bridge
-   on a fixed diagnostic manifest before benchmark claims.
-4. Clean benchmark subset boundaries for CoreSmoke/CoreDev execution.
-5. Full DeepStack training/eval execution support.
+3. Run native Stage2 `tgvf_free` and `tgvf_softforce` smoke on the same fixed
+   diagnostic manifest.
+4. Compare clean-native and legacy bridge on a fixed diagnostic manifest before
+   benchmark claims.
+5. Clean benchmark subset boundaries for CoreSmoke/CoreDev execution.
+6. Full DeepStack training/eval execution support.
