@@ -3,7 +3,6 @@ import sys
 from pathlib import Path
 
 import pytest
-
 from revisit_vlm_clean.schema import ScoringBackend
 from revisit_vlm_clean.scoring import (
     extract_choice_official_compatible,
@@ -11,7 +10,6 @@ from revisit_vlm_clean.scoring import (
     parse_and_score,
     score_output_rows,
 )
-
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -41,7 +39,11 @@ def process_predictions(input_path, output_path):
         answers = row.get("answers") or []
         if not isinstance(answers, list):
             answers = [answers]
-        row["score"] = 1.0 if str(row.get("predict") or "") in {str(item) for item in answers} else 0.0
+        row["score"] = (
+            1.0
+            if str(row.get("predict") or "") in {str(item) for item in answers}
+            else 0.0
+        )
     with open(output_path, "w", encoding="utf-8") as handle:
         json.dump(rows, handle)
 """.strip()

@@ -325,8 +325,7 @@ class TGVFStage2Qwen3Backend(CleanRunnerBackend):
                 result_row = self._run_free(legacy_sample)
             else:
                 raise ValueError(
-                    "Stage2 Qwen3 legacy backend does not support "
-                    f"mode={rendered.mode.value!r}"
+                    f"Stage2 Qwen3 legacy backend does not support mode={rendered.mode.value!r}"
                 )
             return ModelRunResult(
                 raw_output=str(
@@ -547,9 +546,7 @@ def run_benchmark_rows(
                 "deepstack": config.deepstack.to_dict(),
                 "parser_scorer": config.parser_scorer.to_dict(),
                 "d_condition": (
-                    backend_config.stage2.d_condition
-                    if backend_config.stage2 is not None
-                    else None
+                    backend_config.stage2.d_condition if backend_config.stage2 is not None else None
                 ),
                 "runner_backend": backend_config.backend,
                 "resolved_runner_backend": resolved_backend,
@@ -601,14 +598,10 @@ def summarize_executed_rows(
         if row.get("trigger_focus_decision") is not None
     ]
     focus_values = [
-        bool(row.get("focus_valid"))
-        for row in rows
-        if row.get("focus_valid") is not None
+        bool(row.get("focus_valid")) for row in rows if row.get("focus_valid") is not None
     ]
     append_values = [
-        bool(row.get("append_success"))
-        for row in rows
-        if row.get("append_success") is not None
+        bool(row.get("append_success")) for row in rows if row.get("append_success") is not None
     ]
     return EvalSummary(
         run_id=config.run_id,

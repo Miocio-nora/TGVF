@@ -28,7 +28,9 @@ class Stage2RuntimeConfig:
         if self.d_condition != "correct_D":
             raise ValueError("clean Stage2 benchmark runner only supports d_condition='correct_D'")
         if self.force_prefix_mode != "target_hint":
-            raise ValueError("clean Stage2 benchmark runner only supports force_prefix_mode='target_hint'")
+            raise ValueError(
+                "clean Stage2 benchmark runner only supports force_prefix_mode='target_hint'"
+            )
         if self.max_action_tokens <= 0 or self.max_answer_tokens <= 0:
             raise ValueError("max_action_tokens and max_answer_tokens must be positive")
         if not Path(self.stage2_checkpoint).exists():

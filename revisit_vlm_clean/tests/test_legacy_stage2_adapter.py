@@ -1,7 +1,6 @@
 import json
 
 import pytest
-
 from revisit_vlm_clean.benchmark_data import BenchmarkSample
 from revisit_vlm_clean.legacy_stage2_adapter import (
     build_legacy_stage2_args,

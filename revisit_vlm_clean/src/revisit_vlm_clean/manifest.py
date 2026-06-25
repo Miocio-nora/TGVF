@@ -74,8 +74,13 @@ def build_manifest(*, subset_id: str, benchmark_root: str) -> SampleManifest:
                 "requested_n": allocation.n,
                 "selected_n": len(chosen),
                 "stratification_rule": allocation.stratification_rule,
-                "counts_by_stratum": _counts_by_stratum(chosen, _stratification_keys(population.population_id)),
-                "source_files": [str(path.relative_to(root)) for path in _resolve_population_files(population, root)],
+                "counts_by_stratum": _counts_by_stratum(
+                    chosen, _stratification_keys(population.population_id)
+                ),
+                "source_files": [
+                    str(path.relative_to(root))
+                    for path in _resolve_population_files(population, root)
+                ],
             }
         )
 
@@ -98,7 +103,9 @@ def load_population_samples(population_id: str, *, benchmark_root: str | Path) -
     samples: list[SampleRef] = []
     for path in files:
         rel = str(path.relative_to(root))
-        for row_index, record in enumerate(_read_records(path, columns=_read_columns(population_id))):
+        for row_index, record in enumerate(
+            _read_records(path, columns=_read_columns(population_id))
+        ):
             metadata = _metadata_for_record(population_id, record, path)
             metadata["row_index"] = row_index
             metadata["raw_id"] = _raw_id(record, row_index)
@@ -159,7 +166,10 @@ def _read_records(path: Path, *, columns: tuple[str, ...]) -> list[dict[str, Any
                 value = payload.get(key)
                 if isinstance(value, list):
                     return [dict(item) for item in value]
-            return [dict(value, id=key) if isinstance(value, dict) else {"id": key, "value": value} for key, value in payload.items()]
+            return [
+                dict(value, id=key) if isinstance(value, dict) else {"id": key, "value": value}
+                for key, value in payload.items()
+            ]
         raise ValueError(f"unsupported json payload at {path}")
     if suffix == ".parquet":
         try:
@@ -182,7 +192,13 @@ def _read_columns(population_id: str) -> tuple[str, ...]:
         "ocrbench_v2_data_test_10000": ("id", "dataset_name", "type"),
         "mmmu_pro_standard10_test_1730": ("id", "subject", "answer"),
         "mathvista_testmini_1000": ("pid", "question_type", "answer_type", "answer"),
-        "mathverse_testmini_3940": ("sample_index", "problem_index", "problem_version", "question_type", "answer"),
+        "mathverse_testmini_3940": (
+            "sample_index",
+            "problem_index",
+            "problem_version",
+            "question_type",
+            "answer",
+        ),
     }[population_id]
 
 

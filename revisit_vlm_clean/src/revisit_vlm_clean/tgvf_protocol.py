@@ -6,7 +6,6 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
-
 LEGACY_EVIDENCE_STATE_START = "<EVIDENCE_STATE>"
 LEGACY_EVIDENCE_START = "<EVIDENCE>"
 LEGACY_ANSWER_START = "<ANSWER>"

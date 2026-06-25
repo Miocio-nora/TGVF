@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import ast
 import json
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 from .schema import _to_jsonable
-
 
 IMAGE_KEYS = {"image", "decoded_image", "image_path", "img", "images", "media"}
 VIDEO_KEYS = {"video", "video_path"}
@@ -110,7 +110,9 @@ def materialized_rows(samples: Iterable[BenchmarkSample]) -> list[dict[str, Any]
     return [sample.to_materialized_row() for sample in samples]
 
 
-def _record_to_sample(ref: dict[str, Any], record: dict[str, Any], *, root: Path) -> BenchmarkSample:
+def _record_to_sample(
+    ref: dict[str, Any], record: dict[str, Any], *, root: Path
+) -> BenchmarkSample:
     benchmark = str(ref.get("benchmark") or "")
     population_id = str(ref.get("population_id") or "")
     source_file = str(ref.get("source_file") or "")
@@ -154,11 +156,7 @@ def _read_records_at_indices(
     wanted = set(indices)
     suffix = path.suffix.lower()
     if suffix == ".jsonl":
-        return {
-            row_index: record
-            for row_index, record in _iter_jsonl(path)
-            if row_index in wanted
-        }
+        return {row_index: record for row_index, record in _iter_jsonl(path) if row_index in wanted}
     if suffix == ".json":
         return {
             row_index: record
@@ -215,7 +213,9 @@ def _read_parquet_records_at_indices(
         for field in parquet.schema_arrow:
             name = field.name
             if _is_image_payload_column(name, field.type, patypes):
-                if patypes.is_struct(field.type) and any(child.name == "path" for child in field.type):
+                if patypes.is_struct(field.type) and any(
+                    child.name == "path" for child in field.type
+                ):
                     image_struct_columns.append(name)
                 continue
             top_level_columns.append(name)
@@ -386,7 +386,11 @@ def _extract_media(
                 values.append((key, value))
     media: list[dict[str, Any]] = []
     for key, value in values:
-        media.extend(_media_refs_for_value(key, value, base_dir=base_dir, benchmark_dir=benchmark_dir, benchmark=benchmark))
+        media.extend(
+            _media_refs_for_value(
+                key, value, base_dir=base_dir, benchmark_dir=benchmark_dir, benchmark=benchmark
+            )
+        )
     return _dedupe_media_refs(media)
 
 
@@ -403,7 +407,9 @@ def _media_refs_for_value(
         bytes_value = value.get("bytes")
         omitted = bool(value.get("__payload_omitted__"))
         if path_hint:
-            resolved = _resolve_media_path(str(path_hint), base_dir, benchmark_dir / "snapshot", benchmark_dir)
+            resolved = _resolve_media_path(
+                str(path_hint), base_dir, benchmark_dir / "snapshot", benchmark_dir
+            )
             return [
                 {
                     "kind": "embedded_image_struct" if omitted else "image_struct",
@@ -412,7 +418,9 @@ def _media_refs_for_value(
                     "path": resolved,
                     "exists": Path(resolved).exists(),
                     "payload_loaded": bytes_value is not None,
-                    "byte_length": len(bytes_value) if isinstance(bytes_value, (bytes, bytearray)) else None,
+                    "byte_length": len(bytes_value)
+                    if isinstance(bytes_value, (bytes, bytearray))
+                    else None,
                     "bytes": bytes_value,
                 }
             ]
@@ -421,7 +429,9 @@ def _media_refs_for_value(
                 "kind": "image_struct",
                 "source_key": key,
                 "payload_loaded": bytes_value is not None,
-                "byte_length": len(bytes_value) if isinstance(bytes_value, (bytes, bytearray)) else None,
+                "byte_length": len(bytes_value)
+                if isinstance(bytes_value, (bytes, bytearray))
+                else None,
                 "bytes": bytes_value,
             }
         ]
@@ -525,7 +535,9 @@ def _media_summary(media: dict[str, Any]) -> dict[str, Any]:
     summary = {}
     for key, value in media.items():
         if key == "bytes":
-            summary["byte_length"] = len(value) if isinstance(value, (bytes, bytearray)) else media.get("byte_length")
+            summary["byte_length"] = (
+                len(value) if isinstance(value, (bytes, bytearray)) else media.get("byte_length")
+            )
             summary["payload_loaded"] = value is not None
             continue
         if key == "value" and isinstance(value, str) and _looks_like_base64_image(value):

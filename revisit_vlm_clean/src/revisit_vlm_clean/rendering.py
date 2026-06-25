@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Any, Iterable
+from typing import Any
 
 from .benchmark_data import BenchmarkSample
 from .schema import EvalMode, RunConfig, _to_jsonable
-
 
 THINK_START = "<think>"
 THINK_END = "</think>"
@@ -101,13 +101,16 @@ def render_benchmark_input(sample: BenchmarkSample, config: RunConfig) -> Render
         gold_answer=sample.gold_answer,
         answer_format="multiple_choice" if sample.choices else "open",
         tgvf_protocol=config.tgvf_protocol,
-        requires_tgvf_controller=config.mode in {
+        requires_tgvf_controller=config.mode
+        in {
             EvalMode.TGVF_FREE,
             EvalMode.TGVF_FORCE,
             EvalMode.TGVF_SOFTFORCE,
         },
         force_action_prefix=spec.force_action_prefix if config.mode == EvalMode.TGVF_FORCE else "",
-        softforce_prompt_text=config.softforce_prompt_text if config.mode == EvalMode.TGVF_SOFTFORCE else "",
+        softforce_prompt_text=config.softforce_prompt_text
+        if config.mode == EvalMode.TGVF_SOFTFORCE
+        else "",
         prompt_suffix=config.prompt_suffix,
         metadata=sample.metadata,
     )

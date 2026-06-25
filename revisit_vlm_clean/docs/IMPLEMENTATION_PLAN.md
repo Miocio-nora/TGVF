@@ -1176,6 +1176,18 @@ Implemented after Phase 38.
 - transform semantics are unchanged. This phase only strengthens reproducible
   generated-data identity.
 
+## Phase 40: Clean Package Lint Gate
+
+Implemented after Phase 39.
+
+- normalized import order, typing imports, and line wrapping across
+  `revisit_vlm_clean/src/revisit_vlm_clean` and `revisit_vlm_clean/tests`;
+- no benchmark, training, scoring, data-generation, or Stage2 control-flow
+  semantics were intentionally changed;
+- `ruff check revisit_vlm_clean/src/revisit_vlm_clean revisit_vlm_clean/tests`
+  now passes;
+- full clean tests still pass.
+
 ## Later Phases
 
 1. Replace training launch plans with clean-native training execution.

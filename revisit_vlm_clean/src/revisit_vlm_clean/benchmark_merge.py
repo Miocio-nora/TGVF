@@ -208,14 +208,10 @@ def _summarize_rows(
         if row.get("trigger_focus_decision") is not None
     ]
     focus_values = [
-        bool(row.get("focus_valid"))
-        for row in rows
-        if row.get("focus_valid") is not None
+        bool(row.get("focus_valid")) for row in rows if row.get("focus_valid") is not None
     ]
     append_values = [
-        bool(row.get("append_success"))
-        for row in rows
-        if row.get("append_success") is not None
+        bool(row.get("append_success")) for row in rows if row.get("append_success") is not None
     ]
     summary = EvalSummary(
         run_id=run_id,

@@ -6,8 +6,8 @@ import importlib.util
 import json
 import random
 import re
-import sys
 import string
+import sys
 import tempfile
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -17,7 +17,6 @@ from typing import Any
 
 from .defaults import DEFAULT_CHOICE_PARSER_IDENTITY, DEFAULT_PARSER_IDENTITY
 from .schema import ScoringBackend
-
 
 OFFICIAL_COMPATIBLE_CHOICE_SCORERS = {
     "blink": ("official_blink_exact_match", False),
@@ -58,7 +57,8 @@ def parse_and_score(
         )
     if backend == ScoringBackend.OFFICIAL:
         raise NotImplementedError(
-            f"official scorer execution is not ported for benchmark={benchmark!r} in the clean runner"
+            "official scorer execution is not ported for "
+            f"benchmark={benchmark!r} in the clean runner"
         )
 
     if choices:
@@ -74,7 +74,9 @@ def parse_and_score(
             score = score_choice(parsed, str(gold_answer), choices)
         else:
             gold_text = clean_answer(str(gold_answer))
-            score = 1.0 if normalize_open_answer(parsed) == normalize_open_answer(gold_text) else 0.0
+            score = (
+                1.0 if normalize_open_answer(parsed) == normalize_open_answer(gold_text) else 0.0
+            )
 
     return ParseScoreResult(
         parsed_answer=parsed,
@@ -148,7 +150,8 @@ def score_output_rows(
             if official_path is None:
                 if backend == ScoringBackend.OFFICIAL:
                     raise NotImplementedError(
-                        "official OCRBench-v2 scoring requires benchmark_root/ocrbench_v2/official_code"
+                        "official OCRBench-v2 scoring requires "
+                        "benchmark_root/ocrbench_v2/official_code"
                     )
             else:
                 _score_ocrbench_v2_rows(ocrbench_rows, official_eval_path=official_path)
@@ -175,7 +178,9 @@ def score_output_rows(
 
 def extract_answer_text(text: str) -> str:
     cleaned = str(text or "")
-    matches = list(re.finditer(r"<ANSWER>\s*(.*?)(?:</ANSWER>|$)", cleaned, flags=re.IGNORECASE | re.DOTALL))
+    matches = list(
+        re.finditer(r"<ANSWER>\s*(.*?)(?:</ANSWER>|$)", cleaned, flags=re.IGNORECASE | re.DOTALL)
+    )
     if matches:
         return matches[-1].group(1).strip()
     return ""
@@ -186,7 +191,9 @@ def extract_final_answer(text: Any) -> str:
     answer = extract_answer_text(cleaned)
     if answer:
         return answer
-    answer_matches = list(re.finditer(r"(?i)(?:final\s+answer|answer)\s*(?:is|:|=)\s*(.+)$", cleaned))
+    answer_matches = list(
+        re.finditer(r"(?i)(?:final\s+answer|answer)\s*(?:is|:|=)\s*(.+)$", cleaned)
+    )
     if answer_matches:
         return answer_matches[-1].group(1).strip().strip(". ")
     numbers = re.findall(r"-?\d+(?:\.\d+)?", cleaned.replace(",", ""))
@@ -339,14 +346,18 @@ def _mmmu_pro_eval_path(benchmark_root: str | Path | None) -> Path | None:
 def _mathvista_eval_path(benchmark_root: str | Path | None) -> Path | None:
     if benchmark_root is None:
         return None
-    path = Path(benchmark_root) / "mathvista" / "official_code" / "evaluation" / "calculate_score.py"
+    path = (
+        Path(benchmark_root) / "mathvista" / "official_code" / "evaluation" / "calculate_score.py"
+    )
     return path if path.exists() else None
 
 
 def _mathverse_eval_path(benchmark_root: str | Path | None) -> Path | None:
     if benchmark_root is None:
         return None
-    path = Path(benchmark_root) / "mathverse" / "official_code" / "evaluation" / "score_answer_s2.py"
+    path = (
+        Path(benchmark_root) / "mathverse" / "official_code" / "evaluation" / "score_answer_s2.py"
+    )
     return path if path.exists() else None
 
 
@@ -378,7 +389,9 @@ def _score_mathvista_rows(rows: list[dict], *, official_eval_path: Path) -> None
         row["parsed_answer"] = str(extraction or "")
         row["answer_parse_success"] = bool(row["parsed_answer"])
         row["prediction"] = prediction
-        row["score"] = 1.0 if prediction is not None and _safe_equal(str(prediction), str(answer)) else 0.0
+        row["score"] = (
+            1.0 if prediction is not None and _safe_equal(str(prediction), str(answer)) else 0.0
+        )
 
 
 def _score_mathverse_rows(rows: list[dict], *, official_eval_path: Path) -> None:
@@ -395,10 +408,14 @@ def _score_mathverse_rows(rows: list[dict], *, official_eval_path: Path) -> None
             row["score"] = None
             continue
         choices = list(row.get("choices") or (row.get("metadata") or {}).get("choices") or [])
-        pred = row.get("parsed_answer") or extract_choice_official_compatible(
-            str(row.get("raw_output") or ""),
-            choices,
-        ) or extract_final_answer(row.get("raw_output") or "")
+        pred = (
+            row.get("parsed_answer")
+            or extract_choice_official_compatible(
+                str(row.get("raw_output") or ""),
+                choices,
+            )
+            or extract_final_answer(row.get("raw_output") or "")
+        )
         row["parsed_answer"] = str(pred or "")
         row["answer_parse_success"] = bool(row["parsed_answer"])
         row["score"] = score_choice(row["parsed_answer"], str(gold), choices)

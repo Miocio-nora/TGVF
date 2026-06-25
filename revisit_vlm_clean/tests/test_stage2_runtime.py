@@ -1,7 +1,6 @@
 import json
 
 import pytest
-
 from revisit_vlm_clean.cli.benchmark import main as benchmark_main
 from revisit_vlm_clean.schema import ForwardMode
 from revisit_vlm_clean.stage2_runtime import Stage2RuntimeConfig, eval_jsonl_identity
@@ -21,7 +20,14 @@ def test_stage2_runtime_config_rejects_missing_files(tmp_path) -> None:
 def test_eval_jsonl_identity_counts_focus_and_no_focus(tmp_path) -> None:
     path = tmp_path / "stage2.jsonl"
     path.write_text(
-        json.dumps({"image": "a.jpg", "need_focus": True, "trajectory_type": "single_focus", "target": "text"})
+        json.dumps(
+            {
+                "image": "a.jpg",
+                "need_focus": True,
+                "trajectory_type": "single_focus",
+                "target": "text",
+            }
+        )
         + "\n"
         + json.dumps({"image": "b.jpg", "need_focus": False, "trajectory_type": "direct_answer"})
         + "\n"

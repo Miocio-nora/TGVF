@@ -1,5 +1,4 @@
 import pytest
-
 from revisit_vlm_clean.tgvf_protocol import parse_tgvf_action
 
 

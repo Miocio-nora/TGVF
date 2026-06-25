@@ -990,8 +990,7 @@ def _validate_run_alignment(stage2_config: Stage2RuntimeConfig, config: RunConfi
     config.validate()
     if config.mode not in SUPPORTED_NATIVE_STAGE2_MODES:
         raise NotImplementedError(
-            "clean-native Stage2 backend supports only TGVF modes, got "
-            f"{config.mode.value!r}"
+            f"clean-native Stage2 backend supports only TGVF modes, got {config.mode.value!r}"
         )
     if stage2_config.protocol != config.tgvf_protocol:
         raise ValueError(
@@ -1020,9 +1019,7 @@ def _validate_peft_load_result(load_result: Any) -> None:
     unexpected = list(getattr(load_result, "unexpected_keys", []) or [])
     missing = list(getattr(load_result, "missing_keys", []) or [])
     adapter_markers = ("lora_", "modules_to_save", "token_adapter", "trainable_tokens")
-    adapter_missing = [
-        key for key in missing if any(marker in key for marker in adapter_markers)
-    ]
+    adapter_missing = [key for key in missing if any(marker in key for marker in adapter_markers)]
     if unexpected or adapter_missing:
         raise RuntimeError(
             "Incomplete Stage2 LoRA load: "
