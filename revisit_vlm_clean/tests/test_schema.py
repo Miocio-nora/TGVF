@@ -23,6 +23,14 @@ def test_run_config_json_roundtrip() -> None:
     assert restored.started_at is None
     assert restored.num_shards == 1
     assert restored.shard_index == 0
+    assert (
+        restored.parser_scorer.model_output_parser
+        == "revisit_vlm_clean.scoring.parse_and_score:v3_external"
+    )
+    assert (
+        restored.parser_scorer.choice_parser
+        == "revisit_vlm_clean.scoring.extract_choice_strict"
+    )
 
 
 def test_free_mode_rejects_prompt_suffix() -> None:

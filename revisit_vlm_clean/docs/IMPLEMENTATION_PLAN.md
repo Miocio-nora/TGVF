@@ -1309,6 +1309,21 @@ Implemented after Phase 46.
 - clean ValKit execution is still not ported. The new surface is identity-only
   and explicitly refuses to shell out to historical wrappers.
 
+## Phase 48: Clean Parser/Scorer Identity Finalization
+
+Implemented after Phase 47.
+
+- the clean external benchmark parser/scorer source is now explicitly
+  `revisit_vlm_clean.scoring`, not the historical `eval/` script;
+- default parser identities are:
+  - `model_output_parser=revisit_vlm_clean.scoring.parse_and_score:v3_external`;
+  - `choice_parser=revisit_vlm_clean.scoring.extract_choice_strict`;
+- `run_config.json`, row `parser_scorer`, and `summary.json` preserve these
+  identities so future benchmark tables cannot silently mix old parser labels
+  with clean rows;
+- the historical `eval/eval_v3_mmmu_force.py` parser/scorer path remains a
+  reference for the port, not the clean implementation source.
+
 ## Later Phases
 
 1. Replace training launch plans with clean-native training execution.

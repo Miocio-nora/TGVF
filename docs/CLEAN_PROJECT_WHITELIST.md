@@ -588,21 +588,21 @@ Clean parser/scorer rule:
   mainline:
 
 ```text
-model_output_parser = v3_external_parse_and_score
-source = eval/eval_v3_mmmu_force.py::parse_and_score
-choice_parser = eval/eval_v3_mmmu_force.py::extract_choice_strict
+model_output_parser = revisit_vlm_clean.scoring.parse_and_score:v3_external
+source = revisit_vlm_clean.scoring
+choice_parser = revisit_vlm_clean.scoring.extract_choice_strict
 scoring_backend = auto
 official_scorer_source = src/tgvf_eval/official_tools.py
 ```
 
-- `model_output_parser` records focus action, answer text, malformed output,
-  trigger state, focus-valid state, D condition, and parse success.
+- The clean runner records protocol/focus/TGVF state separately on each row, and
+  `model_output_parser` / `choice_parser` identify the answer parsing surface.
 - `benchmark_scorer` computes accuracy. Use `scoring_backend=auto` by default:
   official / official-compatible scorer when wired, project fallback otherwise.
 - If fallback scoring is used, output must include:
 
 ```text
-scorer_name=fallback
+scorer_name=project_choice_exact_match or project_open_exact_match
 official_tool_used=false
 ```
 
@@ -664,10 +664,11 @@ Clean-project consequence:
 
 Resolved clean mainline:
 
-- Use `eval/eval_v3_mmmu_force.py::parse_and_score` as the clean external
-  benchmark model-output parser/scorer dispatcher.
-- Use `eval/eval_v3_mmmu_force.py::extract_choice_strict` as the strict
-  multiple-choice parser before adapter fallback.
+- Use `revisit_vlm_clean.scoring.parse_and_score` as the clean external
+  benchmark model-output parser/scorer dispatcher. It is the clean port of the
+  stable V3 external path.
+- Use `revisit_vlm_clean.scoring.extract_choice_strict` as the strict
+  multiple-choice parser before scorer fallback.
 - Use `src/tgvf_eval/official_tools.py` for official/official-compatible scorer
   wrappers under `scoring_backend=auto`.
 - Use `tgvf_merge_benchmark` for clean deterministic shard merge. The historical
@@ -678,6 +679,8 @@ Resolved clean mainline:
 Archive/reference:
 
 - `src/tgvf_eval/parsing.py` simple parser;
+- `eval/eval_v3_mmmu_force.py` parser/scorer implementation as source code; it
+  remains only a reference for the clean port;
 - VStar standalone `extract_choice` in `eval/eval_v3_vstar_force.py`;
 - any benchmark-specific parser not routed through the V3 external dispatcher.
 

@@ -433,6 +433,14 @@ def test_benchmark_execute_dry_run_cli(tmp_path) -> None:
     run_config = json.loads((output_dir / "run_config.json").read_text())
     assert run_config["output_schema_version"] == "clean_benchmark_run_v1"
     assert run_config["started_at"].endswith("+00:00")
+    assert (
+        run_config["parser_scorer"]["model_output_parser"]
+        == "revisit_vlm_clean.scoring.parse_and_score:v3_external"
+    )
+    assert (
+        run_config["parser_scorer"]["choice_parser"]
+        == "revisit_vlm_clean.scoring.extract_choice_strict"
+    )
     assert "started_at:" in (output_dir / "run_config.txt").read_text()
     row = json.loads(rows[0])
     assert row["raw_output"] == "B"
@@ -451,10 +459,22 @@ def test_benchmark_execute_dry_run_cli(tmp_path) -> None:
         "original_image_scope": "off",
     }
     assert row["parser_scorer"]["scoring_backend"] == "auto"
+    assert (
+        row["parser_scorer"]["model_output_parser"]
+        == "revisit_vlm_clean.scoring.parse_and_score:v3_external"
+    )
+    assert (
+        row["parser_scorer"]["choice_parser"]
+        == "revisit_vlm_clean.scoring.extract_choice_strict"
+    )
     assert row["d_condition"] is None
     summary = json.loads((output_dir / "summary.json").read_text())
     assert summary["accuracy"] == 1.0
     assert summary["runner_backend"]["backend"] == "dry_run"
+    assert (
+        summary["parser_scorer"]["model_output_parser"]
+        == "revisit_vlm_clean.scoring.parse_and_score:v3_external"
+    )
 
 
 def test_benchmark_execute_dry_run_shards_manifest_deterministically(tmp_path) -> None:
