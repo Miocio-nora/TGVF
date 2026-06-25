@@ -12,7 +12,8 @@ later phases after each contract is validated.
 - Main model family: Qwen3-VL-8B-Thinking.
 - Main protocol: `protocol_c_tool_observation`.
 - Main benchmark continuation: `natural_continue`.
-- Main parser/scorer identity: `v3_external_parse_and_score`.
+- Main parser/scorer identity:
+  `revisit_vlm_clean.scoring.parse_and_score:v3_external`.
 - Main fast dev subset: `CoreDev-2511`.
 - DeepStack support: supported by schema, default disabled.
 - Benchmark root and scoring backend are recorded in `run_config.json` and
@@ -81,11 +82,18 @@ python -m revisit_vlm_clean.training.stage1_executor --plan /path/to/training_pl
 python -m revisit_vlm_clean.training.stage2_executor --plan /path/to/training_plan.json --preflight-only
 tgvf_train_stage1_executor --plan /path/to/training_plan.json --preflight-only
 tgvf_train_stage2_executor --plan /path/to/training_plan.json --preflight-only
+tgvf_train_stage1_executor --plan /path/to/training_plan.json --prepare-execution
+tgvf_train_stage2_executor --plan /path/to/training_plan.json --prepare-execution
 ```
 
 Without `--preflight-only`, these executors fail fast instead of launching a
 partial or legacy training path. Preflight writes a JSON report next to the
 plan by default, or to `--preflight-report` when that path is provided.
+`--prepare-execution` writes executor-owned
+`clean_training_execution_bundle.json`, `clean_training_execution_status.json`,
+and a text summary without launching training. These artifacts are the clean
+handoff surface for the future trainer loop; they still record
+`will_launch_training=false` until that loop is ported.
 
 ## Fixed Manifests
 

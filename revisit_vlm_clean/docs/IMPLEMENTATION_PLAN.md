@@ -1392,6 +1392,27 @@ Implemented after Phase 51.
 - executor preflight rejects Stage1 plans missing these readout-context
   identities.
 
+## Phase 53: Clean Training Execution Bundle
+
+Implemented after Phase 52.
+
+- Stage1/Stage2 clean executors now support `--prepare-execution`;
+- this writes executor-owned artifacts:
+  - `clean_training_execution_bundle.json`;
+  - `clean_training_execution_status.json`;
+  - `clean_training_execution_bundle.txt`;
+- the bundle records:
+  - plan path and SHA-256 identity;
+  - stage, run id, output dir, git identity;
+  - model/protocol/dataset/batch/training/module/loss/optimizer identity;
+  - Stage1 readout context;
+  - Stage2 mask policy, DeepStack state, and LoRA identity;
+  - clean executor handoff status;
+  - `legacy_reference_allowed=false`;
+- `--prepare-execution` still records `will_launch_training=false` and
+  `trainer_loop_ported=false`. It is the stable clean handoff surface for the
+  future trainer loop, not a fake training launch.
+
 ## Later Phases
 
 1. Replace training launch plans with clean-native training execution.

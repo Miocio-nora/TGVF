@@ -339,6 +339,59 @@ def test_stage1_training_executor_preflight_cli(tmp_path, capsys) -> None:
     assert stage1_executor_main(["--plan", str(output_dir / "training_plan.json")]) == 2
 
 
+def test_stage1_training_executor_prepare_execution_cli(tmp_path, capsys) -> None:
+    train_file = tmp_path / "stage1.train.jsonl"
+    train_file.write_text(
+        '{"image": "/tmp/image.jpg", "question": "q", "target": "mark"}\n',
+        encoding="utf-8",
+    )
+    output_dir = tmp_path / "stage1_plan"
+    execution_dir = tmp_path / "stage1_execution"
+    assert (
+        stage1_main(
+            [
+                "--run-id",
+                "stage1_prepare",
+                "--train-file",
+                str(train_file),
+                "--output-dir",
+                str(output_dir),
+                "--write-plan",
+            ]
+        )
+        == 0
+    )
+
+    assert (
+        stage1_executor_main(
+            [
+                "--plan",
+                str(output_dir / "training_plan.json"),
+                "--prepare-execution",
+                "--execution-dir",
+                str(execution_dir),
+            ]
+        )
+        == 0
+    )
+    payload = capsys.readouterr().out
+    assert '"will_launch_training": false' in payload
+    bundle = json.loads((execution_dir / "clean_training_execution_bundle.json").read_text())
+    status = json.loads((execution_dir / "clean_training_execution_status.json").read_text())
+    assert bundle["training_execution_bundle_schema_version"] == (
+        "clean_training_execution_bundle_v1"
+    )
+    assert bundle["stage"] == "stage1"
+    assert bundle["clean_executor"]["status"] == "trainer_loop_not_ported"
+    assert bundle["clean_executor"]["owns_execution_bundle"] is True
+    assert bundle["safety"]["legacy_reference_allowed"] is False
+    assert bundle["readout_context"]["position_ids"] == "real_qwen3_mrope_full_trajectory"
+    assert bundle["plan_identity"]["sha256"]
+    assert status["runner_status"] == "trainer_loop_not_ported"
+    assert status["will_launch_training"] is False
+    assert (execution_dir / "clean_training_execution_bundle.txt").exists()
+
+
 def test_training_executor_rejects_executable_legacy_reference(tmp_path) -> None:
     train_file = tmp_path / "stage1.train.jsonl"
     train_file.write_text('{"image": "/tmp/image.jpg", "question": "q"}\n', encoding="utf-8")
@@ -560,6 +613,64 @@ def test_stage2_training_executor_preflight_cli(tmp_path, capsys) -> None:
     report = json.loads((output_dir / "reports" / "stage2_preflight.json").read_text())
     assert report["plan_valid"] is True
     assert report["stage"] == "stage2"
+
+
+def test_stage2_training_executor_prepare_execution_cli(tmp_path, capsys) -> None:
+    train_file = tmp_path / "stage2.train.jsonl"
+    val_file = tmp_path / "stage2.test.jsonl"
+    checkpoint = tmp_path / "stage1.pt"
+    train_file.write_text(
+        '{"image": "/tmp/image.jpg", "question": "q", "answer": "a"}\n',
+        encoding="utf-8",
+    )
+    val_file.write_text(
+        '{"image": "/tmp/image.jpg", "question": "q", "answer": "a"}\n',
+        encoding="utf-8",
+    )
+    checkpoint.write_bytes(b"checkpoint\n")
+    output_dir = tmp_path / "stage2_plan"
+    assert (
+        stage2_main(
+            [
+                "--run-id",
+                "stage2_prepare",
+                "--train-file",
+                str(train_file),
+                "--val-file",
+                str(val_file),
+                "--stage1-checkpoint",
+                str(checkpoint),
+                "--output-dir",
+                str(output_dir),
+                "--write-plan",
+            ]
+        )
+        == 0
+    )
+
+    assert (
+        stage2_executor_main(
+            [
+                "--plan",
+                str(output_dir / "training_plan.json"),
+                "--prepare-execution",
+            ]
+        )
+        == 0
+    )
+    payload = capsys.readouterr().out
+    assert '"training_runtime_ported": false' in payload
+    execution_dir = output_dir / "clean_training_execution"
+    bundle = json.loads((execution_dir / "clean_training_execution_bundle.json").read_text())
+    assert bundle["stage"] == "stage2"
+    assert bundle["mask_policy"]["mask_original_image_after_tgvf_scope"] == "through_answer"
+    assert bundle["deepstack"]["enabled"] is False
+    assert bundle["lora"]["rank"] == 64
+    assert bundle["lora"]["target_modules"][:2] == ["q_proj", "k_proj"]
+    assert bundle["safety"]["legacy_reference_allowed"] is False
+    status = json.loads((execution_dir / "clean_training_execution_status.json").read_text())
+    assert status["bundle_valid"] is True
+    assert status["will_launch_training"] is False
 
 
 def test_stage2_deepstack_plan_disables_legacy_command(tmp_path, capsys) -> None:

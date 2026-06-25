@@ -81,6 +81,9 @@ Data generation is a first-class clean-project surface, not a side branch.
   not `legacy_reference_command.sh`.
 - Any `legacy_reference_command` artifact in a clean launch plan must be
   `executable=false`; it is an audit record, not a runnable fallback.
+- Clean executors may write `clean_training_execution_bundle.json` as the
+  executor-owned handoff artifact; until the trainer loop is ported it must
+  record `will_launch_training=false`.
 - Loss defaults:
   - generation/readout LM loss: `1.0`;
   - visual token manifold: `0.1`;
@@ -156,6 +159,9 @@ Data generation is a first-class clean-project surface, not a side branch.
   not `legacy_reference_command.sh`.
 - Any `legacy_reference_command` artifact in a clean launch plan must be
   `executable=false`; it is an audit record, not a runnable fallback.
+- Clean executors may write `clean_training_execution_bundle.json` as the
+  executor-owned handoff artifact; until the trainer loop is ported it must
+  record `will_launch_training=false`.
 - Focus/no-focus sampling:
   - `target_focus_ratio=0.8`.
 - Batch/default run scale:
