@@ -1,0 +1,6046 @@
+[
+  {
+    "file": "scripts/chat_tgvf_v3.py",
+    "opts": [
+      "--chat-profile",
+      "--profile"
+    ],
+    "default": "toolobs",
+    "choices": "tuple(CHAT_PROFILES)"
+  },
+  {
+    "file": "scripts/chat_tgvf_v3.py",
+    "opts": [
+      "--list-profiles"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/chat_tgvf_v3.py",
+    "opts": [
+      "--image"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/chat_tgvf_v3.py",
+    "opts": [
+      "--mode"
+    ],
+    "default": "force",
+    "choices": [
+      "force",
+      "free",
+      "direct"
+    ]
+  },
+  {
+    "file": "scripts/chat_tgvf_v3.py",
+    "opts": [
+      "--stage2-checkpoint"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/chat_tgvf_v3.py",
+    "opts": [
+      "--eval-jsonl"
+    ],
+    "default": "DEFAULT_EVAL_JSONL",
+    "choices": null
+  },
+  {
+    "file": "scripts/chat_tgvf_v3.py",
+    "opts": [
+      "--model-id"
+    ],
+    "default": "DEFAULT_MODEL",
+    "choices": null
+  },
+  {
+    "file": "scripts/chat_tgvf_v3.py",
+    "opts": [
+      "--processor-id"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/chat_tgvf_v3.py",
+    "opts": [
+      "--dtype"
+    ],
+    "default": "bfloat16",
+    "choices": null
+  },
+  {
+    "file": "scripts/chat_tgvf_v3.py",
+    "opts": [
+      "--device"
+    ],
+    "default": "cuda:0",
+    "choices": null
+  },
+  {
+    "file": "scripts/chat_tgvf_v3.py",
+    "opts": [
+      "--device-map"
+    ],
+    "default": "cuda:0",
+    "choices": null
+  },
+  {
+    "file": "scripts/chat_tgvf_v3.py",
+    "opts": [
+      "--attn-implementation"
+    ],
+    "default": "sdpa",
+    "choices": null
+  },
+  {
+    "file": "scripts/chat_tgvf_v3.py",
+    "opts": [
+      "--tgvf-protocol"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/chat_tgvf_v3.py",
+    "opts": [
+      "--max-image-resolution"
+    ],
+    "default": 512,
+    "choices": null
+  },
+  {
+    "file": "scripts/chat_tgvf_v3.py",
+    "opts": [
+      "--max-action-tokens"
+    ],
+    "default": 128,
+    "choices": null
+  },
+  {
+    "file": "scripts/chat_tgvf_v3.py",
+    "opts": [
+      "--max-answer-tokens"
+    ],
+    "default": 256,
+    "choices": null
+  },
+  {
+    "file": "scripts/chat_tgvf_v3.py",
+    "opts": [
+      "--max-foveations"
+    ],
+    "default": 2,
+    "choices": null
+  },
+  {
+    "file": "scripts/chat_tgvf_v3.py",
+    "opts": [
+      "--post-tgvf-continuation"
+    ],
+    "default": null,
+    "choices": [
+      "answer_only",
+      "evidence_then_answer",
+      "think_then_answer"
+    ]
+  },
+  {
+    "file": "scripts/chat_tgvf_v3.py",
+    "opts": [
+      "--toolobs-action-stop"
+    ],
+    "default": "im_end",
+    "choices": [
+      "im_end",
+      "focus_end"
+    ]
+  },
+  {
+    "file": "scripts/chat_tgvf_v3.py",
+    "opts": [
+      "--show-raw"
+    ],
+    "default": false,
+    "choices": null
+  },
+  {
+    "file": "scripts/chat_tgvf_v3.py",
+    "opts": [
+      "--show-focus"
+    ],
+    "default": true,
+    "choices": null
+  },
+  {
+    "file": "scripts/chat_tgvf_v3.py",
+    "opts": [
+      "--text-only-action-stop"
+    ],
+    "default": true,
+    "choices": null
+  },
+  {
+    "file": "scripts/chat_tgvf_v3.py",
+    "opts": [
+      "--stateful-kv"
+    ],
+    "default": false,
+    "choices": null
+  },
+  {
+    "file": "scripts/chat_tgvf_v3.py",
+    "opts": [
+      "--output-jsonl"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/smoke_tgvf_encoder_reencode.py",
+    "opts": [
+      "--model-id"
+    ],
+    "default": "/nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking",
+    "choices": null
+  },
+  {
+    "file": "scripts/smoke_tgvf_encoder_reencode.py",
+    "opts": [
+      "--processor-id"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/smoke_tgvf_encoder_reencode.py",
+    "opts": [
+      "--eval-jsonl"
+    ],
+    "default": "data/tgvf_teacher/generated/runs/tgvf_v3_teacher_val_2k/final/tgvf_teacher_items.accepted.jsonl",
+    "choices": null
+  },
+  {
+    "file": "scripts/smoke_tgvf_encoder_reencode.py",
+    "opts": [
+      "--sample-index"
+    ],
+    "default": 0,
+    "choices": null
+  },
+  {
+    "file": "scripts/smoke_tgvf_encoder_reencode.py",
+    "opts": [
+      "--device"
+    ],
+    "default": "cuda:0",
+    "choices": null
+  },
+  {
+    "file": "scripts/smoke_tgvf_encoder_reencode.py",
+    "opts": [
+      "--device-map"
+    ],
+    "default": "cuda:0",
+    "choices": null
+  },
+  {
+    "file": "scripts/smoke_tgvf_encoder_reencode.py",
+    "opts": [
+      "--dtype"
+    ],
+    "default": "bfloat16",
+    "choices": null
+  },
+  {
+    "file": "scripts/smoke_tgvf_encoder_reencode.py",
+    "opts": [
+      "--attn-implementation"
+    ],
+    "default": "sdpa",
+    "choices": null
+  },
+  {
+    "file": "scripts/smoke_tgvf_encoder_reencode.py",
+    "opts": [
+      "--tgvf-protocol"
+    ],
+    "default": "legacy_v3_tags",
+    "choices": null
+  },
+  {
+    "file": "scripts/smoke_tgvf_encoder_reencode.py",
+    "opts": [
+      "--max-image-resolution"
+    ],
+    "default": 512,
+    "choices": null
+  },
+  {
+    "file": "scripts/smoke_tgvf_encoder_reencode.py",
+    "opts": [
+      "--encoder-adapter-layers"
+    ],
+    "default": "8,16,24",
+    "choices": null
+  },
+  {
+    "file": "scripts/smoke_tgvf_encoder_reencode.py",
+    "opts": [
+      "--encoder-adapter-layer-index-base"
+    ],
+    "default": 0,
+    "choices": [
+      0,
+      1
+    ]
+  },
+  {
+    "file": "scripts/smoke_tgvf_encoder_reencode.py",
+    "opts": [
+      "--encoder-reencode-deepstack-compatible"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/qwen3_vl_smoke.py",
+    "opts": [
+      "--model_id"
+    ],
+    "default": "Qwen/Qwen3-VL-8B-Thinking",
+    "choices": null
+  },
+  {
+    "file": "scripts/qwen3_vl_smoke.py",
+    "opts": [
+      "--processor_id"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/qwen3_vl_smoke.py",
+    "opts": [
+      "--image"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/qwen3_vl_smoke.py",
+    "opts": [
+      "--question"
+    ],
+    "default": "What is visible in the image?",
+    "choices": null
+  },
+  {
+    "file": "scripts/qwen3_vl_smoke.py",
+    "opts": [
+      "--mode"
+    ],
+    "default": "direct",
+    "choices": [
+      "direct",
+      "focus_force",
+      "capture_focus",
+      "vision_tap",
+      "append_smoke"
+    ]
+  },
+  {
+    "file": "scripts/qwen3_vl_smoke.py",
+    "opts": [
+      "--output-dir"
+    ],
+    "default": "runs/qwen3_deploy_smoke",
+    "choices": null
+  },
+  {
+    "file": "scripts/qwen3_vl_smoke.py",
+    "opts": [
+      "--sample-id"
+    ],
+    "default": "sample_000001",
+    "choices": null
+  },
+  {
+    "file": "scripts/qwen3_vl_smoke.py",
+    "opts": [
+      "--dtype"
+    ],
+    "default": "bfloat16",
+    "choices": [
+      "auto",
+      "bfloat16",
+      "bf16",
+      "float16",
+      "fp16",
+      "float32",
+      "fp32"
+    ]
+  },
+  {
+    "file": "scripts/qwen3_vl_smoke.py",
+    "opts": [
+      "--device-map"
+    ],
+    "default": "auto",
+    "choices": null
+  },
+  {
+    "file": "scripts/qwen3_vl_smoke.py",
+    "opts": [
+      "--device"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/qwen3_vl_smoke.py",
+    "opts": [
+      "--attn-implementation"
+    ],
+    "default": "sdpa",
+    "choices": null
+  },
+  {
+    "file": "scripts/qwen3_vl_smoke.py",
+    "opts": [
+      "--max-new-tokens"
+    ],
+    "default": 96,
+    "choices": null
+  },
+  {
+    "file": "scripts/qwen3_vl_smoke.py",
+    "opts": [
+      "--answer-max-new-tokens"
+    ],
+    "default": 64,
+    "choices": null
+  },
+  {
+    "file": "scripts/qwen3_vl_smoke.py",
+    "opts": [
+      "--num-fvt-tokens"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/qwen3_vl_smoke.py",
+    "opts": [
+      "--fvt-position-mode"
+    ],
+    "default": "native_source_grid",
+    "choices": [
+      "native_source_grid",
+      "inherit_source_visual_positions"
+    ]
+  },
+  {
+    "file": "scripts/qwen3_vl_smoke.py",
+    "opts": [
+      "--d-source"
+    ],
+    "default": "random_calibrated",
+    "choices": [
+      "zero",
+      "random",
+      "random_calibrated"
+    ]
+  },
+  {
+    "file": "scripts/qwen3_vl_smoke.py",
+    "opts": [
+      "--continuation-instruction"
+    ],
+    "default": "",
+    "choices": null
+  },
+  {
+    "file": "scripts/qwen3_vl_smoke.py",
+    "opts": [
+      "--force-answer-tag"
+    ],
+    "default": true,
+    "choices": null
+  },
+  {
+    "file": "scripts/qwen3_vl_smoke.py",
+    "opts": [
+      "--force-action-prefix"
+    ],
+    "default": true,
+    "choices": null
+  },
+  {
+    "file": "scripts/qwen3_vl_smoke.py",
+    "opts": [
+      "--scripted-focus-target"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/qwen3_vl_smoke.py",
+    "opts": [
+      "--assert-no-second-full-forward"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/qwen3_vl_smoke.py",
+    "opts": [
+      "--raise-errors"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/chat_tgvf_v3_stage2.py",
+    "opts": [
+      "--stage2-checkpoint"
+    ],
+    "default": "DEFAULT_CHECKPOINT",
+    "choices": null
+  },
+  {
+    "file": "scripts/chat_tgvf_v3_stage2.py",
+    "opts": [
+      "--processor-id"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/chat_tgvf_v3_stage2.py",
+    "opts": [
+      "--model-id"
+    ],
+    "default": "DEFAULT_MODEL_ID",
+    "choices": null
+  },
+  {
+    "file": "scripts/chat_tgvf_v3_stage2.py",
+    "opts": [
+      "--bootstrap-jsonl"
+    ],
+    "default": "DEFAULT_BOOTSTRAP_JSONL",
+    "choices": null
+  },
+  {
+    "file": "scripts/chat_tgvf_v3_stage2.py",
+    "opts": [
+      "--output-dir"
+    ],
+    "default": "outputs/chat_tgvf_v3_stage2/latest",
+    "choices": null
+  },
+  {
+    "file": "scripts/chat_tgvf_v3_stage2.py",
+    "opts": [
+      "--device"
+    ],
+    "default": "cuda:0",
+    "choices": null
+  },
+  {
+    "file": "scripts/chat_tgvf_v3_stage2.py",
+    "opts": [
+      "--device-map"
+    ],
+    "default": "cuda:0",
+    "choices": null
+  },
+  {
+    "file": "scripts/chat_tgvf_v3_stage2.py",
+    "opts": [
+      "--dtype"
+    ],
+    "default": "bfloat16",
+    "choices": null
+  },
+  {
+    "file": "scripts/chat_tgvf_v3_stage2.py",
+    "opts": [
+      "--attn-implementation"
+    ],
+    "default": "flash_attention_2",
+    "choices": null
+  },
+  {
+    "file": "scripts/chat_tgvf_v3_stage2.py",
+    "opts": [
+      "--tgvf-protocol"
+    ],
+    "default": "legacy_v3_tags",
+    "choices": null
+  },
+  {
+    "file": "scripts/chat_tgvf_v3_stage2.py",
+    "opts": [
+      "--max-image-resolution"
+    ],
+    "default": 512,
+    "choices": null
+  },
+  {
+    "file": "scripts/chat_tgvf_v3_stage2.py",
+    "opts": [
+      "--max-action-tokens"
+    ],
+    "default": 128,
+    "choices": null
+  },
+  {
+    "file": "scripts/chat_tgvf_v3_stage2.py",
+    "opts": [
+      "--max-answer-tokens"
+    ],
+    "default": 512,
+    "choices": null
+  },
+  {
+    "file": "scripts/chat_tgvf_v3_stage2.py",
+    "opts": [
+      "--post-tgvf-continuation"
+    ],
+    "default": "natural_continue",
+    "choices": null
+  },
+  {
+    "file": "scripts/chat_tgvf_v3_stage2.py",
+    "opts": [
+      "--force-action-prefix"
+    ],
+    "default": false,
+    "choices": null
+  },
+  {
+    "file": "scripts/chat_tgvf_v3_stage2.py",
+    "opts": [
+      "--retry-force-action-prefix"
+    ],
+    "default": false,
+    "choices": null
+  },
+  {
+    "file": "scripts/chat_tgvf_v3_stage2.py",
+    "opts": [
+      "--block-focus-in-continuation"
+    ],
+    "default": true,
+    "choices": null
+  },
+  {
+    "file": "scripts/chat_qwen3_vl.py",
+    "opts": [
+      "--image"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/chat_qwen3_vl.py",
+    "opts": [
+      "--model-id"
+    ],
+    "default": "DEFAULT_MODEL",
+    "choices": null
+  },
+  {
+    "file": "scripts/chat_qwen3_vl.py",
+    "opts": [
+      "--processor-id"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/chat_qwen3_vl.py",
+    "opts": [
+      "--dtype"
+    ],
+    "default": "bfloat16",
+    "choices": null
+  },
+  {
+    "file": "scripts/chat_qwen3_vl.py",
+    "opts": [
+      "--device"
+    ],
+    "default": "cuda:0",
+    "choices": null
+  },
+  {
+    "file": "scripts/chat_qwen3_vl.py",
+    "opts": [
+      "--device-map"
+    ],
+    "default": "cuda:0",
+    "choices": null
+  },
+  {
+    "file": "scripts/chat_qwen3_vl.py",
+    "opts": [
+      "--attn-implementation"
+    ],
+    "default": "sdpa",
+    "choices": null
+  },
+  {
+    "file": "scripts/chat_qwen3_vl.py",
+    "opts": [
+      "--max-image-resolution"
+    ],
+    "default": 512,
+    "choices": null
+  },
+  {
+    "file": "scripts/chat_qwen3_vl.py",
+    "opts": [
+      "--max-new-tokens"
+    ],
+    "default": 256,
+    "choices": null
+  },
+  {
+    "file": "scripts/chat_qwen3_vl.py",
+    "opts": [
+      "--do-sample"
+    ],
+    "default": false,
+    "choices": null
+  },
+  {
+    "file": "scripts/chat_qwen3_vl.py",
+    "opts": [
+      "--temperature"
+    ],
+    "default": 0.7,
+    "choices": null
+  },
+  {
+    "file": "scripts/chat_qwen3_vl.py",
+    "opts": [
+      "--top-p"
+    ],
+    "default": 0.8,
+    "choices": null
+  },
+  {
+    "file": "scripts/chat_qwen3_vl.py",
+    "opts": [
+      "--output-jsonl"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/merge_tgvf_v3_external_benchmark_shards.py",
+    "opts": [
+      "--mode-dir"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/merge_tgvf_v3_external_benchmark_shards.py",
+    "opts": [
+      "--row-file"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/merge_tgvf_v3_external_benchmark_shards.py",
+    "opts": [
+      "--summary-name"
+    ],
+    "default": "merged_summary.json",
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_fvt.py",
+    "opts": [
+      "--train-file"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_fvt.py",
+    "opts": [
+      "--output-dir"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_fvt.py",
+    "opts": [
+      "--model-name-or-path"
+    ],
+    "default": "Qwen/Qwen2-VL-2B-Instruct",
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_fvt.py",
+    "opts": [
+      "--variant"
+    ],
+    "default": "foveal_cross_merger",
+    "choices": "TGVF_VARIANTS"
+  },
+  {
+    "file": "scripts/train_tgvf_fvt.py",
+    "opts": [
+      "--num-foveated-tokens"
+    ],
+    "default": 16,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_fvt.py",
+    "opts": [
+      "--spatial-merge-size"
+    ],
+    "default": "auto",
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_fvt.py",
+    "opts": [
+      "--attn-dim"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_fvt.py",
+    "opts": [
+      "--device"
+    ],
+    "default": "cuda:0",
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_fvt.py",
+    "opts": [
+      "--torch-dtype"
+    ],
+    "default": "bfloat16",
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_fvt.py",
+    "opts": [
+      "--attn-implementation"
+    ],
+    "default": "flash_attention_2",
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_fvt.py",
+    "opts": [
+      "--learning-rate"
+    ],
+    "default": 0.0001,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_fvt.py",
+    "opts": [
+      "--lr-scheduler"
+    ],
+    "default": "none",
+    "choices": [
+      "none",
+      "warmup_cosine"
+    ]
+  },
+  {
+    "file": "scripts/train_tgvf_fvt.py",
+    "opts": [
+      "--warmup-ratio"
+    ],
+    "default": 0.03,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_fvt.py",
+    "opts": [
+      "--warmup-steps"
+    ],
+    "default": 0,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_fvt.py",
+    "opts": [
+      "--min-lr-ratio"
+    ],
+    "default": 0.1,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_fvt.py",
+    "opts": [
+      "--num-training-steps"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_fvt.py",
+    "opts": [
+      "--resume-from-checkpoint"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_fvt.py",
+    "opts": [
+      "--batch-size"
+    ],
+    "default": 1,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_fvt.py",
+    "opts": [
+      "--gradient-accumulation-steps"
+    ],
+    "default": 1,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_fvt.py",
+    "opts": [
+      "--max-steps"
+    ],
+    "default": 1000,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_fvt.py",
+    "opts": [
+      "--save-every"
+    ],
+    "default": 1000,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_fvt.py",
+    "opts": [
+      "--log-every"
+    ],
+    "default": 10,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_fvt.py",
+    "opts": [
+      "--progress"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_fvt.py",
+    "opts": [
+      "--max-grad-norm"
+    ],
+    "default": 1.0,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_fvt.py",
+    "opts": [
+      "--save-activations-on-cpu"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_fvt.py",
+    "opts": [
+      "--empty-cache-every-step"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_fvt.py",
+    "opts": [
+      "--streaming-matrix-ce-backward"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_fvt.py",
+    "opts": [
+      "--capture-layer"
+    ],
+    "default": -1,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_fvt.py",
+    "opts": [
+      "--loss-gen"
+    ],
+    "default": 1.0,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_fvt.py",
+    "opts": [
+      "--loss-visual-token-manifold"
+    ],
+    "default": 0.1,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_fvt.py",
+    "opts": [
+      "--loss-same-image-negative"
+    ],
+    "default": 0.0,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_fvt.py",
+    "opts": [
+      "--loss-contrastive-alignment"
+    ],
+    "default": 0.0,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_fvt.py",
+    "opts": [
+      "--contrastive-temperature"
+    ],
+    "default": 0.07,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_fvt.py",
+    "opts": [
+      "--readout-prompt-target-dropout"
+    ],
+    "default": 0.3,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_fvt.py",
+    "opts": [
+      "--same-image-negative-margin"
+    ],
+    "default": 1.0,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_fvt.py",
+    "opts": [
+      "--same-image-negative-mode"
+    ],
+    "default": "cyclic_margin",
+    "choices": [
+      "cyclic_margin",
+      "matrix_ce"
+    ]
+  },
+  {
+    "file": "scripts/train_tgvf_fvt.py",
+    "opts": [
+      "--group-batches-by-image"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_fvt.py",
+    "opts": [
+      "--seed"
+    ],
+    "default": 20260525,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_fvt.py",
+    "opts": [
+      "--wandb-project"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_fvt.py",
+    "opts": [
+      "--wandb-entity"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_fvt.py",
+    "opts": [
+      "--wandb-run-name"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_fvt.py",
+    "opts": [
+      "--wandb-group"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_fvt.py",
+    "opts": [
+      "--wandb-mode"
+    ],
+    "default": null,
+    "choices": [
+      "online",
+      "offline",
+      "disabled"
+    ]
+  },
+  {
+    "file": "scripts/train_tgvf_fvt.py",
+    "opts": [
+      "--wandb-dir"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_fvt.py",
+    "opts": [
+      "--wandb-tags"
+    ],
+    "default": "",
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_fvt.py",
+    "opts": [
+      "--wandb-watch"
+    ],
+    "default": null,
+    "choices": [
+      "gradients",
+      "parameters",
+      "all"
+    ]
+  },
+  {
+    "file": "scripts/train_tgvf_fvt.py",
+    "opts": [
+      "--wandb-log-checkpoints"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_fvt.py",
+    "opts": [
+      "--ddp"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_fvt.py",
+    "opts": [
+      "--ddp-backend"
+    ],
+    "default": "nccl",
+    "choices": null
+  },
+  {
+    "file": "scripts/probe_qwen2_post_d.py",
+    "opts": [
+      "--stage2-checkpoint"
+    ],
+    "default": "DEFAULT_CKPT",
+    "choices": null
+  },
+  {
+    "file": "scripts/probe_qwen2_post_d.py",
+    "opts": [
+      "--eval-jsonl"
+    ],
+    "default": "DEFAULT_VAL",
+    "choices": null
+  },
+  {
+    "file": "scripts/probe_qwen2_post_d.py",
+    "opts": [
+      "--output-dir"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/probe_qwen2_post_d.py",
+    "opts": [
+      "--model-id"
+    ],
+    "default": "Qwen/Qwen2-VL-2B-Instruct",
+    "choices": null
+  },
+  {
+    "file": "scripts/probe_qwen2_post_d.py",
+    "opts": [
+      "--dtype"
+    ],
+    "default": "bfloat16",
+    "choices": null
+  },
+  {
+    "file": "scripts/probe_qwen2_post_d.py",
+    "opts": [
+      "--device"
+    ],
+    "default": "cuda:0",
+    "choices": null
+  },
+  {
+    "file": "scripts/probe_qwen2_post_d.py",
+    "opts": [
+      "--device-map"
+    ],
+    "default": "cuda:0",
+    "choices": null
+  },
+  {
+    "file": "scripts/probe_qwen2_post_d.py",
+    "opts": [
+      "--attn-implementation"
+    ],
+    "default": "sdpa",
+    "choices": null
+  },
+  {
+    "file": "scripts/probe_qwen2_post_d.py",
+    "opts": [
+      "--tgvf-protocol"
+    ],
+    "default": "protocol_c_tool_observation_qwen2_no_think",
+    "choices": null
+  },
+  {
+    "file": "scripts/probe_qwen2_post_d.py",
+    "opts": [
+      "--max-image-resolution"
+    ],
+    "default": 512,
+    "choices": null
+  },
+  {
+    "file": "scripts/probe_qwen2_post_d.py",
+    "opts": [
+      "--max-focus"
+    ],
+    "default": 16,
+    "choices": null
+  },
+  {
+    "file": "scripts/probe_qwen2_post_d.py",
+    "opts": [
+      "--append-prefill-mode"
+    ],
+    "default": "kv_append",
+    "choices": [
+      "kv_append",
+      "full_sequence"
+    ]
+  },
+  {
+    "file": "scripts/probe_qwen2_post_d.py",
+    "opts": [
+      "--continuation-forward-mode"
+    ],
+    "default": "kv_cache",
+    "choices": [
+      "kv_cache",
+      "no_kv_full_sequence"
+    ]
+  },
+  {
+    "file": "scripts/probe_qwen2_post_d.py",
+    "opts": [
+      "--fvt-position-mode"
+    ],
+    "default": "native_source_grid",
+    "choices": [
+      "native_source_grid",
+      "inherit_source_visual_positions"
+    ]
+  },
+  {
+    "file": "scripts/probe_qwen2_post_d.py",
+    "opts": [
+      "--include-random-d-from-correct"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/eval_vpt_qwen2_blink_full_512.py",
+    "opts": [
+      "--model-id"
+    ],
+    "default": "rp-yu/Qwen2-VL-2b-VPT-CLIP",
+    "choices": null
+  },
+  {
+    "file": "scripts/eval_vpt_qwen2_blink_full_512.py",
+    "opts": [
+      "--base-model-id"
+    ],
+    "default": "Qwen/Qwen2-VL-2B-Instruct",
+    "choices": null
+  },
+  {
+    "file": "scripts/eval_vpt_qwen2_blink_full_512.py",
+    "opts": [
+      "--benchmark-root"
+    ],
+    "default": "/nvmesv/dredvpn009/datasets/benchmarks",
+    "choices": null
+  },
+  {
+    "file": "scripts/eval_vpt_qwen2_blink_full_512.py",
+    "opts": [
+      "--tools-root"
+    ],
+    "default": "/nvmesv/dredvpn009/datasets/benchmarks/_tools",
+    "choices": null
+  },
+  {
+    "file": "scripts/eval_vpt_qwen2_blink_full_512.py",
+    "opts": [
+      "--output-root"
+    ],
+    "default": "eval_outputs/vpt_qwen2vl2b_clip_blink_full_512",
+    "choices": null
+  },
+  {
+    "file": "scripts/eval_vpt_qwen2_blink_full_512.py",
+    "opts": [
+      "--run-id"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/eval_vpt_qwen2_blink_full_512.py",
+    "opts": [
+      "--seed"
+    ],
+    "default": "DEFAULT_SEED",
+    "choices": null
+  },
+  {
+    "file": "scripts/eval_vpt_qwen2_blink_full_512.py",
+    "opts": [
+      "--limit"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/eval_vpt_qwen2_blink_full_512.py",
+    "opts": [
+      "--num-shards"
+    ],
+    "default": 1,
+    "choices": null
+  },
+  {
+    "file": "scripts/eval_vpt_qwen2_blink_full_512.py",
+    "opts": [
+      "--shard-index"
+    ],
+    "default": 0,
+    "choices": null
+  },
+  {
+    "file": "scripts/eval_vpt_qwen2_blink_full_512.py",
+    "opts": [
+      "--device"
+    ],
+    "default": "cuda:0",
+    "choices": null
+  },
+  {
+    "file": "scripts/eval_vpt_qwen2_blink_full_512.py",
+    "opts": [
+      "--dtype"
+    ],
+    "default": "bf16",
+    "choices": [
+      "bf16",
+      "bfloat16",
+      "fp16",
+      "float16",
+      "fp32",
+      "float32"
+    ]
+  },
+  {
+    "file": "scripts/eval_vpt_qwen2_blink_full_512.py",
+    "opts": [
+      "--max-image-resolution"
+    ],
+    "default": 512,
+    "choices": null
+  },
+  {
+    "file": "scripts/eval_vpt_qwen2_blink_full_512.py",
+    "opts": [
+      "--max-new-tokens"
+    ],
+    "default": 128,
+    "choices": null
+  },
+  {
+    "file": "scripts/eval_vpt_qwen2_blink_full_512.py",
+    "opts": [
+      "--method"
+    ],
+    "default": "vpt_clip_direct",
+    "choices": null
+  },
+  {
+    "file": "scripts/eval_vpt_qwen2_blink_full_512.py",
+    "opts": [
+      "--vpt-second-round"
+    ],
+    "default": "auto",
+    "choices": [
+      "auto",
+      "off"
+    ]
+  },
+  {
+    "file": "scripts/eval_vpt_qwen2_blink_full_512.py",
+    "opts": [
+      "--vpt-trigger-prompt"
+    ],
+    "default": "none",
+    "choices": [
+      "none",
+      "region",
+      "reencode"
+    ]
+  },
+  {
+    "file": "scripts/eval_vpt_qwen2_blink_full_512.py",
+    "opts": [
+      "--vpt-force-action"
+    ],
+    "default": "none",
+    "choices": [
+      "none",
+      "clip",
+      "region_full"
+    ]
+  },
+  {
+    "file": "scripts/eval_vpt_qwen2_blink_full_512.py",
+    "opts": [
+      "--no-progress"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/build_tgvf_rl_dataset.py",
+    "opts": [
+      "--sft-source"
+    ],
+    "default": "DEFAULT_SFT_SOURCE",
+    "choices": null
+  },
+  {
+    "file": "scripts/build_tgvf_rl_dataset.py",
+    "opts": [
+      "--rl-prompt-source"
+    ],
+    "default": "DEFAULT_RL_PROMPT_SOURCE",
+    "choices": null
+  },
+  {
+    "file": "scripts/build_tgvf_rl_dataset.py",
+    "opts": [
+      "--output-root"
+    ],
+    "default": "DEFAULT_OUTPUT_ROOT",
+    "choices": null
+  },
+  {
+    "file": "scripts/build_tgvf_rl_dataset.py",
+    "opts": [
+      "--protocol"
+    ],
+    "default": "protocol_c_tool_observation",
+    "choices": null
+  },
+  {
+    "file": "scripts/build_tgvf_rl_dataset.py",
+    "opts": [
+      "--max-rl-prompt-records"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/build_tgvf_rl_dataset.py",
+    "opts": [
+      "--max-rollout-records-per-file"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/build_tgvf_rl_dataset.py",
+    "opts": [
+      "--rollout"
+    ],
+    "default": "list(DEFAULT_ROLLOUTS)",
+    "choices": null
+  },
+  {
+    "file": "scripts/build_tgvf_v4_stage2_protocol_c.py",
+    "opts": [
+      "--input"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/build_tgvf_v4_stage2_protocol_c.py",
+    "opts": [
+      "--output"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/build_tgvf_v4_stage2_protocol_c.py",
+    "opts": [
+      "--report"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/describe_tgvf_conditioned_image.py",
+    "opts": [
+      "--benchmark"
+    ],
+    "default": "vstar_bench",
+    "choices": "BenchmarkRegistry.names()"
+  },
+  {
+    "file": "scripts/describe_tgvf_conditioned_image.py",
+    "opts": [
+      "--benchmark-root"
+    ],
+    "default": "DEFAULT_BENCHMARK_ROOT",
+    "choices": null
+  },
+  {
+    "file": "scripts/describe_tgvf_conditioned_image.py",
+    "opts": [
+      "--tier"
+    ],
+    "default": "full",
+    "choices": [
+      "light",
+      "medium",
+      "full"
+    ]
+  },
+  {
+    "file": "scripts/describe_tgvf_conditioned_image.py",
+    "opts": [
+      "--limit"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/describe_tgvf_conditioned_image.py",
+    "opts": [
+      "--max-samples"
+    ],
+    "default": 8,
+    "choices": null
+  },
+  {
+    "file": "scripts/describe_tgvf_conditioned_image.py",
+    "opts": [
+      "--sample-ids"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/describe_tgvf_conditioned_image.py",
+    "opts": [
+      "--seed"
+    ],
+    "default": "DEFAULT_SEED",
+    "choices": null
+  },
+  {
+    "file": "scripts/describe_tgvf_conditioned_image.py",
+    "opts": [
+      "--model-path"
+    ],
+    "default": "Qwen/Qwen2-VL-2B-Instruct",
+    "choices": null
+  },
+  {
+    "file": "scripts/describe_tgvf_conditioned_image.py",
+    "opts": [
+      "--processor-path"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/describe_tgvf_conditioned_image.py",
+    "opts": [
+      "--tgvf-checkpoint"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/describe_tgvf_conditioned_image.py",
+    "opts": [
+      "--tgvf-variant"
+    ],
+    "default": null,
+    "choices": "TGVF_VARIANTS"
+  },
+  {
+    "file": "scripts/describe_tgvf_conditioned_image.py",
+    "opts": [
+      "--num-foveated-tokens"
+    ],
+    "default": 16,
+    "choices": null
+  },
+  {
+    "file": "scripts/describe_tgvf_conditioned_image.py",
+    "opts": [
+      "--spatial-merge-size"
+    ],
+    "default": "auto",
+    "choices": null
+  },
+  {
+    "file": "scripts/describe_tgvf_conditioned_image.py",
+    "opts": [
+      "--device"
+    ],
+    "default": "cuda:0",
+    "choices": null
+  },
+  {
+    "file": "scripts/describe_tgvf_conditioned_image.py",
+    "opts": [
+      "--device-index"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/describe_tgvf_conditioned_image.py",
+    "opts": [
+      "--dtype"
+    ],
+    "default": "bf16",
+    "choices": null
+  },
+  {
+    "file": "scripts/describe_tgvf_conditioned_image.py",
+    "opts": [
+      "--attn-implementation"
+    ],
+    "default": "flash_attention_2",
+    "choices": null
+  },
+  {
+    "file": "scripts/describe_tgvf_conditioned_image.py",
+    "opts": [
+      "--image-budget"
+    ],
+    "default": "mid",
+    "choices": [
+      "low",
+      "mid",
+      "high"
+    ]
+  },
+  {
+    "file": "scripts/describe_tgvf_conditioned_image.py",
+    "opts": [
+      "--capture-layer"
+    ],
+    "default": -1,
+    "choices": null
+  },
+  {
+    "file": "scripts/describe_tgvf_conditioned_image.py",
+    "opts": [
+      "--forced-target-max-tokens"
+    ],
+    "default": 32,
+    "choices": null
+  },
+  {
+    "file": "scripts/describe_tgvf_conditioned_image.py",
+    "opts": [
+      "--max-new-tokens"
+    ],
+    "default": 64,
+    "choices": null
+  },
+  {
+    "file": "scripts/describe_tgvf_conditioned_image.py",
+    "opts": [
+      "--description-prompt"
+    ],
+    "default": "Describe the image content in detail. Mention visible objects, colors, text, and spatial relationships. Do not answer any multiple-choice question.",
+    "choices": null
+  },
+  {
+    "file": "scripts/describe_tgvf_conditioned_image.py",
+    "opts": [
+      "--fvt-append-mode"
+    ],
+    "default": "qwen_native_pseudo_image",
+    "choices": [
+      "qwen_native_pseudo_image"
+    ]
+  },
+  {
+    "file": "scripts/describe_tgvf_conditioned_image.py",
+    "opts": [
+      "--output-jsonl"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/visualize_tgvf_attention.py",
+    "opts": [
+      "--checkpoint"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/visualize_tgvf_attention.py",
+    "opts": [
+      "--samples"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/visualize_tgvf_attention.py",
+    "opts": [
+      "--output-dir"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/visualize_tgvf_attention.py",
+    "opts": [
+      "--model-id"
+    ],
+    "default": "Qwen/Qwen3-VL-8B-Thinking",
+    "choices": null
+  },
+  {
+    "file": "scripts/visualize_tgvf_attention.py",
+    "opts": [
+      "--processor-id"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/visualize_tgvf_attention.py",
+    "opts": [
+      "--dtype"
+    ],
+    "default": "bfloat16",
+    "choices": [
+      "auto",
+      "bfloat16",
+      "bf16",
+      "float16",
+      "fp16",
+      "float32",
+      "fp32"
+    ]
+  },
+  {
+    "file": "scripts/visualize_tgvf_attention.py",
+    "opts": [
+      "--device-map"
+    ],
+    "default": "cuda:0",
+    "choices": null
+  },
+  {
+    "file": "scripts/visualize_tgvf_attention.py",
+    "opts": [
+      "--device"
+    ],
+    "default": "cuda:0",
+    "choices": null
+  },
+  {
+    "file": "scripts/visualize_tgvf_attention.py",
+    "opts": [
+      "--attn-implementation"
+    ],
+    "default": "sdpa",
+    "choices": null
+  },
+  {
+    "file": "scripts/visualize_tgvf_attention.py",
+    "opts": [
+      "--tgvf-protocol"
+    ],
+    "default": null,
+    "choices": "TGVF_PROTOCOL_CHOICES"
+  },
+  {
+    "file": "scripts/visualize_tgvf_attention.py",
+    "opts": [
+      "--variant"
+    ],
+    "default": null,
+    "choices": "TGVF_VARIANTS"
+  },
+  {
+    "file": "scripts/visualize_tgvf_attention.py",
+    "opts": [
+      "--num-foveated-tokens"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/visualize_tgvf_attention.py",
+    "opts": [
+      "--spatial-merge-size"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/visualize_tgvf_attention.py",
+    "opts": [
+      "--attn-dim"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/visualize_tgvf_attention.py",
+    "opts": [
+      "--max-image-resolution"
+    ],
+    "default": 512,
+    "choices": null
+  },
+  {
+    "file": "scripts/visualize_tgvf_attention.py",
+    "opts": [
+      "--hidden-state-index"
+    ],
+    "default": -1,
+    "choices": null
+  },
+  {
+    "file": "scripts/visualize_tgvf_attention.py",
+    "opts": [
+      "--num-samples"
+    ],
+    "default": 16,
+    "choices": null
+  },
+  {
+    "file": "scripts/visualize_tgvf_attention.py",
+    "opts": [
+      "--same-image-groups-only"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/visualize_tgvf_attention.py",
+    "opts": [
+      "--min-confidence"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/visualize_tgvf_attention.py",
+    "opts": [
+      "--seed"
+    ],
+    "default": 0,
+    "choices": null
+  },
+  {
+    "file": "scripts/visualize_tgvf_attention.py",
+    "opts": [
+      "--load-lora"
+    ],
+    "default": true,
+    "choices": null
+  },
+  {
+    "file": "scripts/visualize_tgvf_attention.py",
+    "opts": [
+      "--lora-rank"
+    ],
+    "default": 64,
+    "choices": null
+  },
+  {
+    "file": "scripts/visualize_tgvf_attention.py",
+    "opts": [
+      "--lora-alpha"
+    ],
+    "default": 256,
+    "choices": null
+  },
+  {
+    "file": "scripts/visualize_tgvf_attention.py",
+    "opts": [
+      "--lora-dropout"
+    ],
+    "default": 0.05,
+    "choices": null
+  },
+  {
+    "file": "scripts/visualize_tgvf_attention.py",
+    "opts": [
+      "--lora-bias"
+    ],
+    "default": "none",
+    "choices": [
+      "none",
+      "all",
+      "lora_only"
+    ]
+  },
+  {
+    "file": "scripts/visualize_tgvf_attention.py",
+    "opts": [
+      "--lora-target-modules"
+    ],
+    "default": "q_proj,k_proj,v_proj,o_proj,gate_proj,up_proj,down_proj",
+    "choices": null
+  },
+  {
+    "file": "scripts/tgvf_mmmu_probe_heatmap.py",
+    "opts": [
+      "--parquet"
+    ],
+    "default": "DEFAULT_MMMU_PARQUET",
+    "choices": null
+  },
+  {
+    "file": "scripts/tgvf_mmmu_probe_heatmap.py",
+    "opts": [
+      "--row"
+    ],
+    "default": 0,
+    "choices": null
+  },
+  {
+    "file": "scripts/tgvf_mmmu_probe_heatmap.py",
+    "opts": [
+      "--count"
+    ],
+    "default": 1,
+    "choices": null
+  },
+  {
+    "file": "scripts/tgvf_mmmu_probe_heatmap.py",
+    "opts": [
+      "--output-dir"
+    ],
+    "default": "outputs/tgvf_mmmu_probe",
+    "choices": null
+  },
+  {
+    "file": "scripts/tgvf_mmmu_probe_heatmap.py",
+    "opts": [
+      "--model-id"
+    ],
+    "default": "Qwen/Qwen2-VL-2B-Instruct",
+    "choices": null
+  },
+  {
+    "file": "scripts/tgvf_mmmu_probe_heatmap.py",
+    "opts": [
+      "--device"
+    ],
+    "default": "cuda:0",
+    "choices": null
+  },
+  {
+    "file": "scripts/tgvf_mmmu_probe_heatmap.py",
+    "opts": [
+      "--attn-implementation"
+    ],
+    "default": "flash_attention_2",
+    "choices": null
+  },
+  {
+    "file": "scripts/tgvf_mmmu_probe_heatmap.py",
+    "opts": [
+      "--target"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/tgvf_mmmu_probe_heatmap.py",
+    "opts": [
+      "--natural-target-tokens"
+    ],
+    "default": 10,
+    "choices": null
+  },
+  {
+    "file": "scripts/tgvf_mmmu_probe_heatmap.py",
+    "opts": [
+      "--query-source"
+    ],
+    "default": "hidden_states",
+    "choices": [
+      "hidden_states",
+      "token_embeddings"
+    ]
+  },
+  {
+    "file": "scripts/clean_tgvf_protocol_c_splits.py",
+    "opts": [
+      "--input-root"
+    ],
+    "default": "data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k/splits",
+    "choices": null
+  },
+  {
+    "file": "scripts/clean_tgvf_protocol_c_splits.py",
+    "opts": [
+      "--output-root"
+    ],
+    "default": "data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend/splits",
+    "choices": null
+  },
+  {
+    "file": "scripts/clean_tgvf_protocol_c_splits.py",
+    "opts": [
+      "--files"
+    ],
+    "default": [
+      "tgvf_v4_teacher_stage1_protocol_c_focus.train.jsonl",
+      "tgvf_v4_teacher_stage1_protocol_c_focus.test.jsonl",
+      "tgvf_v4_teacher_stage2_protocol_c.train.jsonl",
+      "tgvf_v4_teacher_stage2_protocol_c.test.jsonl"
+    ],
+    "choices": null
+  },
+  {
+    "file": "scripts/mirror_stage2_trainlog_to_wandb.py",
+    "opts": [
+      "--train-log"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/mirror_stage2_trainlog_to_wandb.py",
+    "opts": [
+      "--config"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/mirror_stage2_trainlog_to_wandb.py",
+    "opts": [
+      "--project"
+    ],
+    "default": "tgvf-v3",
+    "choices": null
+  },
+  {
+    "file": "scripts/mirror_stage2_trainlog_to_wandb.py",
+    "opts": [
+      "--entity"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/mirror_stage2_trainlog_to_wandb.py",
+    "opts": [
+      "--name"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/mirror_stage2_trainlog_to_wandb.py",
+    "opts": [
+      "--group"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/mirror_stage2_trainlog_to_wandb.py",
+    "opts": [
+      "--tags"
+    ],
+    "default": "",
+    "choices": null
+  },
+  {
+    "file": "scripts/mirror_stage2_trainlog_to_wandb.py",
+    "opts": [
+      "--poll-sec"
+    ],
+    "default": 30.0,
+    "choices": null
+  },
+  {
+    "file": "scripts/mirror_stage2_trainlog_to_wandb.py",
+    "opts": [
+      "--exit-when-idle-sec"
+    ],
+    "default": 0.0,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage2.py",
+    "opts": [
+      "--train-file"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage2.py",
+    "opts": [
+      "--val-file"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage2.py",
+    "opts": [
+      "--output-dir"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage2.py",
+    "opts": [
+      "--stage1-checkpoint"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage2.py",
+    "opts": [
+      "--model-id"
+    ],
+    "default": "Qwen/Qwen3-VL-8B-Thinking",
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage2.py",
+    "opts": [
+      "--processor-id"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage2.py",
+    "opts": [
+      "--dtype"
+    ],
+    "default": "bfloat16",
+    "choices": [
+      "auto",
+      "bfloat16",
+      "bf16",
+      "float16",
+      "fp16",
+      "float32",
+      "fp32"
+    ]
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage2.py",
+    "opts": [
+      "--device-map"
+    ],
+    "default": "cuda:0",
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage2.py",
+    "opts": [
+      "--device"
+    ],
+    "default": "cuda:0",
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage2.py",
+    "opts": [
+      "--attn-implementation"
+    ],
+    "default": "sdpa",
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage2.py",
+    "opts": [
+      "--tgvf-protocol"
+    ],
+    "default": "legacy_v3_tags",
+    "choices": "TGVF_PROTOCOL_CHOICES"
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage2.py",
+    "opts": [
+      "--gradient-checkpointing"
+    ],
+    "default": true,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage2.py",
+    "opts": [
+      "--variant"
+    ],
+    "default": "tgvf_v2_bidirectional",
+    "choices": "TGVF_VARIANTS"
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage2.py",
+    "opts": [
+      "--use-stage1-tgvf-config"
+    ],
+    "default": true,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage2.py",
+    "opts": [
+      "--num-foveated-tokens"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage2.py",
+    "opts": [
+      "--spatial-merge-size"
+    ],
+    "default": "auto",
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage2.py",
+    "opts": [
+      "--attn-dim"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage2.py",
+    "opts": [
+      "--encoder-adapter-layers"
+    ],
+    "default": [
+      8,
+      16,
+      24
+    ],
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage2.py",
+    "opts": [
+      "--encoder-adapter-type"
+    ],
+    "default": "bidirectional",
+    "choices": [
+      "bidirectional",
+      "bidirectional_film_aggressive"
+    ]
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage2.py",
+    "opts": [
+      "--encoder-adapter-gate-init"
+    ],
+    "default": 0.0,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage2.py",
+    "opts": [
+      "--encoder-adapter-share-weights"
+    ],
+    "default": false,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage2.py",
+    "opts": [
+      "--encoder-adapter-layer-index-base"
+    ],
+    "default": 0,
+    "choices": [
+      0,
+      1
+    ]
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage2.py",
+    "opts": [
+      "--encoder-reencode-deepstack-compatible"
+    ],
+    "default": false,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage2.py",
+    "opts": [
+      "--lora-rank"
+    ],
+    "default": 64,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage2.py",
+    "opts": [
+      "--lora-alpha"
+    ],
+    "default": 256,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage2.py",
+    "opts": [
+      "--lora-dropout"
+    ],
+    "default": 0.05,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage2.py",
+    "opts": [
+      "--lora-bias"
+    ],
+    "default": "none",
+    "choices": [
+      "none",
+      "all",
+      "lora_only"
+    ]
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage2.py",
+    "opts": [
+      "--lora-target-modules"
+    ],
+    "default": "q_proj,k_proj,v_proj,o_proj,gate_proj,up_proj,down_proj",
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage2.py",
+    "opts": [
+      "--lr-lora"
+    ],
+    "default": 2e-05,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage2.py",
+    "opts": [
+      "--lr-tgvf"
+    ],
+    "default": 5e-06,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage2.py",
+    "opts": [
+      "--lr-calibration"
+    ],
+    "default": 1e-05,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage2.py",
+    "opts": [
+      "--lr-scheduler"
+    ],
+    "default": "cosine",
+    "choices": [
+      "constant",
+      "linear",
+      "cosine"
+    ]
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage2.py",
+    "opts": [
+      "--warmup-ratio"
+    ],
+    "default": 0.03,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage2.py",
+    "opts": [
+      "--warmup-steps"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage2.py",
+    "opts": [
+      "--min-lr-ratio"
+    ],
+    "default": 0.1,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage2.py",
+    "opts": [
+      "--adam-beta1"
+    ],
+    "default": 0.9,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage2.py",
+    "opts": [
+      "--adam-beta2"
+    ],
+    "default": 0.95,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage2.py",
+    "opts": [
+      "--adam-eps"
+    ],
+    "default": 1e-08,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage2.py",
+    "opts": [
+      "--weight-decay"
+    ],
+    "default": 0.01,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage2.py",
+    "opts": [
+      "--batch-size"
+    ],
+    "default": 1,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage2.py",
+    "opts": [
+      "--gradient-accumulation-steps"
+    ],
+    "default": 16,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage2.py",
+    "opts": [
+      "--target-focus-ratio"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage2.py",
+    "opts": [
+      "--max-steps"
+    ],
+    "default": 1200,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage2.py",
+    "opts": [
+      "--save-every"
+    ],
+    "default": 300,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage2.py",
+    "opts": [
+      "--eval-every"
+    ],
+    "default": 300,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage2.py",
+    "opts": [
+      "--eval-max-samples"
+    ],
+    "default": 128,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage2.py",
+    "opts": [
+      "--log-every"
+    ],
+    "default": 10,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage2.py",
+    "opts": [
+      "--max-grad-norm"
+    ],
+    "default": 1.0,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage2.py",
+    "opts": [
+      "--capture-layer"
+    ],
+    "default": -1,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage2.py",
+    "opts": [
+      "--max-image-resolution"
+    ],
+    "default": 512,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage2.py",
+    "opts": [
+      "--max-seq-len"
+    ],
+    "default": 2048,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage2.py",
+    "opts": [
+      "--fvt-position-mode"
+    ],
+    "default": "native_source_grid",
+    "choices": [
+      "native_source_grid",
+      "inherit_source_visual_positions"
+    ]
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage2.py",
+    "opts": [
+      "--mask-original-image-after-tgvf"
+    ],
+    "default": true,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage2.py",
+    "opts": [
+      "--mask-original-image-after-tgvf-prob"
+    ],
+    "default": 1.0,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage2.py",
+    "opts": [
+      "--mask-original-image-after-tgvf-scope"
+    ],
+    "default": "evidence_only",
+    "choices": "ORIGINAL_IMAGE_MASK_SCOPE_CHOICES"
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage2.py",
+    "opts": [
+      "--fast-batched-stage2"
+    ],
+    "default": true,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage2.py",
+    "opts": [
+      "--min-confidence"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage2.py",
+    "opts": [
+      "--loss-evidence-state"
+    ],
+    "default": 0.2,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage2.py",
+    "opts": [
+      "--loss-focus-target"
+    ],
+    "default": 1.5,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage2.py",
+    "opts": [
+      "--loss-evidence"
+    ],
+    "default": 1.0,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage2.py",
+    "opts": [
+      "--loss-value-span"
+    ],
+    "default": 1.0,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage2.py",
+    "opts": [
+      "--loss-answer"
+    ],
+    "default": 1.0,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage2.py",
+    "opts": [
+      "--loss-no-focus-evidence-state"
+    ],
+    "default": 0.2,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage2.py",
+    "opts": [
+      "--loss-no-focus-answer"
+    ],
+    "default": 1.0,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage2.py",
+    "opts": [
+      "--loss-visual-token-manifold"
+    ],
+    "default": 0.0,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage2.py",
+    "opts": [
+      "--num-workers"
+    ],
+    "default": 0,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage2.py",
+    "opts": [
+      "--pin-memory"
+    ],
+    "default": true,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage2.py",
+    "opts": [
+      "--persistent-workers"
+    ],
+    "default": true,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage2.py",
+    "opts": [
+      "--prefetch-factor"
+    ],
+    "default": 2,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage2.py",
+    "opts": [
+      "--seed"
+    ],
+    "default": 20260525,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage2.py",
+    "opts": [
+      "--wandb-project"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage2.py",
+    "opts": [
+      "--wandb-entity"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage2.py",
+    "opts": [
+      "--wandb-run-name"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage2.py",
+    "opts": [
+      "--wandb-group"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage2.py",
+    "opts": [
+      "--wandb-mode"
+    ],
+    "default": null,
+    "choices": [
+      "online",
+      "offline",
+      "disabled"
+    ]
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage2.py",
+    "opts": [
+      "--wandb-dir"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage2.py",
+    "opts": [
+      "--wandb-tags"
+    ],
+    "default": "",
+    "choices": null
+  },
+  {
+    "file": "scripts/convert_stage2_choices_to_open_answer.py",
+    "opts": [
+      "--input-root"
+    ],
+    "default": "str(DEFAULT_INPUT_ROOT)",
+    "choices": null
+  },
+  {
+    "file": "scripts/convert_stage2_choices_to_open_answer.py",
+    "opts": [
+      "--output-root"
+    ],
+    "default": "str(DEFAULT_OUTPUT_ROOT)",
+    "choices": null
+  },
+  {
+    "file": "scripts/convert_stage2_choices_to_open_answer.py",
+    "opts": [
+      "--files"
+    ],
+    "default": "list(DEFAULT_FILES)",
+    "choices": null
+  },
+  {
+    "file": "scripts/convert_stage2_choices_to_open_answer.py",
+    "opts": [
+      "--report"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/run_tgvf_v4_teacher_50k.py",
+    "opts": [
+      "--selection"
+    ],
+    "default": "data/tgvf_teacher/preparation/selections/selected_images_v3_50k_v0.jsonl",
+    "choices": null
+  },
+  {
+    "file": "scripts/run_tgvf_v4_teacher_50k.py",
+    "opts": [
+      "--project-root"
+    ],
+    "default": ".",
+    "choices": null
+  },
+  {
+    "file": "scripts/run_tgvf_v4_teacher_50k.py",
+    "opts": [
+      "--run-id"
+    ],
+    "default": "tgvf_v4_teacher_50k",
+    "choices": null
+  },
+  {
+    "file": "scripts/run_tgvf_v4_teacher_50k.py",
+    "opts": [
+      "--model"
+    ],
+    "default": "gpt-5.4",
+    "choices": null
+  },
+  {
+    "file": "scripts/run_tgvf_v4_teacher_50k.py",
+    "opts": [
+      "--image-detail"
+    ],
+    "default": "original",
+    "choices": null
+  },
+  {
+    "file": "scripts/run_tgvf_v4_teacher_50k.py",
+    "opts": [
+      "--target-accepted-samples"
+    ],
+    "default": 50000,
+    "choices": null
+  },
+  {
+    "file": "scripts/run_tgvf_v4_teacher_50k.py",
+    "opts": [
+      "--concurrency"
+    ],
+    "default": 8,
+    "choices": null
+  },
+  {
+    "file": "scripts/run_tgvf_v4_teacher_50k.py",
+    "opts": [
+      "--max-output-tokens"
+    ],
+    "default": 5000,
+    "choices": null
+  },
+  {
+    "file": "scripts/run_tgvf_v4_teacher_50k.py",
+    "opts": [
+      "--timeout-seconds"
+    ],
+    "default": 180,
+    "choices": null
+  },
+  {
+    "file": "scripts/run_tgvf_v4_teacher_50k.py",
+    "opts": [
+      "--max-retries"
+    ],
+    "default": 5,
+    "choices": null
+  },
+  {
+    "file": "scripts/run_tgvf_v4_teacher_50k.py",
+    "opts": [
+      "--limit-images"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/run_tgvf_v4_teacher_50k.py",
+    "opts": [
+      "--allow-regenerate"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/run_tgvf_v4_teacher_50k.py",
+    "opts": [
+      "--allow-duplicate-items"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/run_tgvf_inference.py",
+    "opts": [
+      "--image"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/run_tgvf_inference.py",
+    "opts": [
+      "--question"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/run_tgvf_inference.py",
+    "opts": [
+      "--checkpoint"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/run_tgvf_inference.py",
+    "opts": [
+      "--model-name-or-path"
+    ],
+    "default": "Qwen/Qwen2-VL-2B-Instruct",
+    "choices": null
+  },
+  {
+    "file": "scripts/run_tgvf_inference.py",
+    "opts": [
+      "--variant"
+    ],
+    "default": "foveal_cross_merger",
+    "choices": "TGVF_VARIANTS"
+  },
+  {
+    "file": "scripts/run_tgvf_inference.py",
+    "opts": [
+      "--num-foveated-tokens"
+    ],
+    "default": 16,
+    "choices": null
+  },
+  {
+    "file": "scripts/run_tgvf_inference.py",
+    "opts": [
+      "--spatial-merge-size"
+    ],
+    "default": "auto",
+    "choices": null
+  },
+  {
+    "file": "scripts/run_tgvf_inference.py",
+    "opts": [
+      "--attn-dim"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/run_tgvf_inference.py",
+    "opts": [
+      "--device"
+    ],
+    "default": "cuda:0",
+    "choices": null
+  },
+  {
+    "file": "scripts/run_tgvf_inference.py",
+    "opts": [
+      "--torch-dtype"
+    ],
+    "default": "bfloat16",
+    "choices": null
+  },
+  {
+    "file": "scripts/run_tgvf_inference.py",
+    "opts": [
+      "--attn-implementation"
+    ],
+    "default": "flash_attention_2",
+    "choices": null
+  },
+  {
+    "file": "scripts/run_tgvf_inference.py",
+    "opts": [
+      "--capture-max-new-tokens"
+    ],
+    "default": 128,
+    "choices": null
+  },
+  {
+    "file": "scripts/run_tgvf_inference.py",
+    "opts": [
+      "--answer-max-new-tokens"
+    ],
+    "default": 64,
+    "choices": null
+  },
+  {
+    "file": "scripts/debug_tgvf_readout.py",
+    "opts": [
+      "--sample-file"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/debug_tgvf_readout.py",
+    "opts": [
+      "--sample-index"
+    ],
+    "default": 0,
+    "choices": null
+  },
+  {
+    "file": "scripts/debug_tgvf_readout.py",
+    "opts": [
+      "--checkpoint"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/debug_tgvf_readout.py",
+    "opts": [
+      "--model-name-or-path"
+    ],
+    "default": "Qwen/Qwen2-VL-2B-Instruct",
+    "choices": null
+  },
+  {
+    "file": "scripts/debug_tgvf_readout.py",
+    "opts": [
+      "--variant"
+    ],
+    "default": "foveal_cross_merger",
+    "choices": "TGVF_VARIANTS"
+  },
+  {
+    "file": "scripts/debug_tgvf_readout.py",
+    "opts": [
+      "--num-foveated-tokens"
+    ],
+    "default": 16,
+    "choices": null
+  },
+  {
+    "file": "scripts/debug_tgvf_readout.py",
+    "opts": [
+      "--spatial-merge-size"
+    ],
+    "default": "auto",
+    "choices": null
+  },
+  {
+    "file": "scripts/debug_tgvf_readout.py",
+    "opts": [
+      "--attn-dim"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/debug_tgvf_readout.py",
+    "opts": [
+      "--device"
+    ],
+    "default": "cuda:0",
+    "choices": null
+  },
+  {
+    "file": "scripts/debug_tgvf_readout.py",
+    "opts": [
+      "--torch-dtype"
+    ],
+    "default": "bfloat16",
+    "choices": null
+  },
+  {
+    "file": "scripts/debug_tgvf_readout.py",
+    "opts": [
+      "--attn-implementation"
+    ],
+    "default": "flash_attention_2",
+    "choices": null
+  },
+  {
+    "file": "scripts/debug_tgvf_readout.py",
+    "opts": [
+      "--capture-layer"
+    ],
+    "default": -1,
+    "choices": null
+  },
+  {
+    "file": "scripts/debug_tgvf_readout.py",
+    "opts": [
+      "--max-new-tokens"
+    ],
+    "default": 64,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage1.py",
+    "opts": [
+      "--train-file"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage1.py",
+    "opts": [
+      "--output-dir"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage1.py",
+    "opts": [
+      "--model-id"
+    ],
+    "default": "Qwen/Qwen3-VL-8B-Thinking",
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage1.py",
+    "opts": [
+      "--processor-id"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage1.py",
+    "opts": [
+      "--dtype"
+    ],
+    "default": "bfloat16",
+    "choices": [
+      "auto",
+      "bfloat16",
+      "bf16",
+      "float16",
+      "fp16",
+      "float32",
+      "fp32"
+    ]
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage1.py",
+    "opts": [
+      "--device-map"
+    ],
+    "default": "cuda:0",
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage1.py",
+    "opts": [
+      "--device"
+    ],
+    "default": "cuda:0",
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage1.py",
+    "opts": [
+      "--attn-implementation"
+    ],
+    "default": "sdpa",
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage1.py",
+    "opts": [
+      "--tgvf-protocol"
+    ],
+    "default": "legacy_v3_tags",
+    "choices": "TGVF_PROTOCOL_CHOICES"
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage1.py",
+    "opts": [
+      "--variant"
+    ],
+    "default": "tgvf_v2_bidirectional",
+    "choices": "TGVF_VARIANTS"
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage1.py",
+    "opts": [
+      "--num-foveated-tokens"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage1.py",
+    "opts": [
+      "--spatial-merge-size"
+    ],
+    "default": "auto",
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage1.py",
+    "opts": [
+      "--attn-dim"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage1.py",
+    "opts": [
+      "--encoder-adapter-layers"
+    ],
+    "default": [
+      8,
+      16,
+      24
+    ],
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage1.py",
+    "opts": [
+      "--encoder-adapter-type"
+    ],
+    "default": "bidirectional",
+    "choices": [
+      "bidirectional",
+      "bidirectional_film_aggressive"
+    ]
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage1.py",
+    "opts": [
+      "--encoder-adapter-gate-init"
+    ],
+    "default": 0.0,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage1.py",
+    "opts": [
+      "--encoder-adapter-share-weights"
+    ],
+    "default": false,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage1.py",
+    "opts": [
+      "--encoder-adapter-layer-index-base"
+    ],
+    "default": 0,
+    "choices": [
+      0,
+      1
+    ]
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage1.py",
+    "opts": [
+      "--encoder-reencode-deepstack-compatible"
+    ],
+    "default": false,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage1.py",
+    "opts": [
+      "--train-reencode-vision-branch"
+    ],
+    "default": false,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage1.py",
+    "opts": [
+      "--reencode-vision-learning-rate"
+    ],
+    "default": 1e-06,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage1.py",
+    "opts": [
+      "--learning-rate"
+    ],
+    "default": 0.0001,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage1.py",
+    "opts": [
+      "--lr-scheduler"
+    ],
+    "default": "constant",
+    "choices": [
+      "constant",
+      "linear",
+      "cosine"
+    ]
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage1.py",
+    "opts": [
+      "--warmup-steps"
+    ],
+    "default": 0,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage1.py",
+    "opts": [
+      "--min-lr-ratio"
+    ],
+    "default": 0.0,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage1.py",
+    "opts": [
+      "--batch-size"
+    ],
+    "default": 1,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage1.py",
+    "opts": [
+      "--gradient-accumulation-steps"
+    ],
+    "default": 1,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage1.py",
+    "opts": [
+      "--batch-sampling"
+    ],
+    "default": "auto",
+    "choices": [
+      "auto",
+      "random",
+      "same_image"
+    ]
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage1.py",
+    "opts": [
+      "--drop-incomplete-same-image-batches"
+    ],
+    "default": true,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage1.py",
+    "opts": [
+      "--capture-mode"
+    ],
+    "default": "teacher_forced",
+    "choices": [
+      "teacher_forced",
+      "decode_loop"
+    ]
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage1.py",
+    "opts": [
+      "--focus-action-im-end"
+    ],
+    "default": false,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage1.py",
+    "opts": [
+      "--protocol-token-row-mode"
+    ],
+    "default": "row_only",
+    "choices": [
+      "row_only",
+      "full_mask"
+    ]
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage1.py",
+    "opts": [
+      "--readout-batch-size"
+    ],
+    "default": 4,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage1.py",
+    "opts": [
+      "--num-workers"
+    ],
+    "default": 0,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage1.py",
+    "opts": [
+      "--pin-memory"
+    ],
+    "default": true,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage1.py",
+    "opts": [
+      "--persistent-workers"
+    ],
+    "default": true,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage1.py",
+    "opts": [
+      "--prefetch-factor"
+    ],
+    "default": 2,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage1.py",
+    "opts": [
+      "--seed"
+    ],
+    "default": 20260525,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage1.py",
+    "opts": [
+      "--max-steps"
+    ],
+    "default": 1000,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage1.py",
+    "opts": [
+      "--save-every"
+    ],
+    "default": 1000,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage1.py",
+    "opts": [
+      "--log-every"
+    ],
+    "default": 10,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage1.py",
+    "opts": [
+      "--max-grad-norm"
+    ],
+    "default": 1.0,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage1.py",
+    "opts": [
+      "--capture-layer"
+    ],
+    "default": -1,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage1.py",
+    "opts": [
+      "--loss-gen"
+    ],
+    "default": 1.0,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage1.py",
+    "opts": [
+      "--loss-visual-token-manifold"
+    ],
+    "default": 0.1,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage1.py",
+    "opts": [
+      "--loss-same-image-negative"
+    ],
+    "default": 1.0,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage1.py",
+    "opts": [
+      "--same-image-negative-margin"
+    ],
+    "default": 1.0,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage1.py",
+    "opts": [
+      "--same-image-negative-mode"
+    ],
+    "default": "matrix_ce",
+    "choices": [
+      "cyclic_margin",
+      "matrix_ce"
+    ]
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage1.py",
+    "opts": [
+      "--mask-original-image-after-tgvf"
+    ],
+    "default": true,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage1.py",
+    "opts": [
+      "--fvt-position-mode"
+    ],
+    "default": "native_source_grid",
+    "choices": [
+      "native_source_grid",
+      "inherit_source_visual_positions"
+    ]
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage1.py",
+    "opts": [
+      "--min-confidence"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage1.py",
+    "opts": [
+      "--max-image-resolution"
+    ],
+    "default": 512,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage1.py",
+    "opts": [
+      "--resume-from-checkpoint"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage1.py",
+    "opts": [
+      "--init-tgvf-from-checkpoint"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage1.py",
+    "opts": [
+      "--max-debug-examples-per-log"
+    ],
+    "default": 2,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage1.py",
+    "opts": [
+      "--wandb-project"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage1.py",
+    "opts": [
+      "--wandb-entity"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage1.py",
+    "opts": [
+      "--wandb-run-name"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage1.py",
+    "opts": [
+      "--wandb-group"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage1.py",
+    "opts": [
+      "--wandb-mode"
+    ],
+    "default": null,
+    "choices": [
+      "online",
+      "offline",
+      "disabled"
+    ]
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage1.py",
+    "opts": [
+      "--wandb-dir"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage1.py",
+    "opts": [
+      "--wandb-tags"
+    ],
+    "default": "",
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage1.py",
+    "opts": [
+      "--wandb-watch"
+    ],
+    "default": null,
+    "choices": [
+      "gradients",
+      "parameters",
+      "all"
+    ]
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage1.py",
+    "opts": [
+      "--wandb-log-checkpoints"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "scripts/train_tgvf_v3_stage1.py",
+    "opts": [
+      "--ddp-find-unused-parameters"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_readout.py",
+    "opts": [
+      "--overwrite-output-dir"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "eval/upload_eval_wandb.py",
+    "opts": [
+      "--eval-root"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "eval/upload_eval_wandb.py",
+    "opts": [
+      "--project"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "eval/upload_eval_wandb.py",
+    "opts": [
+      "--entity"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "eval/upload_eval_wandb.py",
+    "opts": [
+      "--run-name"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "eval/upload_eval_wandb.py",
+    "opts": [
+      "--group"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "eval/upload_eval_wandb.py",
+    "opts": [
+      "--mode"
+    ],
+    "default": null,
+    "choices": [
+      "online",
+      "offline",
+      "disabled"
+    ]
+  },
+  {
+    "file": "eval/upload_eval_wandb.py",
+    "opts": [
+      "--tags"
+    ],
+    "default": "",
+    "choices": null
+  },
+  {
+    "file": "eval/upload_eval_wandb.py",
+    "opts": [
+      "--artifact-name"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "eval/upload_eval_wandb.py",
+    "opts": [
+      "--step"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_mmmu_force.py",
+    "opts": [
+      "--benchmark"
+    ],
+    "default": "mmmu_pro",
+    "choices": "BenchmarkRegistry.names()"
+  },
+  {
+    "file": "eval/eval_v3_mmmu_force.py",
+    "opts": [
+      "--benchmark-root"
+    ],
+    "default": "DEFAULT_BENCHMARK_ROOT",
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_mmmu_force.py",
+    "opts": [
+      "--scoring-backend"
+    ],
+    "default": "project",
+    "choices": [
+      "project",
+      "official",
+      "auto"
+    ]
+  },
+  {
+    "file": "eval/eval_v3_mmmu_force.py",
+    "opts": [
+      "--official-llm-mode"
+    ],
+    "default": "disabled",
+    "choices": [
+      "disabled",
+      "optional",
+      "required"
+    ]
+  },
+  {
+    "file": "eval/eval_v3_mmmu_force.py",
+    "opts": [
+      "--output-dir"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_mmmu_force.py",
+    "opts": [
+      "--tier"
+    ],
+    "default": "light",
+    "choices": [
+      "light",
+      "medium",
+      "full"
+    ]
+  },
+  {
+    "file": "eval/eval_v3_mmmu_force.py",
+    "opts": [
+      "--limit"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_mmmu_force.py",
+    "opts": [
+      "--seed"
+    ],
+    "default": 42,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_mmmu_force.py",
+    "opts": [
+      "--question-suffix"
+    ],
+    "default": "",
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_mmmu_force.py",
+    "opts": [
+      "--d-conditions"
+    ],
+    "default": "correct_D,random_D",
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_mmmu_force.py",
+    "opts": [
+      "--eval-mode"
+    ],
+    "default": "force",
+    "choices": [
+      "force",
+      "free",
+      "both"
+    ]
+  },
+  {
+    "file": "eval/eval_v3_mmmu_force.py",
+    "opts": [
+      "--include-stage2-direct"
+    ],
+    "default": true,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_mmmu_force.py",
+    "opts": [
+      "--post-tgvf-continuation"
+    ],
+    "default": "natural_continue",
+    "choices": [
+      "natural_continue",
+      "answer_only",
+      "evidence_then_answer",
+      "think_then_answer"
+    ]
+  },
+  {
+    "file": "eval/eval_v3_mmmu_force.py",
+    "opts": [
+      "--post-tgvf-forward-mode"
+    ],
+    "default": "no_kv_full_sequence",
+    "choices": [
+      "no_kv_full_sequence",
+      "kv_cache"
+    ]
+  },
+  {
+    "file": "eval/eval_v3_mmmu_force.py",
+    "opts": [
+      "--max-action-tokens"
+    ],
+    "default": 64,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_mmmu_force.py",
+    "opts": [
+      "--max-answer-tokens"
+    ],
+    "default": 32,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_mmmu_force.py",
+    "opts": [
+      "--num-shards"
+    ],
+    "default": 1,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_mmmu_force.py",
+    "opts": [
+      "--shard-index"
+    ],
+    "default": 0,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_mmmu_force.py",
+    "opts": [
+      "--log-every"
+    ],
+    "default": 8,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_mmmu_force.py",
+    "opts": [
+      "--progress"
+    ],
+    "default": true,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_mmmu_force.py",
+    "opts": [
+      "--stage2-checkpoint"
+    ],
+    "default": "outputs/tgvf_v3_stage2_8b/stage2_8b_fast_8gpu_1200step_full/train/checkpoint_step_1200.pt",
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_mmmu_force.py",
+    "opts": [
+      "--eval-jsonl"
+    ],
+    "default": "data/tgvf_teacher/generated/runs/tgvf_v3_teacher_val_2k/final/tgvf_teacher_items.accepted.jsonl",
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_mmmu_force.py",
+    "opts": [
+      "--model-id"
+    ],
+    "default": "/nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking",
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_mmmu_force.py",
+    "opts": [
+      "--processor-id"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_mmmu_force.py",
+    "opts": [
+      "--dtype"
+    ],
+    "default": "bfloat16",
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_mmmu_force.py",
+    "opts": [
+      "--device"
+    ],
+    "default": "cuda:0",
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_mmmu_force.py",
+    "opts": [
+      "--device-map"
+    ],
+    "default": "cuda:0",
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_mmmu_force.py",
+    "opts": [
+      "--attn-implementation"
+    ],
+    "default": "sdpa",
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_mmmu_force.py",
+    "opts": [
+      "--tgvf-protocol"
+    ],
+    "default": "legacy_v3_tags",
+    "choices": "TGVF_PROTOCOL_CHOICES"
+  },
+  {
+    "file": "eval/eval_v3_mmmu_force.py",
+    "opts": [
+      "--max-image-resolution"
+    ],
+    "default": 512,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_mmmu_force.py",
+    "opts": [
+      "--fvt-position-mode"
+    ],
+    "default": "native_source_grid",
+    "choices": [
+      "native_source_grid"
+    ]
+  },
+  {
+    "file": "eval/merge_results.py",
+    "opts": [
+      "--task"
+    ],
+    "default": null,
+    "choices": [
+      "readout",
+      "query",
+      "distribution",
+      "end2end"
+    ]
+  },
+  {
+    "file": "eval/merge_results.py",
+    "opts": [
+      "--input-root"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "eval/merge_results.py",
+    "opts": [
+      "--output-dir"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "eval/merge_results.py",
+    "opts": [
+      "--max-groups"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "eval/merge_results.py",
+    "opts": [
+      "--require-groups"
+    ],
+    "default": 0,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_vstar_force.py",
+    "opts": [
+      "--vstar-jsonl"
+    ],
+    "default": "DEFAULT_VSTAR",
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_vstar_force.py",
+    "opts": [
+      "--vstar-root"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_vstar_force.py",
+    "opts": [
+      "--image-dir"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_vstar_force.py",
+    "opts": [
+      "--scoring-backend"
+    ],
+    "default": "project",
+    "choices": [
+      "project",
+      "official",
+      "auto"
+    ]
+  },
+  {
+    "file": "eval/eval_v3_vstar_force.py",
+    "opts": [
+      "--output-dir"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_vstar_force.py",
+    "opts": [
+      "--max-samples"
+    ],
+    "default": 32,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_vstar_force.py",
+    "opts": [
+      "--skip-direct"
+    ],
+    "default": false,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_vstar_force.py",
+    "opts": [
+      "--indices"
+    ],
+    "default": "",
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_vstar_force.py",
+    "opts": [
+      "--category"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_vstar_force.py",
+    "opts": [
+      "--d-conditions"
+    ],
+    "default": "correct_D,no_D,random_D",
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_vstar_force.py",
+    "opts": [
+      "--eval-mode"
+    ],
+    "default": "force",
+    "choices": [
+      "force",
+      "free"
+    ]
+  },
+  {
+    "file": "eval/eval_v3_vstar_force.py",
+    "opts": [
+      "--mask-original-visual-keys-after-tgvf"
+    ],
+    "default": false,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_vstar_force.py",
+    "opts": [
+      "--max-action-tokens"
+    ],
+    "default": 64,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_vstar_force.py",
+    "opts": [
+      "--max-answer-tokens"
+    ],
+    "default": 16,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_vstar_force.py",
+    "opts": [
+      "--prompt-format"
+    ],
+    "default": "original",
+    "choices": [
+      "original",
+      "vlmevalkit"
+    ]
+  },
+  {
+    "file": "eval/eval_v3_vstar_force.py",
+    "opts": [
+      "--post-tgvf-continuation"
+    ],
+    "default": "natural_continue",
+    "choices": [
+      "natural_continue",
+      "answer_only",
+      "evidence_then_answer",
+      "think_then_answer"
+    ]
+  },
+  {
+    "file": "eval/eval_v3_vstar_force.py",
+    "opts": [
+      "--post-tgvf-forward-mode"
+    ],
+    "default": "no_kv_full_sequence",
+    "choices": [
+      "no_kv_full_sequence",
+      "kv_cache"
+    ]
+  },
+  {
+    "file": "eval/eval_v3_vstar_force.py",
+    "opts": [
+      "--num-shards"
+    ],
+    "default": 1,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_vstar_force.py",
+    "opts": [
+      "--shard-index"
+    ],
+    "default": 0,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_vstar_force.py",
+    "opts": [
+      "--log-every"
+    ],
+    "default": 8,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_vstar_force.py",
+    "opts": [
+      "--progress"
+    ],
+    "default": true,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_vstar_force.py",
+    "opts": [
+      "--stage2-checkpoint"
+    ],
+    "default": "outputs/tgvf_v3_stage2_8b/stage2_8b_fast_8gpu_1200step_full/train/checkpoint_step_1200.pt",
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_vstar_force.py",
+    "opts": [
+      "--eval-jsonl"
+    ],
+    "default": "data/tgvf_teacher/generated/runs/tgvf_v3_teacher_val_2k/final/tgvf_teacher_items.accepted.jsonl",
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_vstar_force.py",
+    "opts": [
+      "--model-id"
+    ],
+    "default": "/nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking",
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_vstar_force.py",
+    "opts": [
+      "--processor-id"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_vstar_force.py",
+    "opts": [
+      "--dtype"
+    ],
+    "default": "bfloat16",
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_vstar_force.py",
+    "opts": [
+      "--device"
+    ],
+    "default": "cuda:0",
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_vstar_force.py",
+    "opts": [
+      "--device-map"
+    ],
+    "default": "cuda:0",
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_vstar_force.py",
+    "opts": [
+      "--attn-implementation"
+    ],
+    "default": "sdpa",
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_vstar_force.py",
+    "opts": [
+      "--tgvf-protocol"
+    ],
+    "default": "legacy_v3_tags",
+    "choices": "TGVF_PROTOCOL_CHOICES"
+  },
+  {
+    "file": "eval/eval_v3_vstar_force.py",
+    "opts": [
+      "--max-image-resolution"
+    ],
+    "default": 512,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_vstar_force.py",
+    "opts": [
+      "--fvt-position-mode"
+    ],
+    "default": "native_source_grid",
+    "choices": [
+      "native_source_grid"
+    ]
+  },
+  {
+    "file": "eval/eval_v3_vstar_force.py",
+    "opts": [
+      "--force-prefix-mode"
+    ],
+    "default": "target_hint",
+    "choices": [
+      "target_hint",
+      "empty_think_then_focus_start",
+      "think_open_only",
+      "generic_need_then_focus_start",
+      "specific_region_think_open",
+      "inspect_think_open"
+    ]
+  },
+  {
+    "file": "eval/eval_v3_fvt_distribution.py",
+    "opts": [
+      "--save-histograms"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_fvt_distribution.py",
+    "opts": [
+      "--overwrite-output-dir"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_tgvf_end2end.py",
+    "opts": [
+      "--mode"
+    ],
+    "default": "forced",
+    "choices": [
+      "forced",
+      "free"
+    ]
+  },
+  {
+    "file": "eval/eval_tgvf_end2end.py",
+    "opts": [
+      "--answer-max-new-tokens"
+    ],
+    "default": 64,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_tgvf_end2end.py",
+    "opts": [
+      "--capture-max-new-tokens"
+    ],
+    "default": 128,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_tgvf_end2end.py",
+    "opts": [
+      "--include-direct-qwen"
+    ],
+    "default": true,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_tgvf_end2end.py",
+    "opts": [
+      "--skip-direct-qwen"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_tgvf_end2end.py",
+    "opts": [
+      "--overwrite-output-dir"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_fvt_distribution.py",
+    "opts": [
+      "--save-histograms"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_fvt_distribution.py",
+    "opts": [
+      "--overwrite-output-dir"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_stage2_action_ab.py",
+    "opts": [
+      "--stage2-checkpoint"
+    ],
+    "default": "DEFAULT_CKPT",
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_stage2_action_ab.py",
+    "opts": [
+      "--eval-jsonl"
+    ],
+    "default": "DEFAULT_VAL",
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_stage2_action_ab.py",
+    "opts": [
+      "--output-dir"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_stage2_action_ab.py",
+    "opts": [
+      "--model-id"
+    ],
+    "default": "DEFAULT_MODEL",
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_stage2_action_ab.py",
+    "opts": [
+      "--processor-id"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_stage2_action_ab.py",
+    "opts": [
+      "--dtype"
+    ],
+    "default": "bfloat16",
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_stage2_action_ab.py",
+    "opts": [
+      "--device"
+    ],
+    "default": "cuda:0",
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_stage2_action_ab.py",
+    "opts": [
+      "--device-map"
+    ],
+    "default": "cuda:0",
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_stage2_action_ab.py",
+    "opts": [
+      "--attn-implementation"
+    ],
+    "default": "sdpa",
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_stage2_action_ab.py",
+    "opts": [
+      "--max-image-resolution"
+    ],
+    "default": 512,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_stage2_action_ab.py",
+    "opts": [
+      "--max-action-tokens"
+    ],
+    "default": 32,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_stage2_action_ab.py",
+    "opts": [
+      "--max-focus"
+    ],
+    "default": 8,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_stage2_action_ab.py",
+    "opts": [
+      "--progress"
+    ],
+    "default": true,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_stage2_action_ab.py",
+    "opts": [
+      "--log-every"
+    ],
+    "default": 1,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_qwen3_vstar_base_direct.py",
+    "opts": [
+      "--vstar-jsonl"
+    ],
+    "default": "DEFAULT_VSTAR",
+    "choices": null
+  },
+  {
+    "file": "eval/eval_qwen3_vstar_base_direct.py",
+    "opts": [
+      "--vstar-root"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_qwen3_vstar_base_direct.py",
+    "opts": [
+      "--scoring-backend"
+    ],
+    "default": "project",
+    "choices": [
+      "project",
+      "official",
+      "auto"
+    ]
+  },
+  {
+    "file": "eval/eval_qwen3_vstar_base_direct.py",
+    "opts": [
+      "--output-dir"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_qwen3_vstar_base_direct.py",
+    "opts": [
+      "--max-samples"
+    ],
+    "default": 64,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_qwen3_vstar_base_direct.py",
+    "opts": [
+      "--category"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_qwen3_vstar_base_direct.py",
+    "opts": [
+      "--max-answer-tokens"
+    ],
+    "default": 32,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_qwen3_vstar_base_direct.py",
+    "opts": [
+      "--num-shards"
+    ],
+    "default": 1,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_qwen3_vstar_base_direct.py",
+    "opts": [
+      "--shard-index"
+    ],
+    "default": 0,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_qwen3_vstar_base_direct.py",
+    "opts": [
+      "--log-every"
+    ],
+    "default": 8,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_qwen3_vstar_base_direct.py",
+    "opts": [
+      "--progress"
+    ],
+    "default": true,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_qwen3_vstar_base_direct.py",
+    "opts": [
+      "--model-id"
+    ],
+    "default": "/nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking",
+    "choices": null
+  },
+  {
+    "file": "eval/eval_qwen3_vstar_base_direct.py",
+    "opts": [
+      "--processor-id"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_qwen3_vstar_base_direct.py",
+    "opts": [
+      "--dtype"
+    ],
+    "default": "bfloat16",
+    "choices": null
+  },
+  {
+    "file": "eval/eval_qwen3_vstar_base_direct.py",
+    "opts": [
+      "--device"
+    ],
+    "default": "cuda:0",
+    "choices": null
+  },
+  {
+    "file": "eval/eval_qwen3_vstar_base_direct.py",
+    "opts": [
+      "--device-map"
+    ],
+    "default": "cuda:0",
+    "choices": null
+  },
+  {
+    "file": "eval/eval_qwen3_vstar_base_direct.py",
+    "opts": [
+      "--attn-implementation"
+    ],
+    "default": "sdpa",
+    "choices": null
+  },
+  {
+    "file": "eval/eval_qwen3_vstar_base_direct.py",
+    "opts": [
+      "--max-image-resolution"
+    ],
+    "default": 512,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_qwen3_vstar_base_direct.py",
+    "opts": [
+      "--enable-thinking"
+    ],
+    "default": true,
+    "choices": null
+  },
+  {
+    "file": "eval/v3_common.py",
+    "opts": [
+      "--model-id"
+    ],
+    "default": "Qwen/Qwen3-VL-8B-Thinking",
+    "choices": null
+  },
+  {
+    "file": "eval/v3_common.py",
+    "opts": [
+      "--processor-id"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "eval/v3_common.py",
+    "opts": [
+      "--tgvf-checkpoint"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "eval/v3_common.py",
+    "opts": [
+      "--tgvf-protocol"
+    ],
+    "default": "legacy_v3_tags",
+    "choices": "TGVF_PROTOCOL_CHOICES"
+  },
+  {
+    "file": "eval/v3_common.py",
+    "opts": [
+      "--focus-action-im-end"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "eval/v3_common.py",
+    "opts": [
+      "--variant"
+    ],
+    "default": "tgvf_v2_bidirectional",
+    "choices": "TGVF_VARIANTS"
+  },
+  {
+    "file": "eval/v3_common.py",
+    "opts": [
+      "--eval-jsonl"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "eval/v3_common.py",
+    "opts": [
+      "--output-dir"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "eval/v3_common.py",
+    "opts": [
+      "--max-samples"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "eval/v3_common.py",
+    "opts": [
+      "--batch-size"
+    ],
+    "default": 1,
+    "choices": null
+  },
+  {
+    "file": "eval/v3_common.py",
+    "opts": [
+      "--num-shards"
+    ],
+    "default": 1,
+    "choices": null
+  },
+  {
+    "file": "eval/v3_common.py",
+    "opts": [
+      "--shard-index"
+    ],
+    "default": 0,
+    "choices": null
+  },
+  {
+    "file": "eval/v3_common.py",
+    "opts": [
+      "--shard-key"
+    ],
+    "default": "image",
+    "choices": [
+      "image",
+      "sample"
+    ]
+  },
+  {
+    "file": "eval/v3_common.py",
+    "opts": [
+      "--device"
+    ],
+    "default": "auto",
+    "choices": null
+  },
+  {
+    "file": "eval/v3_common.py",
+    "opts": [
+      "--device-map"
+    ],
+    "default": "auto",
+    "choices": null
+  },
+  {
+    "file": "eval/v3_common.py",
+    "opts": [
+      "--dtype"
+    ],
+    "default": "bfloat16",
+    "choices": [
+      "auto",
+      "bf16",
+      "bfloat16",
+      "fp16",
+      "float16",
+      "fp32",
+      "float32"
+    ]
+  },
+  {
+    "file": "eval/v3_common.py",
+    "opts": [
+      "--attn-implementation"
+    ],
+    "default": "sdpa",
+    "choices": null
+  },
+  {
+    "file": "eval/v3_common.py",
+    "opts": [
+      "--seed"
+    ],
+    "default": 20260525,
+    "choices": null
+  },
+  {
+    "file": "eval/v3_common.py",
+    "opts": [
+      "--capture-layer"
+    ],
+    "default": -1,
+    "choices": null
+  },
+  {
+    "file": "eval/v3_common.py",
+    "opts": [
+      "--num-foveated-tokens"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "eval/v3_common.py",
+    "opts": [
+      "--encoder-adapter-layers"
+    ],
+    "default": [
+      8,
+      16,
+      24
+    ],
+    "choices": null
+  },
+  {
+    "file": "eval/v3_common.py",
+    "opts": [
+      "--encoder-adapter-type"
+    ],
+    "default": "bidirectional",
+    "choices": [
+      "bidirectional",
+      "bidirectional_film_aggressive"
+    ]
+  },
+  {
+    "file": "eval/v3_common.py",
+    "opts": [
+      "--encoder-adapter-gate-init"
+    ],
+    "default": 0.0,
+    "choices": null
+  },
+  {
+    "file": "eval/v3_common.py",
+    "opts": [
+      "--encoder-adapter-share-weights"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "eval/v3_common.py",
+    "opts": [
+      "--encoder-adapter-layer-index-base"
+    ],
+    "default": 0,
+    "choices": [
+      0,
+      1
+    ]
+  },
+  {
+    "file": "eval/v3_common.py",
+    "opts": [
+      "--encoder-reencode-deepstack-compatible"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "eval/v3_common.py",
+    "opts": [
+      "--max-image-resolution"
+    ],
+    "default": 512,
+    "choices": null
+  },
+  {
+    "file": "eval/v3_common.py",
+    "opts": [
+      "--fvt-position-mode"
+    ],
+    "default": "native_source_grid",
+    "choices": [
+      "native_source_grid",
+      "inherit_source_visual_positions"
+    ]
+  },
+  {
+    "file": "eval/v3_common.py",
+    "opts": [
+      "--mask-original-image-after-tgvf"
+    ],
+    "default": true,
+    "choices": null
+  },
+  {
+    "file": "eval/v3_common.py",
+    "opts": [
+      "--no-mask-original-image-after-tgvf"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "eval/v3_common.py",
+    "opts": [
+      "--min-confidence"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "eval/v3_common.py",
+    "opts": [
+      "--source-profile-filter"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "eval/v3_common.py",
+    "opts": [
+      "--evidence-type-filter"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "eval/v3_common.py",
+    "opts": [
+      "--debug-examples"
+    ],
+    "default": 10,
+    "choices": null
+  },
+  {
+    "file": "eval/v3_common.py",
+    "opts": [
+      "--use-fvt-cache"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "eval/v3_common.py",
+    "opts": [
+      "--fvt-cache-dir"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "eval/v3_common.py",
+    "opts": [
+      "--progress"
+    ],
+    "default": true,
+    "choices": null
+  },
+  {
+    "file": "eval/v3_common.py",
+    "opts": [
+      "--no-progress"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "eval/v3_common.py",
+    "opts": [
+      "--progress-file"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_query_sensitivity.py",
+    "opts": [
+      "--min-targets-per-image"
+    ],
+    "default": 3,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_query_sensitivity.py",
+    "opts": [
+      "--max-groups"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_query_sensitivity.py",
+    "opts": [
+      "--require-groups"
+    ],
+    "default": 0,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_query_sensitivity.py",
+    "opts": [
+      "--save-score-matrices"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_query_sensitivity.py",
+    "opts": [
+      "--overwrite-output-dir"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "eval/progress_monitor.py",
+    "opts": [
+      "--label"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "eval/progress_monitor.py",
+    "opts": [
+      "--progress-files"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "eval/progress_monitor.py",
+    "opts": [
+      "--poll-interval"
+    ],
+    "default": 1.0,
+    "choices": null
+  },
+  {
+    "file": "eval/progress_monitor.py",
+    "opts": [
+      "--width"
+    ],
+    "default": 28,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_readout.py",
+    "opts": [
+      "--overwrite-output-dir"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_stage2_protocol.py",
+    "opts": [
+      "--stage2-checkpoint"
+    ],
+    "default": "DEFAULT_CKPT",
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_stage2_protocol.py",
+    "opts": [
+      "--eval-jsonl"
+    ],
+    "default": "DEFAULT_VAL",
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_stage2_protocol.py",
+    "opts": [
+      "--output-dir"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_stage2_protocol.py",
+    "opts": [
+      "--model-id"
+    ],
+    "default": "DEFAULT_MODEL",
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_stage2_protocol.py",
+    "opts": [
+      "--processor-id"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_stage2_protocol.py",
+    "opts": [
+      "--dtype"
+    ],
+    "default": "bfloat16",
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_stage2_protocol.py",
+    "opts": [
+      "--device"
+    ],
+    "default": "cuda:0",
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_stage2_protocol.py",
+    "opts": [
+      "--device-map"
+    ],
+    "default": "cuda:0",
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_stage2_protocol.py",
+    "opts": [
+      "--attn-implementation"
+    ],
+    "default": "sdpa",
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_stage2_protocol.py",
+    "opts": [
+      "--tgvf-protocol"
+    ],
+    "default": "legacy_v3_tags",
+    "choices": "TGVF_PROTOCOL_CHOICES"
+  },
+  {
+    "file": "eval/eval_v3_stage2_protocol.py",
+    "opts": [
+      "--variant"
+    ],
+    "default": "tgvf_v2_bidirectional",
+    "choices": "TGVF_VARIANTS"
+  },
+  {
+    "file": "eval/eval_v3_stage2_protocol.py",
+    "opts": [
+      "--num-foveated-tokens"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_stage2_protocol.py",
+    "opts": [
+      "--lora-rank"
+    ],
+    "default": 64,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_stage2_protocol.py",
+    "opts": [
+      "--lora-alpha"
+    ],
+    "default": 256,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_stage2_protocol.py",
+    "opts": [
+      "--lora-target-modules"
+    ],
+    "default": "q_proj,k_proj,v_proj,o_proj,gate_proj,up_proj,down_proj",
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_stage2_protocol.py",
+    "opts": [
+      "--max-image-resolution"
+    ],
+    "default": 512,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_stage2_protocol.py",
+    "opts": [
+      "--max-action-tokens"
+    ],
+    "default": 96,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_stage2_protocol.py",
+    "opts": [
+      "--max-answer-tokens"
+    ],
+    "default": 128,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_stage2_protocol.py",
+    "opts": [
+      "--fvt-position-mode"
+    ],
+    "default": "native_source_grid",
+    "choices": [
+      "native_source_grid",
+      "inherit_source_visual_positions"
+    ]
+  },
+  {
+    "file": "eval/eval_v3_stage2_protocol.py",
+    "opts": [
+      "--append-prefill-mode"
+    ],
+    "default": "kv_append",
+    "choices": [
+      "kv_append",
+      "full_sequence"
+    ]
+  },
+  {
+    "file": "eval/eval_v3_stage2_protocol.py",
+    "opts": [
+      "--blocks"
+    ],
+    "default": "no_focus_direct,force_focus_targets,teacher_forced_post_tgvf,force_end2end,free_router_end2end",
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_stage2_protocol.py",
+    "opts": [
+      "--d-conditions"
+    ],
+    "default": "correct_D,no_D,random_D,wrong_same_image_D,wrong_diff_image_D",
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_stage2_protocol.py",
+    "opts": [
+      "--max-focus"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_stage2_protocol.py",
+    "opts": [
+      "--max-no-focus"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_stage2_protocol.py",
+    "opts": [
+      "--min-confidence"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_stage2_protocol.py",
+    "opts": [
+      "--num-shards"
+    ],
+    "default": 1,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_stage2_protocol.py",
+    "opts": [
+      "--shard-index"
+    ],
+    "default": 0,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_stage2_protocol.py",
+    "opts": [
+      "--wrong-search-limit"
+    ],
+    "default": 256,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_stage2_protocol.py",
+    "opts": [
+      "--force-prefix-mode"
+    ],
+    "default": "target_hint",
+    "choices": [
+      "target_hint",
+      "empty_think_then_focus_start",
+      "think_open_only",
+      "generic_need_then_focus_start",
+      "specific_region_think_open",
+      "inspect_think_open"
+    ]
+  },
+  {
+    "file": "eval/eval_v3_stage2_protocol.py",
+    "opts": [
+      "--progress"
+    ],
+    "default": true,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_stage2_protocol.py",
+    "opts": [
+      "--log-every"
+    ],
+    "default": 25,
+    "choices": null
+  },
+  {
+    "file": "eval/common.py",
+    "opts": [
+      "--model-path"
+    ],
+    "default": "Qwen/Qwen2-VL-2B-Instruct",
+    "choices": null
+  },
+  {
+    "file": "eval/common.py",
+    "opts": [
+      "--processor-path"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "eval/common.py",
+    "opts": [
+      "--tgvf-checkpoint"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "eval/common.py",
+    "opts": [
+      "--variant"
+    ],
+    "default": "foveal_cross_merger",
+    "choices": "TGVF_VARIANTS"
+  },
+  {
+    "file": "eval/common.py",
+    "opts": [
+      "--eval-jsonl"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "eval/common.py",
+    "opts": [
+      "--output-dir"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "eval/common.py",
+    "opts": [
+      "--max-samples"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "eval/common.py",
+    "opts": [
+      "--batch-size"
+    ],
+    "default": 1,
+    "choices": null
+  },
+  {
+    "file": "eval/common.py",
+    "opts": [
+      "--num-shards"
+    ],
+    "default": 1,
+    "choices": null
+  },
+  {
+    "file": "eval/common.py",
+    "opts": [
+      "--shard-index"
+    ],
+    "default": 0,
+    "choices": null
+  },
+  {
+    "file": "eval/common.py",
+    "opts": [
+      "--shard-key"
+    ],
+    "default": "image",
+    "choices": [
+      "image",
+      "sample"
+    ]
+  },
+  {
+    "file": "eval/common.py",
+    "opts": [
+      "--device"
+    ],
+    "default": "auto",
+    "choices": null
+  },
+  {
+    "file": "eval/common.py",
+    "opts": [
+      "--dtype"
+    ],
+    "default": "bf16",
+    "choices": [
+      "auto",
+      "bf16",
+      "bfloat16",
+      "fp16",
+      "float16",
+      "fp32",
+      "float32"
+    ]
+  },
+  {
+    "file": "eval/common.py",
+    "opts": [
+      "--attn-implementation"
+    ],
+    "default": "flash_attention_2",
+    "choices": null
+  },
+  {
+    "file": "eval/common.py",
+    "opts": [
+      "--seed"
+    ],
+    "default": 20260525,
+    "choices": null
+  },
+  {
+    "file": "eval/common.py",
+    "opts": [
+      "--capture-layer"
+    ],
+    "default": -1,
+    "choices": null
+  },
+  {
+    "file": "eval/common.py",
+    "opts": [
+      "--num-foveated-tokens"
+    ],
+    "default": 16,
+    "choices": null
+  },
+  {
+    "file": "eval/common.py",
+    "opts": [
+      "--spatial-merge-size"
+    ],
+    "default": "auto",
+    "choices": null
+  },
+  {
+    "file": "eval/common.py",
+    "opts": [
+      "--source-profile-filter"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "eval/common.py",
+    "opts": [
+      "--evidence-type-filter"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "eval/common.py",
+    "opts": [
+      "--debug-examples"
+    ],
+    "default": 10,
+    "choices": null
+  },
+  {
+    "file": "eval/common.py",
+    "opts": [
+      "--use-fvt-cache"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "eval/common.py",
+    "opts": [
+      "--fvt-cache-dir"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "eval/common.py",
+    "opts": [
+      "--progress"
+    ],
+    "default": true,
+    "choices": null
+  },
+  {
+    "file": "eval/common.py",
+    "opts": [
+      "--no-progress"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "eval/common.py",
+    "opts": [
+      "--progress-file"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_qwen3_mmmu_base_direct.py",
+    "opts": [
+      "--benchmark"
+    ],
+    "default": "mmmu_pro",
+    "choices": "BenchmarkRegistry.names()"
+  },
+  {
+    "file": "eval/eval_qwen3_mmmu_base_direct.py",
+    "opts": [
+      "--benchmark-root"
+    ],
+    "default": "DEFAULT_BENCHMARK_ROOT",
+    "choices": null
+  },
+  {
+    "file": "eval/eval_qwen3_mmmu_base_direct.py",
+    "opts": [
+      "--scoring-backend"
+    ],
+    "default": "project",
+    "choices": [
+      "project",
+      "official",
+      "auto"
+    ]
+  },
+  {
+    "file": "eval/eval_qwen3_mmmu_base_direct.py",
+    "opts": [
+      "--official-llm-mode"
+    ],
+    "default": "disabled",
+    "choices": [
+      "disabled",
+      "optional",
+      "required"
+    ]
+  },
+  {
+    "file": "eval/eval_qwen3_mmmu_base_direct.py",
+    "opts": [
+      "--output-dir"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_qwen3_mmmu_base_direct.py",
+    "opts": [
+      "--tier"
+    ],
+    "default": "light",
+    "choices": [
+      "light",
+      "medium",
+      "full"
+    ]
+  },
+  {
+    "file": "eval/eval_qwen3_mmmu_base_direct.py",
+    "opts": [
+      "--limit"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_qwen3_mmmu_base_direct.py",
+    "opts": [
+      "--seed"
+    ],
+    "default": 42,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_qwen3_mmmu_base_direct.py",
+    "opts": [
+      "--num-shards"
+    ],
+    "default": 1,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_qwen3_mmmu_base_direct.py",
+    "opts": [
+      "--shard-index"
+    ],
+    "default": 0,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_qwen3_mmmu_base_direct.py",
+    "opts": [
+      "--log-every"
+    ],
+    "default": 8,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_qwen3_mmmu_base_direct.py",
+    "opts": [
+      "--progress"
+    ],
+    "default": true,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_qwen3_mmmu_base_direct.py",
+    "opts": [
+      "--model-id"
+    ],
+    "default": "/nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking",
+    "choices": null
+  },
+  {
+    "file": "eval/eval_qwen3_mmmu_base_direct.py",
+    "opts": [
+      "--processor-id"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_qwen3_mmmu_base_direct.py",
+    "opts": [
+      "--dtype"
+    ],
+    "default": "bfloat16",
+    "choices": null
+  },
+  {
+    "file": "eval/eval_qwen3_mmmu_base_direct.py",
+    "opts": [
+      "--device"
+    ],
+    "default": "cuda:0",
+    "choices": null
+  },
+  {
+    "file": "eval/eval_qwen3_mmmu_base_direct.py",
+    "opts": [
+      "--device-map"
+    ],
+    "default": "cuda:0",
+    "choices": null
+  },
+  {
+    "file": "eval/eval_qwen3_mmmu_base_direct.py",
+    "opts": [
+      "--attn-implementation"
+    ],
+    "default": "sdpa",
+    "choices": null
+  },
+  {
+    "file": "eval/eval_qwen3_mmmu_base_direct.py",
+    "opts": [
+      "--max-image-resolution"
+    ],
+    "default": 512,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_qwen3_mmmu_base_direct.py",
+    "opts": [
+      "--max-answer-tokens"
+    ],
+    "default": 256,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_qwen3_mmmu_base_direct.py",
+    "opts": [
+      "--enable-thinking"
+    ],
+    "default": true,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v2_action_ab.py",
+    "opts": [
+      "--model-path"
+    ],
+    "default": "Qwen/Qwen2-VL-2B-Instruct",
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v2_action_ab.py",
+    "opts": [
+      "--processor-path"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v2_action_ab.py",
+    "opts": [
+      "--eval-jsonl"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v2_action_ab.py",
+    "opts": [
+      "--output-dir"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v2_action_ab.py",
+    "opts": [
+      "--max-samples"
+    ],
+    "default": 8,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v2_action_ab.py",
+    "opts": [
+      "--device"
+    ],
+    "default": "auto",
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v2_action_ab.py",
+    "opts": [
+      "--dtype"
+    ],
+    "default": "bf16",
+    "choices": [
+      "auto",
+      "bf16",
+      "bfloat16",
+      "fp16",
+      "float16",
+      "fp32",
+      "float32"
+    ]
+  },
+  {
+    "file": "eval/eval_v2_action_ab.py",
+    "opts": [
+      "--attn-implementation"
+    ],
+    "default": "flash_attention_2",
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v2_action_ab.py",
+    "opts": [
+      "--max-action-tokens"
+    ],
+    "default": 64,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v2_action_ab.py",
+    "opts": [
+      "--mode"
+    ],
+    "default": "free",
+    "choices": [
+      "free",
+      "force_wrapper"
+    ]
+  },
+  {
+    "file": "eval/eval_v2_action_ab.py",
+    "opts": [
+      "--prompt-mode"
+    ],
+    "default": "default",
+    "choices": [
+      "default",
+      "force_foveate"
+    ]
+  },
+  {
+    "file": "eval/eval_v2_action_ab.py",
+    "opts": [
+      "--forced-target-max-tokens"
+    ],
+    "default": 32,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v2_action_ab.py",
+    "opts": [
+      "--capture-layer"
+    ],
+    "default": -1,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v2_action_ab.py",
+    "opts": [
+      "--num-shards"
+    ],
+    "default": 1,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v2_action_ab.py",
+    "opts": [
+      "--shard-index"
+    ],
+    "default": 0,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v2_action_ab.py",
+    "opts": [
+      "--shard-key"
+    ],
+    "default": "image",
+    "choices": [
+      "image",
+      "sample"
+    ]
+  },
+  {
+    "file": "eval/eval_v2_action_ab.py",
+    "opts": [
+      "--progress"
+    ],
+    "default": true,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v2_action_ab.py",
+    "opts": [
+      "--log-every"
+    ],
+    "default": 1,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_query_sensitivity.py",
+    "opts": [
+      "--min-targets-per-image"
+    ],
+    "default": 3,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_query_sensitivity.py",
+    "opts": [
+      "--max-groups"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_query_sensitivity.py",
+    "opts": [
+      "--require-groups"
+    ],
+    "default": 0,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_query_sensitivity.py",
+    "opts": [
+      "--save-score-matrices"
+    ],
+    "default": null,
+    "choices": null
+  },
+  {
+    "file": "eval/eval_v3_query_sensitivity.py",
+    "opts": [
+      "--overwrite-output-dir"
+    ],
+    "default": null,
+    "choices": null
+  }
+]
