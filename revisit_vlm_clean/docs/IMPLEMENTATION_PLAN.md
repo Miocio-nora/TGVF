@@ -138,9 +138,41 @@ CoreSmoke-256 dry_run:
 
 For future real-model smoke, pass a small `--max-answer-tokens` explicitly.
 
+## Phase 8: Stage2 Runtime Identity Gate
+
+Implemented in commit `844c54e`.
+
+- clean protocol parser supports:
+  - `protocol_c_tool_observation`;
+  - `protocol_c_tool_observation_qwen2_no_think`;
+- Stage2 runtime config validates:
+  - Stage2 checkpoint path;
+  - Stage2 eval JSONL path;
+  - protocol;
+  - `d_condition=correct_D`;
+  - `force_prefix_mode=target_hint`;
+- benchmark CLI supports `--validate-stage2-runtime` without loading the model
+  or running inference.
+
+Validated on 2026-06-25 with:
+
+```text
+checkpoint:
+  outputs/tgvf_v3_protocol_c/protocol_c_toolobs_stage2_v4data_clean_rowonly_gpu0_3_multifocus_focus_imend_from_clean_rowonly_focus_imend_stage1_bidirectional_4gpu_bs16_accum2_focus80_value1_1200step_20260617/checkpoint_step_1200.pt
+  global_step=1200
+  protocol=protocol_c_tool_observation
+  processor_id=outputs/tgvf_v3_protocol_c_stage1_8b/protocol_c_toolobs_stage1_v4data_clean_rowonly_gpu0_3_focus_imend_bidirectional_4gpu_bs4_accum2_gbs32_2000step_20260617/train/processor_step_2000
+
+eval_jsonl:
+  data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend_open_answer/splits/tgvf_v4_teacher_stage2_protocol_c.test.jsonl
+  n_rows=1002
+  need_focus=857
+  no_focus=145
+```
+
 ## Later Phases
 
-1. TGVF Stage2 controller inference path.
+1. TGVF Stage2 controller execution path.
 2. Official scorer wrapper port.
 3. Stage1/Stage2 launchers.
 4. DeepStack training/eval support.
