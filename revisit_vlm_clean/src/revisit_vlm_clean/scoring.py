@@ -46,7 +46,8 @@ def parse_and_score(
         if choices:
             score = score_choice(parsed, str(gold_answer), choices)
         else:
-            score = 1.0 if normalize_open_answer(parsed) == normalize_open_answer(str(gold_answer)) else 0.0
+            gold_text = clean_answer(str(gold_answer))
+            score = 1.0 if normalize_open_answer(parsed) == normalize_open_answer(gold_text) else 0.0
 
     return ParseScoreResult(
         parsed_answer=parsed,

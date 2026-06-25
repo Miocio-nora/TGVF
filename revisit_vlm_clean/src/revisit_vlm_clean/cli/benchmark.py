@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from dataclasses import replace
 
 from revisit_vlm_clean.benchmark_data import (
     load_manifest_payload,
@@ -11,12 +12,14 @@ from revisit_vlm_clean.benchmark_data import (
 from revisit_vlm_clean.cli.common import exit_not_implemented, print_json
 from revisit_vlm_clean.manifest import build_manifest, manifest_payload
 from revisit_vlm_clean.outputs import (
+    write_executed_benchmark_output,
     write_empty_benchmark_output,
     write_materialized_sample_output,
     write_rendered_input_output,
 )
 from revisit_vlm_clean.populations import get_population, get_subset
 from revisit_vlm_clean.rendering import render_benchmark_inputs
+from revisit_vlm_clean.runner import BackendConfig, run_benchmark_rows
 from revisit_vlm_clean.schema import (
     DeepStackScope,
     DeepStackState,
@@ -46,6 +49,17 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-action-tokens", type=int, default=64)
     parser.add_argument("--max-answer-tokens", type=int, default=128)
     parser.add_argument("--softforce-prompt-text", default="")
+    parser.add_argument(
+        "--execute",
+        action="store_true",
+        help="Execute a clean runner backend and write scored rows.",
+    )
+    parser.add_argument("--runner-backend", choices=("dry_run", "qwen3_original"), default="dry_run")
+    parser.add_argument("--dtype", default="bfloat16")
+    parser.add_argument("--device", default="auto")
+    parser.add_argument("--device-map", default="auto")
+    parser.add_argument("--attn-implementation", default="sdpa")
+    parser.add_argument("--trust-remote-code", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--deepstack-enabled", action="store_true")
     parser.add_argument(
         "--deepstack-original-image-scope",
@@ -144,6 +158,49 @@ def main(argv: list[str] | None = None) -> int:
                 config=config,
                 manifest=resolved_manifest,
                 rendered_inputs=rendered_inputs,
+            )
+        )
+        return 0
+    if args.execute:
+        if not args.output_dir:
+            raise ValueError("--execute requires --output-dir")
+        resolved_manifest = _resolve_manifest_payload(args)
+        runtime_config = replace(
+            config,
+            manifest_hash=config.manifest_hash or resolved_manifest.get("manifest_hash"),
+        )
+        samples = materialize_samples_from_manifest_payload(
+            resolved_manifest,
+            benchmark_root=args.benchmark_root,
+            metadata_only=args.runner_backend == "dry_run",
+        )
+        rendered_inputs = render_benchmark_inputs(samples, runtime_config)
+        backend_config = BackendConfig(
+            backend=args.runner_backend,
+            dtype=args.dtype,
+            device=args.device,
+            device_map=None if args.device_map in {"", "none", "None", "null"} else args.device_map,
+            attn_implementation=(
+                None
+                if args.attn_implementation in {"", "none", "None", "null"}
+                else args.attn_implementation
+            ),
+            trust_remote_code=bool(args.trust_remote_code),
+        )
+        rows, summary = run_benchmark_rows(
+            samples,
+            rendered_inputs,
+            config=runtime_config,
+            backend_config=backend_config,
+        )
+        print_json(
+            write_executed_benchmark_output(
+                args.output_dir,
+                config=runtime_config,
+                manifest=resolved_manifest,
+                rows=rows,
+                summary=summary,
+                backend_config=backend_config,
             )
         )
         return 0

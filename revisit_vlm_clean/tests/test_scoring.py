@@ -25,6 +25,13 @@ def test_parse_and_score_open_answer_tag() -> None:
     assert result.score == 1.0
 
 
+def test_parse_and_score_open_html_gold_uses_same_cleaning() -> None:
+    html = '<table><tr><td rowspan="2"> 项目</td><td> 期初余额</td></tr></table>'
+    result = parse_and_score(html, gold_answer=html)
+
+    assert result.score == 1.0
+
+
 def test_official_backend_not_ported_yet() -> None:
     with pytest.raises(NotImplementedError):
         parse_and_score("A", choices=["x"], gold_answer="A", scoring_backend=ScoringBackend.OFFICIAL)

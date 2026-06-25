@@ -9,6 +9,7 @@ from typing import Any
 from .benchmark_data import BenchmarkSample
 from .manifest import SampleManifest, manifest_payload
 from .rendering import RenderedBenchmarkInput
+from .runner import BackendConfig
 from .schema import EvalSummary, RunConfig, _to_jsonable
 
 
@@ -165,6 +166,46 @@ def write_rendered_input_output(
         "output_dir": str(out),
         "run_config": str(run_config_path),
         "rendered_inputs": str(rendered_inputs_path),
+        "summary": str(summary_path),
+        "sample_manifest": str(manifest_path),
+    }
+
+
+def write_executed_benchmark_output(
+    output_dir: str | Path,
+    *,
+    config: RunConfig,
+    manifest: dict[str, Any],
+    rows: list[dict[str, Any]],
+    summary: EvalSummary,
+    backend_config: BackendConfig,
+) -> dict[str, Any]:
+    out = Path(output_dir)
+    out.mkdir(parents=True, exist_ok=True)
+
+    run_config_path = out / "run_config.json"
+    rows_path = out / "rows.jsonl"
+    summary_path = out / "summary.json"
+    manifest_path = out / "sample_manifest.json"
+
+    _write_json(run_config_path, config)
+    _write_json(manifest_path, manifest)
+    with rows_path.open("w") as handle:
+        for row in rows:
+            handle.write(json.dumps(_to_jsonable(row), sort_keys=True) + "\n")
+
+    summary_payload = summary.to_dict()
+    summary_payload["parser_scorer"] = config.parser_scorer.to_dict()
+    summary_payload["deepstack"] = config.deepstack.to_dict()
+    summary_payload["post_tgvf_forward_mode"] = str(config.post_tgvf_forward_mode)
+    summary_payload["post_tgvf_continuation"] = str(config.post_tgvf_continuation)
+    summary_payload["runner_backend"] = backend_config.to_dict()
+    _write_json(summary_path, summary_payload)
+
+    return {
+        "output_dir": str(out),
+        "run_config": str(run_config_path),
+        "rows": str(rows_path),
         "summary": str(summary_path),
         "sample_manifest": str(manifest_path),
     }
