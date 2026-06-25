@@ -488,11 +488,16 @@ def test_stage1_training_executor_prepare_execution_cli(tmp_path, capsys) -> Non
     assert checkpoint_contract["input_checkpoint_required"] is False
     dataset_runtime = json.loads((execution_dir / "dataset_runtime_identity.json").read_text())
     first_batch = json.loads((execution_dir / "first_batch_identity.json").read_text())
+    optimizer_groups = json.loads((execution_dir / "optimizer_groups.json").read_text())
     assert dataset_runtime["stage"] == "stage1"
     assert dataset_runtime["train_file"]["line_count"] == 1
     assert dataset_runtime["train_file"]["missing_required_counts"]["target"] == 0
     assert first_batch["materialized_batch_size"] == 1
     assert first_batch["rows"][0]["row_sha256"]
+    assert optimizer_groups["status"] == "validated"
+    assert optimizer_groups["group_names"] == ["tgvf_module", "protocol_c_token_rows"]
+    assert optimizer_groups["groups"][0]["lr"] == 1e-4
+    assert optimizer_groups["groups"][0]["weight_decay"] == 0.01
     assert bundle["plan_identity"]["sha256"]
     assert status["runner_status"] == "trainer_loop_not_ported"
     assert status["trainer_runtime_contract_status"] == "not_ported"
@@ -830,6 +835,7 @@ def test_stage2_training_executor_prepare_execution_cli(tmp_path, capsys) -> Non
     assert "trainable_parameters.json" in contract["required_runtime_artifacts"]
     dataset_runtime = json.loads((execution_dir / "dataset_runtime_identity.json").read_text())
     first_batch = json.loads((execution_dir / "first_batch_identity.json").read_text())
+    optimizer_groups = json.loads((execution_dir / "optimizer_groups.json").read_text())
     assert dataset_runtime["stage"] == "stage2"
     assert dataset_runtime["train_file"]["need_focus"] == 1
     assert dataset_runtime["val_file"]["line_count"] == 1
@@ -843,11 +849,16 @@ def test_stage2_training_executor_prepare_execution_cli(tmp_path, capsys) -> Non
     assert checkpoint_contract["protocol_c_token_rows"]["protocol"] == (
         "protocol_c_tool_observation"
     )
+    assert optimizer_groups["status"] == "validated"
+    assert optimizer_groups["group_names"] == ["llm_lora", "tgvf_refiner", "fvt_calibration"]
+    assert [group["lr"] for group in optimizer_groups["groups"]] == [2e-5, 5e-6, 1e-5]
+    assert optimizer_groups["optimizer"]["weight_decay"] == 0.01
     assert bundle["safety"]["legacy_reference_allowed"] is False
     status = json.loads((execution_dir / "clean_training_execution_status.json").read_text())
     assert status["bundle_valid"] is True
     assert status["trainer_runtime_contract_status"] == "not_ported"
     assert status["checkpoint_contract_status"] == "validated"
+    assert status["optimizer_groups_status"] == "validated"
     assert status["will_launch_training"] is False
 
 

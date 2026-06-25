@@ -123,13 +123,20 @@ def prepare_training_execution(
         plan=plan,
         expected_stage=expected_stage,
     )
+    optimizer_groups = _write_optimizer_groups_artifact(
+        execution_dir=out,
+        plan=plan,
+        expected_stage=expected_stage,
+    )
     bundle["runtime_artifacts"] = {
         **dataset_runtime["paths"],
         "checkpoint_contract": checkpoint_contract["path"],
+        "optimizer_groups": optimizer_groups["path"],
     }
     bundle["dataset_runtime"] = dataset_runtime["dataset_runtime"]
     bundle["first_batch_identity"] = dataset_runtime["first_batch_identity"]
     bundle["checkpoint_contract"] = checkpoint_contract["contract"]
+    bundle["optimizer_groups"] = optimizer_groups["contract"]
     status = _execution_status(bundle)
     bundle_path = out / "clean_training_execution_bundle.json"
     status_path = out / "clean_training_execution_status.json"
@@ -149,6 +156,7 @@ def prepare_training_execution(
         "dataset_runtime_identity": dataset_runtime["paths"]["dataset_runtime_identity"],
         "first_batch_identity": dataset_runtime["paths"]["first_batch_identity"],
         "checkpoint_contract": checkpoint_contract["path"],
+        "optimizer_groups": optimizer_groups["path"],
         "runner_status": status["runner_status"],
     }
 
@@ -292,6 +300,7 @@ def _execution_status(bundle: dict[str, Any]) -> dict[str, Any]:
             (bundle.get("trainer_runtime_contract") or {}).get("status")
         ),
         "checkpoint_contract_status": (bundle.get("checkpoint_contract") or {}).get("status"),
+        "optimizer_groups_status": (bundle.get("optimizer_groups") or {}).get("status"),
         "will_launch_training": bool(safety.get("will_launch_training")),
         "legacy_reference_allowed": bool(safety.get("legacy_reference_allowed")),
         "blocking_items": list(executor.get("blocking_items") or []),
@@ -317,6 +326,7 @@ def _execution_bundle_text(bundle: dict[str, Any], status: dict[str, Any]) -> st
         f"training_runtime_ported: {status.get('training_runtime_ported')}",
         f"trainer_runtime_contract_status: {status.get('trainer_runtime_contract_status')}",
         f"checkpoint_contract_status: {status.get('checkpoint_contract_status')}",
+        f"optimizer_groups_status: {status.get('optimizer_groups_status')}",
         f"will_launch_training: {status.get('will_launch_training')}",
         f"legacy_reference_allowed: {status.get('legacy_reference_allowed')}",
     ]
@@ -462,6 +472,114 @@ def _write_checkpoint_contract_artifact(
     path = execution_dir / "checkpoint_contract.json"
     _write_json(path, contract)
     return {"path": str(path), "contract": contract}
+
+
+def _write_optimizer_groups_artifact(
+    *,
+    execution_dir: Path,
+    plan: dict[str, Any],
+    expected_stage: TrainingStage,
+) -> dict[str, Any]:
+    contract = _optimizer_groups_contract(plan=plan, expected_stage=expected_stage)
+    path = execution_dir / "optimizer_groups.json"
+    _write_json(path, contract)
+    return {"path": str(path), "contract": contract}
+
+
+def _optimizer_groups_contract(
+    *,
+    plan: dict[str, Any],
+    expected_stage: TrainingStage,
+) -> dict[str, Any]:
+    optimizer = plan.get("optimizer") or {}
+    if str(optimizer.get("name") or "").lower() != "adamw":
+        raise ValueError("clean training optimizer must be AdamW")
+    groups = (
+        _stage1_optimizer_groups(plan)
+        if expected_stage == TrainingStage.STAGE1
+        else _stage2_optimizer_groups(plan)
+    )
+    if not groups:
+        raise ValueError("optimizer group contract must contain at least one group")
+    return {
+        "schema_version": "clean_training_optimizer_groups_v1",
+        "stage": str(expected_stage),
+        "status": "validated",
+        "optimizer": {
+            "name": "adamw",
+            "betas": optimizer.get("betas"),
+            "eps": optimizer.get("eps"),
+            "weight_decay": optimizer.get("weight_decay"),
+            "max_grad_norm": optimizer.get("max_grad_norm"),
+        },
+        "scheduler": {
+            "name": optimizer.get("lr_scheduler"),
+            "warmup_steps": optimizer.get("warmup_steps"),
+            "warmup_ratio": optimizer.get("warmup_ratio"),
+            "min_lr_ratio": optimizer.get("min_lr_ratio"),
+        },
+        "groups": groups,
+        "group_names": [str(group["name"]) for group in groups],
+    }
+
+
+def _stage1_optimizer_groups(plan: dict[str, Any]) -> list[dict[str, Any]]:
+    optimizer = plan.get("optimizer") or {}
+    module_policy = plan.get("module_policy") or {}
+    trainable = set(module_policy.get("trainable") or [])
+    learning_rate = optimizer.get("learning_rate")
+    groups = [
+        {
+            "name": "tgvf_module",
+            "lr": learning_rate,
+            "module_policy_entry": "tgvf_module",
+            "weight_decay": 0.01,
+            "weight_decay_source": "torch.optim.AdamW_default_in_historical_stage1",
+            "expected_when_trainable": "tgvf_module" in trainable,
+        }
+    ]
+    if "protocol_c_token_rows_row_only" in trainable:
+        groups.append(
+            {
+                "name": "protocol_c_token_rows",
+                "lr": learning_rate,
+                "module_policy_entry": "protocol_c_token_rows_row_only",
+                "weight_decay": 0.01,
+                "weight_decay_source": "torch.optim.AdamW_default_in_historical_stage1",
+                "expected_when_trainable": True,
+            }
+        )
+    return groups
+
+
+def _stage2_optimizer_groups(plan: dict[str, Any]) -> list[dict[str, Any]]:
+    optimizer = plan.get("optimizer") or {}
+    module_policy = plan.get("module_policy") or {}
+    trainable = set(module_policy.get("trainable") or [])
+    weight_decay = optimizer.get("weight_decay")
+    return [
+        {
+            "name": "llm_lora",
+            "lr": optimizer.get("lr_lora"),
+            "module_policy_entry": "qwen_lora_adapters",
+            "weight_decay": weight_decay,
+            "expected_when_trainable": "qwen_lora_adapters" in trainable,
+        },
+        {
+            "name": "tgvf_refiner",
+            "lr": optimizer.get("lr_tgvf"),
+            "module_policy_entry": "tgvf_module_continued_from_stage1",
+            "weight_decay": weight_decay,
+            "expected_when_trainable": "tgvf_module_continued_from_stage1" in trainable,
+        },
+        {
+            "name": "fvt_calibration",
+            "lr": optimizer.get("lr_calibration"),
+            "module_policy_entry": "tgvf_module_continued_from_stage1",
+            "weight_decay": weight_decay,
+            "expected_when_trainable": "tgvf_module_continued_from_stage1" in trainable,
+        },
+    ]
 
 
 def _checkpoint_contract(*, plan: dict[str, Any], expected_stage: TrainingStage) -> dict[str, Any]:

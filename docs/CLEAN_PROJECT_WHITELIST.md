@@ -95,6 +95,9 @@ the current execution cleanup.
 - Prepare-execution must write `checkpoint_contract.json`; Stage1 records its
   required output checkpoint keys, while Stage2 must load and validate the
   Stage1 checkpoint before accepting the handoff.
+- Prepare-execution must write `optimizer_groups.json` from clean plan identity,
+  including Stage1 `tgvf_module` / `protocol_c_token_rows` groups and Stage2
+  `llm_lora` / `tgvf_refiner` / `fvt_calibration` groups.
 - `clean_prepare_execution_command.sh` is the runnable clean handoff command;
   `clean_training_command.sh` stays non-executable until the trainer loop is
   ported.
@@ -182,6 +185,9 @@ the current execution cleanup.
 - Prepare-execution must write `checkpoint_contract.json`; Stage1 records its
   required output checkpoint keys, while Stage2 must load and validate the
   Stage1 checkpoint before accepting the handoff.
+- Prepare-execution must write `optimizer_groups.json` from clean plan identity,
+  including Stage1 `tgvf_module` / `protocol_c_token_rows` groups and Stage2
+  `llm_lora` / `tgvf_refiner` / `fvt_calibration` groups.
 - `clean_prepare_execution_command.sh` is the runnable clean handoff command;
   `clean_training_command.sh` stays non-executable until the trainer loop is
   ported.

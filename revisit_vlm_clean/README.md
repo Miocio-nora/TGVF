@@ -96,11 +96,11 @@ provided.
 `--prepare-execution` writes executor-owned
 `clean_training_execution_bundle.json`, `clean_training_execution_status.json`,
 `dataset_runtime_identity.json`, `first_batch_identity.json`,
-`checkpoint_contract.json`, and a text summary without launching training.
-These artifacts are the clean handoff surface for the future trainer loop; they
-still record `will_launch_training=false` until that loop is ported. Stage2
-prepare-execution loads and validates the Stage1 checkpoint contract before the
-handoff is accepted.
+`checkpoint_contract.json`, `optimizer_groups.json`, and a text summary without
+launching training. These artifacts are the clean handoff surface for the
+future trainer loop; they still record `will_launch_training=false` until that
+loop is ported. Stage2 prepare-execution loads and validates the Stage1
+checkpoint contract before the handoff is accepted.
 
 ## Fixed Manifests
 
@@ -157,10 +157,10 @@ as a diagnostic compatibility layer until the native runner replaces it.
 The current training launchers may write temporary historical reference
 commands, but those commands are not final clean-native execution paths.
 
-Data generation is expected to enter the clean tree as a first-class pipeline,
-not as an opaque historical script call. The clean data-generation path should
-record source manifests, protocol identity, field/span weights, mask behavior,
-split hashes, and Stage1/Stage2 dataset identities beside the generated JSONL
-artifacts. The deterministic Stage1 focus and Stage2 conversation builders are
-now clean-native transforms; heavy teacher trajectory generation still remains
-outside the clean tree.
+Data generation is a first-class clean surface, but the cleanup preserves the
+already-clean deterministic path instead of rewriting it. The clean
+data-generation path records source manifests, protocol identity, field/span
+weights, mask behavior, split hashes, and Stage1/Stage2 dataset identities
+beside the generated JSONL artifacts. The deterministic Stage1 focus and Stage2
+conversation builders are clean-native transforms; heavy teacher trajectory
+generation remains an upstream asset until regeneration is intentionally needed.

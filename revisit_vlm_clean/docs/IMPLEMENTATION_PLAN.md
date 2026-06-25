@@ -504,14 +504,16 @@ Validation:
 - `tgvf_stage2_qwen3` is the generic clean Stage2 backend name and must resolve
   to the native clean backend. Legacy use must request
   `tgvf_stage2_qwen3_legacy` explicitly.
-- Data generation must be part of the clean project, because it is already a
-  natural pure pipeline:
+- Data generation is a first-class clean-project surface, but the cleanup should
+  preserve and wrap the already-clean deterministic path rather than rewrite it:
   - fixed source manifests and sample ids;
-  - teacher/focus trajectory generation;
   - Stage1 target/description/D dataset generation;
   - Stage2 protocol conversation generation;
   - field/span weights, mask behavior, `im_end` policy, no-focus rules, and
     split hashes recorded beside generated JSONL artifacts.
+- Heavy teacher/focus trajectory generation remains an upstream trace-production
+  asset until regeneration is intentionally needed; clean training consumes
+  existing generated runs by explicit path/hash identity.
 - Stage1/Stage2 launchers must consume those clean generated datasets by
   explicit path/hash identity.
 
@@ -1528,6 +1530,25 @@ Implemented after Phase 59.
   TGVF state-dict summary, and Protocol-C token-row summary;
 - execution status now reports `checkpoint_contract_status=validated` for a
   valid Stage2 handoff.
+
+## Phase 61: Optimizer Group Runtime Artifact
+
+Implemented after Phase 60.
+
+- Stage1/Stage2 `--prepare-execution` now writes `optimizer_groups.json`;
+- Stage1 records the clean optimizer groups corresponding to the historical
+  Stage1 script:
+  - `tgvf_module`;
+  - `protocol_c_token_rows`;
+- Stage1 also records that AdamW weight decay is inherited from the historical
+  `torch.optim.AdamW` default of `0.01`;
+- Stage2 records the three historical fast Stage2 optimizer groups:
+  - `llm_lora` with `lr_lora`;
+  - `tgvf_refiner` with `lr_tgvf`;
+  - `fvt_calibration` with `lr_calibration`;
+- the artifact records optimizer name, betas, epsilon, weight decay, max grad
+  norm, scheduler identity, warmup, and min-LR ratio;
+- execution status now reports `optimizer_groups_status=validated`.
 
 ## Later Phases
 
