@@ -247,12 +247,15 @@ def test_stage1_training_write_plan_cli(tmp_path) -> None:
         == "revisit_vlm_clean.training.stage1_executor"
     )
     assert plan["legacy_reference_command"]["final_clean_native"] is False
+    assert plan["legacy_reference_command"]["executable"] is False
+    assert "audit reference only" in plan["legacy_reference_command"]["unavailable_reason"]
     native_status = json.loads((output_dir / "clean_native_training_status.json").read_text())
     assert native_status["status"] == "not_implemented"
     clean_command = (output_dir / "clean_training_command.sh").read_text()
     assert "not executable" in clean_command
     assert "revisit_vlm_clean.training.stage1_executor" in clean_command
     command = (output_dir / "legacy_reference_command.sh").read_text()
+    assert command.startswith("# not executable:")
     assert "torchrun --nproc-per-node 4" in command
     assert "--gradient-accumulation-steps 2" in command
     assert "--protocol-token-row-mode row_only" in command
@@ -300,6 +303,33 @@ def test_stage1_training_executor_preflight_cli(tmp_path, capsys) -> None:
     assert report["will_launch_training"] is False
     assert report["preflight_report"].endswith("stage1_training_preflight_report.json")
     assert stage1_executor_main(["--plan", str(output_dir / "training_plan.json")]) == 2
+
+
+def test_training_executor_rejects_executable_legacy_reference(tmp_path) -> None:
+    train_file = tmp_path / "stage1.train.jsonl"
+    train_file.write_text('{"image": "/tmp/image.jpg", "question": "q"}\n', encoding="utf-8")
+    output_dir = tmp_path / "stage1_plan"
+    assert (
+        stage1_main(
+            [
+                "--run-id",
+                "stage1_bad_legacy",
+                "--train-file",
+                str(train_file),
+                "--output-dir",
+                str(output_dir),
+                "--write-plan",
+            ]
+        )
+        == 0
+    )
+    plan_path = output_dir / "training_plan.json"
+    plan = json.loads(plan_path.read_text())
+    plan["legacy_reference_command"]["executable"] = True
+    plan_path.write_text(json.dumps(plan), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="legacy_reference_command must be non-executable"):
+        stage1_executor_main(["--plan", str(plan_path), "--preflight-only"])
 
 
 def test_stage2_training_write_plan_cli(tmp_path) -> None:
@@ -369,11 +399,14 @@ def test_stage2_training_write_plan_cli(tmp_path) -> None:
         == "revisit_vlm_clean.training.stage2_executor"
     )
     assert plan["legacy_reference_command"]["final_clean_native"] is False
+    assert plan["legacy_reference_command"]["executable"] is False
+    assert "audit reference only" in plan["legacy_reference_command"]["unavailable_reason"]
     assert (output_dir / "clean_native_training_status.json").exists()
     clean_command = (output_dir / "clean_training_command.sh").read_text()
     assert "not executable" in clean_command
     assert "revisit_vlm_clean.training.stage2_executor" in clean_command
     command = (output_dir / "legacy_reference_command.sh").read_text()
+    assert command.startswith("# not executable:")
     assert "--mask-original-image-after-tgvf-scope through_answer" in command
     assert "--loss-focus-target 1.5" in command
 

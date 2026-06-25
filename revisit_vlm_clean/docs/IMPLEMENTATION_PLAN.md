@@ -1324,6 +1324,20 @@ Implemented after Phase 47.
 - the historical `eval/eval_v3_mmmu_force.py` parser/scorer path remains a
   reference for the port, not the clean implementation source.
 
+## Phase 49: Non-Executable Legacy Training References
+
+Implemented after Phase 48.
+
+- Stage1/Stage2 launch plans still preserve historical training command text as
+  an audit reference;
+- `legacy_reference_command.executable=false` is now required for clean plans;
+- generated `legacy_reference_command.sh` comments the historical command out
+  with a clear `not executable` reason;
+- executor preflight rejects any plan that marks the legacy reference command
+  executable;
+- the final training path remains the clean-native executor command/status
+  surface. Full clean-native training execution is still a later phase.
+
 ## Later Phases
 
 1. Replace training launch plans with clean-native training execution.

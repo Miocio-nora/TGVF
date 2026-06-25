@@ -113,6 +113,8 @@ def _validate_training_plan(plan: dict[str, Any], *, expected_stage: TrainingSta
     legacy = plan.get("legacy_reference_command") or {}
     if legacy.get("final_clean_native") is not False:
         raise ValueError("legacy_reference_command must be marked final_clean_native=false")
+    if legacy.get("executable") is not False:
+        raise ValueError("legacy_reference_command must be non-executable in clean plans")
     native = plan.get("clean_native_training") or {}
     if native.get("required_for_final_clean_project") is not True:
         raise ValueError("clean_native_training must be required for the final clean project")

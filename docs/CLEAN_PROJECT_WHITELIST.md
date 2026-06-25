@@ -79,6 +79,8 @@ Data generation is a first-class clean-project surface, not a side branch.
 - Clean launch plans may keep historical script commands as references only.
   The final training entrypoint must be the clean-native command/status channel,
   not `legacy_reference_command.sh`.
+- Any `legacy_reference_command` artifact in a clean launch plan must be
+  `executable=false`; it is an audit record, not a runnable fallback.
 - Loss defaults:
   - generation/readout LM loss: `1.0`;
   - visual token manifold: `0.1`;
@@ -152,6 +154,8 @@ Data generation is a first-class clean-project surface, not a side branch.
 - Clean launch plans may keep historical script commands as references only.
   The final training entrypoint must be the clean-native command/status channel,
   not `legacy_reference_command.sh`.
+- Any `legacy_reference_command` artifact in a clean launch plan must be
+  `executable=false`; it is an audit record, not a runnable fallback.
 - Focus/no-focus sampling:
   - `target_focus_ratio=0.8`.
 - Batch/default run scale:

@@ -337,7 +337,7 @@ def build_stage1_launch_plan(
             world_size=config.batch.world_size,
             output_dir=config.output_dir,
         ),
-        "legacy_reference_command": _command_payload(command, executable=True),
+        "legacy_reference_command": _legacy_reference_command_payload(command),
     }
 
 
@@ -357,7 +357,15 @@ def build_stage2_launch_plan(
         label="stage1_checkpoint",
     )
     command = _stage2_legacy_command(config) if not config.deepstack.enabled else None
-    legacy_executable = command is not None
+    legacy_reference = (
+        _legacy_reference_command_payload(command)
+        if command is not None
+        else _command_payload(
+            [],
+            executable=False,
+            unavailable_reason="historical Stage2 script has no DeepStack training controls",
+        )
+    )
     return {
         "training_plan_schema_version": TRAINING_PLAN_SCHEMA_VERSION,
         "stage": TrainingStage.STAGE2,
@@ -431,13 +439,7 @@ def build_stage2_launch_plan(
             world_size=config.batch.world_size,
             output_dir=config.output_dir,
         ),
-        "legacy_reference_command": _command_payload(
-            command or [],
-            executable=legacy_executable,
-            unavailable_reason=None
-            if legacy_executable
-            else "historical Stage2 script has no DeepStack training controls",
-        ),
+        "legacy_reference_command": legacy_reference,
     }
 
 
@@ -508,6 +510,17 @@ def _command_payload(
         "argv": command,
         "shell": shlex.join(command) if command else "",
     }
+
+
+def _legacy_reference_command_payload(command: list[str]) -> dict[str, Any]:
+    return _command_payload(
+        command,
+        executable=False,
+        unavailable_reason=(
+            "historical training script is retained as an audit reference only; "
+            "the final clean-native training entrypoint is clean_training_command"
+        ),
+    )
 
 
 def _clean_training_command_payload(
