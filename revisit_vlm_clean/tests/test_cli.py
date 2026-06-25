@@ -124,6 +124,13 @@ def test_stage1_training_write_plan_cli(tmp_path) -> None:
         "world_size": 4,
     }
     assert plan["training"]["token_row_mode"] == "row_only"
+    assert plan["module_policy"]["trainable"] == [
+        "tgvf_module",
+        "protocol_c_token_rows_row_only",
+    ]
+    assert "qwen_visual_merger" in plan["module_policy"]["frozen"]
+    assert plan["module_policy"]["visual_merger"]["trainable"] is False
+    assert plan["module_policy"]["training_runtime"]["use_cache"] is False
     assert plan["clean_native_training"]["executable"] is False
     assert plan["clean_native_training"]["required_for_final_clean_project"] is True
     native_status = json.loads((output_dir / "clean_native_training_status.json").read_text())
@@ -182,6 +189,15 @@ def test_stage2_training_write_plan_cli(tmp_path) -> None:
     assert plan["batch"]["gradient_accumulation_steps"] == 8
     assert plan["mask_policy"]["mask_original_image_after_tgvf_scope"] == "through_answer"
     assert plan["loss"]["weighted_span_loss"]["focus_target"] == 1.5
+    assert "qwen_lora_adapters" in plan["module_policy"]["trainable"]
+    assert "qwen_visual_merger" in plan["module_policy"]["frozen"]
+    assert plan["module_policy"]["visual_merger"]["trainable"] is False
+    assert plan["module_policy"]["training_runtime"]["use_cache"] is False
+    assert plan["module_policy"]["training_runtime"]["gradient_checkpointing"] is True
+    assert (
+        plan["module_policy"]["training_runtime"]["print_trainable_parameter_names_before_launch"]
+        is True
+    )
     assert plan["clean_native_training"]["executable"] is False
     assert plan["clean_native_training"]["legacy_reference_is_final"] is False
     assert (output_dir / "clean_native_training_status.json").exists()

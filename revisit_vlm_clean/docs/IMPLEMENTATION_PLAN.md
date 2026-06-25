@@ -661,6 +661,8 @@ Implemented after Phase 22.
     `world_size * micro_batch_size * gradient_accumulation_steps`;
   - Stage1 clean constraints: `teacher_forced`, `row_only`,
     `native_source_grid`;
+  - machine-readable trainable/frozen module policy, including frozen Qwen
+    visual merger usage and training `use_cache=false`;
   - Stage2 mask policy, weighted span losses, target focus ratio, and
     DeepStack state;
   - git commit and tracked dirty-worktree state;

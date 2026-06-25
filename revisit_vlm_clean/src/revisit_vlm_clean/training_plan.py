@@ -307,6 +307,7 @@ def build_stage1_launch_plan(
             "mask_original_image_after_tgvf": config.mask_original_image_after_tgvf,
             "same_image_negative_mode": config.same_image_negative_mode,
         },
+        "module_policy": _stage1_module_policy(),
         "loss": {
             "gen": config.loss_gen,
             "visual_token_manifold": config.loss_visual_token_manifold,
@@ -380,6 +381,7 @@ def build_stage2_launch_plan(
             "fvt_position_mode": config.fvt_position_mode,
             "target_focus_ratio": config.target_focus_ratio,
         },
+        "module_policy": _stage2_module_policy(),
         "mask_policy": {
             "mask_original_image_after_tgvf": config.mask_original_image_after_tgvf,
             "mask_original_image_after_tgvf_prob": config.mask_original_image_after_tgvf_prob,
@@ -507,6 +509,56 @@ def _clean_native_training_status(
         "legacy_reference_is_final": False,
         "current_artifact": "auditable launch plan only",
         "blocking_items": blockers,
+    }
+
+
+def _stage1_module_policy() -> dict[str, Any]:
+    return {
+        "trainable": [
+            "tgvf_module",
+            "protocol_c_token_rows_row_only",
+        ],
+        "frozen": [
+            "qwen_language_backbone",
+            "qwen_vision_encoder",
+            "qwen_visual_merger",
+        ],
+        "visual_merger": {
+            "trainable": False,
+            "usage": "frozen_finalize_path",
+        },
+        "training_runtime": {
+            "use_cache": False,
+            "print_trainable_parameter_names_before_launch": True,
+        },
+    }
+
+
+def _stage2_module_policy() -> dict[str, Any]:
+    return {
+        "trainable": [
+            "qwen_lora_adapters",
+            "tgvf_module_continued_from_stage1",
+            "protocol_c_token_rows_restored_from_stage1",
+        ],
+        "token_row_implementation": {
+            "current_peft_path": 'modules_to_save=["embed_tokens", "lm_head"]',
+            "switching_requires_named_ablation": True,
+        },
+        "frozen": [
+            "base_qwen_weights_outside_lora_and_saved_token_modules",
+            "qwen_vision_encoder",
+            "qwen_visual_merger",
+        ],
+        "visual_merger": {
+            "trainable": False,
+            "usage": "frozen_finalize_path",
+        },
+        "training_runtime": {
+            "use_cache": False,
+            "gradient_checkpointing": True,
+            "print_trainable_parameter_names_before_launch": True,
+        },
     }
 
 
@@ -686,10 +738,13 @@ def _training_plan_text(plan: dict[str, Any]) -> str:
     ]
     command = plan.get("legacy_reference_command") or {}
     native = plan.get("clean_native_training") or {}
+    module_policy = plan.get("module_policy") or {}
     lines.extend(
         [
             f"clean_native_training_executable: {native.get('executable')}",
             f"clean_native_training_status: {native.get('status')}",
+            f"trainable_modules: {json.dumps(module_policy.get('trainable', []))}",
+            f"frozen_modules: {json.dumps(module_policy.get('frozen', []))}",
         ]
     )
     lines.extend(
