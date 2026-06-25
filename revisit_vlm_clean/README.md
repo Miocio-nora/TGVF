@@ -70,10 +70,10 @@ outside the clean tree.
 The training entrypoints currently produce auditable launch plans with
 dataset/checkpoint hashes, batch math, mask policy, weighted losses, DeepStack
 state, a clean-native executor status, and a separate temporary legacy
-reference command. They also write a commented `clean_training_command.sh`
-showing the intended final clean entrypoint, but that command is explicitly
-not executable until the native training executors are ported. They do not
-start training jobs yet.
+reference command. They also write `clean_prepare_execution_command.sh`, which
+runs the clean executor handoff and produces execution-bundle artifacts without
+starting training. `clean_training_command.sh` remains commented because the
+trainer loop itself is not ported yet.
 
 The planned clean training modules are importable:
 
@@ -86,9 +86,10 @@ tgvf_train_stage1_executor --plan /path/to/training_plan.json --prepare-executio
 tgvf_train_stage2_executor --plan /path/to/training_plan.json --prepare-execution
 ```
 
-Without `--preflight-only`, these executors fail fast instead of launching a
-partial or legacy training path. Preflight writes a JSON report next to the
-plan by default, or to `--preflight-report` when that path is provided.
+Without `--preflight-only` or `--prepare-execution`, these executors fail fast
+instead of launching a partial or legacy training path. Preflight writes a JSON
+report next to the plan by default, or to `--preflight-report` when that path is
+provided.
 `--prepare-execution` writes executor-owned
 `clean_training_execution_bundle.json`, `clean_training_execution_status.json`,
 and a text summary without launching training. These artifacts are the clean

@@ -1432,6 +1432,21 @@ Implemented after Phase 53.
     mainline;
   - the remaining blocking items before real DeepStack execution can be enabled.
 
+## Phase 55: Prepare-Execution Command Handoff
+
+Implemented after Phase 54.
+
+- Stage1/Stage2 launch plans now emit `clean_prepare_execution_command`;
+- generated plans write `clean_prepare_execution_command.sh`;
+- this command is executable in the sense that it is not commented out and calls:
+  `python -m revisit_vlm_clean.training.<stage>_executor --plan ... --prepare-execution`;
+- `clean_native_training.status` is now
+  `handoff_supported_trainer_loop_not_ported`;
+- `clean_native_training.prepare_execution_supported=true` records that the
+  clean executor handoff is implemented;
+- `clean_training_command.sh` remains commented and non-executable because the
+  trainer loop still has not been ported.
+
 ## Later Phases
 
 1. Replace training launch plans with clean-native training execution.

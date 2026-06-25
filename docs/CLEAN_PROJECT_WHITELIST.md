@@ -84,6 +84,9 @@ Data generation is a first-class clean-project surface, not a side branch.
 - Clean executors may write `clean_training_execution_bundle.json` as the
   executor-owned handoff artifact; until the trainer loop is ported it must
   record `will_launch_training=false`.
+- `clean_prepare_execution_command.sh` is the runnable clean handoff command;
+  `clean_training_command.sh` stays non-executable until the trainer loop is
+  ported.
 - Loss defaults:
   - generation/readout LM loss: `1.0`;
   - visual token manifold: `0.1`;
@@ -162,6 +165,9 @@ Data generation is a first-class clean-project surface, not a side branch.
 - Clean executors may write `clean_training_execution_bundle.json` as the
   executor-owned handoff artifact; until the trainer loop is ported it must
   record `will_launch_training=false`.
+- `clean_prepare_execution_command.sh` is the runnable clean handoff command;
+  `clean_training_command.sh` stays non-executable until the trainer loop is
+  ported.
 - Focus/no-focus sampling:
   - `target_focus_ratio=0.8`.
 - Batch/default run scale:

@@ -387,6 +387,10 @@ def build_stage1_launch_plan(
             "fvt_position_mode_whitelist": ["native_source_grid"],
         },
         "clean_native_training": _clean_native_training_status(TrainingStage.STAGE1),
+        "clean_prepare_execution_command": _clean_prepare_execution_command_payload(
+            TrainingStage.STAGE1,
+            output_dir=config.output_dir,
+        ),
         "clean_training_command": _clean_training_command_payload(
             TrainingStage.STAGE1,
             world_size=config.batch.world_size,
@@ -502,6 +506,10 @@ def build_stage2_launch_plan(
             TrainingStage.STAGE2,
             deepstack_enabled=config.deepstack.enabled,
         ),
+        "clean_prepare_execution_command": _clean_prepare_execution_command_payload(
+            TrainingStage.STAGE2,
+            output_dir=config.output_dir,
+        ),
         "clean_training_command": _clean_training_command_payload(
             TrainingStage.STAGE2,
             world_size=config.batch.world_size,
@@ -518,6 +526,7 @@ def write_training_plan(output_dir: str | Path, plan: dict[str, Any]) -> dict[st
     text_path = out / "training_plan.txt"
     dataset_path = out / "dataset_identity.json"
     native_status_path = out / "clean_native_training_status.json"
+    prepare_command_path = out / "clean_prepare_execution_command.sh"
     clean_command_path = out / "clean_training_command.sh"
     command_path = out / "legacy_reference_command.sh"
     plan_path.write_text(
@@ -538,6 +547,11 @@ def write_training_plan(output_dir: str | Path, plan: dict[str, Any]) -> dict[st
         + "\n",
         encoding="utf-8",
     )
+    prepare_command_path.write_text(
+        _command_script_text(plan.get("clean_prepare_execution_command") or {}),
+        encoding="utf-8",
+    )
+    prepare_command_path.chmod(0o755)
     clean_command_path.write_text(
         _command_script_text(plan.get("clean_training_command") or {}),
         encoding="utf-8",
@@ -552,6 +566,7 @@ def write_training_plan(output_dir: str | Path, plan: dict[str, Any]) -> dict[st
         "training_plan_txt": str(text_path),
         "dataset_identity": str(dataset_path),
         "clean_native_training_status": str(native_status_path),
+        "clean_prepare_execution_command": str(prepare_command_path),
         "clean_training_command": str(clean_command_path),
         "legacy_reference_command": str(command_path),
     }
@@ -621,6 +636,32 @@ def _clean_training_command_payload(
     }
 
 
+def _clean_prepare_execution_command_payload(
+    stage: TrainingStage,
+    *,
+    output_dir: str,
+) -> dict[str, Any]:
+    entrypoint = f"revisit_vlm_clean.training.{stage.value}_executor"
+    command = [
+        "python",
+        "-m",
+        entrypoint,
+        "--plan",
+        str(Path(output_dir) / "training_plan.json"),
+        "--prepare-execution",
+    ]
+    return {
+        "executable": True,
+        "status": "prepare_execution_supported",
+        "final_clean_native": True,
+        "planned_entrypoint": entrypoint,
+        "artifact": "clean_training_execution_bundle.json",
+        "will_launch_training": False,
+        "argv": command,
+        "shell": shlex.join(command),
+    }
+
+
 def _command_script_text(command: dict[str, Any]) -> str:
     shell = str(command.get("shell") or "").strip()
     if not shell:
@@ -637,7 +678,7 @@ def _clean_native_training_status(
     deepstack_enabled: bool = False,
 ) -> dict[str, Any]:
     blockers = [
-        "native training dataloader/runtime execution has not been ported into revisit_vlm_clean",
+        "native trainer loop has not been ported into revisit_vlm_clean",
         "native checkpoint save/load parity with historical scripts is not yet proven",
         "native trainable-parameter audit is not emitted by a clean executor",
     ]
@@ -649,10 +690,11 @@ def _clean_native_training_status(
     return {
         "stage": str(stage),
         "executable": False,
-        "status": "not_implemented",
+        "status": "handoff_supported_trainer_loop_not_ported",
         "required_for_final_clean_project": True,
         "legacy_reference_is_final": False,
-        "current_artifact": "auditable launch plan only",
+        "prepare_execution_supported": True,
+        "current_artifact": "auditable launch plan plus clean execution bundle handoff",
         "blocking_items": blockers,
     }
 
@@ -928,6 +970,7 @@ def _training_plan_text(plan: dict[str, Any]) -> str:
         ),
     ]
     clean_command = plan.get("clean_training_command") or {}
+    prepare_command = plan.get("clean_prepare_execution_command") or {}
     command = plan.get("legacy_reference_command") or {}
     native = plan.get("clean_native_training") or {}
     module_policy = plan.get("module_policy") or {}
@@ -935,12 +978,16 @@ def _training_plan_text(plan: dict[str, Any]) -> str:
         [
             f"clean_native_training_executable: {native.get('executable')}",
             f"clean_native_training_status: {native.get('status')}",
+            f"clean_prepare_execution_command_executable: {prepare_command.get('executable')}",
+            f"clean_prepare_execution_command_status: {prepare_command.get('status')}",
             f"clean_training_command_executable: {clean_command.get('executable')}",
             f"clean_training_command_status: {clean_command.get('status')}",
             f"trainable_modules: {json.dumps(module_policy.get('trainable', []))}",
             f"frozen_modules: {json.dumps(module_policy.get('frozen', []))}",
         ]
     )
+    if prepare_command.get("shell"):
+        lines.extend(["clean_prepare_execution_command:", prepare_command["shell"]])
     if clean_command.get("unavailable_reason"):
         lines.append(f"clean_training_unavailable_reason: {clean_command['unavailable_reason']}")
     if clean_command.get("shell"):

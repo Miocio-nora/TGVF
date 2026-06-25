@@ -268,6 +268,15 @@ def test_stage1_training_write_plan_cli(tmp_path) -> None:
     assert plan["module_policy"]["training_runtime"]["use_cache"] is False
     assert plan["clean_native_training"]["executable"] is False
     assert plan["clean_native_training"]["required_for_final_clean_project"] is True
+    assert plan["clean_native_training"]["prepare_execution_supported"] is True
+    assert (
+        plan["clean_native_training"]["status"]
+        == "handoff_supported_trainer_loop_not_ported"
+    )
+    assert plan["clean_prepare_execution_command"]["final_clean_native"] is True
+    assert plan["clean_prepare_execution_command"]["executable"] is True
+    assert plan["clean_prepare_execution_command"]["status"] == "prepare_execution_supported"
+    assert plan["clean_prepare_execution_command"]["will_launch_training"] is False
     assert plan["clean_training_command"]["final_clean_native"] is True
     assert plan["clean_training_command"]["executable"] is False
     assert (
@@ -278,7 +287,13 @@ def test_stage1_training_write_plan_cli(tmp_path) -> None:
     assert plan["legacy_reference_command"]["executable"] is False
     assert "audit reference only" in plan["legacy_reference_command"]["unavailable_reason"]
     native_status = json.loads((output_dir / "clean_native_training_status.json").read_text())
-    assert native_status["status"] == "not_implemented"
+    assert native_status["status"] == "handoff_supported_trainer_loop_not_ported"
+    prepare_command_path = output_dir / "clean_prepare_execution_command.sh"
+    assert prepare_command_path.stat().st_mode & 0o111
+    prepare_command = prepare_command_path.read_text()
+    assert prepare_command.startswith("python -m revisit_vlm_clean.training.stage1_executor")
+    assert "--prepare-execution" in prepare_command
+    assert "not executable" not in prepare_command
     clean_command = (output_dir / "clean_training_command.sh").read_text()
     assert "not executable" in clean_command
     assert "revisit_vlm_clean.training.stage1_executor" in clean_command
@@ -419,6 +434,33 @@ def test_training_executor_rejects_executable_legacy_reference(tmp_path) -> None
         stage1_executor_main(["--plan", str(plan_path), "--preflight-only"])
 
 
+def test_training_executor_rejects_bad_prepare_command(tmp_path) -> None:
+    train_file = tmp_path / "stage1.train.jsonl"
+    train_file.write_text('{"image": "/tmp/image.jpg", "question": "q"}\n', encoding="utf-8")
+    output_dir = tmp_path / "stage1_plan"
+    assert (
+        stage1_main(
+            [
+                "--run-id",
+                "stage1_bad_prepare",
+                "--train-file",
+                str(train_file),
+                "--output-dir",
+                str(output_dir),
+                "--write-plan",
+            ]
+        )
+        == 0
+    )
+    plan_path = output_dir / "training_plan.json"
+    plan = json.loads(plan_path.read_text())
+    plan["clean_prepare_execution_command"]["argv"].remove("--prepare-execution")
+    plan_path.write_text(json.dumps(plan), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="clean_prepare_execution_command"):
+        stage1_executor_main(["--plan", str(plan_path), "--preflight-only"])
+
+
 def test_stage1_executor_rejects_bad_readout_context(tmp_path) -> None:
     train_file = tmp_path / "stage1.train.jsonl"
     train_file.write_text('{"image": "/tmp/image.jpg", "question": "q"}\n', encoding="utf-8")
@@ -528,6 +570,14 @@ def test_stage2_training_write_plan_cli(tmp_path) -> None:
     )
     assert plan["clean_native_training"]["executable"] is False
     assert plan["clean_native_training"]["legacy_reference_is_final"] is False
+    assert plan["clean_native_training"]["prepare_execution_supported"] is True
+    assert (
+        plan["clean_native_training"]["status"]
+        == "handoff_supported_trainer_loop_not_ported"
+    )
+    assert plan["clean_prepare_execution_command"]["executable"] is True
+    assert plan["clean_prepare_execution_command"]["status"] == "prepare_execution_supported"
+    assert plan["clean_prepare_execution_command"]["will_launch_training"] is False
     assert plan["clean_training_command"]["final_clean_native"] is True
     assert plan["clean_training_command"]["executable"] is False
     assert (
@@ -538,6 +588,12 @@ def test_stage2_training_write_plan_cli(tmp_path) -> None:
     assert plan["legacy_reference_command"]["executable"] is False
     assert "audit reference only" in plan["legacy_reference_command"]["unavailable_reason"]
     assert (output_dir / "clean_native_training_status.json").exists()
+    prepare_command_path = output_dir / "clean_prepare_execution_command.sh"
+    assert prepare_command_path.stat().st_mode & 0o111
+    prepare_command = prepare_command_path.read_text()
+    assert prepare_command.startswith("python -m revisit_vlm_clean.training.stage2_executor")
+    assert "--prepare-execution" in prepare_command
+    assert "not executable" not in prepare_command
     clean_command = (output_dir / "clean_training_command.sh").read_text()
     assert "not executable" in clean_command
     assert "revisit_vlm_clean.training.stage2_executor" in clean_command

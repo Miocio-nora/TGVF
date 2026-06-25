@@ -317,6 +317,7 @@ def _validate_training_plan(plan: dict[str, Any], *, expected_stage: TrainingSta
     if stage == TrainingStage.STAGE1:
         _validate_stage1_readout_context(plan.get("readout_context") or {})
     _validate_module_policy(plan.get("module_policy") or {}, stage=stage)
+    _validate_prepare_command(plan.get("clean_prepare_execution_command") or {}, stage=stage)
     _validate_clean_command(plan.get("clean_training_command") or {}, stage=stage)
     legacy = plan.get("legacy_reference_command") or {}
     if legacy.get("final_clean_native") is not False:
@@ -401,6 +402,26 @@ def _validate_stage1_readout_context(context: dict[str, Any]) -> None:
         != "weak_strict_original_image_key_blocking_after_tgvf_append"
     ):
         raise ValueError("Stage1 readout_context attention mask blocking identity mismatch")
+
+
+def _validate_prepare_command(command: dict[str, Any], *, stage: TrainingStage) -> None:
+    if command.get("final_clean_native") is not True:
+        raise ValueError("clean_prepare_execution_command must be final clean-native")
+    if command.get("executable") is not True:
+        raise ValueError("clean_prepare_execution_command must be executable")
+    if command.get("will_launch_training") is not False:
+        raise ValueError("clean_prepare_execution_command must not launch training")
+    if command.get("status") != "prepare_execution_supported":
+        raise ValueError("clean_prepare_execution_command status mismatch")
+    expected_entrypoint = f"revisit_vlm_clean.training.{stage.value}_executor"
+    if command.get("planned_entrypoint") != expected_entrypoint:
+        raise ValueError(
+            "clean_prepare_execution_command planned_entrypoint mismatch: "
+            f"{command.get('planned_entrypoint')!r} != {expected_entrypoint!r}"
+        )
+    argv = list(command.get("argv") or [])
+    if "--prepare-execution" not in argv:
+        raise ValueError("clean_prepare_execution_command must include --prepare-execution")
 
 
 def _validate_clean_command(command: dict[str, Any], *, stage: TrainingStage) -> None:
