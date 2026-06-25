@@ -1159,6 +1159,167 @@ def test_stage2_training_executor_runtime_audit_can_write_actual_optimizer_audit
     assert gate_status["save_checkpoint_with_clean_contract"] == "pending_real_trainer_loop"
 
 
+def test_stage2_training_executor_runtime_audit_can_write_checkpoint_audit(
+    tmp_path,
+    monkeypatch,
+    capsys,
+) -> None:
+    import torch
+
+    train_file = tmp_path / "stage2.train.jsonl"
+    checkpoint = tmp_path / "stage1.pt"
+    train_file.write_text(
+        '{"image": "/tmp/image.jpg", "question": "q", "answer": "a", '
+        '"need_focus": true, "evidence_state": "need_local_visual_evidence"}\n',
+        encoding="utf-8",
+    )
+    _write_minimal_stage1_checkpoint(checkpoint)
+    output_dir = tmp_path / "stage2_plan"
+    qwen = torch.nn.Linear(2, 2)
+    qwen.bias.requires_grad_(False)
+    tgvf = torch.nn.Sequential(torch.nn.Linear(2, 1))
+
+    def fake_loader(bundle, *, expected_stage):
+        assert expected_stage.value == "stage2"
+        assert bundle["stage"] == "stage2"
+        return {
+            "modules": {"qwen_lora": qwen, "tgvf": tgvf},
+            "loader": {"backend": "fake_checkpoint_audit_loader"},
+        }
+
+    monkeypatch.setattr(training_executor, "_load_training_parameter_audit_modules", fake_loader)
+    assert (
+        stage2_main(
+            [
+                "--run-id",
+                "stage2_checkpoint_audit",
+                "--train-file",
+                str(train_file),
+                "--stage1-checkpoint",
+                str(checkpoint),
+                "--output-dir",
+                str(output_dir),
+                "--write-plan",
+            ]
+        )
+        == 0
+    )
+
+    assert (
+        stage2_executor_main(
+            [
+                "--plan",
+                str(output_dir / "training_plan.json"),
+                "--prepare-execution",
+                "--audit-runtime",
+                "--audit-checkpoint",
+            ]
+        )
+        == 0
+    )
+    payload = capsys.readouterr().out
+    assert '"checkpoint_runtime"' in payload
+    execution_dir = output_dir / "clean_training_execution"
+    optimizer_runtime = json.loads((execution_dir / "optimizer_runtime.json").read_text())
+    checkpoint_runtime = json.loads((execution_dir / "checkpoint_runtime.json").read_text())
+    runtime_audit = json.loads((execution_dir / "clean_training_runtime_audit.json").read_text())
+    assert optimizer_runtime["status"] == "actual_optimizer_scheduler_audit"
+    assert checkpoint_runtime["status"] == "actual_checkpoint_save_load_audit"
+    assert checkpoint_runtime["actual_checkpoint_saved"] is True
+    assert checkpoint_runtime["actual_checkpoint_loaded"] is True
+    assert checkpoint_runtime["missing_required_keys"] == []
+    assert checkpoint_runtime["state_checks_ok"] is True
+    assert checkpoint_runtime["state_checks"]["tgvf_module"]["ok"] is True
+    assert checkpoint_runtime["state_checks"]["qwen_lora"]["ok"] is True
+    assert (execution_dir / "checkpoint_runtime_probe.pt").exists()
+    gate_status = {
+        gate["name"]: gate["status"] for gate in runtime_audit["launch_gates"]["gates"]
+    }
+    assert runtime_audit["launch_gates"]["checkpoint_runtime_status"] == (
+        "actual_checkpoint_save_load_audit"
+    )
+    assert gate_status["construct_optimizer_and_scheduler_from_plan"] == "identity_validated"
+    assert gate_status["save_checkpoint_with_clean_contract"] == "identity_validated"
+
+
+def test_stage1_training_executor_runtime_audit_checkpoint_includes_protocol_rows(
+    tmp_path,
+    monkeypatch,
+    capsys,
+) -> None:
+    import torch
+
+    train_file = tmp_path / "stage1.train.jsonl"
+    train_file.write_text(
+        '{"image": "/tmp/image.jpg", "question": "q", "target": "mark"}\n',
+        encoding="utf-8",
+    )
+    output_dir = tmp_path / "stage1_plan"
+    qwen = torch.nn.Linear(2, 2)
+    tgvf = torch.nn.Sequential(torch.nn.Linear(2, 1))
+    protocol_rows = {
+        "protocol": "protocol_c_tool_observation",
+        "tokens": ["<|focus_start|>", "<|focus_end|>"],
+        "token_ids": {"<|focus_start|>": 1, "<|focus_end|>": 2},
+        "input_embeddings": torch.zeros(2, 2),
+        "output_embeddings": torch.ones(2, 2),
+    }
+
+    def fake_loader(bundle, *, expected_stage):
+        assert expected_stage.value == "stage1"
+        assert bundle["stage"] == "stage1"
+        return {
+            "modules": {"qwen": qwen, "tgvf": tgvf},
+            "checkpoint_extras": {"protocol_c_token_rows": protocol_rows},
+            "loader": {"backend": "fake_stage1_checkpoint_audit_loader"},
+        }
+
+    monkeypatch.setattr(training_executor, "_load_training_parameter_audit_modules", fake_loader)
+    assert (
+        stage1_main(
+            [
+                "--run-id",
+                "stage1_checkpoint_audit",
+                "--train-file",
+                str(train_file),
+                "--output-dir",
+                str(output_dir),
+                "--write-plan",
+            ]
+        )
+        == 0
+    )
+
+    assert (
+        stage1_executor_main(
+            [
+                "--plan",
+                str(output_dir / "training_plan.json"),
+                "--prepare-execution",
+                "--audit-runtime",
+                "--audit-checkpoint",
+            ]
+        )
+        == 0
+    )
+    payload = capsys.readouterr().out
+    assert '"checkpoint_runtime"' in payload
+    execution_dir = output_dir / "clean_training_execution"
+    checkpoint_runtime = json.loads((execution_dir / "checkpoint_runtime.json").read_text())
+    runtime_audit = json.loads((execution_dir / "clean_training_runtime_audit.json").read_text())
+    assert checkpoint_runtime["status"] == "actual_checkpoint_save_load_audit"
+    assert checkpoint_runtime["missing_required_keys"] == []
+    assert checkpoint_runtime["state_checks_ok"] is True
+    assert checkpoint_runtime["protocol_c_token_rows"] is not None
+    assert checkpoint_runtime["protocol_c_token_rows"]["protocol"] == (
+        "protocol_c_tool_observation"
+    )
+    gate_status = {
+        gate["name"]: gate["status"] for gate in runtime_audit["launch_gates"]["gates"]
+    }
+    assert gate_status["save_checkpoint_with_clean_contract"] == "identity_validated"
+
+
 def test_stage2_prepare_execution_rejects_missing_required_dataset_fields(tmp_path) -> None:
     train_file = tmp_path / "stage2.train.jsonl"
     checkpoint = tmp_path / "stage1.pt"

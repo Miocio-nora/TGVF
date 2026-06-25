@@ -93,6 +93,7 @@ tgvf_train_stage2_executor --plan /path/to/training_plan.json --prepare-executio
 tgvf_train_stage2_executor --plan /path/to/training_plan.json --prepare-execution --audit-runtime
 tgvf_train_stage2_executor --plan /path/to/training_plan.json --prepare-execution --audit-runtime --audit-model-parameters
 tgvf_train_stage2_executor --plan /path/to/training_plan.json --prepare-execution --audit-runtime --audit-optimizer
+tgvf_train_stage2_executor --plan /path/to/training_plan.json --prepare-execution --audit-runtime --audit-checkpoint
 ```
 
 Without `--preflight-only`, `--prepare-execution`, or `--audit-runtime`, these
@@ -123,6 +124,12 @@ LambdaLR scheduler from the loaded modules. `optimizer_groups.json` remains the
 plan contract; `optimizer_runtime.json` is the actual construction evidence.
 This still does not call `backward`, `optimizer.step`, `scheduler.step`, or
 save a checkpoint.
+With explicit `--audit-checkpoint`, the runtime audit also writes
+`checkpoint_runtime.json` and a local `checkpoint_runtime_probe.pt` after
+saving and reloading the clean checkpoint schema from loaded modules plus
+optimizer/scheduler state. This is checkpoint contract evidence, not a training
+checkpoint, and it still does not call `backward`, `optimizer.step`, or
+`scheduler.step`.
 
 ## Fixed Manifests
 

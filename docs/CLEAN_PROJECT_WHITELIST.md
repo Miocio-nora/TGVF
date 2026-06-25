@@ -117,6 +117,11 @@ before training/eval cleanup can proceed.
   the plan contract; `optimizer_runtime.json` is the real construction evidence.
   This still must not run backward, optimizer steps, scheduler steps, or
   checkpoint saving.
+- Explicit checkpoint audit may write `checkpoint_runtime.json` plus a local
+  `checkpoint_runtime_probe.pt` after saving and reloading the clean checkpoint
+  schema from loaded modules and optimizer/scheduler state. The probe is audit
+  evidence only, not a publishable training checkpoint, and it still must not run
+  backward, optimizer steps, or scheduler steps.
 - `clean_prepare_execution_command.sh` is the runnable clean handoff command;
   `clean_training_command.sh` stays non-executable until the trainer loop is
   ported.
@@ -221,6 +226,11 @@ before training/eval cleanup can proceed.
   the plan contract; `optimizer_runtime.json` is the real construction evidence.
   This still must not run backward, optimizer steps, scheduler steps, or
   checkpoint saving.
+- Explicit checkpoint audit may write `checkpoint_runtime.json` plus a local
+  `checkpoint_runtime_probe.pt` after saving and reloading the clean checkpoint
+  schema from loaded modules and optimizer/scheduler state. The probe is audit
+  evidence only, not a publishable training checkpoint, and it still must not run
+  backward, optimizer steps, or scheduler steps.
 - `clean_prepare_execution_command.sh` is the runnable clean handoff command;
   `clean_training_command.sh` stays non-executable until the trainer loop is
   ported.

@@ -97,6 +97,15 @@ def build_parser(stage: TrainingStage) -> argparse.ArgumentParser:
             "This still does not run optimizer steps or launch training."
         ),
     )
+    parser.add_argument(
+        "--audit-checkpoint",
+        action="store_true",
+        help=(
+            "During --audit-runtime, save and reload a clean checkpoint probe from "
+            "loaded modules plus optimizer/scheduler state, then write "
+            "checkpoint_runtime.json. This still does not launch training."
+        ),
+    )
     return parser
 
 
@@ -127,11 +136,14 @@ def main_for_stage(stage: TrainingStage, argv: list[str] | None = None) -> int:
                 report_path=args.runtime_audit_report,
                 audit_model_parameters=args.audit_model_parameters,
                 audit_optimizer=args.audit_optimizer,
+                audit_checkpoint=args.audit_checkpoint,
             )
             prepared["runtime_audit"] = audit["runtime_audit"]
             prepared["trainable_parameters"] = audit["trainable_parameters"]
             if audit.get("optimizer_runtime"):
                 prepared["optimizer_runtime"] = audit["optimizer_runtime"]
+            if audit.get("checkpoint_runtime"):
+                prepared["checkpoint_runtime"] = audit["checkpoint_runtime"]
         print_json(prepared)
         return 0
     if args.audit_runtime:
@@ -146,6 +158,7 @@ def main_for_stage(stage: TrainingStage, argv: list[str] | None = None) -> int:
             report_path=args.runtime_audit_report,
             audit_model_parameters=args.audit_model_parameters,
             audit_optimizer=args.audit_optimizer,
+            audit_checkpoint=args.audit_checkpoint,
         )
         audit["preflight_report"] = str(report_path)
         print_json(audit)
@@ -239,6 +252,7 @@ def audit_training_runtime(
     report_path: str | Path | None = None,
     audit_model_parameters: bool = False,
     audit_optimizer: bool = False,
+    audit_checkpoint: bool = False,
 ) -> dict[str, Any]:
     bundle_file = Path(bundle_path)
     if not bundle_file.exists():
@@ -249,7 +263,7 @@ def audit_training_runtime(
     artifacts = _load_runtime_artifacts(bundle, expected_stage=expected_stage)
     loaded_modules = (
         _load_training_parameter_audit_modules(bundle, expected_stage=expected_stage)
-        if audit_model_parameters or audit_optimizer
+        if audit_model_parameters or audit_optimizer or audit_checkpoint
         else None
     )
     trainable_parameters = (
@@ -259,7 +273,7 @@ def audit_training_runtime(
             expected_stage=expected_stage,
             loaded_modules=loaded_modules,
         )
-        if audit_model_parameters or audit_optimizer
+        if audit_model_parameters or audit_optimizer or audit_checkpoint
         else _write_trainable_parameters_placeholder(
             execution_dir=execution_dir,
             bundle=bundle,
@@ -273,7 +287,18 @@ def audit_training_runtime(
             loaded_modules=loaded_modules,
             expected_stage=expected_stage,
         )
-        if audit_optimizer
+        if audit_optimizer or audit_checkpoint
+        else None
+    )
+    checkpoint_runtime = (
+        _write_actual_checkpoint_runtime_audit(
+            execution_dir=execution_dir,
+            bundle=bundle,
+            loaded_modules=loaded_modules,
+            optimizer_runtime=optimizer_runtime,
+            expected_stage=expected_stage,
+        )
+        if audit_checkpoint
         else None
     )
     audit = _runtime_audit_report(
@@ -282,6 +307,7 @@ def audit_training_runtime(
         artifacts=artifacts,
         trainable_parameters=trainable_parameters,
         optimizer_runtime=optimizer_runtime,
+        checkpoint_runtime=checkpoint_runtime,
         expected_stage=expected_stage,
     )
     resolved_report_path = (
@@ -307,6 +333,8 @@ def audit_training_runtime(
     }
     if optimizer_runtime is not None:
         result["optimizer_runtime"] = optimizer_runtime["path"]
+    if checkpoint_runtime is not None:
+        result["checkpoint_runtime"] = checkpoint_runtime["path"]
     return result
 
 
@@ -683,6 +711,312 @@ def _write_trainable_parameters_placeholder(
     return {"path": str(path), "payload": payload}
 
 
+def _write_actual_checkpoint_runtime_audit(
+    *,
+    execution_dir: Path,
+    bundle: dict[str, Any],
+    loaded_modules: dict[str, Any] | None,
+    optimizer_runtime: dict[str, Any] | None,
+    expected_stage: TrainingStage,
+) -> dict[str, Any]:
+    if loaded_modules is None:
+        raise ValueError("checkpoint audit requires loaded model modules")
+    if optimizer_runtime is None:
+        raise ValueError("checkpoint audit requires optimizer runtime construction")
+    optimizer = optimizer_runtime.get("optimizer")
+    scheduler = optimizer_runtime.get("scheduler")
+    if optimizer is None or scheduler is None:
+        raise ValueError("checkpoint audit requires optimizer and scheduler objects")
+    try:
+        import torch
+    except Exception as exc:
+        raise RuntimeError("checkpoint audit requires torch") from exc
+
+    modules = dict(loaded_modules.get("modules") or {})
+    checkpoint_path = execution_dir / "checkpoint_runtime_probe.pt"
+    checkpoint = _checkpoint_probe_payload(
+        bundle=bundle,
+        loaded_modules=loaded_modules,
+        modules=modules,
+        optimizer=optimizer,
+        scheduler=scheduler,
+        expected_stage=expected_stage,
+    )
+    torch.save(checkpoint, checkpoint_path)
+    loaded = _torch_load_checkpoint_probe(torch, checkpoint_path)
+    required_keys = _checkpoint_required_output_keys(expected_stage)
+    missing_keys = sorted(key for key in required_keys if key not in loaded)
+    if missing_keys:
+        raise ValueError(f"checkpoint runtime probe missing keys after load: {missing_keys}")
+    _reload_optimizer_scheduler_probe(
+        optimizer=optimizer,
+        scheduler=scheduler,
+        optimizer_state=loaded.get("optimizer"),
+        scheduler_state=loaded.get("scheduler"),
+    )
+    state_checks = _checkpoint_state_checks(
+        checkpoint=checkpoint,
+        loaded=loaded,
+        expected_stage=expected_stage,
+    )
+    state_checks_ok = all(check.get("ok") is True for check in state_checks.values())
+    payload = {
+        "schema_version": "clean_training_checkpoint_runtime_audit_v1",
+        "stage": bundle.get("stage"),
+        "run_id": bundle.get("run_id"),
+        "status": "actual_checkpoint_save_load_audit",
+        "actual_checkpoint_saved": True,
+        "actual_checkpoint_loaded": True,
+        "checkpoint_path": str(checkpoint_path),
+        "checkpoint_identity": file_identity(checkpoint_path).to_dict(),
+        "required_output_keys": required_keys,
+        "saved_key_names": sorted(str(key) for key in checkpoint.keys()),
+        "loaded_key_names": sorted(str(key) for key in loaded.keys()),
+        "missing_required_keys": missing_keys,
+        "global_step": loaded.get("global_step"),
+        "micro_step": loaded.get("micro_step"),
+        "optimizer_state_loaded": loaded.get("optimizer") is not None,
+        "scheduler_state_loaded": loaded.get("scheduler") is not None,
+        "state_checks_ok": state_checks_ok,
+        "state_checks": state_checks,
+        "protocol_c_token_rows": _protocol_token_rows_summary(
+            loaded.get("protocol_c_token_rows")
+        ),
+        "notes": [
+            "checkpoint probe was saved and reloaded without launching training",
+            (
+                "this audit does not call backward, optimizer.step, "
+                "scheduler.step, or publish a training checkpoint"
+            ),
+        ],
+    }
+    path = execution_dir / "checkpoint_runtime.json"
+    _write_json(path, payload)
+    return {"path": str(path), "payload": payload, "checkpoint_path": str(checkpoint_path)}
+
+
+def _checkpoint_probe_payload(
+    *,
+    bundle: dict[str, Any],
+    loaded_modules: dict[str, Any],
+    modules: dict[str, Any],
+    optimizer: Any,
+    scheduler: Any,
+    expected_stage: TrainingStage,
+) -> dict[str, Any]:
+    tgvf_module = modules.get("tgvf")
+    if tgvf_module is None or not hasattr(tgvf_module, "state_dict"):
+        raise ValueError("checkpoint audit requires a tgvf module with state_dict")
+    config = _checkpoint_runtime_config(bundle=bundle, expected_stage=expected_stage)
+    checkpoint: dict[str, Any] = {
+        "tgvf_module": tgvf_module.state_dict(),
+        "config": config,
+        "global_step": 0,
+        "optimizer": optimizer.state_dict(),
+        "scheduler": scheduler.state_dict() if scheduler is not None else None,
+    }
+    if expected_stage == TrainingStage.STAGE1:
+        checkpoint["optimizer_step"] = 0
+        token_rows = _protocol_token_rows_payload_from_loaded(
+            bundle=bundle,
+            loaded_modules=loaded_modules,
+            modules=modules,
+        )
+        if _protocol_c_rows_required(bundle) and token_rows is None:
+            raise ValueError("Stage1 checkpoint audit requires protocol_c_token_rows")
+        if token_rows is not None:
+            checkpoint["protocol_c_token_rows"] = token_rows
+        return checkpoint
+
+    qwen_lora = modules.get("qwen_lora")
+    if qwen_lora is None or not hasattr(qwen_lora, "state_dict"):
+        raise ValueError("Stage2 checkpoint audit requires qwen_lora module with state_dict")
+    checkpoint["qwen_lora"] = _qwen_lora_state_dict(qwen_lora)
+    checkpoint["micro_step"] = 0
+    return checkpoint
+
+
+def _checkpoint_runtime_config(
+    *,
+    bundle: dict[str, Any],
+    expected_stage: TrainingStage,
+) -> dict[str, Any]:
+    model = bundle.get("model") or {}
+    training = bundle.get("training") or {}
+    return {
+        "stage": str(expected_stage),
+        "run_id": bundle.get("run_id"),
+        "model_id": model.get("model_id"),
+        "processor_id": model.get("processor_id"),
+        "tgvf_protocol": bundle.get("protocol"),
+        "training": training,
+        "tgvf": {
+            "variant": training.get("variant"),
+            "num_foveated_tokens": None,
+        },
+    }
+
+
+def _checkpoint_required_output_keys(expected_stage: TrainingStage) -> list[str]:
+    if expected_stage == TrainingStage.STAGE1:
+        return [
+            "tgvf_module",
+            "config",
+            "global_step",
+            "optimizer_step",
+            "optimizer",
+            "scheduler",
+        ]
+    return [
+        "qwen_lora",
+        "tgvf_module",
+        "config",
+        "global_step",
+        "micro_step",
+        "optimizer",
+        "scheduler",
+    ]
+
+
+def _torch_load_checkpoint_probe(torch_module: Any, checkpoint_path: Path) -> dict[str, Any]:
+    try:
+        loaded = torch_module.load(checkpoint_path, map_location="cpu", weights_only=False)
+    except TypeError:
+        loaded = torch_module.load(checkpoint_path, map_location="cpu")
+    if not isinstance(loaded, dict):
+        raise ValueError("checkpoint runtime probe did not load to a mapping")
+    return loaded
+
+
+def _reload_optimizer_scheduler_probe(
+    *,
+    optimizer: Any,
+    scheduler: Any,
+    optimizer_state: Any,
+    scheduler_state: Any,
+) -> None:
+    if optimizer_state is None:
+        raise ValueError("checkpoint runtime probe missing optimizer state")
+    if scheduler_state is None:
+        raise ValueError("checkpoint runtime probe missing scheduler state")
+    optimizer.load_state_dict(optimizer_state)
+    scheduler.load_state_dict(scheduler_state)
+
+
+def _checkpoint_state_checks(
+    *,
+    checkpoint: dict[str, Any],
+    loaded: dict[str, Any],
+    expected_stage: TrainingStage,
+) -> dict[str, Any]:
+    checks = {
+        "tgvf_module": _state_dict_parity_check(
+            checkpoint.get("tgvf_module"),
+            loaded.get("tgvf_module"),
+        ),
+    }
+    if expected_stage == TrainingStage.STAGE2:
+        checks["qwen_lora"] = _state_dict_parity_check(
+            checkpoint.get("qwen_lora"),
+            loaded.get("qwen_lora"),
+        )
+    return checks
+
+
+def _state_dict_parity_check(left: Any, right: Any) -> dict[str, Any]:
+    if not isinstance(left, Mapping) or not isinstance(right, Mapping):
+        return {"ok": False, "reason": "state_dict_not_mapping"}
+    left_keys = sorted(str(key) for key in left)
+    right_keys = sorted(str(key) for key in right)
+    mismatched_shapes = []
+    for key in left:
+        if key not in right:
+            continue
+        if _shape_list(left[key]) != _shape_list(right[key]):
+            mismatched_shapes.append(
+                {
+                    "key": str(key),
+                    "saved": _shape_list(left[key]),
+                    "loaded": _shape_list(right[key]),
+                }
+            )
+    return {
+        "ok": left_keys == right_keys and not mismatched_shapes,
+        "saved_tensor_count": len(left_keys),
+        "loaded_tensor_count": len(right_keys),
+        "key_sets_match": left_keys == right_keys,
+        "mismatched_shapes": mismatched_shapes,
+        "sample_keys": left_keys[:10],
+    }
+
+
+def _qwen_lora_state_dict(module: Any) -> dict[str, Any]:
+    try:
+        from peft import get_peft_model_state_dict
+    except Exception:
+        return dict(module.state_dict())
+    try:
+        state = get_peft_model_state_dict(module)
+    except Exception:
+        return dict(module.state_dict())
+    return dict(state or {})
+
+
+def _protocol_c_rows_required(bundle: dict[str, Any]) -> bool:
+    return str(bundle.get("protocol") or "").startswith("protocol_c_")
+
+
+def _protocol_token_rows_payload_from_loaded(
+    *,
+    bundle: dict[str, Any],
+    loaded_modules: dict[str, Any],
+    modules: dict[str, Any],
+) -> dict[str, Any] | None:
+    extras = loaded_modules.get("checkpoint_extras") or {}
+    if extras.get("protocol_c_token_rows") is not None:
+        return extras["protocol_c_token_rows"]
+    if not _protocol_c_rows_required(bundle):
+        return None
+    try:
+        import torch
+
+        from revisit_vlm.qwen3_vl_tgvf import protocol_special_token_ids, protocol_special_tokens
+    except Exception:
+        return None
+    processor = loaded_modules.get("processor")
+    tokenizer = loaded_modules.get("tokenizer") or getattr(processor, "tokenizer", None)
+    model = modules.get("qwen") or modules.get("qwen_lora")
+    if tokenizer is None or model is None or not hasattr(model, "get_input_embeddings"):
+        return None
+    protocol = str(bundle.get("protocol"))
+    tokens = protocol_special_tokens(protocol)
+    token_ids = protocol_special_token_ids(tokenizer, protocol=protocol)
+    ordered_ids = [int(token_ids[token]) for token in tokens]
+    input_embed = model.get_input_embeddings()
+    output_embed = (
+        model.get_output_embeddings() if hasattr(model, "get_output_embeddings") else None
+    )
+    with torch.no_grad():
+        input_rows = (
+            input_embed.effective_rows().detach().cpu().clone()
+            if hasattr(input_embed, "effective_rows")
+            else input_embed.weight.detach().cpu()[ordered_ids].clone()
+        )
+        payload: dict[str, Any] = {
+            "protocol": protocol,
+            "tokens": list(tokens),
+            "token_ids": {token: int(token_ids[token]) for token in tokens},
+            "input_embeddings": input_rows,
+        }
+        if output_embed is not None and hasattr(output_embed, "weight"):
+            payload["output_embeddings"] = (
+                output_embed.effective_rows().detach().cpu().clone()
+                if hasattr(output_embed, "effective_rows")
+                else output_embed.weight.detach().cpu()[ordered_ids].clone()
+            )
+    return payload
+
+
 def _write_actual_trainable_parameters_audit(
     *,
     execution_dir: Path,
@@ -838,7 +1172,12 @@ def _write_actual_optimizer_scheduler_audit(
     }
     path = execution_dir / "optimizer_runtime.json"
     _write_json(path, payload)
-    return {"path": str(path), "payload": payload}
+    return {
+        "path": str(path),
+        "payload": payload,
+        "optimizer": optimizer,
+        "scheduler": scheduler,
+    }
 
 
 def _actual_optimizer_group_specs(
@@ -1096,6 +1435,8 @@ def _load_stage1_parameter_audit_modules(bundle: dict[str, Any]) -> dict[str, An
     ).to(device=device, dtype=next(model.parameters()).dtype)
     return {
         "modules": {"qwen": model, "tgvf": tgvf},
+        "processor": processor,
+        "tokenizer": processor.tokenizer,
         "loader": {
             "backend": "stage1_qwen3_training_parameter_audit",
             "processor_id": getattr(loaded, "processor_id", model_cfg.get("processor_id")),
@@ -1214,6 +1555,8 @@ def _load_stage2_parameter_audit_modules(bundle: dict[str, Any]) -> dict[str, An
     tgvf.load_state_dict(stage1_checkpoint["tgvf_module"], strict=True)
     return {
         "modules": {"qwen_lora": model, "tgvf": tgvf},
+        "processor": processor,
+        "tokenizer": processor.tokenizer,
         "loader": {
             "backend": "stage2_qwen3_lora_tgvf_parameter_audit",
             "processor_id": getattr(loaded, "processor_id", model_cfg.get("processor_id")),
@@ -1236,6 +1579,7 @@ def _runtime_audit_report(
     artifacts: dict[str, dict[str, Any]],
     trainable_parameters: dict[str, Any],
     optimizer_runtime: dict[str, Any] | None,
+    checkpoint_runtime: dict[str, Any] | None,
     expected_stage: TrainingStage,
 ) -> dict[str, Any]:
     artifact_checks = _runtime_artifact_checks(
@@ -1243,12 +1587,14 @@ def _runtime_audit_report(
         artifacts,
         trainable_parameters,
         optimizer_runtime,
+        checkpoint_runtime,
     )
     launch_gates = _launch_gate_audit(
         bundle,
         artifacts,
         trainable_parameters,
         optimizer_runtime,
+        checkpoint_runtime,
     )
     blocking_items = [
         "native trainer loop has not been ported into revisit_vlm_clean",
@@ -1262,6 +1608,12 @@ def _runtime_audit_report(
         and optimizer_runtime["payload"].get("actual_scheduler_constructed")
     ):
         blocking_items.append("actual optimizer/scheduler construction requires --audit-optimizer")
+    if not (
+        checkpoint_runtime
+        and checkpoint_runtime["payload"].get("actual_checkpoint_saved")
+        and checkpoint_runtime["payload"].get("actual_checkpoint_loaded")
+    ):
+        blocking_items.append("checkpoint save/load parity requires --audit-checkpoint")
     return {
         "schema_version": "clean_training_runtime_audit_v1",
         "stage": str(expected_stage),
@@ -1283,11 +1635,14 @@ def _runtime_artifact_checks(
     artifacts: dict[str, dict[str, Any]],
     trainable_parameters: dict[str, Any],
     optimizer_runtime: dict[str, Any] | None,
+    checkpoint_runtime: dict[str, Any] | None,
 ) -> list[dict[str, Any]]:
     artifact_paths = dict(bundle.get("runtime_artifacts") or {})
     artifact_paths["trainable_parameters"] = trainable_parameters["path"]
     if optimizer_runtime is not None:
         artifact_paths["optimizer_runtime"] = optimizer_runtime["path"]
+    if checkpoint_runtime is not None:
+        artifact_paths["checkpoint_runtime"] = checkpoint_runtime["path"]
     checks = []
     for name, path_text in sorted(artifact_paths.items()):
         path = Path(str(path_text))
@@ -1295,6 +1650,8 @@ def _runtime_artifact_checks(
             payload = trainable_parameters["payload"]
         elif name == "optimizer_runtime":
             payload = optimizer_runtime["payload"] if optimizer_runtime else {}
+        elif name == "checkpoint_runtime":
+            payload = checkpoint_runtime["payload"] if checkpoint_runtime else {}
         else:
             payload = artifacts.get(name, {})
         checks.append(
@@ -1315,6 +1672,7 @@ def _launch_gate_audit(
     artifacts: dict[str, dict[str, Any]],
     trainable_parameters: dict[str, Any],
     optimizer_runtime: dict[str, Any] | None,
+    checkpoint_runtime: dict[str, Any] | None,
 ) -> dict[str, Any]:
     required = list(
         (bundle.get("trainer_runtime_contract") or {}).get("required_launch_gates") or []
@@ -1330,6 +1688,15 @@ def _launch_gate_audit(
     )
     if actual_optimizer_constructed:
         satisfied.add("construct_optimizer_and_scheduler_from_plan")
+    actual_checkpoint_validated = bool(
+        checkpoint_runtime
+        and checkpoint_runtime["payload"].get("actual_checkpoint_saved")
+        and checkpoint_runtime["payload"].get("actual_checkpoint_loaded")
+        and not checkpoint_runtime["payload"].get("missing_required_keys")
+        and checkpoint_runtime["payload"].get("state_checks_ok")
+    )
+    if actual_checkpoint_validated:
+        satisfied.add("save_checkpoint_with_clean_contract")
     if actual_parameters_loaded:
         satisfied.update(
             {
@@ -1388,6 +1755,9 @@ def _launch_gate_audit(
         "optimizer_groups_status": artifacts["optimizer_groups"].get("status"),
         "optimizer_runtime_status": (
             optimizer_runtime["payload"].get("status") if optimizer_runtime else "not_requested"
+        ),
+        "checkpoint_runtime_status": (
+            checkpoint_runtime["payload"].get("status") if checkpoint_runtime else "not_requested"
         ),
         "checkpoint_contract_status": artifacts["checkpoint_contract"].get("status"),
         "trainable_parameters_status": trainable_parameters["payload"].get("status"),

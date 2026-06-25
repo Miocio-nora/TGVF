@@ -1695,6 +1695,42 @@ Implemented after Phase 65.
   weighted losses, checkpoint save/load parity, or DeepStack training execution.
   `will_launch_training` remains `false`.
 
+## Phase 67: Actual Checkpoint Save/Load Audit Gate
+
+Implemented after Phase 66.
+
+- Stage1/Stage2 executors now support explicit `--audit-checkpoint` together
+  with `--audit-runtime`;
+- `--audit-checkpoint` loads model components when needed and implicitly
+  constructs optimizer/scheduler runtime state, because the clean checkpoint
+  schema must include optimizer and scheduler state dicts;
+- the audit writes:
+  - `checkpoint_runtime.json`;
+  - local probe file `checkpoint_runtime_probe.pt`;
+- Stage1 checkpoint probes include:
+  - `tgvf_module`;
+  - `config`;
+  - `global_step`;
+  - `optimizer_step`;
+  - `optimizer`;
+  - `scheduler`;
+  - `protocol_c_token_rows` when Protocol-C rows are required;
+- Stage2 checkpoint probes include:
+  - `qwen_lora`;
+  - `tgvf_module`;
+  - `config`;
+  - `global_step`;
+  - `micro_step`;
+  - `optimizer`;
+  - `scheduler`;
+- runtime launch gates now mark `save_checkpoint_with_clean_contract` as
+  `identity_validated` only when the probe is saved, loaded, required keys are
+  present, state-dict key/shape parity passes, and optimizer/scheduler states
+  can be reloaded;
+- this phase still does not run backward, optimizer steps, scheduler steps,
+  weighted losses, or DeepStack training execution. `will_launch_training`
+  remains `false`.
+
 ## Later Phases
 
 1. Replace training launch plans with clean-native training execution.
