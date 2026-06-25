@@ -542,6 +542,36 @@ Validation:
 - `PYTHONPATH=revisit_vlm_clean/src pytest -q revisit_vlm_clean/tests`
   passed with 59 tests.
 
+## Phase 20: Deterministic Data Transform Execution
+
+Implemented after Phase 19.
+
+- `tgvf_generate_data --execute` now runs two clean-native deterministic
+  transforms:
+  - `choice_to_open_answer`;
+  - `clean_imend`;
+- `choice_to_open_answer` ports the historical Stage2 choice-to-open conversion:
+  - strips answer choices from the prompt;
+  - converts `choices` to an empty list;
+  - stores the original choice metadata under `metadata.choice_to_open_answer`;
+  - updates `answer`, `short_answer`, `answer_format`, `value_span_text`, and
+    focus-step value spans;
+- `clean_imend` ports the historical polluted-text filter for Protocol-C split
+  rows;
+- execution writes transformed JSONL files under the clean output directory,
+  while preserving the Phase 19 identity artifacts and adding:
+  - `generated_files.json`;
+  - `transform_report.json`;
+  - `generated_data_written=true` in `data_generation_report.json`;
+- unported transforms still fail fast instead of silently dispatching to old
+  scripts.
+
+Validation:
+
+- tests execute both transforms on tiny temporary JSONL inputs;
+- `PYTHONPATH=revisit_vlm_clean/src pytest -q revisit_vlm_clean/tests`
+  passed with 61 tests.
+
 ## Later Phases
 
 1. Port teacher trajectory generation into `tgvf_generate_data`.

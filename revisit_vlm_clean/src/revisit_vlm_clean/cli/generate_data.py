@@ -11,6 +11,7 @@ from revisit_vlm_clean.data_generation import (
     DataGenerationStage,
     DataGenerationTransform,
     build_data_generation_plan,
+    execute_data_generation,
     write_data_generation_plan,
 )
 from revisit_vlm_clean.defaults import DEFAULT_PROTOCOL
@@ -38,6 +39,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--mask-policy", action="append", default=[], help="Mask policy entry as name=value.")
     parser.add_argument("--dry-run", action="store_true", help="Print resolved identity plan without writing files.")
     parser.add_argument("--write-plan", action="store_true", help="Write identity-only plan files.")
+    parser.add_argument("--execute", action="store_true", help="Execute a ported deterministic data transform.")
     return parser
 
 
@@ -68,7 +70,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.write_plan:
         print_json(write_data_generation_plan(args.output_dir, config=config))
         return 0
-    return exit_not_implemented("data generation execution is not ported yet; use --dry-run or --write-plan")
+    if args.execute:
+        print_json(execute_data_generation(config))
+        return 0
+    return exit_not_implemented("use --dry-run, --write-plan, or --execute with a ported transform")
 
 
 def _parse_float_mapping(values: list[str]) -> dict[str, float]:

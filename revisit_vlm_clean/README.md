@@ -43,10 +43,11 @@ Scoring is applied after all rows are produced. This is intentional: some
 official scorers, including OCRBench-v2, need batch-level prediction files
 rather than one isolated row at a time.
 
-The data-generation entrypoint currently supports identity-only planning:
-it records source files, hashes, protocol, transform, field weights, mask policy,
-and output intent without generating new training JSONL. This is the first
-clean-native layer before porting the heavy teacher/Stage1/Stage2 generators.
+The data-generation entrypoint records source files, hashes, protocol,
+transform, field weights, mask policy, and output intent. It can currently
+execute the deterministic `choice_to_open_answer` and `clean_imend` transforms;
+teacher trajectory generation and the full Stage1/Stage2 builders are still to
+be ported.
 
 ## Fixed Manifests
 

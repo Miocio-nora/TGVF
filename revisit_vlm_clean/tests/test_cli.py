@@ -1,3 +1,5 @@
+import json
+
 from revisit_vlm_clean.cli.benchmark import main as benchmark_main
 from revisit_vlm_clean.cli.generate_data import main as generate_data_main
 from revisit_vlm_clean.cli.manifest import main as manifest_main
@@ -159,3 +161,88 @@ def test_generate_data_write_plan_cli(tmp_path) -> None:
     assert (output_dir / "data_generation_report.json").exists()
     assert "identity_only: true" in (output_dir / "data_generation_config.txt").read_text()
     assert "generated_data_written: false" in (output_dir / "data_generation_config.txt").read_text()
+
+
+def test_generate_data_execute_choice_to_open_answer(tmp_path) -> None:
+    input_root = tmp_path / "inputs"
+    input_root.mkdir()
+    source = input_root / "stage2.train.jsonl"
+    source.write_text(
+        '{"question": "Pick one\\n(A) red\\n(B) blue\\nAnswer only with the option letter.", '
+        '"choices": ["red", "blue"], "answer": "B", "answer_format": "multiple_choice", '
+        '"value_span_text": "B. blue", "focus_steps": [{"value_span_text": "B. blue"}]}\n',
+        encoding="utf-8",
+    )
+    output_dir = tmp_path / "converted"
+
+    assert (
+        generate_data_main(
+            [
+                "--run-id",
+                "choice_open",
+                "--stage",
+                "choice_to_open_answer",
+                "--input-root",
+                str(input_root),
+                "--input-files",
+                "stage2.train.jsonl",
+                "--output-dir",
+                str(output_dir),
+                "--transform",
+                "choice_to_open_answer",
+                "--execute",
+            ]
+        )
+        == 0
+    )
+
+    row = json.loads((output_dir / "stage2.train.jsonl").read_text().strip())
+    assert row["question"] == "Pick one"
+    assert row["choices"] == []
+    assert row["answer"] == "blue"
+    assert row["answer_format"] == "short_text"
+    assert row["focus_steps"][0]["value_span_text"] == "blue"
+    report = (output_dir / "data_generation_report.json").read_text()
+    assert '"generated_data_written": true' in report
+    assert '"converted_choice": 1' in report
+
+
+def test_generate_data_execute_clean_imend(tmp_path) -> None:
+    input_root = tmp_path / "inputs"
+    input_root.mkdir()
+    source = input_root / "stage1.train.jsonl"
+    source.write_text(
+        '{"question": "clean", "answer": "ok"}\n'
+        '{"question": "bad metadata: polluted", "answer": "no"}\n',
+        encoding="utf-8",
+    )
+    output_dir = tmp_path / "cleaned"
+
+    assert (
+        generate_data_main(
+            [
+                "--run-id",
+                "clean_imend",
+                "--stage",
+                "clean_splits",
+                "--input-root",
+                str(input_root),
+                "--input-files",
+                "stage1.train.jsonl",
+                "--output-dir",
+                str(output_dir),
+                "--transform",
+                "clean_imend",
+                "--execute",
+            ]
+        )
+        == 0
+    )
+
+    rows = (output_dir / "stage1.train.jsonl").read_text().splitlines()
+    assert len(rows) == 1
+    assert '"question": "clean"' in rows[0]
+    report = (output_dir / "transform_report.json").read_text()
+    assert '"input": 2' in report
+    assert '"kept": 1' in report
+    assert '"dropped": 1' in report
