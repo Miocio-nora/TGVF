@@ -36,6 +36,7 @@ from revisit_vlm.qwen3_vl_tgvf import (
     llm_hidden_dim,
     normalize_tgvf_protocol,
     protocol_focus_tokens,
+    protocol_uses_tool_observation,
     render_focus_action_text,
     render_stage1_readout_text,
     render_tgvf_prefix_suffix,
@@ -439,6 +440,7 @@ def prepare_v3_stage1_readout_inputs(
     capture: Qwen3FocusCapture,
     evidence_description: str,
     foveated_visual_tokens: torch.Tensor,
+    merged_visual_tokens: torch.Tensor | None = None,
     device: torch.device | str | None = None,
     mask_original_image_after_tgvf: bool = True,
     position_mode: PositionMode = "native_source_grid",
@@ -466,14 +468,31 @@ def prepare_v3_stage1_readout_inputs(
     protocol = normalize_tgvf_protocol(protocol)
     if device is None:
         device = _infer_model_device(model) or foveated_visual_tokens.device
+    original_image_indices = source_geometry.source_visual_token_indices
+    if original_image_indices is None:
+        raise RuntimeError("source visual token indices are unavailable")
+    original_image_indices = original_image_indices.to(device=device, dtype=torch.long)
+    original_image_embeds_replaced = False
+    if merged_visual_tokens is not None:
+        if int(merged_visual_tokens.shape[0]) != int(original_image_indices.numel()):
+            raise ValueError(
+                "merged visual token count mismatch: "
+                f"positions={int(original_image_indices.numel())} "
+                f"merged={int(merged_visual_tokens.shape[0])}"
+            )
+        if int(merged_visual_tokens.shape[-1]) != int(foveated_visual_tokens.shape[-1]):
+            raise ValueError(
+                "merged visual token dim must match D dim for readout scatter: "
+                f"merged={int(merged_visual_tokens.shape[-1])} "
+                f"D={int(foveated_visual_tokens.shape[-1])}"
+            )
+        original_image_embeds_replaced = True
     base_input_ids = capture.input_ids.to(device)
     base_len = int(base_input_ids.shape[-1])
     d = foveated_visual_tokens.to(device)
     tgvf_prefix, tgvf_suffix = render_tgvf_prefix_suffix(
         protocol=protocol,
-        include_leading_im_end=not (
-            protocol == "protocol_c_tool_observation" and focus_action_im_end
-        ),
+        include_leading_im_end=not (protocol_uses_tool_observation(protocol) and focus_action_im_end),
     )
     readout_prefix, readout_text = render_stage1_readout_text(
         evidence_description=evidence_description,
@@ -500,14 +519,13 @@ def prepare_v3_stage1_readout_inputs(
     evidence_start = base_len + int(tgvf_ids.shape[-1])
 
     base_embeds = model.get_input_embeddings()(input_ids)
-    embeds = torch.cat(
-        [
-            base_embeds[:, :fvt_token_start],
-            d.to(dtype=base_embeds.dtype).unsqueeze(0),
-            base_embeds[:, fvt_token_end:],
-        ],
-        dim=1,
-    )
+    embeds = base_embeds.clone()
+    if merged_visual_tokens is not None:
+        embeds[:, original_image_indices, :] = merged_visual_tokens.to(
+            device=device,
+            dtype=embeds.dtype,
+        ).unsqueeze(0)
+    embeds[:, fvt_token_start:fvt_token_end, :] = d.to(dtype=embeds.dtype).unsqueeze(0)
 
     labels = torch.full_like(input_ids, IGNORE_INDEX)
     labels[:, evidence_start:] = input_ids[:, evidence_start:]
@@ -550,10 +568,6 @@ def prepare_v3_stage1_readout_inputs(
     if position_ids is None:
         raise RuntimeError("Qwen3 position id computation is unavailable")
 
-    original_image_indices = source_geometry.source_visual_token_indices
-    if original_image_indices is None:
-        raise RuntimeError("source visual token indices are unavailable")
-    original_image_indices = original_image_indices.to(device=device, dtype=torch.long)
     if mask_original_image_after_tgvf:
         attention_mask = build_weak_strict_attention_mask(
             attention_mask_2d=attention_mask_2d,
@@ -587,6 +601,7 @@ def prepare_v3_stage1_readout_inputs(
         "mask_mode": mask_mode,
         "position_mode": position_mode,
         "position_ids_source": position_ids_source,
+        "original_image_embeds_replaced": original_image_embeds_replaced,
         "original_image_token_count": int(original_image_indices.numel()),
         "original_image_token_span_detection": "source_image_token_id_scan",
         "block_query_start": base_len,
@@ -905,12 +920,13 @@ def v3_stage1_training_step(
             capture=feature.capture,
             evidence_description=sample.evidence_description,
             foveated_visual_tokens=d,
+            merged_visual_tokens=feature.merged_visual_tokens.to(device),
             device=device,
-                            mask_original_image_after_tgvf=mask_original_image_after_tgvf,
-                            position_mode=position_mode,
-                            protocol=protocol,
-                            focus_action_im_end=focus_action_im_end,
-                        )
+            mask_original_image_after_tgvf=mask_original_image_after_tgvf,
+            position_mode=position_mode,
+            protocol=protocol,
+            focus_action_im_end=focus_action_im_end,
+        )
         positive_readouts.append(readout_inputs)
         loss_man_values.append(
             _safe_visual_token_manifold_loss(d, feature.merged_visual_tokens.to(device))
@@ -945,6 +961,7 @@ def v3_stage1_training_step(
                     capture=features[pos_index].capture,
                     evidence_description=samples[pos_index].evidence_description,
                     foveated_visual_tokens=fvt_outputs[neg_index],
+                    merged_visual_tokens=features[pos_index].merged_visual_tokens.to(device),
                     device=device,
                     mask_original_image_after_tgvf=mask_original_image_after_tgvf,
                     position_mode=position_mode,
@@ -984,12 +1001,13 @@ def v3_stage1_training_step(
                             capture=features[pos_index].capture,
                             evidence_description=samples[pos_index].evidence_description,
                             foveated_visual_tokens=fvt_outputs[fvt_index],
+                            merged_visual_tokens=features[pos_index].merged_visual_tokens.to(device),
                             device=device,
-	                            mask_original_image_after_tgvf=mask_original_image_after_tgvf,
-	                            position_mode=position_mode,
-	                            protocol=protocol,
-	                            focus_action_im_end=focus_action_im_end,
-	                        )
+                            mask_original_image_after_tgvf=mask_original_image_after_tgvf,
+                            position_mode=position_mode,
+                            protocol=protocol,
+                            focus_action_im_end=focus_action_im_end,
+                        )
                         pending_readouts.append(readout_inputs)
                         pending_slots.append((row_index, col_index))
                 if pending_readouts:
@@ -1097,6 +1115,7 @@ def _readout_debug(readout_inputs: dict[str, Any]) -> dict[str, Any]:
         "mask_mode",
         "position_mode",
         "position_ids_source",
+        "original_image_embeds_replaced",
         "original_image_token_count",
         "original_image_token_span_detection",
         "blocked_original_image_keys_for_post_tgvf",

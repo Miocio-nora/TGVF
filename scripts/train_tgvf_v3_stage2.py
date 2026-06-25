@@ -18,14 +18,13 @@ from torch.utils.data.distributed import DistributedSampler
 from revisit_vlm.qwen3_vl_tgvf import (
     PROTOCOL_C_THINKING_SPECIAL,
     PROTOCOL_C_TOOL_OBSERVATION,
-    PROTOCOL_C_SPECIAL_TOKENS,
+    PROTOCOL_C_TOOL_OBSERVATION_QWEN2_NO_THINK,
     PROTOCOL_D_QWEN_TOOL,
     PROTOCOL_E_ACTION_EVIDENCE_SPECIAL,
     TGVF_PROTOCOL_CHOICES,
     ensure_tgvf_protocol_tokens,
     load_qwen3_vl,
     peak_memory_gb,
-    protocol_c_special_token_ids,
     protocol_special_token_ids,
     protocol_special_tokens,
 )
@@ -37,6 +36,7 @@ from revisit_vlm.tgvf_training import (
 )
 from revisit_vlm.tgvf_v3_stage1 import freeze_qwen_backbone, infer_qwen3_stage1_dims
 from revisit_vlm.tgvf_v3_stage2 import (
+    ORIGINAL_IMAGE_MASK_SCOPE_CHOICES,
     Stage2LossWeights,
     TGVFv3Stage2Dataset,
     dataset_stage2_stats,
@@ -87,7 +87,12 @@ def main() -> None:
         processor.tokenizer.pad_token = processor.tokenizer.eos_token
     tokenizer_size_before = len(processor.tokenizer)
     protocol_token_info: dict[str, Any] = {}
-    token_row_protocols = {PROTOCOL_C_THINKING_SPECIAL, PROTOCOL_C_TOOL_OBSERVATION, PROTOCOL_E_ACTION_EVIDENCE_SPECIAL}
+    token_row_protocols = {
+        PROTOCOL_C_THINKING_SPECIAL,
+        PROTOCOL_C_TOOL_OBSERVATION,
+        PROTOCOL_C_TOOL_OBSERVATION_QWEN2_NO_THINK,
+        PROTOCOL_E_ACTION_EVIDENCE_SPECIAL,
+    }
     if args.tgvf_protocol in token_row_protocols:
         protocol_token_info = ensure_tgvf_protocol_tokens(processor.tokenizer, model, protocol=args.tgvf_protocol)
     freeze_qwen_backbone(model)
@@ -162,10 +167,15 @@ def main() -> None:
         encoder_reencode_deepstack_compatible=args.encoder_reencode_deepstack_compatible,
     ).to(device=device, dtype=train_dtype)
     stage1_token_row_info = {}
-    if args.tgvf_protocol in {PROTOCOL_C_THINKING_SPECIAL, PROTOCOL_C_TOOL_OBSERVATION}:
+    if args.tgvf_protocol in {
+        PROTOCOL_C_THINKING_SPECIAL,
+        PROTOCOL_C_TOOL_OBSERVATION,
+        PROTOCOL_C_TOOL_OBSERVATION_QWEN2_NO_THINK,
+    }:
         stage1_token_row_info = _restore_protocol_c_token_rows_from_stage1(
             model=model,
             tokenizer=processor.tokenizer,
+            protocol=args.tgvf_protocol,
             stage1_checkpoint=stage1_checkpoint,
         )
     elif args.tgvf_protocol == PROTOCOL_E_ACTION_EVIDENCE_SPECIAL:
@@ -259,6 +269,7 @@ def main() -> None:
         "max_seq_len": args.max_seq_len,
         "mask_original_image_after_tgvf": args.mask_original_image_after_tgvf,
         "mask_original_image_after_tgvf_prob": args.mask_original_image_after_tgvf_prob,
+        "mask_original_image_after_tgvf_scope": args.mask_original_image_after_tgvf_scope,
         "fvt_position_mode": args.fvt_position_mode,
         "capture_mode": "teacher_forced",
         "train_long_cot": False,
@@ -266,7 +277,13 @@ def main() -> None:
         "normal_tokens_added": bool(protocol_token_info.get("normal_tokens_added", False)),
         "protocol_c_token_registration": protocol_token_info.get("protocol_c_token_registration"),
         "tokenizer_resized": tokenizer_size_before != tokenizer_size_after,
-        "markers_are_plain_text": args.tgvf_protocol not in {PROTOCOL_C_THINKING_SPECIAL, PROTOCOL_C_TOOL_OBSERVATION, PROTOCOL_D_QWEN_TOOL, PROTOCOL_E_ACTION_EVIDENCE_SPECIAL},
+        "markers_are_plain_text": args.tgvf_protocol not in {
+            PROTOCOL_C_THINKING_SPECIAL,
+            PROTOCOL_C_TOOL_OBSERVATION,
+            PROTOCOL_C_TOOL_OBSERVATION_QWEN2_NO_THINK,
+            PROTOCOL_D_QWEN_TOOL,
+            PROTOCOL_E_ACTION_EVIDENCE_SPECIAL,
+        },
         "protocol_c_special_token_ids": protocol_token_info.get("protocol_c_special_token_ids"),
         "protocol_c_token_ids": protocol_token_info.get("protocol_c_token_ids"),
         "protocol_c_tokenizer_info": protocol_token_info,
@@ -376,6 +393,7 @@ def main() -> None:
             position_mode=args.fvt_position_mode,
             mask_original_image_after_tgvf=args.mask_original_image_after_tgvf,
             mask_original_image_after_tgvf_prob=args.mask_original_image_after_tgvf_prob,
+            mask_original_image_after_tgvf_scope=args.mask_original_image_after_tgvf_scope,
             protocol=args.tgvf_protocol,
         )
         if not torch.isfinite(output.loss_total):
@@ -508,6 +526,7 @@ def validate_stage2(
                 position_mode=args.fvt_position_mode,
                 mask_original_image_after_tgvf=args.mask_original_image_after_tgvf,
                 mask_original_image_after_tgvf_prob=args.mask_original_image_after_tgvf_prob,
+                mask_original_image_after_tgvf_scope=args.mask_original_image_after_tgvf_scope,
                 protocol=args.tgvf_protocol,
             )
             losses.append(float(output.loss_total.detach().cpu()))
@@ -538,14 +557,23 @@ def validate_stage2(
 
 
 
-def _restore_protocol_c_token_rows_from_stage1(*, model: Any, tokenizer: Any, stage1_checkpoint: dict[str, Any]) -> dict[str, Any]:
+def _restore_protocol_c_token_rows_from_stage1(
+    *,
+    model: Any,
+    tokenizer: Any,
+    protocol: str,
+    stage1_checkpoint: dict[str, Any],
+) -> dict[str, Any]:
     payload = stage1_checkpoint.get("protocol_c_token_rows")
-    current_ids = protocol_c_special_token_ids(tokenizer)
+    tokens = protocol_special_tokens(protocol)
+    current_ids = protocol_special_token_ids(tokenizer, protocol=protocol)
     info: dict[str, Any] = {
         "available_in_stage1_checkpoint": payload is not None,
         "loaded": False,
         "reason": None,
-        "current_token_ids": {token: int(current_ids[token]) for token in PROTOCOL_C_SPECIAL_TOKENS},
+        "protocol": protocol,
+        "tokens": list(tokens),
+        "current_token_ids": {token: int(current_ids[token]) for token in tokens},
     }
     if payload is None:
         info["reason"] = "missing_protocol_c_token_rows_in_stage1_checkpoint"
@@ -553,15 +581,15 @@ def _restore_protocol_c_token_rows_from_stage1(*, model: Any, tokenizer: Any, st
     saved_ids = payload.get("token_ids") or {}
     mismatched = {
         token: {"current": int(current_ids[token]), "saved": int(saved_ids.get(token, -1))}
-        for token in PROTOCOL_C_SPECIAL_TOKENS
+        for token in tokens
         if int(saved_ids.get(token, -1)) != int(current_ids[token])
     }
-    info["saved_token_ids"] = {token: int(saved_ids.get(token, -1)) for token in PROTOCOL_C_SPECIAL_TOKENS}
+    info["saved_token_ids"] = {token: int(saved_ids.get(token, -1)) for token in tokens}
     if mismatched:
         info["reason"] = "token_id_mismatch"
         info["mismatched_token_ids"] = mismatched
         return info
-    ordered_ids = [int(current_ids[token]) for token in PROTOCOL_C_SPECIAL_TOKENS]
+    ordered_ids = [int(current_ids[token]) for token in tokens]
     input_rows = payload.get("input_embeddings")
     output_rows = payload.get("output_embeddings")
     if input_rows is None:
@@ -670,6 +698,11 @@ def summarize_step_debug(debug_logs: list[dict[str, Any]]) -> dict[str, Any]:
         for item in debug_logs
         if item.get("mask_original_image_after_tgvf_prob") is not None
     ]
+    mask_scopes = [
+        str(item.get("mask_original_image_after_tgvf_scope"))
+        for item in debug_logs
+        if item.get("mask_original_image_after_tgvf_scope") is not None
+    ]
     examples = []
     for item in debug_logs:
         examples.extend(item.get("debug_examples", []))
@@ -683,10 +716,17 @@ def summarize_step_debug(debug_logs: list[dict[str, Any]]) -> dict[str, Any]:
         "focus_sample_mask_active_rate": focus_mask_active / max(focus, 1),
         "no_focus_mask_active_rate": no_focus_mask_active / max(no_focus, 1),
         "mask_original_image_after_tgvf_prob": sum(mask_probs) / max(len(mask_probs), 1) if mask_probs else None,
+        "mask_original_image_after_tgvf_scope": mask_scopes[0] if mask_scopes else None,
         "value_span_match_rate": sum(value_rates) / max(len(value_rates), 1) if value_rates else None,
         "special_tokens_added": False,
         "tokenizer_resized": False,
-        "markers_are_plain_text": protocol not in {PROTOCOL_C_THINKING_SPECIAL, PROTOCOL_C_TOOL_OBSERVATION, PROTOCOL_D_QWEN_TOOL, PROTOCOL_E_ACTION_EVIDENCE_SPECIAL},
+        "markers_are_plain_text": protocol not in {
+            PROTOCOL_C_THINKING_SPECIAL,
+            PROTOCOL_C_TOOL_OBSERVATION,
+            PROTOCOL_C_TOOL_OBSERVATION_QWEN2_NO_THINK,
+            PROTOCOL_D_QWEN_TOOL,
+            PROTOCOL_E_ACTION_EVIDENCE_SPECIAL,
+        },
         "tgvf_protocol": protocol,
         "matrix_ce_enabled": False,
         "same_image_negative_enabled": False,
@@ -874,6 +914,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--fvt-position-mode", choices=("native_source_grid", "inherit_source_visual_positions"), default="native_source_grid")
     parser.add_argument("--mask-original-image-after-tgvf", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--mask-original-image-after-tgvf-prob", type=float, default=1.0)
+    parser.add_argument("--mask-original-image-after-tgvf-scope", choices=ORIGINAL_IMAGE_MASK_SCOPE_CHOICES, default="evidence_only")
     parser.add_argument("--fast-batched-stage2", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--min-confidence", type=float, default=None)
     parser.add_argument("--loss-evidence-state", type=float, default=0.2)

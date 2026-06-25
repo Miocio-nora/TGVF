@@ -177,6 +177,7 @@ def test_v3_stage1_readout_loss_backprops_to_d_not_frozen_qwen() -> None:
     model = TinyQwen3()
     freeze_qwen_backbone(model)
     d = torch.randn(2, 8, requires_grad=True)
+    merged_visual_tokens = torch.randn(2, 8)
 
     inputs = prepare_v3_stage1_readout_inputs(
         model=model,
@@ -184,6 +185,7 @@ def test_v3_stage1_readout_loss_backprops_to_d_not_frozen_qwen() -> None:
         capture=_capture(),
         evidence_description="It reads EXP.",
         foveated_visual_tokens=d,
+        merged_visual_tokens=merged_visual_tokens,
         mask_original_image_after_tgvf=True,
     )
     loss, _ = compute_v3_stage1_lm_loss(model=model, readout_inputs=inputs)
@@ -193,9 +195,10 @@ def test_v3_stage1_readout_loss_backprops_to_d_not_frozen_qwen() -> None:
     assert inputs["mask_mode"] == "weak_strict_original_image_keys_4d"
     assert inputs["blocked_original_image_keys_for_post_tgvf"] is True
     assert inputs["pre_tgvf_queries_keep_original_image_keys"] is True
+    assert inputs["original_image_embeds_replaced"] is True
+    assert torch.allclose(inputs["inputs_embeds"][0, torch.tensor([1, 2])], merged_visual_tokens)
     assert d.grad is not None
     assert torch.isfinite(d.grad).all()
     assert any(d.grad.abs().flatten() > 0)
     assert all(parameter.grad is None for parameter in model.parameters())
     assert all(not parameter.requires_grad for parameter in model.parameters())
-

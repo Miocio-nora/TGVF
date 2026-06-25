@@ -126,6 +126,7 @@ def main() -> None:
                         evidence_description=row_item.sample.evidence_description,
                         foveated_visual_tokens=col_item.foveated_visual_tokens,
                         device=device,
+                        merged_visual_tokens=row_item.merged_visual_tokens,
                         mask_original_image_after_tgvf=args.mask_original_image_after_tgvf,
                         position_mode=args.fvt_position_mode,
                         protocol=args.tgvf_protocol,

@@ -254,12 +254,16 @@ Current default loss stack:
 
 ```text
 loss_gen = 1.0
-loss_visual_token_manifold = 0.01
+loss_visual_token_manifold = 0.1
 loss_same_image_negative = 1.0
 same_image_negative_mode = matrix_ce
 ```
 
 The main supervised loss is evidence generation/readout loss over `<EVIDENCE>`.
+
+`loss_visual_token_manifold` was raised from `0.01` to `0.1` after Qwen3
+tool-observation diagnostics showed the old weight contributed only about
+1-2% of total loss and did not keep D on the original visual-token scale.
 
 Same-image matrix CE is enabled by default when:
 

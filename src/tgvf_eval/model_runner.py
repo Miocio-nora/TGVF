@@ -72,6 +72,7 @@ class QwenTGVFModelRunner:
         capture_layer: int = -1,
         num_foveated_tokens: int | None = 16,
         spatial_merge_size: str = "auto",
+        max_image_resolution: int | None = None,
         repeat_options_in_continuation: bool = False,
         force_target_mode: str = "generated",
         fixed_force_target: str | None = None,
@@ -92,6 +93,9 @@ class QwenTGVFModelRunner:
         self.capture_layer = capture_layer
         self.num_foveated_tokens = num_foveated_tokens
         self.spatial_merge_size = spatial_merge_size
+        if max_image_resolution is not None and max_image_resolution <= 0:
+            raise ValueError("max_image_resolution must be positive when provided")
+        self.max_image_resolution = max_image_resolution
         self.repeat_options_in_continuation = repeat_options_in_continuation
         self.force_target_mode = force_target_mode
         self.fixed_force_target = fixed_force_target
@@ -113,10 +117,25 @@ class QwenTGVFModelRunner:
         self._load(need_tgvf=needs_module)
 
     def _image_kwargs(self, config: MethodConfig) -> dict[str, int]:
-        kwargs = image_budget_kwargs(config.image_budget)
+        if self.max_image_resolution is None:
+            kwargs = image_budget_kwargs(config.image_budget)
+        else:
+            kwargs = {"max_pixels": int(self.max_image_resolution) ** 2}
         if config.video_nframes is not None:
             kwargs["nframes"] = int(config.video_nframes)
         return kwargs
+
+    def _media_items(self, sample: BenchmarkSample) -> list[Any]:
+        media_items: list[Any] = []
+        for item in sample.media:
+            if item is None:
+                continue
+            if isinstance(item, str) and not item:
+                continue
+            media_items.append(item)
+        if not media_items and sample.primary_media is not None:
+            media_items.append(sample.primary_media)
+        return media_items
 
     def _single_user_messages(
         self,
@@ -126,16 +145,18 @@ class QwenTGVFModelRunner:
     ) -> list[dict[str, Any]]:
         from revisit_vlm.tgvf_capture import _vision_content_items
 
-        media = sample.primary_media
-        if media is None:
+        media_items = self._media_items(sample)
+        if not media_items:
             raise ValueError("sample has no image/video media path")
+        content: list[dict[str, Any]] = []
+        image_kwargs = self._image_kwargs(config)
+        for media in media_items:
+            content.extend(_vision_content_items(media, image_kwargs))
+        content.append({"type": "text", "text": prompt})
         return [
             {
                 "role": "user",
-                "content": [
-                    *_vision_content_items(media, self._image_kwargs(config)),
-                    {"type": "text", "text": prompt},
-                ],
+                "content": content,
             }
         ]
 

@@ -22,6 +22,7 @@ ORIGINAL_MAX_TOKENS="${ORIGINAL_MAX_TOKENS:-512}"
 ACTION_MAX_TOKENS="${ACTION_MAX_TOKENS:-128}"
 ANSWER_MAX_TOKENS="${ANSWER_MAX_TOKENS:-256}"
 POST_TGVF_CONTINUATION="${POST_TGVF_CONTINUATION:-evidence_then_answer}"
+POST_TGVF_FORWARD_MODE="${POST_TGVF_FORWARD_MODE:-no_kv_full_sequence}"
 TGVF_PROTOCOL="${TGVF_PROTOCOL:-protocol_c_thinking_special}"
 TIER="${TIER:-medium}"
 # Explicit limits keep OCR/math benchmarks from becoming full-day jobs.
@@ -43,7 +44,7 @@ run_shards() {
   local limit_var="LIMIT_${bench^^}"
   limit_var="${limit_var//-/_}"
   local limit="${!limit_var:-300}"
-  echo "[$(date -Is)] start $bench $mode tier=$TIER limit=$limit max_image_resolution=$MAX_IMAGE_RESOLUTION" | tee -a "$RUN_ROOT/logs/run.log"
+  echo "[$(date -Is)] start $bench $mode tier=$TIER limit=$limit max_image_resolution=$MAX_IMAGE_RESOLUTION post_tgvf_forward_mode=$POST_TGVF_FORWARD_MODE" | tee -a "$RUN_ROOT/logs/run.log"
   for shard in 0 1 2 3; do
     local gpu="${GPUS[$shard]}"
     local shard_out="$out/shard_$shard"
@@ -98,6 +99,7 @@ run_shards() {
         --eval-mode "$eval_mode" \
         --no-include-stage2-direct \
         --post-tgvf-continuation "$POST_TGVF_CONTINUATION" \
+        --post-tgvf-forward-mode "$POST_TGVF_FORWARD_MODE" \
         --log-every 25 \
         > "$shard_out/run.log" 2>&1 &
     fi

@@ -11,7 +11,14 @@ from typing import Any, Literal
 
 import torch
 from qwen_vl_utils import process_vision_info
-from transformers import AutoProcessor, Qwen3VLForConditionalGeneration, StoppingCriteria, StoppingCriteriaList
+from transformers import (
+    AutoConfig,
+    AutoProcessor,
+    Qwen2VLForConditionalGeneration,
+    Qwen3VLForConditionalGeneration,
+    StoppingCriteria,
+    StoppingCriteriaList,
+)
 
 
 EVIDENCE_STATE_START = "<EVIDENCE_STATE>"
@@ -28,12 +35,14 @@ ANSWER_END = "</ANSWER>"
 LEGACY_V3_PROTOCOL = "legacy_v3_tags"
 PROTOCOL_C_THINKING_SPECIAL = "protocol_c_thinking_special"
 PROTOCOL_C_TOOL_OBSERVATION = "protocol_c_tool_observation"
+PROTOCOL_C_TOOL_OBSERVATION_QWEN2_NO_THINK = "protocol_c_tool_observation_qwen2_no_think"
 PROTOCOL_D_QWEN_TOOL = "protocol_d_qwen_tool"
 PROTOCOL_E_ACTION_EVIDENCE_SPECIAL = "protocol_e_action_evidence_special"
 TGVFProtocol = Literal[
     "legacy_v3_tags",
     "protocol_c_thinking_special",
     "protocol_c_tool_observation",
+    "protocol_c_tool_observation_qwen2_no_think",
     "protocol_d_qwen_tool",
     "protocol_e_action_evidence_special",
 ]
@@ -41,6 +50,7 @@ TGVF_PROTOCOL_CHOICES = (
     LEGACY_V3_PROTOCOL,
     PROTOCOL_C_THINKING_SPECIAL,
     PROTOCOL_C_TOOL_OBSERVATION,
+    PROTOCOL_C_TOOL_OBSERVATION_QWEN2_NO_THINK,
     PROTOCOL_D_QWEN_TOOL,
     PROTOCOL_E_ACTION_EVIDENCE_SPECIAL,
 )
@@ -100,7 +110,12 @@ def normalize_tgvf_protocol(protocol: str | None) -> TGVFProtocol:
 
 def protocol_focus_tokens(protocol: str | None = None) -> tuple[str, str]:
     protocol = normalize_tgvf_protocol(protocol)
-    if protocol in {PROTOCOL_C_THINKING_SPECIAL, PROTOCOL_C_TOOL_OBSERVATION, PROTOCOL_E_ACTION_EVIDENCE_SPECIAL}:
+    if protocol in {
+        PROTOCOL_C_THINKING_SPECIAL,
+        PROTOCOL_C_TOOL_OBSERVATION,
+        PROTOCOL_C_TOOL_OBSERVATION_QWEN2_NO_THINK,
+        PROTOCOL_E_ACTION_EVIDENCE_SPECIAL,
+    }:
         return PROTOCOL_C_FOCUS_START, PROTOCOL_C_FOCUS_END
     if protocol == PROTOCOL_D_QWEN_TOOL:
         return TOOL_CALL_START, TOOL_CALL_END
@@ -109,11 +124,41 @@ def protocol_focus_tokens(protocol: str | None = None) -> tuple[str, str]:
 
 def protocol_tgvf_tokens(protocol: str | None = None) -> tuple[str, str]:
     protocol = normalize_tgvf_protocol(protocol)
-    if protocol in {PROTOCOL_C_THINKING_SPECIAL, PROTOCOL_C_TOOL_OBSERVATION, PROTOCOL_E_ACTION_EVIDENCE_SPECIAL}:
+    if protocol in {
+        PROTOCOL_C_THINKING_SPECIAL,
+        PROTOCOL_C_TOOL_OBSERVATION,
+        PROTOCOL_C_TOOL_OBSERVATION_QWEN2_NO_THINK,
+        PROTOCOL_E_ACTION_EVIDENCE_SPECIAL,
+    }:
         return PROTOCOL_C_TGVF_START, PROTOCOL_C_TGVF_END
     if protocol == PROTOCOL_D_QWEN_TOOL:
         return TOOL_RESPONSE_START, TOOL_RESPONSE_END
     return TGVF_START, TGVF_END
+
+
+def protocol_uses_tool_observation(protocol: str | None = None) -> bool:
+    protocol = normalize_tgvf_protocol(protocol)
+    return protocol in {
+        PROTOCOL_C_TOOL_OBSERVATION,
+        PROTOCOL_C_TOOL_OBSERVATION_QWEN2_NO_THINK,
+    }
+
+
+def protocol_uses_think_tags(protocol: str | None = None) -> bool:
+    protocol = normalize_tgvf_protocol(protocol)
+    return protocol in {
+        PROTOCOL_C_THINKING_SPECIAL,
+        PROTOCOL_C_TOOL_OBSERVATION,
+        PROTOCOL_D_QWEN_TOOL,
+    }
+
+
+def protocol_uses_evidence_tags(protocol: str | None = None) -> bool:
+    protocol = normalize_tgvf_protocol(protocol)
+    return protocol in {
+        PROTOCOL_C_TOOL_OBSERVATION_QWEN2_NO_THINK,
+        PROTOCOL_E_ACTION_EVIDENCE_SPECIAL,
+    }
 
 
 def protocol_c_pre_focus_think(target: str) -> str:
@@ -140,6 +185,9 @@ def render_focus_action_text(
         rendered_target = f" {target} "
     else:
         rendered_target = target
+    if protocol == PROTOCOL_C_TOOL_OBSERVATION_QWEN2_NO_THINK:
+        text = f"{PROTOCOL_C_FOCUS_START}{rendered_target}{PROTOCOL_C_FOCUS_END}"
+        return f"{text}<|im_end|>" if append_im_end else text
     if protocol in {PROTOCOL_C_THINKING_SPECIAL, PROTOCOL_C_TOOL_OBSERVATION, PROTOCOL_E_ACTION_EVIDENCE_SPECIAL}:
         focus_text = f"{PROTOCOL_C_FOCUS_START}{rendered_target}{PROTOCOL_C_FOCUS_END}"
         if not include_think:
@@ -169,6 +217,8 @@ def render_focus_action_text(
 
 def render_force_focus_prefix(*, protocol: str | None = None, target_hint: str | None = None) -> str:
     protocol = normalize_tgvf_protocol(protocol)
+    if protocol == PROTOCOL_C_TOOL_OBSERVATION_QWEN2_NO_THINK:
+        return PROTOCOL_C_FOCUS_START
     if protocol in {PROTOCOL_C_THINKING_SPECIAL, PROTOCOL_C_TOOL_OBSERVATION, PROTOCOL_E_ACTION_EVIDENCE_SPECIAL}:
         target_hint = (target_hint or "").strip()
         if target_hint:
@@ -188,7 +238,7 @@ def render_force_focus_prefix(*, protocol: str | None = None, target_hint: str |
 
 def render_tgvf_prefix_suffix(*, protocol: str | None = None, include_leading_im_end: bool = True) -> tuple[str, str]:
     protocol = normalize_tgvf_protocol(protocol)
-    if protocol == PROTOCOL_C_TOOL_OBSERVATION:
+    if protocol_uses_tool_observation(protocol):
         prefix = f"<|im_start|>tool\n{PROTOCOL_C_TGVF_START}\n"
         if include_leading_im_end:
             prefix = f"<|im_end|>\n{prefix}"
@@ -206,7 +256,7 @@ def render_tgvf_prefix_suffix(*, protocol: str | None = None, include_leading_im
 
 
 def _focus_action_terminal_ids(tokenizer: Any, protocol: str | None, focus_end_ids: list[int]) -> list[int]:
-    if normalize_tgvf_protocol(protocol) == PROTOCOL_C_TOOL_OBSERVATION:
+    if protocol_uses_tool_observation(protocol):
         if os.environ.get("TGVF_TOOLOBS_ACTION_STOP", "im_end").strip().lower() == "focus_end":
             return focus_end_ids
         terminal = _marker_ids(tokenizer, "<|im_end|>")
@@ -241,7 +291,7 @@ def render_focus_readout_answer_text(
     suffix = "<|im_end|>" if append_im_end else ""
     if protocol in {PROTOCOL_C_THINKING_SPECIAL, PROTOCOL_C_TOOL_OBSERVATION}:
         return f"{THINK_START}\n{evidence_description}\n{THINK_END}\n{answer}{suffix}"
-    if protocol == PROTOCOL_E_ACTION_EVIDENCE_SPECIAL:
+    if protocol_uses_evidence_tags(protocol):
         return f"{PROTOCOL_E_EVIDENCE_START}{evidence_description}{PROTOCOL_E_EVIDENCE_END}\n{answer}{suffix}"
     if protocol == PROTOCOL_D_QWEN_TOOL:
         return f"{THINK_START}\n{evidence_description}\n{THINK_END}\n{answer}{suffix}"
@@ -260,7 +310,7 @@ def render_stage1_readout_text(
     evidence_description = evidence_description.strip()
     if protocol in {PROTOCOL_C_THINKING_SPECIAL, PROTOCOL_C_TOOL_OBSERVATION}:
         return f"{THINK_START}\n", f"{evidence_description}\n{THINK_END}"
-    if protocol == PROTOCOL_E_ACTION_EVIDENCE_SPECIAL:
+    if protocol_uses_evidence_tags(protocol):
         return PROTOCOL_E_EVIDENCE_START, f"{evidence_description}{PROTOCOL_E_EVIDENCE_END}"
     if protocol == PROTOCOL_D_QWEN_TOOL:
         return f"{THINK_START}\n", f"{evidence_description}\n{THINK_END}"
@@ -277,6 +327,8 @@ def render_no_focus_output_text(
     protocol = normalize_tgvf_protocol(protocol)
     answer = answer.strip()
     suffix = "<|im_end|>" if append_im_end else ""
+    if protocol == PROTOCOL_C_TOOL_OBSERVATION_QWEN2_NO_THINK:
+        return f"{answer}{suffix}"
     if protocol in {PROTOCOL_C_THINKING_SPECIAL, PROTOCOL_C_TOOL_OBSERVATION, PROTOCOL_E_ACTION_EVIDENCE_SPECIAL}:
         think = (think_text or protocol_c_pre_answer_think()).strip()
         return f"{THINK_START}\n{think}\n{THINK_END}\n{answer}{suffix}"
@@ -346,7 +398,7 @@ def protocol_special_tokens(protocol: str | None = None) -> tuple[str, ...]:
     protocol = normalize_tgvf_protocol(protocol)
     if protocol in {PROTOCOL_C_THINKING_SPECIAL, PROTOCOL_C_TOOL_OBSERVATION}:
         return PROTOCOL_C_SPECIAL_TOKENS
-    if protocol == PROTOCOL_E_ACTION_EVIDENCE_SPECIAL:
+    if protocol_uses_evidence_tags(protocol):
         return PROTOCOL_E_SPECIAL_TOKENS
     return ()
 
@@ -463,7 +515,7 @@ def _vpt_noisy_mean_initialize_rows(weight: torch.Tensor, row_ids: list[int]) ->
 
 @dataclass
 class LoadedQwen3VL:
-    model: Qwen3VLForConditionalGeneration
+    model: Any
     processor: Any
     model_id: str
     processor_id: str
@@ -593,7 +645,14 @@ def load_qwen3_vl(
     if attn_implementation:
         model_kwargs["attn_implementation"] = attn_implementation
 
-    model = Qwen3VLForConditionalGeneration.from_pretrained(model_id, **model_kwargs)
+    config = AutoConfig.from_pretrained(model_id, trust_remote_code=trust_remote_code)
+    model_type = str(getattr(config, "model_type", ""))
+    if model_type == "qwen2_vl":
+        model = Qwen2VLForConditionalGeneration.from_pretrained(model_id, **model_kwargs)
+    elif model_type == "qwen3_vl":
+        model = Qwen3VLForConditionalGeneration.from_pretrained(model_id, **model_kwargs)
+    else:
+        raise ValueError(f"Unsupported VLM model_type for TGVF loader: {model_type!r} ({model_id})")
     processor = AutoProcessor.from_pretrained(processor_name, trust_remote_code=trust_remote_code)
     tokenizer = getattr(processor, "tokenizer", None)
     if tokenizer is not None and getattr(tokenizer, "pad_token", None) is None:
@@ -623,6 +682,14 @@ def build_direct_messages(image: Any, question: str) -> list[dict[str, Any]]:
 
 def build_focus_force_prompt(question: str, *, protocol: str | None = None) -> str:
     protocol = normalize_tgvf_protocol(protocol)
+    if protocol == PROTOCOL_C_TOOL_OBSERVATION_QWEN2_NO_THINK:
+        return (
+            "We are building a Target-Guided Visual Foveation system.\n"
+            "The model should identify the local visual evidence needed before answering.\n\n"
+            f"Question: {question}\n\n"
+            "Do not answer yet. Output only one completed focus action and stop:\n"
+            f"{PROTOCOL_C_FOCUS_START}a short visually locatable focus description{PROTOCOL_C_FOCUS_END}"
+        )
     if protocol in {PROTOCOL_C_THINKING_SPECIAL, PROTOCOL_C_TOOL_OBSERVATION, PROTOCOL_E_ACTION_EVIDENCE_SPECIAL}:
         return (
             "We are building a Target-Guided Visual Foveation system.\n"
@@ -675,6 +742,16 @@ def build_focus_force_messages(
 
 def build_free_router_prompt(question: str, *, protocol: str | None = None) -> str:
     protocol = normalize_tgvf_protocol(protocol)
+    if protocol == PROTOCOL_C_TOOL_OBSERVATION_QWEN2_NO_THINK:
+        return (
+            "We are building a Target-Guided Visual Foveation system.\n"
+            "Decide whether the question can be answered directly, or whether localized visual inspection is needed.\n\n"
+            f"Question: {question}\n\n"
+            "If the answer is directly visible, output only the final answer.\n\n"
+            "If focused inspection is needed, output a completed focus action and stop:\n"
+            f"{PROTOCOL_C_FOCUS_START}a short visually locatable focus description{PROTOCOL_C_FOCUS_END}\n\n"
+            "Do not explain. Do not use <think>. Do not leak the answer value in the focus description."
+        )
     if protocol in {PROTOCOL_C_THINKING_SPECIAL, PROTOCOL_C_TOOL_OBSERVATION, PROTOCOL_E_ACTION_EVIDENCE_SPECIAL}:
         return (
             "We are building a Target-Guided Visual Foveation system.\n"
@@ -736,9 +813,10 @@ def build_qwen3_inputs(processor: Any, messages: list[dict[str, Any]]) -> dict[s
         tokenize=False,
         add_generation_prompt=True,
     )
+    image_patch_size = int(getattr(getattr(processor, "image_processor", None), "patch_size", 16) or 16)
     image_inputs, video_inputs, video_kwargs = process_vision_info(
         messages,
-        image_patch_size=16,
+        image_patch_size=image_patch_size,
         return_video_kwargs=True,
         return_video_metadata=True,
     )
@@ -1832,6 +1910,10 @@ def append_tgvf_visual_tokens_qwen3(
             "but does not provide native Qwen3 DeepStack visual features."
         ),
     }
+    model_kwargs = dict(capture.model_kwargs)
+    next_position_ids = _next_position_ids_after_prefill(position_ids)
+    if next_position_ids is not None:
+        model_kwargs["tgvf_next_position_ids"] = next_position_ids.detach().cpu()
     return Qwen3AppendResult(
         past_key_values=outputs.past_key_values,
         attention_mask=attention_mask,
@@ -1842,7 +1924,7 @@ def append_tgvf_visual_tokens_qwen3(
         appended_inputs_embeds=embeds.detach().cpu(),
         fvt_token_start=fvt_token_start,
         fvt_token_end=fvt_token_end,
-        model_kwargs=dict(capture.model_kwargs),
+        model_kwargs=model_kwargs,
         debug_metadata=metadata,
     )
 
@@ -1862,6 +1944,8 @@ def continue_generation_qwen3(
     past_key_values = state.past_key_values
     attention_mask = state.attention_mask
     input_ids = state.input_ids
+    state_model_kwargs = dict(getattr(state, "model_kwargs", {}) or {})
+    tgvf_next_position_ids = state_model_kwargs.get("tgvf_next_position_ids")
     generated_ids: list[int] = []
     stop_reason = "max_new_tokens"
     device = logits.device if logits is not None else (_infer_model_device(model) or torch.device("cpu"))
@@ -1883,19 +1967,50 @@ def continue_generation_qwen3(
             input_ids = torch.cat([input_ids.to(device), next_token.to(device)], dim=-1)
         if attention_mask is not None:
             attention_mask = _extend_attention(attention_mask.to(device), 1)
-        position_ids = _chunk_position_ids_1d(
-            attention_mask=attention_mask,
-            chunk_length=1,
-            device=next_token.device,
-        )
-        outputs = model(
-            input_ids=next_token,
-            past_key_values=past_key_values,
-            attention_mask=attention_mask,
-            position_ids=position_ids,
-            use_cache=True,
-            return_dict=True,
-        )
+        if tgvf_next_position_ids is not None:
+            base_position_ids = tgvf_next_position_ids.to(device=next_token.device)
+            position_ids = base_position_ids + (len(generated_ids) - 1)
+            cache_position = None
+            if attention_mask is not None:
+                cache_position = torch.arange(
+                    attention_mask.shape[-1] - 1,
+                    attention_mask.shape[-1],
+                    device=next_token.device,
+                    dtype=torch.long,
+                )
+            outputs = model(
+                input_ids=next_token.to(device),
+                past_key_values=past_key_values,
+                attention_mask=attention_mask,
+                position_ids=position_ids,
+                cache_position=cache_position,
+                use_cache=True,
+                return_dict=True,
+            )
+        elif input_ids is not None and hasattr(model, "prepare_inputs_for_generation"):
+            step_inputs = model.prepare_inputs_for_generation(
+                input_ids.to(device),
+                past_key_values=past_key_values,
+                attention_mask=attention_mask,
+                use_cache=True,
+                is_first_iteration=False,
+            )
+            step_inputs["return_dict"] = True
+            outputs = model(**step_inputs)
+        else:
+            position_ids = _chunk_position_ids_1d(
+                attention_mask=attention_mask,
+                chunk_length=1,
+                device=next_token.device,
+            )
+            outputs = model(
+                input_ids=next_token,
+                past_key_values=past_key_values,
+                attention_mask=attention_mask,
+                position_ids=position_ids,
+                use_cache=True,
+                return_dict=True,
+            )
         past_key_values = outputs.past_key_values
         logits = outputs.logits
         if eos_token_id is not None and token_id == eos_token_id:
@@ -1948,10 +2063,21 @@ def parse_v3_action(text: str, *, protocol: str | None = None) -> V3ActionParse:
     has_focus_open = focus_start in text
     has_focus_close = focus_end in text
     reasons: list[str] = []
-    if protocol in {PROTOCOL_C_THINKING_SPECIAL, PROTOCOL_C_TOOL_OBSERVATION, PROTOCOL_D_QWEN_TOOL, PROTOCOL_E_ACTION_EVIDENCE_SPECIAL}:
+    if protocol in {
+        PROTOCOL_C_THINKING_SPECIAL,
+        PROTOCOL_C_TOOL_OBSERVATION,
+        PROTOCOL_C_TOOL_OBSERVATION_QWEN2_NO_THINK,
+        PROTOCOL_D_QWEN_TOOL,
+        PROTOCOL_E_ACTION_EVIDENCE_SPECIAL,
+    }:
         if any(tag in text for tag in (EVIDENCE_STATE_START, EVIDENCE_START, ANSWER_START, FOCUS_START)):
             reasons.append("legacy_tag_in_nonlegacy_protocol")
-    if protocol in {PROTOCOL_C_THINKING_SPECIAL, PROTOCOL_C_TOOL_OBSERVATION, PROTOCOL_E_ACTION_EVIDENCE_SPECIAL}:
+    if protocol in {
+        PROTOCOL_C_THINKING_SPECIAL,
+        PROTOCOL_C_TOOL_OBSERVATION,
+        PROTOCOL_C_TOOL_OBSERVATION_QWEN2_NO_THINK,
+        PROTOCOL_E_ACTION_EVIDENCE_SPECIAL,
+    }:
         if text.count(focus_start) > 1 or text.count(focus_end) > 1:
             reasons.append("nested_or_repeated_focus")
     if protocol == PROTOCOL_D_QWEN_TOOL:
@@ -2005,7 +2131,8 @@ def _extract_protocol_c_final_answer(text: str) -> str | None:
         return tail or None
     if PROTOCOL_C_FOCUS_START in text:
         return None
-    return text.strip() or None
+    tail = re.sub(r"<\|im_end\|>\s*$", "", text.strip()).strip()
+    return tail or None
 
 
 def is_generic_target(target: str) -> bool:
@@ -2605,6 +2732,16 @@ def _extend_attention(attention_mask: torch.Tensor, chunk_length: int) -> torch.
         device=attention_mask.device,
     )
     return torch.cat([attention_mask, ones], dim=-1)
+
+
+def _next_position_ids_after_prefill(position_ids: torch.Tensor | None) -> torch.Tensor | None:
+    if position_ids is None:
+        return None
+    if position_ids.ndim == 3:
+        return (position_ids[:, :, -1:] + 1).detach()
+    if position_ids.ndim == 2:
+        return (position_ids[:, -1:] + 1).detach()
+    return None
 
 
 def _chunk_position_ids_1d(

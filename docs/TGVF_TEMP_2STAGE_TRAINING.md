@@ -178,7 +178,7 @@ Stage1 loss:
 loss_total =
   1.0  * loss_gen
 + 1.0  * loss_same_image_negative
-+ 0.01 * loss_visual_token_manifold
++ 0.1  * loss_visual_token_manifold
 ```
 
 `loss_gen` is token-level LM cross entropy on the focused evidence readout after the inserted TGVF visual embeddings.
@@ -186,6 +186,7 @@ loss_total =
 `loss_same_image_negative` is same-image matrix CE. Within a same-image batch group, each question should assign higher likelihood to its own `D` than to other `D` tensors from the same image.
 
 `loss_visual_token_manifold` matches the mean and standard deviation of generated `D` against frozen Qwen merged visual tokens.
+The default Stage1 manifold weight is now `0.1`; earlier `0.01` runs left the term too small to prevent D scale drift.
 
 Stage1 mask:
 

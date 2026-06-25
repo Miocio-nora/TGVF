@@ -14,6 +14,7 @@ CKPT="outputs/tgvf_v3_protocol_c/protocol_c_toolobs_stage2_v4data_clean_rowonly_
 PROC="outputs/tgvf_v3_protocol_c/protocol_c_toolobs_stage2_v4data_clean_rowonly_gpu0_3_multifocus_focus_imend_from_clean_rowonly_focus_imend_stage1_bidirectional_4gpu_bs16_accum2_focus80_value1_1200step_20260617/processor_step_1200"
 ROOT="${ROOT:-outputs/other_benchmarks_512_clean_rowonly_gpu0_3_imend_20260617}"
 SHARDS="${SHARDS:-4}"
+POST_TGVF_FORWARD_MODE="${POST_TGVF_FORWARD_MODE:-no_kv_full_sequence}"
 mkdir -p "$ROOT"
 
 run_benchmark() {
@@ -21,7 +22,7 @@ run_benchmark() {
   local tier="$2"
   local out="$ROOT/$bench"
   mkdir -p "$out"
-  echo "=== START clean $bench tier=$tier $(date -Is) ==="
+  echo "=== START clean $bench tier=$tier post_tgvf_forward_mode=$POST_TGVF_FORWARD_MODE $(date -Is) ==="
   for shard in $(seq 0 $((SHARDS - 1))); do
     (
       export CUDA_VISIBLE_DEVICES="$shard"
@@ -33,6 +34,7 @@ run_benchmark() {
         --d-conditions correct_D \
         --no-include-stage2-direct \
         --post-tgvf-continuation natural_continue \
+        --post-tgvf-forward-mode "$POST_TGVF_FORWARD_MODE" \
         --stage2-checkpoint "$CKPT" \
         --processor-id "$PROC" \
         --tgvf-protocol protocol_c_tool_observation \

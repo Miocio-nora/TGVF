@@ -18,7 +18,7 @@ for path in (ROOT, SRC):
         sys.path.insert(0, str(path))
 
 from eval.eval_v3_stage2_protocol import Stage2ProtocolEvaluator
-from eval.eval_v3_vstar_force import append_answer_only, condition_d
+from eval.eval_v3_vstar_force import append_answer_only, condition_d, continue_after_append
 from revisit_vlm.qwen3_vl_tgvf import (
     EVIDENCE_STATE_END,
     EVIDENCE_STATE_START,
@@ -64,6 +64,12 @@ def parse_args() -> argparse.Namespace:
         "--post-tgvf-continuation",
         choices=("natural_continue", "answer_only", "evidence_then_answer", "think_then_answer"),
         default="natural_continue",
+    )
+    parser.add_argument(
+        "--post-tgvf-forward-mode",
+        choices=("no_kv_full_sequence", "kv_cache"),
+        default="no_kv_full_sequence",
+        help="Post-D generation mode. no_kv_full_sequence recomputes the full prefix each step and is the default.",
     )
     parser.add_argument("--max-action-tokens", type=int, default=64)
     parser.add_argument("--max-answer-tokens", type=int, default=32)
@@ -125,6 +131,7 @@ def main() -> None:
         question_suffix=args.question_suffix,
         d_conditions=args.d_conditions,
         post_tgvf_continuation=args.post_tgvf_continuation,
+        post_tgvf_forward_mode=args.post_tgvf_forward_mode,
         eval_mode=args.eval_mode,
         include_stage2_direct=args.include_stage2_direct,
         strict_parser=True,
@@ -261,14 +268,15 @@ def run_force_conditions(
         try:
             d = condition_d(condition, correct_d, evaluator)
             append_result = append_answer_only(evaluator, capture, d, mode=args.post_tgvf_continuation)
-            from revisit_vlm.qwen3_vl_tgvf import continue_generation_qwen3
-
-            continuation = continue_generation_qwen3(
-                evaluator.model,
-                evaluator.processor,
+            continuation = continue_after_append(
+                evaluator,
+                capture,
                 append_result,
                 max_new_tokens=args.max_answer_tokens,
-                eos_token_id=evaluator.processor.tokenizer.eos_token_id,
+                mask_original_visual_keys_after_tgvf=False,
+                forward_mode=args.post_tgvf_forward_mode,
+                sample=tgvf_sample,
+                d=d,
             )
             pred, score = parse_and_score(adapter, continuation.generated_text, sample)
             row.update(
@@ -281,7 +289,8 @@ def run_force_conditions(
                 append_success=True,
                 D_shape=None if d is None else list(d.shape),
                 fvt_position_mode=args.fvt_position_mode,
-                second_full_forward_used=False,
+                second_full_forward_used=args.post_tgvf_forward_mode == "no_kv_full_sequence",
+                post_tgvf_forward_mode=args.post_tgvf_forward_mode,
             )
         except Exception as exc:
             row.update(
@@ -347,14 +356,15 @@ def run_free_router_conditions(
         try:
             d = condition_d(condition, correct_d, evaluator)
             append_result = append_answer_only(evaluator, capture, d, mode=args.post_tgvf_continuation)
-            from revisit_vlm.qwen3_vl_tgvf import continue_generation_qwen3
-
-            continuation = continue_generation_qwen3(
-                evaluator.model,
-                evaluator.processor,
+            continuation = continue_after_append(
+                evaluator,
+                capture,
                 append_result,
                 max_new_tokens=args.max_answer_tokens,
-                eos_token_id=evaluator.processor.tokenizer.eos_token_id,
+                mask_original_visual_keys_after_tgvf=False,
+                forward_mode=args.post_tgvf_forward_mode,
+                sample=tgvf_sample,
+                d=d,
             )
             pred, score = parse_and_score(adapter, continuation.generated_text, sample)
             row.update(
@@ -367,7 +377,9 @@ def run_free_router_conditions(
                 append_success=True,
                 D_shape=None if d is None else list(d.shape),
                 fvt_position_mode=args.fvt_position_mode,
-                second_full_forward_used=bool(capture.second_full_forward_used),
+                second_full_forward_used=bool(capture.second_full_forward_used)
+                or args.post_tgvf_forward_mode == "no_kv_full_sequence",
+                post_tgvf_forward_mode=args.post_tgvf_forward_mode,
             )
         except Exception as exc:
             row.update(

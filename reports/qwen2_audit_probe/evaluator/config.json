@@ -1,0 +1,48 @@
+{
+  "stage": "tgvf_v3_stage2_protocol_eval",
+  "tgvf_protocol": "protocol_c_tool_observation_qwen2_no_think",
+  "model_id": "Qwen/Qwen2-VL-2B-Instruct",
+  "processor_id": "outputs/tgvf_v3_protocol_c_stage1_qwen2vl2b/protocol_c_toolobs_qwen2_no_think_stage1_qwen2vl2b_v4data_clean_imend_bidirectional_4gpu_bs4_accum2_gbs32_2000step_maxres512_20260624_120501/train/processor_step_2000",
+  "stage2_checkpoint": "outputs/tgvf_v3_protocol_c_qwen2vl2b/protocol_c_toolobs_qwen2_no_think_stage2_qwen2vl2b_v4data_clean_imend_open_answer_multifocus_focus_imend_from_stage1_4gpu_bs16_accum2_focus80_value1_1200step_maxres512_20260624_120501/checkpoint_step_1200.pt",
+  "checkpoint_global_step": 1200,
+  "eval_jsonl": "data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend_open_answer/splits/tgvf_v4_teacher_stage2_protocol_c.test.jsonl",
+  "dataset": {
+    "total": 1002,
+    "focus": 857,
+    "no_focus": 145,
+    "single_focus": 847,
+    "multi_focus": 10,
+    "direct_answer": 145,
+    "focus_ratio": 0.8552894211576846,
+    "no_focus_ratio": 0.14471057884231536,
+    "skipped_rows": 0,
+    "path": "data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend_open_answer/splits/tgvf_v4_teacher_stage2_protocol_c.test.jsonl"
+  },
+  "selected_focus": 1,
+  "selected_no_focus": 0,
+  "num_shards": 1,
+  "shard_index": 0,
+  "max_image_resolution": 512,
+  "max_action_tokens": 96,
+  "max_answer_tokens": 128,
+  "position_mode": "native_source_grid",
+  "blocks": "",
+  "d_conditions": "correct_D",
+  "second_full_forward_used": false,
+  "protocol_c_special_token_ids": {
+    "<|focus_start|>": 151657,
+    "<|focus_end|>": 151658,
+    "<|tgvf_start|>": 151659,
+    "<|tgvf_end|>": 151660,
+    "<|evidence_start|>": 151661,
+    "<|evidence_end|>": 151662
+  },
+  "tgvf_protocol_token_ids": {
+    "<|focus_start|>": 151657,
+    "<|focus_end|>": 151658,
+    "<|tgvf_start|>": 151659,
+    "<|tgvf_end|>": 151660,
+    "<|evidence_start|>": 151661,
+    "<|evidence_end|>": 151662
+  }
+}

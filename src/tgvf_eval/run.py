@@ -35,6 +35,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--max-foveations", type=int, default=1)
     parser.add_argument("--image-budget", choices=["low", "mid", "high"], default="mid")
+    parser.add_argument("--max-image-resolution", type=_optional_positive_int, default=None)
     parser.add_argument("--video-nframes", type=int, default=None)
     parser.add_argument(
         "--video-foveation-mode",
@@ -72,6 +73,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--output-root", default=DEFAULT_OUTPUT_ROOT)
     parser.add_argument("--run-id", default=None)
+    parser.add_argument("--num-shards", type=int, default=1)
+    parser.add_argument("--shard-index", type=int, default=0)
     parser.add_argument("--overwrite", action="store_true")
     parser.add_argument("--fail-fast", action="store_true")
     parser.add_argument("--no-resume", action="store_true")
@@ -115,6 +118,10 @@ def main(argv: list[str] | None = None) -> None:
 
 def run_benchmark(args: argparse.Namespace) -> dict[str, Any]:
     configure_quiet_external_progress()
+    if args.num_shards < 1:
+        raise ValueError("--num-shards must be >= 1")
+    if args.shard_index < 0 or args.shard_index >= args.num_shards:
+        raise ValueError("--shard-index must satisfy 0 <= shard_index < num_shards")
     video_nframes = args.video_nframes
     if video_nframes is None and args.benchmark in {"ovo_bench"}:
         video_nframes = tier_video_nframes(args.tier)
@@ -152,6 +159,7 @@ def run_benchmark(args: argparse.Namespace) -> dict[str, Any]:
             "device": args.device,
             "temperature": 0.0,
             "max_new_tokens": args.answer_max_new_tokens,
+            "max_image_resolution": args.max_image_resolution,
         },
         "tgvf": {
             "mode": method_config.tgvf_mode,
@@ -176,7 +184,13 @@ def run_benchmark(args: argparse.Namespace) -> dict[str, Any]:
             "enabled": method_config.cot_enabled,
             "reasoning_mode": method_config.reasoning_mode,
         },
-        "image": {"budget": method_config.image_budget},
+        "image": {
+            "budget": method_config.image_budget,
+            "max_image_resolution": args.max_image_resolution,
+            "max_pixels": None
+            if args.max_image_resolution is None
+            else int(args.max_image_resolution) ** 2,
+        },
         "video": {
             "nframes": method_config.video_nframes,
             "foveation_mode": method_config.video_foveation_mode,
@@ -190,6 +204,8 @@ def run_benchmark(args: argparse.Namespace) -> dict[str, Any]:
             "scoring_backend": args.scoring_backend,
             "official_llm_mode": args.official_llm_mode,
             "resume": not args.no_resume,
+            "num_shards": args.num_shards,
+            "shard_index": args.shard_index,
         },
     }
     write_config_yaml(paths.root / "config.yaml", config_payload)
@@ -202,6 +218,16 @@ def run_benchmark(args: argparse.Namespace) -> dict[str, Any]:
         official_llm_mode=args.official_llm_mode,
     )
     samples = adapter.sample(tier=args.tier, limit=args.limit, seed=args.seed)
+    num_samples_before_shard = len(samples)
+    if args.num_shards > 1:
+        samples = [
+            sample
+            for index, sample in enumerate(samples)
+            if index % args.num_shards == args.shard_index
+        ]
+        config_payload["eval"]["num_samples_before_shard"] = num_samples_before_shard
+        config_payload["eval"]["num_samples_after_shard"] = len(samples)
+        write_config_yaml(paths.root / "config.yaml", config_payload)
     writer = ResultWriter(paths, benchmark=args.benchmark, method=args.method)
     completed = set() if args.no_resume or args.overwrite else writer.completed_ids()
     runner = (
@@ -218,6 +244,7 @@ def run_benchmark(args: argparse.Namespace) -> dict[str, Any]:
             capture_max_new_tokens=args.capture_max_new_tokens,
             num_foveated_tokens=args.num_foveated_tokens,
             spatial_merge_size=args.spatial_merge_size,
+            max_image_resolution=args.max_image_resolution,
             repeat_options_in_continuation=args.repeat_options_in_continuation,
             force_target_mode=args.force_target_mode,
             fixed_force_target=args.fixed_force_target,
@@ -265,6 +292,7 @@ def run_benchmark(args: argparse.Namespace) -> dict[str, Any]:
             "cot_prompt_source": method_config.cot_prompt_source,
             "reasoning_mode": method_config.reasoning_mode,
             "image_budget": method_config.image_budget,
+            "max_image_resolution": args.max_image_resolution,
             "video_nframes": method_config.video_nframes,
             "video_foveation_mode": method_config.video_foveation_mode,
             "nextframe_reuse_ttl": method_config.nextframe_reuse_ttl,

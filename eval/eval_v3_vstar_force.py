@@ -25,6 +25,7 @@ from revisit_vlm.qwen3_vl_tgvf import (
     FOCUS_START,
     NEED_LOCAL_EVIDENCE,
     PROTOCOL_C_TOOL_OBSERVATION,
+    PROTOCOL_C_TOOL_OBSERVATION_QWEN2_NO_THINK,
     PROTOCOL_C_THINKING_SPECIAL,
     TGVF_END,
     TGVF_PROTOCOL_CHOICES,
@@ -37,12 +38,20 @@ from revisit_vlm.qwen3_vl_tgvf import (
     generate_direct_qwen3,
     make_smoke_d,
     parse_v3_action,
+    protocol_uses_evidence_tags,
+    protocol_uses_think_tags,
+    protocol_uses_tool_observation,
     render_force_focus_prefix,
     render_tgvf_prefix_suffix,
     _bracketed_visual_token_ids,
     _chunk_position_ids_1d,
     _chunk_position_ids_native_source_grid,
+    _compute_qwen3_position_ids_for_sequence,
+    _append_source_image_grid,
+    _full_mm_token_type_ids_for_append,
+    _next_position_ids_after_prefill,
     _decode,
+    _decoded_tail_is_repetitive,
     _encode_text,
     _extend_attention,
     _fvt_mm_token_type_ids,
@@ -97,6 +106,12 @@ def parse_args() -> argparse.Namespace:
         "--post-tgvf-continuation",
         choices=("natural_continue", "answer_only", "evidence_then_answer", "think_then_answer"),
         default="natural_continue",
+    )
+    parser.add_argument(
+        "--post-tgvf-forward-mode",
+        choices=("no_kv_full_sequence", "kv_cache"),
+        default="no_kv_full_sequence",
+        help="Post-D generation mode. no_kv_full_sequence recomputes the full prefix each step and is the default.",
     )
     parser.add_argument("--num-shards", type=int, default=1)
     parser.add_argument("--shard-index", type=int, default=0)
@@ -164,6 +179,7 @@ def main() -> None:
         d_conditions=args.d_conditions,
         eval_mode=args.eval_mode,
         post_tgvf_continuation=args.post_tgvf_continuation,
+        post_tgvf_forward_mode=args.post_tgvf_forward_mode,
         prompt_format=args.prompt_format,
         image_dir=args.image_dir,
         skip_direct=args.skip_direct,
@@ -351,6 +367,9 @@ def run_force_conditions(
                 append_result,
                 max_new_tokens=args.max_answer_tokens,
                 mask_original_visual_keys_after_tgvf=args.mask_original_visual_keys_after_tgvf,
+                forward_mode=args.post_tgvf_forward_mode,
+                sample=sample,
+                d=d,
             )
             pred = extract_choice(continuation.generated_text, item)
             row.update(
@@ -363,7 +382,9 @@ def run_force_conditions(
                 D_shape=None if d is None else list(d.shape),
                 fvt_position_mode=args.fvt_position_mode,
                 second_full_forward_used=False,
+                post_tgvf_forward_mode=args.post_tgvf_forward_mode,
             )
+            row["second_full_forward_used"] = args.post_tgvf_forward_mode == "no_kv_full_sequence"
         except Exception as exc:
             row.update(
                 errors=[f"{type(exc).__name__}:{exc}"],
@@ -438,6 +459,9 @@ def run_free_router_conditions(
                 append_result,
                 max_new_tokens=args.max_answer_tokens,
                 mask_original_visual_keys_after_tgvf=args.mask_original_visual_keys_after_tgvf,
+                forward_mode=args.post_tgvf_forward_mode,
+                sample=sample,
+                d=d,
             )
             pred = extract_choice(continuation.generated_text, item)
             row.update(
@@ -450,7 +474,9 @@ def run_free_router_conditions(
                 D_shape=None if d is None else list(d.shape),
                 fvt_position_mode=args.fvt_position_mode,
                 second_full_forward_used=bool(capture.second_full_forward_used),
+                post_tgvf_forward_mode=args.post_tgvf_forward_mode,
             )
+            row["second_full_forward_used"] = bool(capture.second_full_forward_used) or args.post_tgvf_forward_mode == "no_kv_full_sequence"
         except Exception as exc:
             row.update(
                 errors=[f"{type(exc).__name__}:{exc}"],
@@ -484,10 +510,14 @@ def append_answer_only(
 ) -> Qwen3AppendResult:
     tokenizer = evaluator.processor.tokenizer
     protocol = getattr(evaluator.args, "tgvf_protocol", "legacy_v3_tags")
-    protocol_c_like = protocol in {PROTOCOL_C_THINKING_SPECIAL, PROTOCOL_C_TOOL_OBSERVATION}
+    protocol_c_like = protocol in {
+        PROTOCOL_C_THINKING_SPECIAL,
+        PROTOCOL_C_TOOL_OBSERVATION,
+        PROTOCOL_C_TOOL_OBSERVATION_QWEN2_NO_THINK,
+    }
     capture_text = str(getattr(capture, "generated_text", "") or "")
     include_leading_im_end = not (
-        protocol == PROTOCOL_C_TOOL_OBSERVATION
+        protocol_uses_tool_observation(protocol)
         and capture_text.rstrip().endswith("<|im_end|>")
     )
     tgvf_prefix, tgvf_suffix = render_tgvf_prefix_suffix(
@@ -510,11 +540,25 @@ def append_answer_only(
             suffix_text = f"\n{TGVF_END}\n{ANSWER_START}"
             no_d_text = f"\n{TGVF_START}\n{TGVF_END}\n{ANSWER_START}"
     elif mode == "evidence_then_answer":
-        suffix_text = f"{tgvf_suffix}{THINK_START}\n" if protocol_c_like else f"\n{TGVF_END}\n{EVIDENCE_START}"
-        no_d_text = f"{tgvf_prefix}{tgvf_suffix}{THINK_START}\n" if protocol_c_like else f"\n{TGVF_START}\n{TGVF_END}\n{EVIDENCE_START}"
+        if protocol_uses_think_tags(protocol):
+            suffix_text = f"{tgvf_suffix}{THINK_START}\n"
+            no_d_text = f"{tgvf_prefix}{tgvf_suffix}{THINK_START}\n"
+        elif protocol_uses_evidence_tags(protocol):
+            suffix_text = f"{tgvf_suffix}<|evidence_start|>"
+            no_d_text = f"{tgvf_prefix}{tgvf_suffix}<|evidence_start|>"
+        else:
+            suffix_text = f"\n{TGVF_END}\n{EVIDENCE_START}"
+            no_d_text = f"\n{TGVF_START}\n{TGVF_END}\n{EVIDENCE_START}"
     elif mode == "think_then_answer":
-        suffix_text = f"{tgvf_suffix}{THINK_START}\n" if protocol_c_like else f"\n{TGVF_END}\n<think>\n"
-        no_d_text = f"{tgvf_prefix}{tgvf_suffix}{THINK_START}\n" if protocol_c_like else f"\n{TGVF_START}\n{TGVF_END}\n<think>\n"
+        if protocol == PROTOCOL_C_TOOL_OBSERVATION_QWEN2_NO_THINK:
+            suffix_text = f"{tgvf_suffix}<|evidence_start|>"
+            no_d_text = f"{tgvf_prefix}{tgvf_suffix}<|evidence_start|>"
+        elif protocol_c_like:
+            suffix_text = f"{tgvf_suffix}{THINK_START}\n"
+            no_d_text = f"{tgvf_prefix}{tgvf_suffix}{THINK_START}\n"
+        else:
+            suffix_text = f"\n{TGVF_END}\n<think>\n"
+            no_d_text = f"\n{TGVF_START}\n{TGVF_END}\n<think>\n"
     else:
         raise ValueError(f"unsupported post-TGVF continuation mode: {mode}")
     if d is None:
@@ -546,6 +590,16 @@ def append_answer_only(
             use_cache=True,
             return_dict=True,
         )
+        model_kwargs: dict[str, Any] = {}
+        next_position_ids = _next_position_ids_after_prefill(
+            _chunk_position_ids_1d(
+                attention_mask=attention_mask,
+                chunk_length=int(token_ids.shape[0]),
+                device=evaluator.device,
+            )
+        )
+        if next_position_ids is not None:
+            model_kwargs["tgvf_next_position_ids"] = next_position_ids.detach().cpu()
         return Qwen3AppendResult(
             past_key_values=outputs.past_key_values,
             attention_mask=attention_mask,
@@ -556,7 +610,7 @@ def append_answer_only(
             appended_inputs_embeds=torch.empty(0),
             fvt_token_start=-1,
             fvt_token_end=-1,
-            model_kwargs={},
+            model_kwargs=model_kwargs,
             debug_metadata={
                 "fvt_append_path": "answer_only_no_D",
                 "tgvf_protocol": protocol,
@@ -626,6 +680,10 @@ def append_answer_only(
         use_cache=True,
         return_dict=True,
     )
+    model_kwargs: dict[str, Any] = {}
+    next_position_ids = _next_position_ids_after_prefill(position_ids)
+    if next_position_ids is not None:
+        model_kwargs["tgvf_next_position_ids"] = next_position_ids.detach().cpu()
     return Qwen3AppendResult(
         past_key_values=outputs.past_key_values,
         attention_mask=attention_mask,
@@ -636,7 +694,7 @@ def append_answer_only(
         appended_inputs_embeds=embeds.detach().cpu(),
         fvt_token_start=fvt_token_start,
         fvt_token_end=fvt_token_end,
-        model_kwargs={},
+        model_kwargs=model_kwargs,
         debug_metadata={
             "fvt_append_path": "answer_only_visual_D",
             "tgvf_protocol": protocol,
@@ -654,7 +712,26 @@ def continue_after_append(
     *,
     max_new_tokens: int,
     mask_original_visual_keys_after_tgvf: bool,
+    forward_mode: str = "no_kv_full_sequence",
+    sample: TGVFv3Stage2Sample | None = None,
+    d: torch.Tensor | None = None,
 ) -> Any:
+    if forward_mode == "no_kv_full_sequence":
+        if mask_original_visual_keys_after_tgvf:
+            raise ValueError("no_kv_full_sequence does not support post-D original-key masking")
+        if sample is None:
+            raise ValueError("sample is required for no_kv_full_sequence post-D continuation")
+        return continue_generation_qwen3_no_kv_full_sequence(
+            evaluator,
+            sample,
+            capture,
+            append_result,
+            d=d,
+            max_new_tokens=max_new_tokens,
+            eos_token_id=evaluator.processor.tokenizer.eos_token_id,
+        )
+    if forward_mode != "kv_cache":
+        raise ValueError(f"unsupported post-TGVF forward mode: {forward_mode}")
     if not mask_original_visual_keys_after_tgvf:
         return continue_generation_qwen3(
             evaluator.model,
@@ -673,6 +750,185 @@ def continue_after_append(
 
 
 @torch.no_grad()
+def continue_generation_qwen3_no_kv_full_sequence(
+    evaluator: Stage2ProtocolEvaluator,
+    sample: TGVFv3Stage2Sample,
+    capture: Any,
+    state: Qwen3AppendResult,
+    *,
+    d: torch.Tensor | None,
+    max_new_tokens: int,
+    eos_token_id: int | None,
+) -> Any:
+    tokenizer = evaluator.processor.tokenizer
+    prefix_input_ids = state.input_ids
+    capture_input_ids = capture.input_ids
+    if prefix_input_ids is None or capture_input_ids is None:
+        raise ValueError("no_kv_full_sequence requires capture and append input_ids")
+    device = evaluator.device
+    prefix_input_ids = prefix_input_ids.to(device=device, dtype=torch.long)
+    capture_input_ids = capture_input_ids.to(device=device, dtype=torch.long)
+
+    base_attention = torch.ones_like(prefix_input_ids, dtype=torch.long, device=device)
+    if state.attention_mask is not None:
+        base_attention = state.attention_mask.to(device=device, dtype=torch.long)
+    base_mm_token_type_ids, image_grid_thw, video_grid_thw, visual_indices, v_merge = _full_sequence_visual_context(
+        evaluator=evaluator,
+        sample=sample,
+        capture=capture,
+        state=state,
+        d=d,
+        capture_input_ids=capture_input_ids,
+        device=device,
+    )
+
+    generated: list[int] = []
+    generated_tensor = torch.empty((1, 0), dtype=torch.long, device=device)
+    logits = state.last_logits
+    stop_reason = "max_new_tokens"
+    for _ in range(max_new_tokens):
+        full_input_ids = torch.cat([prefix_input_ids, generated_tensor], dim=-1)
+        attention_mask = torch.cat(
+            [
+                base_attention,
+                torch.ones((1, generated_tensor.shape[-1]), dtype=torch.long, device=device),
+            ],
+            dim=-1,
+        )
+        mm_token_type_ids = torch.cat(
+            [
+                base_mm_token_type_ids,
+                torch.zeros((1, generated_tensor.shape[-1]), dtype=torch.long, device=device),
+            ],
+            dim=-1,
+        )
+        inputs_embeds = evaluator.model.get_input_embeddings()(full_input_ids).detach().clone()
+        if visual_indices is not None and v_merge is not None and int(visual_indices.numel()) > 0:
+            inputs_embeds[0, visual_indices] = v_merge.to(device=device, dtype=inputs_embeds.dtype)
+        if d is not None:
+            d_start = int(capture_input_ids.shape[-1]) + int(state.fvt_token_start)
+            d_end = int(capture_input_ids.shape[-1]) + int(state.fvt_token_end)
+            inputs_embeds[0, d_start:d_end] = d.to(device=device, dtype=inputs_embeds.dtype)
+        position_ids = _compute_qwen3_position_ids_for_sequence(
+            model=evaluator.utility_model,
+            input_ids=full_input_ids,
+            attention_mask=attention_mask,
+            image_grid_thw=image_grid_thw,
+            video_grid_thw=video_grid_thw,
+            mm_token_type_ids=mm_token_type_ids,
+        )
+        if position_ids is not None:
+            position_ids = position_ids.to(device=device)
+        outputs = evaluator.model(
+            inputs_embeds=inputs_embeds,
+            attention_mask=attention_mask,
+            position_ids=position_ids,
+            image_grid_thw=image_grid_thw,
+            video_grid_thw=video_grid_thw,
+            mm_token_type_ids=mm_token_type_ids,
+            use_cache=False,
+            return_dict=True,
+        )
+        logits = outputs.logits
+        next_token = torch.argmax(logits[:, -1, :], dim=-1, keepdim=True)
+        token_id = int(next_token[0, 0].detach().cpu().item())
+        generated.append(token_id)
+        generated_tensor = torch.cat([generated_tensor, next_token.to(device=device, dtype=torch.long)], dim=-1)
+        if eos_token_id is not None and token_id == eos_token_id:
+            stop_reason = "eos_token"
+            break
+        if _decoded_tail_is_repetitive(_decode(tokenizer, generated)):
+            stop_reason = "repetition"
+            break
+
+    final_input_ids = torch.cat([prefix_input_ids, generated_tensor], dim=-1)
+    final_attention = torch.cat(
+        [
+            base_attention,
+            torch.ones((1, generated_tensor.shape[-1]), dtype=torch.long, device=device),
+        ],
+        dim=-1,
+    )
+    return type("Qwen3ContinuationLike", (), {
+        "generated_ids": generated,
+        "generated_text": _decode(tokenizer, generated),
+        "past_key_values": None,
+        "attention_mask": final_attention,
+        "input_ids": final_input_ids,
+        "last_logits": logits,
+        "stop_reason": stop_reason,
+    })()
+
+
+def _full_sequence_visual_context(
+    *,
+    evaluator: Stage2ProtocolEvaluator,
+    sample: TGVFv3Stage2Sample,
+    capture: Any,
+    state: Qwen3AppendResult,
+    d: torch.Tensor | None,
+    capture_input_ids: torch.Tensor,
+    device: torch.device | str,
+) -> tuple[torch.Tensor, torch.Tensor | None, torch.Tensor | None, torch.Tensor | None, torch.Tensor | None]:
+    source_geometry = getattr(capture, "source_visual_geometry", None)
+    appended_len = int(state.input_ids.shape[-1] - capture_input_ids.shape[-1]) if state.input_ids is not None else 0
+    if d is None:
+        chunk_mm_token_type_ids = torch.zeros((1, appended_len), dtype=torch.long, device=device)
+        image_grid_thw = _maybe_tensor(getattr(capture, "image_grid_thw", None), device)
+        video_grid_thw = _maybe_tensor(getattr(capture, "video_grid_thw", None), device)
+        base_mm = _full_mm_token_type_ids_for_append(
+            model=evaluator.utility_model,
+            capture_input_ids=capture_input_ids,
+            chunk_mm_token_type_ids=chunk_mm_token_type_ids,
+            device=device,
+        )
+    else:
+        if source_geometry is None or source_geometry.image_grid_thw is None:
+            raise ValueError("no_kv_full_sequence D continuation requires source image grid geometry")
+        chunk_mm_token_type_ids = _fvt_mm_token_type_ids(
+            chunk_length=appended_len,
+            fvt_token_start=int(state.fvt_token_start),
+            fvt_token_end=int(state.fvt_token_end),
+            device=device,
+        )
+        image_grid_thw = _append_source_image_grid(
+            _maybe_tensor(getattr(capture, "image_grid_thw", None), device),
+            source_geometry.image_grid_thw,
+            device=device,
+        )
+        video_grid_thw = _maybe_tensor(getattr(capture, "video_grid_thw", None), device)
+        base_mm = _full_mm_token_type_ids_for_append(
+            model=evaluator.utility_model,
+            capture_input_ids=capture_input_ids,
+            chunk_mm_token_type_ids=chunk_mm_token_type_ids,
+            device=device,
+        )
+
+    visual_indices: torch.Tensor | None = None
+    v_merge: torch.Tensor | None = None
+    if source_geometry is not None and source_geometry.source_visual_token_indices is not None:
+        _tap, _v_pre, cached_v_merge = evaluator._vision_features(sample)
+        if cached_v_merge is None:
+            raise ValueError("no_kv_full_sequence could not recover source V_merge features")
+        visual_indices = source_geometry.source_visual_token_indices.to(device=device, dtype=torch.long)
+        v_merge = cached_v_merge.to(device=device)
+        if int(visual_indices.numel()) != int(v_merge.shape[0]):
+            raise ValueError(
+                f"source visual token count mismatch: indices={int(visual_indices.numel())}, "
+                f"v_merge={int(v_merge.shape[0])}"
+            )
+    return base_mm.to(device=device), image_grid_thw, video_grid_thw, visual_indices, v_merge
+
+
+def _maybe_tensor(value: Any, device: torch.device | str) -> torch.Tensor | None:
+    if value is None:
+        return None
+    if isinstance(value, torch.Tensor):
+        return value.to(device=device, dtype=torch.long)
+    return torch.as_tensor(value, dtype=torch.long, device=device)
+
+
+@torch.no_grad()
 def continue_generation_qwen3_mask_original_visual_keys(
     evaluator: Stage2ProtocolEvaluator,
     capture: Any,
@@ -686,6 +942,7 @@ def continue_generation_qwen3_mask_original_visual_keys(
     past_key_values = state.past_key_values
     attention_mask = state.attention_mask
     input_ids = state.input_ids
+    next_position_ids = (state.model_kwargs or {}).get("tgvf_next_position_ids")
     generated_ids: list[int] = []
     stop_reason = "max_new_tokens"
     device = logits.device
@@ -698,11 +955,14 @@ def continue_generation_qwen3_mask_original_visual_keys(
             input_ids = torch.cat([input_ids.to(device), next_token.to(device)], dim=-1)
         if attention_mask is not None:
             attention_mask = _extend_attention(attention_mask.to(device), 1)
-        position_ids = _chunk_position_ids_1d(
-            attention_mask=attention_mask,
-            chunk_length=1,
-            device=device,
-        )
+        if next_position_ids is not None:
+            position_ids = next_position_ids.to(device=device) + (len(generated_ids) - 1)
+        else:
+            position_ids = _chunk_position_ids_1d(
+                attention_mask=attention_mask,
+                chunk_length=1,
+                device=device,
+            )
         model_attention_mask = build_post_tgvf_original_visual_key_mask(
             attention_mask_2d=attention_mask,
             original_image_token_indices=original_indices,
@@ -710,11 +970,20 @@ def continue_generation_qwen3_mask_original_visual_keys(
             past_key_values=past_key_values,
             dtype=evaluator.model.get_input_embeddings().weight.dtype,
         )
+        cache_position = None
+        if attention_mask is not None:
+            cache_position = torch.arange(
+                attention_mask.shape[-1] - 1,
+                attention_mask.shape[-1],
+                device=device,
+                dtype=torch.long,
+            )
         outputs = evaluator.model(
             input_ids=next_token,
             past_key_values=past_key_values,
             attention_mask=model_attention_mask,
             position_ids=position_ids,
+            cache_position=cache_position,
             use_cache=True,
             return_dict=True,
         )

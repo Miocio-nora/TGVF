@@ -25,6 +25,7 @@ from revisit_vlm.qwen3_vl_tgvf import (
     EVIDENCE_START,
     NEED_LOCAL_EVIDENCE,
     PROTOCOL_C_TOOL_OBSERVATION,
+    PROTOCOL_C_TOOL_OBSERVATION_QWEN2_NO_THINK,
     PROTOCOL_C_THINKING_SPECIAL,
     PROTOCOL_E_ACTION_EVIDENCE_SPECIAL,
     Qwen3FocusCapture,
@@ -204,7 +205,12 @@ def load_qwen3_and_tgvf(
     processor = loaded.processor
     protocol = normalize_tgvf_protocol(args.tgvf_protocol)
     protocol_token_info: dict[str, Any] = {}
-    if protocol in {PROTOCOL_C_THINKING_SPECIAL, PROTOCOL_C_TOOL_OBSERVATION, PROTOCOL_E_ACTION_EVIDENCE_SPECIAL}:
+    if protocol in {
+        PROTOCOL_C_THINKING_SPECIAL,
+        PROTOCOL_C_TOOL_OBSERVATION,
+        PROTOCOL_C_TOOL_OBSERVATION_QWEN2_NO_THINK,
+        PROTOCOL_E_ACTION_EVIDENCE_SPECIAL,
+    }:
         protocol_token_info = ensure_tgvf_protocol_tokens(processor.tokenizer, model, protocol=protocol)
     freeze_qwen_backbone(model)
     dims = infer_qwen3_stage1_dims(
@@ -338,6 +344,7 @@ def compute_v3_eval_item(
         capture=features.capture,
         evidence_description=sample.evidence_description,
         foveated_visual_tokens=d,
+        merged_visual_tokens=features.merged_visual_tokens.to(device),
         device=device,
         mask_original_image_after_tgvf=mask_original_image_after_tgvf,
         position_mode=position_mode,
@@ -362,6 +369,7 @@ def compute_v3_eval_item(
             "mask_mode": readout_inputs.get("mask_mode"),
             "position_mode": readout_inputs.get("position_mode"),
             "position_ids_source": readout_inputs.get("position_ids_source"),
+            "original_image_embeds_replaced": readout_inputs.get("original_image_embeds_replaced"),
             "original_image_token_count": readout_inputs.get("original_image_token_count"),
             "blocked_original_image_keys_for_post_tgvf": readout_inputs.get(
                 "blocked_original_image_keys_for_post_tgvf"
@@ -487,6 +495,7 @@ def compute_v3_readout_nll(
     evidence_description: str,
     foveated_visual_tokens: torch.Tensor | None,
     device: torch.device | str,
+    merged_visual_tokens: torch.Tensor | None = None,
     mask_original_image_after_tgvf: bool = True,
     position_mode: PositionMode = "native_source_grid",
     protocol: str = "legacy_v3_tags",
@@ -510,6 +519,9 @@ def compute_v3_readout_nll(
             capture=capture,
             evidence_description=evidence_description,
             foveated_visual_tokens=foveated_visual_tokens.to(device),
+            merged_visual_tokens=(
+                None if merged_visual_tokens is None else merged_visual_tokens.to(device)
+            ),
             device=device,
             mask_original_image_after_tgvf=mask_original_image_after_tgvf,
             position_mode=position_mode,
@@ -527,6 +539,7 @@ def compute_v3_readout_nll(
         "mask_mode": readout_inputs.get("mask_mode"),
         "position_mode": readout_inputs.get("position_mode"),
         "position_ids_source": readout_inputs.get("position_ids_source"),
+        "original_image_embeds_replaced": readout_inputs.get("original_image_embeds_replaced"),
     }
 
 

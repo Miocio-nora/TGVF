@@ -207,7 +207,7 @@ L_contrastive_alignment
 Default v0 objective:
 
 ```text
-L_total = L_gen + 0.01 * L_visual_token_manifold
+L_total = L_gen + 0.1 * L_visual_token_manifold
 ```
 
 Default enabled:
@@ -586,7 +586,7 @@ Important interpretation notes:
 
 - Per-step loss is noisy because image resolution, target type, and evidence length vary widely.
 - Odd steps can show `grad_norm = 0` when gradient accumulation is active; only optimizer-step intervals report clipped grad norm.
-- `L_visual_token_manifold` is weighted by 0.01, so its raw value can be larger than `L_gen` without dominating `L_total`.
+- `L_visual_token_manifold` is weighted by 0.1 by default for current Stage1 runs. Earlier 0.01 runs left this term at only about 1-2% of total loss and did not prevent D scale drift.
 - The current v0 objective tests whether FVTs are readable by frozen Qwen in a fresh context. It does not yet prove final TGVF inference accuracy.
 
 ## Same-Image Negative Loss Smoke Experiments

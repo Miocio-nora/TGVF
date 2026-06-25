@@ -78,7 +78,7 @@ class LossWeights:
     gen: float = 1.0
     same_image_negative: float = 0.0
     contrastive_alignment: float = 0.0
-    visual_token_manifold: float = 0.01
+    visual_token_manifold: float = 0.1
 
 
 @dataclass

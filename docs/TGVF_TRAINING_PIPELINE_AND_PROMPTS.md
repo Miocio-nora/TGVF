@@ -62,11 +62,11 @@ gradient_accumulation_steps:
 losses:
   matrix-CE jobs:
     L_gen = 1.0
-    L_visual_token_manifold = 0.01
+    L_visual_token_manifold = 0.1
     L_same_image_negative = 1.0, matrix_ce
   bidirectional cyclic-negative control:
     L_gen = 1.0
-    L_visual_token_manifold = 0.01
+    L_visual_token_manifold = 0.1
     L_same_image_negative = 1.0, cyclic_margin
   L_contrastive_alignment = 0.0
 
@@ -392,6 +392,10 @@ MSE(mean(D), mean(V_merge)) + MSE(std(D), std(V_merge))
 
 It is a weak regularizer to keep FVT embeddings on a Qwen-like visual-token
 manifold.
+
+For current Qwen3/Qwen2 tool-observation Stage1 runs, the default weight is
+`0.1`. Earlier `0.01` runs left this term at only about 1-2% of total loss and
+did not prevent D scale drift.
 
 ### L_same_image_negative
 

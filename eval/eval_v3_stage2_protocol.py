@@ -28,6 +28,7 @@ from revisit_vlm.qwen3_vl_tgvf import (
     TGVF_END,
     TGVF_START,
     PROTOCOL_C_TOOL_OBSERVATION,
+    PROTOCOL_C_TOOL_OBSERVATION_QWEN2_NO_THINK,
     PROTOCOL_C_THINKING_SPECIAL,
     PROTOCOL_D_QWEN_TOOL,
     PROTOCOL_E_ACTION_EVIDENCE_SPECIAL,
@@ -46,6 +47,9 @@ from revisit_vlm.qwen3_vl_tgvf import (
     make_smoke_d,
     parse_v3_action,
     peak_memory_gb,
+    protocol_uses_evidence_tags,
+    protocol_uses_think_tags,
+    protocol_uses_tool_observation,
     render_focus_action_text,
     render_force_focus_prefix,
     render_tgvf_prefix_suffix,
@@ -58,10 +62,14 @@ from revisit_vlm.qwen3_vl_tgvf import (
     _chunk_position_ids_inherit_source_visual_positions,
     _chunk_position_ids_native_source_grid,
     _bracketed_visual_token_ids,
+    _append_source_image_grid,
+    _compute_qwen3_position_ids_for_sequence,
     _decode,
     _encode_text,
     _extend_attention,
+    _full_mm_token_type_ids_for_append,
     _fvt_mm_token_type_ids,
+    _next_position_ids_after_prefill,
 )
 from revisit_vlm.tgvf_foveal import finalize_tgvf_output_with_frozen_qwen_merger
 from revisit_vlm.tgvf_training import TGVF_VARIANTS, build_tgvf_module
@@ -142,7 +150,12 @@ class Stage2ProtocolEvaluator:
         if getattr(processor.tokenizer, "pad_token", None) is None:
             processor.tokenizer.pad_token = processor.tokenizer.eos_token
         protocol_token_info: dict[str, Any] = {}
-        if self.args.tgvf_protocol in {PROTOCOL_C_THINKING_SPECIAL, PROTOCOL_C_TOOL_OBSERVATION, PROTOCOL_E_ACTION_EVIDENCE_SPECIAL}:
+        if self.args.tgvf_protocol in {
+            PROTOCOL_C_THINKING_SPECIAL,
+            PROTOCOL_C_TOOL_OBSERVATION,
+            PROTOCOL_C_TOOL_OBSERVATION_QWEN2_NO_THINK,
+            PROTOCOL_E_ACTION_EVIDENCE_SPECIAL,
+        }:
             protocol_token_info = ensure_tgvf_protocol_tokens(processor.tokenizer, base_model, protocol=self.args.tgvf_protocol)
         freeze_qwen_backbone(base_model)
         config = self.checkpoint["config"]
@@ -164,7 +177,12 @@ class Stage2ProtocolEvaluator:
             ensure_weight_tying=False,
             trainable_token_indices=(
                 list(protocol_token_info.get("tgvf_protocol_token_ids", {}).values())
-                if self.args.tgvf_protocol in {PROTOCOL_C_THINKING_SPECIAL, PROTOCOL_C_TOOL_OBSERVATION, PROTOCOL_E_ACTION_EVIDENCE_SPECIAL}
+                if self.args.tgvf_protocol in {
+                    PROTOCOL_C_THINKING_SPECIAL,
+                    PROTOCOL_C_TOOL_OBSERVATION,
+                    PROTOCOL_C_TOOL_OBSERVATION_QWEN2_NO_THINK,
+                    PROTOCOL_E_ACTION_EVIDENCE_SPECIAL,
+                }
                 and checkpoint_has_trainable_token_adapter
                 and not lora_modules_to_save
                 else None
@@ -371,7 +389,11 @@ class Stage2ProtocolEvaluator:
             parsed = parse_v3_action(capture.generated_text, protocol=self.args.tgvf_protocol)
             trigger = capture.capture_found and (
                 parsed.evidence_state == NEED_LOCAL_EVIDENCE
-                or self.args.tgvf_protocol in {PROTOCOL_C_THINKING_SPECIAL, PROTOCOL_C_TOOL_OBSERVATION}
+                or self.args.tgvf_protocol in {
+                    PROTOCOL_C_THINKING_SPECIAL,
+                    PROTOCOL_C_TOOL_OBSERVATION,
+                    PROTOCOL_C_TOOL_OBSERVATION_QWEN2_NO_THINK,
+                }
             )
             if not trigger:
                 row = self._base_row(sample, "free_router_end2end", "direct_or_miss")
@@ -419,7 +441,12 @@ class Stage2ProtocolEvaluator:
         row.update(self._capture_fields(capture, parsed_focus))
         try:
             d = self._condition_d(sample, correct_d, condition)
-            if d is None:
+            if self.args.append_prefill_mode == "full_sequence":
+                if d is None:
+                    append_result = self._append_text_only_no_d_full_sequence(sample, capture)
+                else:
+                    append_result = self._append_visual_d_full_sequence(sample, capture, d.to(self.device))
+            elif d is None:
                 append_result = self._append_text_only_no_d(capture)
             else:
                 append_result = self._append_visual_d(capture, d.to(self.device))
@@ -578,7 +605,12 @@ class Stage2ProtocolEvaluator:
         )
 
     def _force_prefix_mode_name(self) -> str:
-        if self.args.tgvf_protocol not in {PROTOCOL_C_THINKING_SPECIAL, PROTOCOL_C_TOOL_OBSERVATION, PROTOCOL_E_ACTION_EVIDENCE_SPECIAL}:
+        if self.args.tgvf_protocol not in {
+            PROTOCOL_C_THINKING_SPECIAL,
+            PROTOCOL_C_TOOL_OBSERVATION,
+            PROTOCOL_C_TOOL_OBSERVATION_QWEN2_NO_THINK,
+            PROTOCOL_E_ACTION_EVIDENCE_SPECIAL,
+        }:
             return "legacy_action_prefix"
         return self.args.force_prefix_mode
 
@@ -648,10 +680,15 @@ class Stage2ProtocolEvaluator:
 
     def _append_text_only_no_d(self, capture: Qwen3FocusCapture) -> Qwen3AppendResult:
         tokenizer = self.processor.tokenizer
-        start, end = render_tgvf_prefix_suffix(protocol=self.args.tgvf_protocol)
+        start, end = render_tgvf_prefix_suffix(
+            protocol=self.args.tgvf_protocol,
+            include_leading_im_end=not protocol_uses_tool_observation(self.args.tgvf_protocol),
+        )
         text = f"{start}{end}"
-        if self.args.tgvf_protocol in {PROTOCOL_C_THINKING_SPECIAL, PROTOCOL_C_TOOL_OBSERVATION, PROTOCOL_D_QWEN_TOOL}:
+        if protocol_uses_think_tags(self.args.tgvf_protocol):
             text += f"{THINK_START}\n"
+        elif protocol_uses_evidence_tags(self.args.tgvf_protocol):
+            text += "<|evidence_start|>"
         else:
             text += EVIDENCE_START
         token_ids = _encode_text(tokenizer, text, self.device)
@@ -674,6 +711,10 @@ class Stage2ProtocolEvaluator:
             use_cache=True,
             return_dict=True,
         )
+        model_kwargs: dict[str, Any] = {}
+        next_position_ids = _next_position_ids_after_prefill(position_ids)
+        if next_position_ids is not None:
+            model_kwargs["tgvf_next_position_ids"] = next_position_ids.detach().cpu()
         return Qwen3AppendResult(
             past_key_values=outputs.past_key_values,
             attention_mask=attention_mask,
@@ -684,7 +725,7 @@ class Stage2ProtocolEvaluator:
             appended_inputs_embeds=torch.empty(0),
             fvt_token_start=-1,
             fvt_token_end=-1,
-            model_kwargs={},
+            model_kwargs=model_kwargs,
             debug_metadata={
                 "fvt_append_path": "text_only_no_D",
                 "tgvf_protocol": self.args.tgvf_protocol,
@@ -711,8 +752,16 @@ class Stage2ProtocolEvaluator:
         hidden_dim = int(embed.weight.shape[-1])
         if int(d.shape[-1]) != hidden_dim:
             raise ValueError(f"FVT dim {int(d.shape[-1])} != Qwen hidden dim {hidden_dim}")
-        prefix, suffix = render_tgvf_prefix_suffix(protocol=self.args.tgvf_protocol)
-        suffix += f"{THINK_START}\n" if self.args.tgvf_protocol in {PROTOCOL_C_THINKING_SPECIAL, PROTOCOL_C_TOOL_OBSERVATION, PROTOCOL_D_QWEN_TOOL} else EVIDENCE_START
+        prefix, suffix = render_tgvf_prefix_suffix(
+            protocol=self.args.tgvf_protocol,
+            include_leading_im_end=not protocol_uses_tool_observation(self.args.tgvf_protocol),
+        )
+        if protocol_uses_think_tags(self.args.tgvf_protocol):
+            suffix += f"{THINK_START}\n"
+        elif protocol_uses_evidence_tags(self.args.tgvf_protocol):
+            suffix += "<|evidence_start|>"
+        else:
+            suffix += EVIDENCE_START
         token_ids = _bracketed_visual_token_ids(
             self.processor,
             self.utility_model,
@@ -770,6 +819,10 @@ class Stage2ProtocolEvaluator:
             use_cache=True,
             return_dict=True,
         )
+        model_kwargs: dict[str, Any] = {}
+        next_position_ids = _next_position_ids_after_prefill(position_ids)
+        if next_position_ids is not None:
+            model_kwargs["tgvf_next_position_ids"] = next_position_ids.detach().cpu()
         return Qwen3AppendResult(
             past_key_values=outputs.past_key_values,
             attention_mask=attention_mask,
@@ -780,7 +833,7 @@ class Stage2ProtocolEvaluator:
             appended_inputs_embeds=embeds.detach().cpu(),
             fvt_token_start=fvt_token_start,
             fvt_token_end=fvt_token_end,
-            model_kwargs={},
+            model_kwargs=model_kwargs,
             debug_metadata={
                 "fvt_append_path": "qwen3_visual_special_tokens_embedding_replace_lora_forward",
                 "tgvf_protocol": self.args.tgvf_protocol,
@@ -795,6 +848,206 @@ class Stage2ProtocolEvaluator:
                 "second_full_forward_used": False,
                 "past_key_values_preserved": capture.past_key_values is not None and outputs.past_key_values is not None,
                 "deepstack_caution": "FVT append uses visual special tokens and Qwen3 3D positions, but no native DeepStack features for FVT.",
+            },
+        )
+
+    def _append_text_only_no_d_full_sequence(
+        self,
+        sample: TGVFv3Stage2Sample,
+        capture: Qwen3FocusCapture,
+    ) -> Qwen3AppendResult:
+        tokenizer = self.processor.tokenizer
+        start, end = render_tgvf_prefix_suffix(
+            protocol=self.args.tgvf_protocol,
+            include_leading_im_end=not protocol_uses_tool_observation(self.args.tgvf_protocol),
+        )
+        text = f"{start}{end}"
+        if protocol_uses_think_tags(self.args.tgvf_protocol):
+            text += f"{THINK_START}\n"
+        elif protocol_uses_evidence_tags(self.args.tgvf_protocol):
+            text += "<|evidence_start|>"
+        else:
+            text += EVIDENCE_START
+        token_ids = _encode_text(tokenizer, text, self.device)
+        return self._full_sequence_prefill(
+            sample=sample,
+            capture=capture,
+            token_ids=token_ids,
+            d=None,
+            fvt_token_start=-1,
+            fvt_token_end=-1,
+            fvt_position_mode="text_only_no_D_full_sequence",
+        )
+
+    def _append_visual_d_full_sequence(
+        self,
+        sample: TGVFv3Stage2Sample,
+        capture: Qwen3FocusCapture,
+        d: torch.Tensor,
+    ) -> Qwen3AppendResult:
+        tokenizer = self.processor.tokenizer
+        source_geometry = capture.source_visual_geometry
+        if source_geometry is None:
+            raise ValueError("capture is missing source visual geometry")
+        source_token_count = int(source_geometry.source_visual_token_count)
+        if int(d.shape[0]) != source_token_count:
+            raise ValueError(f"FVT token count {int(d.shape[0])} != source token count {source_token_count}")
+        embed = self.model.get_input_embeddings()
+        hidden_dim = int(embed.weight.shape[-1])
+        if int(d.shape[-1]) != hidden_dim:
+            raise ValueError(f"FVT dim {int(d.shape[-1])} != Qwen hidden dim {hidden_dim}")
+        prefix, suffix = render_tgvf_prefix_suffix(
+            protocol=self.args.tgvf_protocol,
+            include_leading_im_end=not protocol_uses_tool_observation(self.args.tgvf_protocol),
+        )
+        if protocol_uses_think_tags(self.args.tgvf_protocol):
+            suffix += f"{THINK_START}\n"
+        elif protocol_uses_evidence_tags(self.args.tgvf_protocol):
+            suffix += "<|evidence_start|>"
+        else:
+            suffix += EVIDENCE_START
+        token_ids = _bracketed_visual_token_ids(
+            self.processor,
+            self.utility_model,
+            num_fvt_tokens=int(d.shape[0]),
+            prefix=prefix,
+            suffix=suffix,
+            device=self.device,
+        )
+        prefix_ids = _encode_text(tokenizer, prefix, self.device)
+        fvt_token_start = int(prefix_ids.shape[0]) + 1
+        fvt_token_end = fvt_token_start + int(d.shape[0])
+        return self._full_sequence_prefill(
+            sample=sample,
+            capture=capture,
+            token_ids=token_ids,
+            d=d,
+            fvt_token_start=fvt_token_start,
+            fvt_token_end=fvt_token_end,
+            fvt_position_mode=self.args.fvt_position_mode,
+        )
+
+    def _full_sequence_prefill(
+        self,
+        *,
+        sample: TGVFv3Stage2Sample,
+        capture: Qwen3FocusCapture,
+        token_ids: torch.Tensor,
+        d: torch.Tensor | None,
+        fvt_token_start: int,
+        fvt_token_end: int,
+        fvt_position_mode: str,
+    ) -> Qwen3AppendResult:
+        if capture.input_ids is None:
+            raise ValueError("capture.input_ids is required for full-sequence prefill")
+        source_geometry = capture.source_visual_geometry
+        if source_geometry is None or source_geometry.source_visual_token_indices is None:
+            raise ValueError("capture source visual token indices are required for full-sequence prefill")
+        token_ids = token_ids.view(1, -1).to(self.device)
+        capture_input_ids = capture.input_ids.to(self.device)
+        full_input_ids = torch.cat([capture_input_ids, token_ids], dim=-1)
+        full_attention = torch.ones_like(full_input_ids)
+        embed = self.model.get_input_embeddings()
+        embeds = embed(full_input_ids).detach().clone()
+
+        _tap, _v_pre, v_merge = self._vision_features(sample)
+        if v_merge is None:
+            raise RuntimeError("source merged visual features are unavailable")
+        original_positions = source_geometry.source_visual_token_indices.to(self.device)
+        if int(original_positions.numel()) != int(v_merge.shape[0]):
+            raise ValueError(
+                f"source visual token count mismatch: positions={int(original_positions.numel())} "
+                f"v_merge={int(v_merge.shape[0])}"
+            )
+        embeds[0, original_positions, :] = v_merge.to(device=self.device, dtype=embeds.dtype)
+
+        chunk_mm_token_type_ids = torch.zeros((1, int(token_ids.shape[-1])), dtype=torch.long, device=self.device)
+        image_grid_thw = capture.image_grid_thw
+        if d is not None:
+            if fvt_token_start < 0 or fvt_token_end <= fvt_token_start:
+                raise ValueError("invalid FVT span for full-sequence prefill")
+            chunk_mm_token_type_ids = _fvt_mm_token_type_ids(
+                chunk_length=int(token_ids.shape[-1]),
+                fvt_token_start=fvt_token_start,
+                fvt_token_end=fvt_token_end,
+                device=self.device,
+            )
+            full_fvt_start = int(capture_input_ids.shape[-1]) + int(fvt_token_start)
+            full_fvt_end = int(capture_input_ids.shape[-1]) + int(fvt_token_end)
+            embeds[0, full_fvt_start:full_fvt_end, :] = d.to(device=self.device, dtype=embeds.dtype)
+            if fvt_position_mode == "native_source_grid":
+                if not isinstance(source_geometry.image_grid_thw, torch.Tensor):
+                    raise ValueError("source image_grid_thw is required for native_source_grid full prefill")
+                image_grid_thw = _append_source_image_grid(
+                    capture.image_grid_thw,
+                    source_geometry.image_grid_thw,
+                    device=self.device,
+                )
+            elif fvt_position_mode == "inherit_source_visual_positions":
+                image_grid_thw = capture.image_grid_thw
+            else:
+                raise ValueError(f"unsupported full-sequence FVT position mode: {fvt_position_mode}")
+
+        full_mm_token_type_ids = _full_mm_token_type_ids_for_append(
+            model=self.utility_model,
+            capture_input_ids=capture_input_ids,
+            chunk_mm_token_type_ids=chunk_mm_token_type_ids,
+            device=self.device,
+        )
+        position_ids = _compute_qwen3_position_ids_for_sequence(
+            model=self.utility_model,
+            input_ids=full_input_ids,
+            attention_mask=full_attention,
+            image_grid_thw=image_grid_thw,
+            video_grid_thw=capture.video_grid_thw,
+            mm_token_type_ids=full_mm_token_type_ids,
+        )
+        if position_ids is None:
+            raise ValueError("position id computation failed for full-sequence prefill")
+        if d is not None and fvt_position_mode == "inherit_source_visual_positions":
+            full_fvt_start = int(capture_input_ids.shape[-1]) + int(fvt_token_start)
+            full_fvt_end = int(capture_input_ids.shape[-1]) + int(fvt_token_end)
+            source_positions = source_geometry.source_visual_position_ids
+            if not isinstance(source_positions, torch.Tensor):
+                raise ValueError("source visual position ids are unavailable")
+            position_ids[:, 0, full_fvt_start:full_fvt_end] = source_positions.to(self.device)
+
+        outputs = self.model(
+            inputs_embeds=embeds,
+            attention_mask=full_attention,
+            position_ids=position_ids,
+            mm_token_type_ids=full_mm_token_type_ids,
+            use_cache=True,
+            return_dict=True,
+        )
+        model_kwargs: dict[str, Any] = {}
+        next_position_ids = _next_position_ids_after_prefill(position_ids)
+        if next_position_ids is not None:
+            model_kwargs["tgvf_next_position_ids"] = next_position_ids.detach().cpu()
+        return Qwen3AppendResult(
+            past_key_values=outputs.past_key_values,
+            attention_mask=full_attention,
+            cache_position=None,
+            input_ids=full_input_ids,
+            last_logits=outputs.logits,
+            appended_token_ids=token_ids.detach().cpu(),
+            appended_inputs_embeds=torch.empty(0),
+            fvt_token_start=fvt_token_start,
+            fvt_token_end=fvt_token_end,
+            model_kwargs=model_kwargs,
+            debug_metadata={
+                "fvt_append_path": "full_sequence_prefill" if d is not None else "text_only_no_D_full_sequence",
+                "tgvf_protocol": self.args.tgvf_protocol,
+                "uses_deepstack_for_fvt": False,
+                "fvt_shape": list(d.shape) if d is not None else None,
+                "num_fvt_tokens": int(d.shape[0]) if d is not None else 0,
+                "source_visual_token_count": int(source_geometry.source_visual_token_count),
+                "fvt_position_mode": fvt_position_mode,
+                "position_ids_shape": list(position_ids.shape),
+                "mm_token_type_ids_shape": list(full_mm_token_type_ids.shape),
+                "native_qwen3_position_compute_used": True,
+                "second_full_forward_used": True,
+                "past_key_values_preserved": False,
             },
         )
 
@@ -968,25 +1221,33 @@ def _summary_core(rows: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def _full_protocol_text(action_text: str, continuation: str, *, protocol: str) -> str:
-    if protocol in {PROTOCOL_C_THINKING_SPECIAL, PROTOCOL_C_TOOL_OBSERVATION}:
-        return (
-            f"{action_text}\n"
-            "<|tgvf_start|>\n[visual embeddings]\n<|tgvf_end|>\n"
-            f"{THINK_START}\n{continuation}"
-        )
     if protocol == PROTOCOL_D_QWEN_TOOL:
         return (
             f"{action_text}\n"
             "<tool_response>\n[visual embeddings]\n</tool_response>\n"
             f"{THINK_START}\n{continuation}"
         )
+    if protocol_uses_think_tags(protocol):
+        return (
+            f"{action_text}\n"
+            "<|tgvf_start|>\n[visual embeddings]\n<|tgvf_end|>\n"
+            f"{THINK_START}\n{continuation}"
+        )
+    if protocol_uses_evidence_tags(protocol):
+        return (
+            f"{action_text}\n"
+            "<|tgvf_start|>\n[visual embeddings]\n<|tgvf_end|>\n"
+            f"<|evidence_start|>{continuation}"
+        )
     return f"{action_text}\n{TGVF_START}\n[visual embeddings]\n{TGVF_END}\n{EVIDENCE_START}{continuation}"
 
 
 def _parsed_evidence_text(text: str, protocol: str) -> str:
-    if protocol in {PROTOCOL_C_THINKING_SPECIAL, PROTOCOL_C_TOOL_OBSERVATION, PROTOCOL_D_QWEN_TOOL}:
+    if protocol_uses_think_tags(protocol):
         matches = re.findall(r"<think>(.*?)</think>", text, flags=re.DOTALL)
         return matches[-1].strip() if matches else ""
+    if protocol_uses_evidence_tags(protocol):
+        return _extract_tag(text, "<|evidence_start|>", "<|evidence_end|>") or ""
     return _extract_tag(text, EVIDENCE_START, EVIDENCE_END) or ""
 
 
@@ -1070,6 +1331,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-action-tokens", type=int, default=96)
     parser.add_argument("--max-answer-tokens", type=int, default=128)
     parser.add_argument("--fvt-position-mode", choices=("native_source_grid", "inherit_source_visual_positions"), default="native_source_grid")
+    parser.add_argument("--append-prefill-mode", choices=("kv_append", "full_sequence"), default="kv_append")
     parser.add_argument("--blocks", default="no_focus_direct,force_focus_targets,teacher_forced_post_tgvf,force_end2end,free_router_end2end")
     parser.add_argument("--d-conditions", default="correct_D,no_D,random_D,wrong_same_image_D,wrong_diff_image_D")
     parser.add_argument("--max-focus", type=int, default=None)

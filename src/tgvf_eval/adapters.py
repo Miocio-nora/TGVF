@@ -279,12 +279,28 @@ class BlinkAdapter(BenchmarkAdapter):
     name = "blink"
     # BLINK test labels are hidden in the local snapshot. Use the validation
     # split for local scored diagnostics.
-    preferred_files = ("snapshot/Counting/val-00000-of-00001.parquet",)
+    preferred_files: tuple[str, ...] = ()
     multiple_choice = True
+
+    def load_samples(self, max_records: int | None = None) -> list[BenchmarkSample]:
+        val_files = sorted(self.snapshot.glob("*/val-*.parquet"))
+        if not val_files:
+            return super().load_samples(max_records=max_records)
+
+        samples: list[BenchmarkSample] = []
+        for path in val_files:
+            sub_task = path.parent.name
+            for index, record in enumerate(_read_records(path, max_records=max_records)):
+                sample = self.record_to_sample(record, path=path, index=index)
+                sample.metadata.setdefault("sub_task", sub_task)
+                sample.metadata.setdefault("source_file", str(path.relative_to(self.root)))
+                sample.sample_id = f"{sub_task}/{sample.sample_id}"
+                samples.append(sample)
+        return samples
 
     def record_to_sample(self, record: dict[str, Any], *, path: Path, index: int) -> BenchmarkSample:
         sample = super().record_to_sample(record, path=path, index=index)
-        sample.metadata.setdefault("sub_task", record.get("sub_task"))
+        sample.metadata.setdefault("sub_task", record.get("sub_task") or path.parent.name)
         return sample
 
 

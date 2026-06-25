@@ -341,7 +341,7 @@ Default losses:
 
 ```text
 L_gen = enabled, weight 1.0; readout target dropout defaults to 0.3
-L_visual_token_manifold = enabled, weight 0.01
+L_visual_token_manifold = enabled, weight 0.1
 L_same_image_negative = implemented, disabled by default; modes: cyclic_margin or matrix_ce
 L_contrastive_alignment = implemented, disabled by default
 ```

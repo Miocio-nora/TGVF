@@ -23,6 +23,7 @@ from revisit_vlm.qwen3_vl_tgvf import (
     NEED_LOCAL_EVIDENCE,
     PROTOCOL_C_SPECIAL_TOKENS,
     PROTOCOL_C_TOOL_OBSERVATION,
+    PROTOCOL_C_TOOL_OBSERVATION_QWEN2_NO_THINK,
     PROTOCOL_C_THINKING_SPECIAL,
     PROTOCOL_E_ACTION_EVIDENCE_SPECIAL,
     SUFFICIENT_EVIDENCE,
@@ -40,6 +41,7 @@ from revisit_vlm.qwen3_vl_tgvf import (
     focus_target_char_span,
     normalize_tgvf_protocol,
     protocol_focus_tokens,
+    protocol_uses_tool_observation,
     render_focus_action_text,
     render_focus_readout_answer_text,
     render_no_focus_output_text,
@@ -64,6 +66,13 @@ from revisit_vlm.tgvf_v3_stage1 import (
 
 
 TrajectoryType = Literal["single_focus", "multi_focus", "direct_answer"]
+
+ORIGINAL_IMAGE_MASK_SCOPE_EVIDENCE_ONLY = "evidence_only"
+ORIGINAL_IMAGE_MASK_SCOPE_THROUGH_ANSWER = "through_answer"
+ORIGINAL_IMAGE_MASK_SCOPE_CHOICES = (
+    ORIGINAL_IMAGE_MASK_SCOPE_EVIDENCE_ONLY,
+    ORIGINAL_IMAGE_MASK_SCOPE_THROUGH_ANSWER,
+)
 
 
 @dataclass
@@ -432,6 +441,7 @@ def prepare_v3_stage2_focus_inputs(
     position_mode: PositionMode = "native_source_grid",
     mask_original_image_after_tgvf: bool = True,
     mask_original_image_after_tgvf_prob: float = 1.0,
+    mask_original_image_after_tgvf_scope: str = ORIGINAL_IMAGE_MASK_SCOPE_EVIDENCE_ONLY,
     max_image_resolution: int | None = 512,
     protocol: TGVFProtocol = "legacy_v3_tags",
 ) -> dict[str, Any]:
@@ -461,7 +471,7 @@ def prepare_v3_stage2_focus_inputs(
         sample.target,
         protocol=protocol,
         pre_focus_think=sample.pre_focus_think,
-        append_im_end=protocol == PROTOCOL_C_TOOL_OBSERVATION,
+        append_im_end=protocol_uses_tool_observation(protocol),
     )
     target_span = focus_target_char_span(action_text, protocol=protocol)
     if target_span is None:
@@ -483,7 +493,7 @@ def prepare_v3_stage2_focus_inputs(
     )
     tgvf_prefix, tgvf_suffix = render_tgvf_prefix_suffix(
         protocol=protocol,
-        include_leading_im_end=protocol != PROTOCOL_C_TOOL_OBSERVATION,
+        include_leading_im_end=not protocol_uses_tool_observation(protocol),
     )
     tgvf_ids = _bracketed_visual_token_ids(
         processor,
@@ -499,7 +509,7 @@ def prepare_v3_stage2_focus_inputs(
         answer=sample.answer,
         protocol=protocol,
         readout_think=readout_text,
-        append_im_end=protocol == PROTOCOL_C_TOOL_OBSERVATION,
+        append_im_end=protocol_uses_tool_observation(protocol),
     )
     if protocol == "legacy_v3_tags":
         evidence_start = ev_answer_text.find(EVIDENCE_START)
@@ -593,11 +603,15 @@ def prepare_v3_stage2_focus_inputs(
         raise RuntimeError("Qwen3 position id computation is unavailable")
     original_image_indices = source_positions.to(device=device, dtype=torch.long)
     block_query_start = action_end
-    block_query_end = None
+    answer_query_start = None
     if answer_start >= 0:
-        block_query_end = ev_answer_start + int(
+        answer_query_start = ev_answer_start + int(
             _encode_text(tokenizer, ev_answer_text[:answer_start], device).view(-1).numel()
         )
+    block_query_end = original_image_mask_block_query_end(
+        answer_query_start=answer_query_start,
+        scope=mask_original_image_after_tgvf_scope,
+    )
     mask_active = sample_original_image_mask_active(
         enabled=mask_original_image_after_tgvf,
         probability=mask_original_image_after_tgvf_prob,
@@ -629,6 +643,7 @@ def prepare_v3_stage2_focus_inputs(
         "image_key_mask_active": bool(mask_active),
         "masked_image_key_count": original_count if mask_active else 0,
         "mask_original_image_after_tgvf_prob": float(mask_original_image_after_tgvf_prob),
+        "mask_original_image_after_tgvf_scope": str(mask_original_image_after_tgvf_scope),
         "fvt_shape": list(d.shape),
         "target_hidden_shape": list(capture.target_hidden_states.shape),
         "value_span_matched": value_span_matched,
@@ -657,7 +672,7 @@ def prepare_v3_stage2_no_focus_inputs(
         sample.answer,
         protocol=protocol,
         think_text=sample.no_focus_think,
-        append_im_end=protocol == PROTOCOL_C_TOOL_OBSERVATION,
+        append_im_end=protocol_uses_tool_observation(protocol),
     )
     answer_start = (
         output_text.find(ANSWER_START)
@@ -800,7 +815,12 @@ def protocol_c_boundary_token_accuracy(
     tokenizer: Any | None,
     protocol: TGVFProtocol,
 ) -> dict[str, float | int]:
-    if protocol not in {PROTOCOL_C_THINKING_SPECIAL, PROTOCOL_C_TOOL_OBSERVATION, PROTOCOL_E_ACTION_EVIDENCE_SPECIAL} or tokenizer is None:
+    if protocol not in {
+        PROTOCOL_C_THINKING_SPECIAL,
+        PROTOCOL_C_TOOL_OBSERVATION,
+        PROTOCOL_C_TOOL_OBSERVATION_QWEN2_NO_THINK,
+        PROTOCOL_E_ACTION_EVIDENCE_SPECIAL,
+    } or tokenizer is None:
         return {}
     token_names = {
         "<|focus_start|>": "focus_start",
@@ -857,6 +877,7 @@ def v3_stage2_training_step(
     position_mode: PositionMode = "native_source_grid",
     mask_original_image_after_tgvf: bool = True,
     mask_original_image_after_tgvf_prob: float = 1.0,
+    mask_original_image_after_tgvf_scope: str = ORIGINAL_IMAGE_MASK_SCOPE_EVIDENCE_ONLY,
     protocol: TGVFProtocol = "legacy_v3_tags",
 ) -> TGVFv3Stage2StepOutput:
     protocol = normalize_tgvf_protocol(protocol)
@@ -909,6 +930,7 @@ def v3_stage2_training_step(
                 position_mode=position_mode,
                 mask_original_image_after_tgvf=mask_original_image_after_tgvf,
                 mask_original_image_after_tgvf_prob=mask_original_image_after_tgvf_prob,
+                mask_original_image_after_tgvf_scope=mask_original_image_after_tgvf_scope,
                 max_image_resolution=max_image_resolution,
                 protocol=protocol,
             )
@@ -999,11 +1021,16 @@ def v3_stage2_training_step(
             "markers_are_plain_text": protocol == "legacy_v3_tags",
             "tgvf_protocol": protocol,
             "mask_mode": (
-                "weak_strict_original_image_keys_4d_evidence_only_answer_unmasked"
+                "weak_strict_original_image_keys_4d"
+                if focus_mask_active
+                and mask_original_image_after_tgvf
+                and mask_original_image_after_tgvf_scope == ORIGINAL_IMAGE_MASK_SCOPE_THROUGH_ANSWER
+                else "weak_strict_original_image_keys_4d_evidence_only_answer_unmasked"
                 if focus_mask_active and mask_original_image_after_tgvf
                 else "standard_2d_causal"
             ),
             "mask_original_image_after_tgvf_prob": float(mask_original_image_after_tgvf_prob),
+            "mask_original_image_after_tgvf_scope": str(mask_original_image_after_tgvf_scope),
             "focus_sample_mask_active_rate": focus_mask_active / max(focus_count, 1),
             "no_focus_mask_active_rate": 0.0,
             "value_span_match_rate": (
@@ -1029,6 +1056,18 @@ def sample_original_image_mask_active(
     if probability >= 1.0:
         return True
     return bool(torch.rand((), device=device).item() < probability)
+
+
+def original_image_mask_block_query_end(
+    *,
+    answer_query_start: int | None,
+    scope: str,
+) -> int | None:
+    if scope == ORIGINAL_IMAGE_MASK_SCOPE_EVIDENCE_ONLY:
+        return answer_query_start
+    if scope == ORIGINAL_IMAGE_MASK_SCOPE_THROUGH_ANSWER:
+        return None
+    raise ValueError(f"unknown original-image mask scope: {scope}")
 
 
 def merge_protocol_c_boundary_stats(logs: list[dict[str, float | int]]) -> dict[str, float | int | None]:

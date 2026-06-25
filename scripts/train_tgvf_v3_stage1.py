@@ -20,12 +20,14 @@ from torch.utils.data.distributed import DistributedSampler
 from revisit_vlm.qwen3_vl_tgvf import (
     PROTOCOL_C_THINKING_SPECIAL,
     PROTOCOL_C_TOOL_OBSERVATION,
-    PROTOCOL_C_SPECIAL_TOKENS,
+    PROTOCOL_C_TOOL_OBSERVATION_QWEN2_NO_THINK,
+    PROTOCOL_E_ACTION_EVIDENCE_SPECIAL,
     TGVF_PROTOCOL_CHOICES,
-    ensure_protocol_c_special_tokens,
+    ensure_tgvf_protocol_tokens,
     load_qwen3_vl,
     peak_memory_gb,
-    protocol_c_special_token_ids,
+    protocol_special_token_ids,
+    protocol_special_tokens,
 )
 from revisit_vlm.tgvf_training import (
     TGVF_DYNAMIC_NUM_FVT_VARIANTS,
@@ -79,9 +81,18 @@ def main() -> None:
     if getattr(processor.tokenizer, "pad_token", None) is None:
         processor.tokenizer.pad_token = processor.tokenizer.eos_token
     protocol_token_info: dict[str, Any] = {}
-    token_row_protocols = {PROTOCOL_C_THINKING_SPECIAL, PROTOCOL_C_TOOL_OBSERVATION}
+    token_row_protocols = {
+        PROTOCOL_C_THINKING_SPECIAL,
+        PROTOCOL_C_TOOL_OBSERVATION,
+        PROTOCOL_C_TOOL_OBSERVATION_QWEN2_NO_THINK,
+        PROTOCOL_E_ACTION_EVIDENCE_SPECIAL,
+    }
     if args.tgvf_protocol in token_row_protocols:
-        protocol_token_info = ensure_protocol_c_special_tokens(processor.tokenizer, model)
+        protocol_token_info = ensure_tgvf_protocol_tokens(
+            processor.tokenizer,
+            model,
+            protocol=args.tgvf_protocol,
+        )
     freeze_qwen_backbone(model)
     protocol_c_token_train_info: dict[str, Any] = {}
     protocol_c_token_params: list[torch.nn.Parameter] = []
@@ -89,6 +100,7 @@ def main() -> None:
         protocol_c_token_train_info, protocol_c_token_params = _enable_protocol_c_token_row_training(
             model=model,
             tokenizer=processor.tokenizer,
+            protocol=args.tgvf_protocol,
             mode=args.protocol_token_row_mode,
         )
 
@@ -239,6 +251,7 @@ def main() -> None:
             protocol_c_token_train_info["resume_token_rows"] = _restore_protocol_c_token_rows(
                 model=model,
                 tokenizer=processor.tokenizer,
+                protocol=args.tgvf_protocol,
                 checkpoint=checkpoint,
             )
         raw_foveal_module.load_state_dict(checkpoint["tgvf_module"], strict=True)
@@ -253,6 +266,7 @@ def main() -> None:
             protocol_c_token_train_info["init_token_rows"] = _restore_protocol_c_token_rows(
                 model=model,
                 tokenizer=processor.tokenizer,
+                protocol=args.tgvf_protocol,
                 checkpoint=init_checkpoint,
             )
         raw_foveal_module.load_state_dict(init_checkpoint["tgvf_module"], strict=True)
@@ -481,6 +495,7 @@ def main() -> None:
                     checkpoint_path,
                     model=model,
                     tokenizer=processor.tokenizer,
+                    protocol=args.tgvf_protocol,
                 )
                 processor.save_pretrained(output_dir / f"processor_step_{step}")
             if args.wandb_log_checkpoints and wandb_logger.enabled:
@@ -548,7 +563,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-grad-norm", type=float, default=1.0)
     parser.add_argument("--capture-layer", type=int, default=-1)
     parser.add_argument("--loss-gen", type=float, default=1.0)
-    parser.add_argument("--loss-visual-token-manifold", type=float, default=0.01)
+    parser.add_argument("--loss-visual-token-manifold", type=float, default=0.1)
     parser.add_argument("--loss-same-image-negative", type=float, default=1.0)
     parser.add_argument("--same-image-negative-margin", type=float, default=1.0)
     parser.add_argument("--same-image-negative-mode", choices=("cyclic_margin", "matrix_ce"), default="matrix_ce")
@@ -838,18 +853,33 @@ def _enable_protocol_c_token_row_training(
     *,
     model: Any,
     tokenizer: Any,
+    protocol: str,
     mode: str = "row_only",
 ) -> tuple[dict[str, Any], list[torch.nn.Parameter]]:
     if mode == "full_mask":
-        return _enable_protocol_c_token_row_training_full_mask(model=model, tokenizer=tokenizer)
+        return _enable_protocol_c_token_row_training_full_mask(
+            model=model,
+            tokenizer=tokenizer,
+            protocol=protocol,
+        )
     if mode != "row_only":
         raise ValueError(f"unsupported protocol token row mode: {mode}")
-    return _enable_protocol_c_token_row_training_row_only(model=model, tokenizer=tokenizer)
+    return _enable_protocol_c_token_row_training_row_only(
+        model=model,
+        tokenizer=tokenizer,
+        protocol=protocol,
+    )
 
 
-def _enable_protocol_c_token_row_training_row_only(*, model: Any, tokenizer: Any) -> tuple[dict[str, Any], list[torch.nn.Parameter]]:
-    token_ids = protocol_c_special_token_ids(tokenizer)
-    ordered_ids = [int(token_ids[token]) for token in PROTOCOL_C_SPECIAL_TOKENS]
+def _enable_protocol_c_token_row_training_row_only(
+    *,
+    model: Any,
+    tokenizer: Any,
+    protocol: str,
+) -> tuple[dict[str, Any], list[torch.nn.Parameter]]:
+    tokens = protocol_special_tokens(protocol)
+    token_ids = protocol_special_token_ids(tokenizer, protocol=protocol)
+    ordered_ids = [int(token_ids[token]) for token in tokens]
     input_embed = model.get_input_embeddings()
     output_embed = model.get_output_embeddings() if hasattr(model, "get_output_embeddings") else None
     output_tied = (
@@ -877,8 +907,9 @@ def _enable_protocol_c_token_row_training_row_only(*, model: Any, tokenizer: Any
             params.append(output_override.row_values)
     return {
         "enabled": True,
-        "tokens": list(PROTOCOL_C_SPECIAL_TOKENS),
-        "token_ids": {token: int(token_ids[token]) for token in PROTOCOL_C_SPECIAL_TOKENS},
+        "protocol": protocol,
+        "tokens": list(tokens),
+        "token_ids": {token: int(token_ids[token]) for token in tokens},
         "num_token_rows": len(ordered_ids),
         "input_embeddings_trainable": True,
         "output_embeddings_trainable": output_trainable,
@@ -890,9 +921,15 @@ def _enable_protocol_c_token_row_training_row_only(*, model: Any, tokenizer: Any
     }, params
 
 
-def _enable_protocol_c_token_row_training_full_mask(*, model: Any, tokenizer: Any) -> tuple[dict[str, Any], list[torch.nn.Parameter]]:
-    token_ids = protocol_c_special_token_ids(tokenizer)
-    ordered_ids = [int(token_ids[token]) for token in PROTOCOL_C_SPECIAL_TOKENS]
+def _enable_protocol_c_token_row_training_full_mask(
+    *,
+    model: Any,
+    tokenizer: Any,
+    protocol: str,
+) -> tuple[dict[str, Any], list[torch.nn.Parameter]]:
+    tokens = protocol_special_tokens(protocol)
+    token_ids = protocol_special_token_ids(tokenizer, protocol=protocol)
+    ordered_ids = [int(token_ids[token]) for token in tokens]
     row_ids = torch.tensor(sorted({int(row_id) for row_id in ordered_ids}), dtype=torch.long)
     input_embed = model.get_input_embeddings()
     output_embed = model.get_output_embeddings() if hasattr(model, "get_output_embeddings") else None
@@ -912,8 +949,9 @@ def _enable_protocol_c_token_row_training_full_mask(*, model: Any, tokenizer: An
             params.append(output_embed.weight)
     return {
         "enabled": True,
-        "tokens": list(PROTOCOL_C_SPECIAL_TOKENS),
-        "token_ids": {token: int(token_ids[token]) for token in PROTOCOL_C_SPECIAL_TOKENS},
+        "protocol": protocol,
+        "tokens": list(tokens),
+        "token_ids": {token: int(token_ids[token]) for token in tokens},
         "num_token_rows": len(ordered_ids),
         "input_embeddings_trainable": True,
         "output_embeddings_trainable": output_trainable,
@@ -1047,13 +1085,22 @@ def _average_protocol_c_token_row_gradients(params: list[torch.nn.Parameter], *,
         param.grad.div_(world_size)
 
 
-def _restore_protocol_c_token_rows(*, model: Any, tokenizer: Any, checkpoint: dict[str, Any]) -> dict[str, Any]:
+def _restore_protocol_c_token_rows(
+    *,
+    model: Any,
+    tokenizer: Any,
+    protocol: str,
+    checkpoint: dict[str, Any],
+) -> dict[str, Any]:
     payload = checkpoint.get("protocol_c_token_rows")
-    current_ids = protocol_c_special_token_ids(tokenizer)
+    tokens = protocol_special_tokens(protocol)
+    current_ids = protocol_special_token_ids(tokenizer, protocol=protocol)
     info: dict[str, Any] = {
         "available_in_checkpoint": payload is not None,
         "loaded": False,
-        "current_token_ids": {token: int(current_ids[token]) for token in PROTOCOL_C_SPECIAL_TOKENS},
+        "protocol": protocol,
+        "tokens": list(tokens),
+        "current_token_ids": {token: int(current_ids[token]) for token in tokens},
     }
     if payload is None:
         info["reason"] = "missing_protocol_c_token_rows"
@@ -1061,15 +1108,15 @@ def _restore_protocol_c_token_rows(*, model: Any, tokenizer: Any, checkpoint: di
     saved_ids = payload.get("token_ids") or {}
     mismatched = {
         token: {"current": int(current_ids[token]), "saved": int(saved_ids.get(token, -1))}
-        for token in PROTOCOL_C_SPECIAL_TOKENS
+        for token in tokens
         if int(saved_ids.get(token, -1)) != int(current_ids[token])
     }
-    info["saved_token_ids"] = {token: int(saved_ids.get(token, -1)) for token in PROTOCOL_C_SPECIAL_TOKENS}
+    info["saved_token_ids"] = {token: int(saved_ids.get(token, -1)) for token in tokens}
     if mismatched:
         info["reason"] = "token_id_mismatch"
         info["mismatched_token_ids"] = mismatched
         return info
-    ordered_ids = [int(current_ids[token]) for token in PROTOCOL_C_SPECIAL_TOKENS]
+    ordered_ids = [int(current_ids[token]) for token in tokens]
     input_rows = payload.get("input_embeddings")
     output_rows = payload.get("output_embeddings")
     if input_rows is None:
@@ -1093,9 +1140,10 @@ def _restore_protocol_c_token_rows(*, model: Any, tokenizer: Any, checkpoint: di
     info["loaded_output_rows"] = output_rows is not None
     return info
 
-def _append_protocol_c_token_rows(path: Path, *, model: Any, tokenizer: Any) -> None:
-    token_ids = protocol_c_special_token_ids(tokenizer)
-    ordered_ids = [int(token_ids[token]) for token in PROTOCOL_C_SPECIAL_TOKENS]
+def _append_protocol_c_token_rows(path: Path, *, model: Any, tokenizer: Any, protocol: str) -> None:
+    tokens = protocol_special_tokens(protocol)
+    token_ids = protocol_special_token_ids(tokenizer, protocol=protocol)
+    ordered_ids = [int(token_ids[token]) for token in tokens]
     input_embed = model.get_input_embeddings()
     output_embed = model.get_output_embeddings() if hasattr(model, "get_output_embeddings") else None
     input_rows = (
@@ -1104,8 +1152,9 @@ def _append_protocol_c_token_rows(path: Path, *, model: Any, tokenizer: Any) -> 
         else input_embed.weight.detach().cpu()[ordered_ids].clone()
     )
     payload: dict[str, Any] = {
-        "tokens": list(PROTOCOL_C_SPECIAL_TOKENS),
-        "token_ids": {token: int(token_ids[token]) for token in PROTOCOL_C_SPECIAL_TOKENS},
+        "protocol": protocol,
+        "tokens": list(tokens),
+        "token_ids": {token: int(token_ids[token]) for token in tokens},
         "input_embeddings": input_rows,
     }
     if output_embed is not None and hasattr(output_embed, "weight"):

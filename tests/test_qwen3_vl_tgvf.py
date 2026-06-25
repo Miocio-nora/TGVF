@@ -88,6 +88,7 @@ class FakeQwen3Model:
         self.generated_sequence = list(generated_sequence)
         self.hidden_size = hidden_size
         self.decode_calls = 0
+        self.prepare_calls = 0
         self.forward_input_lengths: list[int] = []
 
     def __call__(
@@ -134,6 +135,7 @@ class FakeQwen3Model:
         use_cache: bool = True,
         **_: object,
     ) -> dict[str, object]:
+        self.prepare_calls += 1
         return {
             "input_ids": input_ids[:, -1:],
             "past_key_values": past_key_values,
@@ -418,6 +420,7 @@ def test_continue_generation_stops_on_repetitive_tail(monkeypatch) -> None:
 
     assert result.stop_reason == "repetition"
     assert len(result.generated_ids) < 20
+    assert model.prepare_calls == len(result.generated_ids)
 
 
 def test_inherited_source_visual_positions_replace_only_visual_span() -> None:

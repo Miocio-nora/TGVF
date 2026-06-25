@@ -413,7 +413,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--capture-layer", type=int, default=-1)
     parser.add_argument("--loss-gen", type=float, default=1.0)
-    parser.add_argument("--loss-visual-token-manifold", type=float, default=0.01)
+    parser.add_argument("--loss-visual-token-manifold", type=float, default=0.1)
     parser.add_argument("--loss-same-image-negative", type=float, default=0.0)
     parser.add_argument("--loss-contrastive-alignment", type=float, default=0.0)
     parser.add_argument("--contrastive-temperature", type=float, default=0.07)

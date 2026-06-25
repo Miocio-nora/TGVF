@@ -17,6 +17,7 @@ from revisit_vlm.qwen3_vl_tgvf import (
     FOCUS_START,
     NEED_LOCAL_EVIDENCE,
     PROTOCOL_C_TOOL_OBSERVATION,
+    PROTOCOL_C_TOOL_OBSERVATION_QWEN2_NO_THINK,
     PROTOCOL_E_ACTION_EVIDENCE_SPECIAL,
     SUFFICIENT_EVIDENCE,
     TGVF_END,
@@ -31,6 +32,8 @@ from revisit_vlm.qwen3_vl_tgvf import (
     focus_target_char_span,
     normalize_tgvf_protocol,
     protocol_focus_tokens,
+    protocol_uses_evidence_tags,
+    protocol_uses_tool_observation,
     render_focus_action_text,
     render_focus_readout_answer_text,
     render_no_focus_output_text,
@@ -49,10 +52,12 @@ from revisit_vlm.tgvf_v3_stage1 import (
     _safe_visual_token_manifold_loss,
 )
 from revisit_vlm.tgvf_v3_stage2 import (
+    ORIGINAL_IMAGE_MASK_SCOPE_EVIDENCE_ONLY,
     Stage2LossWeights,
     TGVFv3Stage2Sample,
     TGVFv3Stage2StepOutput,
     merge_protocol_c_boundary_stats,
+    original_image_mask_block_query_end,
     protocol_c_boundary_token_accuracy,
     sample_original_image_mask_active,
     _weighted_stage2_tokens,
@@ -124,6 +129,7 @@ def v3_stage2_batched_training_step(
     position_mode: str = "native_source_grid",
     mask_original_image_after_tgvf: bool = True,
     mask_original_image_after_tgvf_prob: float = 1.0,
+    mask_original_image_after_tgvf_scope: str = ORIGINAL_IMAGE_MASK_SCOPE_EVIDENCE_ONLY,
     protocol: TGVFProtocol = "legacy_v3_tags",
 ) -> TGVFv3Stage2StepOutput:
     protocol = normalize_tgvf_protocol(protocol)
@@ -204,6 +210,7 @@ def v3_stage2_batched_training_step(
                     device=device,
                     mask_original_image_after_tgvf=mask_original_image_after_tgvf,
                     mask_original_image_after_tgvf_prob=mask_original_image_after_tgvf_prob,
+                    mask_original_image_after_tgvf_scope=mask_original_image_after_tgvf_scope,
                     protocol=protocol,
                 )
             )
@@ -222,6 +229,7 @@ def v3_stage2_batched_training_step(
                 max_image_resolution=max_image_resolution,
                 mask_original_image_after_tgvf=mask_original_image_after_tgvf,
                 mask_original_image_after_tgvf_prob=mask_original_image_after_tgvf_prob,
+                mask_original_image_after_tgvf_scope=mask_original_image_after_tgvf_scope,
                 protocol=protocol,
             )
         )
@@ -360,6 +368,7 @@ def v3_stage2_batched_training_step(
             "focus_sample_mask_active_rate": focus_mask_active / max(len(focus_prepared), 1),
             "no_focus_mask_active_rate": 0.0,
             "mask_original_image_after_tgvf_prob": float(mask_original_image_after_tgvf_prob),
+            "mask_original_image_after_tgvf_scope": str(mask_original_image_after_tgvf_scope),
             "value_span_match_rate": (
                 sum(1.0 for matched in value_matches if matched) / max(len(value_matches), 1)
                 if value_matches
@@ -483,7 +492,7 @@ def _batched_focus_first_forward(
             item.sample.target,
             protocol=protocol,
             pre_focus_think=item.sample.pre_focus_think,
-            append_im_end=protocol == PROTOCOL_C_TOOL_OBSERVATION,
+            append_im_end=protocol_uses_tool_observation(protocol),
         )
         target_char_span = focus_target_char_span(action_text, protocol=protocol)
         if target_char_span is None:
@@ -593,13 +602,14 @@ def _prepare_focus_final(
     device: torch.device | str,
     mask_original_image_after_tgvf: bool,
     mask_original_image_after_tgvf_prob: float,
+    mask_original_image_after_tgvf_scope: str,
     protocol: TGVFProtocol,
 ) -> _FocusPrepared:
     tokenizer = processor.tokenizer
     d = foveated_visual_tokens.to(device)
     tgvf_prefix, tgvf_suffix = render_tgvf_prefix_suffix(
         protocol=protocol,
-        include_leading_im_end=protocol != PROTOCOL_C_TOOL_OBSERVATION,
+        include_leading_im_end=not protocol_uses_tool_observation(protocol),
     )
     tgvf_ids = _bracketed_visual_token_ids(
         processor,
@@ -615,6 +625,7 @@ def _prepare_focus_final(
         answer=item.sample.answer,
         protocol=protocol,
         readout_think=readout_text,
+        append_im_end=protocol_uses_tool_observation(protocol),
     )
     if protocol == "legacy_v3_tags":
         evidence_start = ev_answer_text.find(EVIDENCE_START)
@@ -701,6 +712,10 @@ def _prepare_focus_final(
         answer_query_start = ev_start + int(
             _encode_text(tokenizer, ev_answer_text[:answer_start], device).view(-1).numel()
         )
+    block_query_end = original_image_mask_block_query_end(
+        answer_query_start=answer_query_start,
+        scope=mask_original_image_after_tgvf_scope,
+    )
     mask_active = sample_original_image_mask_active(
         enabled=mask_original_image_after_tgvf,
         probability=mask_original_image_after_tgvf_prob,
@@ -711,10 +726,10 @@ def _prepare_focus_final(
             attention_mask_2d=attention_mask_2d,
             original_image_token_indices=item.image_token_indices.to(device),
             block_query_start=action_end,
-            block_query_end=answer_query_start,
+            block_query_end=block_query_end,
             dtype=embeds.dtype,
         )
-        mask_mode = "weak_strict_original_image_keys_4d" if answer_query_start is None else "weak_strict_original_image_keys_4d_evidence_only_answer_unmasked"
+        mask_mode = "weak_strict_original_image_keys_4d" if block_query_end is None else "weak_strict_original_image_keys_4d_evidence_only_answer_unmasked"
     else:
         attention_mask = _causal_mask_b1(attention_mask_2d=attention_mask_2d, dtype=embeds.dtype)
         mask_mode = "standard_4d_causal"
@@ -759,6 +774,7 @@ def _prepare_multi_focus_final(
     max_image_resolution: int | None,
     mask_original_image_after_tgvf: bool,
     mask_original_image_after_tgvf_prob: float,
+    mask_original_image_after_tgvf_scope: str,
     protocol: TGVFProtocol,
 ) -> _FocusPrepared:
     tokenizer = processor.tokenizer
@@ -979,10 +995,14 @@ def _prepare_multi_focus_final(
         + int(action2_ids.shape[-1])
         + int(tgvf2_ids.shape[-1])
     )
-    block_query_end = (
+    answer_query_start = (
         final_readout2_start + int(final_answer_token_start)
         if final_answer_token_start is not None
         else None
+    )
+    block_query_end = original_image_mask_block_query_end(
+        answer_query_start=answer_query_start,
+        scope=mask_original_image_after_tgvf_scope,
     )
     if mask_active:
         attention_mask = _weak_strict_mask_b1(
@@ -1037,6 +1057,7 @@ def _prepare_no_focus_final(
         item.sample.answer,
         protocol=protocol,
         think_text=item.sample.no_focus_think,
+        append_im_end=protocol_uses_tool_observation(protocol),
     )
     answer_start = (
         output_text.find(ANSWER_START)
@@ -1113,7 +1134,7 @@ def _multi_action_ids_weights(
         protocol=protocol,
         pre_focus_think=pre_focus_think,
         include_think=include_think,
-        append_im_end=protocol == PROTOCOL_C_TOOL_OBSERVATION,
+        append_im_end=protocol_uses_tool_observation(protocol),
     )
     target_char_span = focus_target_char_span(action_text, protocol=protocol)
     if target_char_span is None:
@@ -1154,7 +1175,7 @@ def _multi_tgvf_ids(
 ) -> torch.Tensor:
     tgvf_prefix, tgvf_suffix = render_tgvf_prefix_suffix(
         protocol=protocol,
-        include_leading_im_end=protocol != PROTOCOL_C_TOOL_OBSERVATION,
+        include_leading_im_end=not protocol_uses_tool_observation(protocol),
     )
     return _bracketed_visual_token_ids(
         processor,
@@ -1180,7 +1201,7 @@ def _multi_intermediate_readout_ids_weights(
         text = f"{EVIDENCE_START}{evidence}{EVIDENCE_END}\n"
         evidence_start = text.find(EVIDENCE_START) + len(EVIDENCE_START)
         evidence_end = text.find(EVIDENCE_END, evidence_start)
-    elif protocol == PROTOCOL_E_ACTION_EVIDENCE_SPECIAL:
+    elif protocol_uses_evidence_tags(protocol):
         text = f"<|evidence_start|>{evidence}<|evidence_end|>\n"
         evidence_start = text.find(evidence)
         evidence_end = evidence_start + len(evidence)
@@ -1219,7 +1240,7 @@ def _multi_final_readout_ids_weights(
         evidence_description=evidence,
         answer=answer,
         protocol=protocol,
-        append_im_end=protocol == PROTOCOL_C_TOOL_OBSERVATION,
+        append_im_end=protocol_uses_tool_observation(protocol),
     )
     if protocol == "legacy_v3_tags":
         evidence_start = text.find(EVIDENCE_START) + len(EVIDENCE_START)
