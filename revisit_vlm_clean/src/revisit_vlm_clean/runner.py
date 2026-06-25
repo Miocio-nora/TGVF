@@ -284,6 +284,7 @@ class TGVFStage2Qwen3Backend(CleanRunnerBackend):
         self._evaluator: Any | None = None
 
     def prepare(self, config: RunConfig) -> None:
+        _reject_unported_deepstack_execution(config, backend=STAGE2_LEGACY_BACKEND)
         self.stage2_config.validate()
         args = build_legacy_stage2_args(
             runtime=self.stage2_config,
@@ -426,6 +427,7 @@ class TGVFStage2Qwen3NativeBackend(CleanRunnerBackend):
         )
 
     def prepare(self, config: RunConfig) -> None:
+        _reject_unported_deepstack_execution(config, backend=STAGE2_NATIVE_BACKEND)
         self._engine.prepare(config)
 
     def run(
@@ -500,6 +502,17 @@ def make_backend(
             backend_config=backend_config,
         )
     raise ValueError(f"unknown clean runner backend: {backend_config.backend}")
+
+
+def _reject_unported_deepstack_execution(config: RunConfig, *, backend: str) -> None:
+    if not config.deepstack.enabled:
+        return
+    raise NotImplementedError(
+        "DeepStack execution is not implemented for clean Stage2 benchmark backends yet "
+        f"(backend={backend}, scope={config.deepstack.original_image_scope}). "
+        "The run config may record DeepStack identity, but real evaluation must not "
+        "claim DeepStack behavior until original-image DeepStack injection/masking is ported."
+    )
 
 
 def run_benchmark_rows(

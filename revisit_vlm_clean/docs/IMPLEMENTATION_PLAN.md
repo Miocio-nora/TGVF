@@ -667,6 +667,9 @@ Implemented after Phase 22.
   - a temporary historical reference command for auditability;
 - the historical reference command is explicitly marked as
   `temporary_legacy_reference_not_final_clean_native`;
+- launch plans now also include a machine-readable `clean_native_training`
+  status so the final clean-native executor gap is explicit and cannot be
+  confused with the historical reference command;
 - if Stage2 DeepStack training semantics are enabled, the launcher records the
   intended state but marks the historical command non-executable, because the
   old Stage2 script has no DeepStack training controls.
@@ -677,6 +680,7 @@ Artifacts written by `--write-plan`:
 training_plan.json
 training_plan.txt
 dataset_identity.json
+clean_native_training_status.json
 legacy_reference_command.sh
 ```
 
@@ -1023,10 +1027,37 @@ Implemented after Phase 31.
 This prevents a run from recording one clean subset/population name while
 actually materializing a different manifest.
 
+## Phase 33: DeepStack Execution and Training Status Guards
+
+Implemented after Phase 32.
+
+- real Stage2 benchmark backends now reject `deepstack.enabled=true` during
+  backend prepare:
+  - `tgvf_stage2_qwen3_native`;
+  - `tgvf_stage2_qwen3_legacy`;
+- dry/materialize/render paths may still record DeepStack identity, but real
+  model execution cannot silently claim DeepStack behavior until original-image
+  DeepStack injection/masking is ported;
+- Stage1/Stage2 training plans now write:
+  - `clean_native_training` inside `training_plan.json`;
+  - `clean_native_training_status.json`;
+- the clean-native training status records:
+  - final clean-native executor is not implemented yet;
+  - legacy reference command is not final;
+  - blockers for native dataloader/runtime execution, checkpoint parity, and
+    trainable-parameter audit;
+  - for Stage2 DeepStack plans, the additional blocker that DeepStack
+    original-image injection/masking is specified but not implemented by a clean
+    executor.
+
+This phase does not complete DeepStack execution support. It removes a silent
+false-positive path and makes the remaining final-clean training gap explicit.
+
 ## Later Phases
 
 1. Replace training launch plans with clean-native training execution.
-2. Full DeepStack training/eval execution support.
+2. Port DeepStack original-image injection/masking into clean training and eval
+   execution.
 3. Keep data generation first-class:
    - deterministic Stage1/Stage2 transforms stay in `tgvf_generate_data`;
    - heavy teacher trajectory generation is ported only when regeneration is

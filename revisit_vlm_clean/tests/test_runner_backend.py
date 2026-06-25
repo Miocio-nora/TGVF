@@ -1,5 +1,6 @@
 import inspect
 
+import pytest
 import revisit_vlm_clean.runner as runner_module
 import revisit_vlm_clean.stage2_native as stage2_native
 from revisit_vlm_clean.benchmark_data import BenchmarkSample
@@ -14,7 +15,13 @@ from revisit_vlm_clean.runner import (
     make_backend,
     resolve_backend_name,
 )
-from revisit_vlm_clean.schema import EvalMode, ForwardMode, RunConfig
+from revisit_vlm_clean.schema import (
+    DeepStackScope,
+    DeepStackState,
+    EvalMode,
+    ForwardMode,
+    RunConfig,
+)
 from revisit_vlm_clean.stage2_native import (
     NativeStage2Engine,
     NativeStage2RunResult,
@@ -30,6 +37,20 @@ def _run_config(mode: EvalMode = EvalMode.TGVF_FORCE) -> RunConfig:
         mode=mode,
         post_tgvf_forward_mode=ForwardMode.KV_CACHE,
         subset_id="core_smoke_256_seed20260625",
+    )
+
+
+def _deepstack_run_config() -> RunConfig:
+    return RunConfig(
+        run_id="stage2_deepstack",
+        checkpoint_path="outputs/checkpoint.pt",
+        mode=EvalMode.TGVF_FORCE,
+        post_tgvf_forward_mode=ForwardMode.KV_CACHE,
+        subset_id="core_smoke_256_seed20260625",
+        deepstack=DeepStackState(
+            enabled=True,
+            original_image_scope=DeepStackScope.THROUGH_ANSWER,
+        ),
     )
 
 
@@ -131,6 +152,26 @@ def test_stage2_native_backend_uses_clean_native_engine(monkeypatch, tmp_path) -
     assert result.focus_target == "needle"
     assert result.append_success is True
     assert result.debug == {"fake_native": True}
+
+
+def test_stage2_native_backend_rejects_unported_deepstack_execution(tmp_path) -> None:
+    backend = make_backend(
+        BackendConfig(backend=STAGE2_NATIVE_BACKEND, stage2=_runtime(tmp_path)),
+        config=_deepstack_run_config(),
+    )
+
+    with pytest.raises(NotImplementedError, match="DeepStack execution is not implemented"):
+        backend.prepare(_deepstack_run_config())
+
+
+def test_stage2_legacy_backend_rejects_unported_deepstack_execution(tmp_path) -> None:
+    backend = make_backend(
+        BackendConfig(backend=STAGE2_LEGACY_BACKEND, stage2=_runtime(tmp_path)),
+        config=_deepstack_run_config(),
+    )
+
+    with pytest.raises(NotImplementedError, match="DeepStack execution is not implemented"):
+        backend.prepare(_deepstack_run_config())
 
 
 def test_stage2_native_engine_records_identity_without_loading_runtime(tmp_path) -> None:

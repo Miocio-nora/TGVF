@@ -326,6 +326,7 @@ def build_stage1_launch_plan(
             "token_row_mode_whitelist": ["row_only"],
             "fvt_position_mode_whitelist": ["native_source_grid"],
         },
+        "clean_native_training": _clean_native_training_status(TrainingStage.STAGE1),
         "legacy_reference_command": _command_payload(command, executable=True),
     }
 
@@ -409,6 +410,10 @@ def build_stage2_launch_plan(
             "d_deepstack_features_default": False,
             "legacy_command_is_final": False,
         },
+        "clean_native_training": _clean_native_training_status(
+            TrainingStage.STAGE2,
+            deepstack_enabled=config.deepstack.enabled,
+        ),
         "legacy_reference_command": _command_payload(
             command or [],
             executable=legacy_executable,
@@ -425,6 +430,7 @@ def write_training_plan(output_dir: str | Path, plan: dict[str, Any]) -> dict[st
     plan_path = out / "training_plan.json"
     text_path = out / "training_plan.txt"
     dataset_path = out / "dataset_identity.json"
+    native_status_path = out / "clean_native_training_status.json"
     command_path = out / "legacy_reference_command.sh"
     plan_path.write_text(
         json.dumps(_to_jsonable(plan), indent=2, sort_keys=True) + "\n",
@@ -435,6 +441,15 @@ def write_training_plan(output_dir: str | Path, plan: dict[str, Any]) -> dict[st
         json.dumps(_to_jsonable(plan.get("dataset", {})), indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
+    native_status_path.write_text(
+        json.dumps(
+            _to_jsonable(plan.get("clean_native_training", {})),
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
     command = ((plan.get("legacy_reference_command") or {}).get("shell") or "").strip()
     command_path.write_text((command + "\n") if command else "# unavailable\n", encoding="utf-8")
     return {
@@ -442,6 +457,7 @@ def write_training_plan(output_dir: str | Path, plan: dict[str, Any]) -> dict[st
         "training_plan": str(plan_path),
         "training_plan_txt": str(text_path),
         "dataset_identity": str(dataset_path),
+        "clean_native_training_status": str(native_status_path),
         "legacy_reference_command": str(command_path),
     }
 
@@ -465,6 +481,32 @@ def _command_payload(
         "unavailable_reason": unavailable_reason,
         "argv": command,
         "shell": shlex.join(command) if command else "",
+    }
+
+
+def _clean_native_training_status(
+    stage: TrainingStage,
+    *,
+    deepstack_enabled: bool = False,
+) -> dict[str, Any]:
+    blockers = [
+        "native training dataloader/runtime execution has not been ported into revisit_vlm_clean",
+        "native checkpoint save/load parity with historical scripts is not yet proven",
+        "native trainable-parameter audit is not emitted by a clean executor",
+    ]
+    if stage == TrainingStage.STAGE2 and deepstack_enabled:
+        blockers.append(
+            "DeepStack original-image injection/masking is specified but not implemented "
+            "by a clean Stage2 executor"
+        )
+    return {
+        "stage": str(stage),
+        "executable": False,
+        "status": "not_implemented",
+        "required_for_final_clean_project": True,
+        "legacy_reference_is_final": False,
+        "current_artifact": "auditable launch plan only",
+        "blocking_items": blockers,
     }
 
 
@@ -643,6 +685,13 @@ def _training_plan_text(plan: dict[str, Any]) -> str:
         ),
     ]
     command = plan.get("legacy_reference_command") or {}
+    native = plan.get("clean_native_training") or {}
+    lines.extend(
+        [
+            f"clean_native_training_executable: {native.get('executable')}",
+            f"clean_native_training_status: {native.get('status')}",
+        ]
+    )
     lines.extend(
         [
             f"legacy_reference_executable: {command.get('executable')}",

@@ -124,6 +124,10 @@ def test_stage1_training_write_plan_cli(tmp_path) -> None:
         "world_size": 4,
     }
     assert plan["training"]["token_row_mode"] == "row_only"
+    assert plan["clean_native_training"]["executable"] is False
+    assert plan["clean_native_training"]["required_for_final_clean_project"] is True
+    native_status = json.loads((output_dir / "clean_native_training_status.json").read_text())
+    assert native_status["status"] == "not_implemented"
     command = (output_dir / "legacy_reference_command.sh").read_text()
     assert "torchrun --nproc-per-node 4" in command
     assert "--gradient-accumulation-steps 2" in command
@@ -178,6 +182,9 @@ def test_stage2_training_write_plan_cli(tmp_path) -> None:
     assert plan["batch"]["gradient_accumulation_steps"] == 8
     assert plan["mask_policy"]["mask_original_image_after_tgvf_scope"] == "through_answer"
     assert plan["loss"]["weighted_span_loss"]["focus_target"] == 1.5
+    assert plan["clean_native_training"]["executable"] is False
+    assert plan["clean_native_training"]["legacy_reference_is_final"] is False
+    assert (output_dir / "clean_native_training_status.json").exists()
     command = (output_dir / "legacy_reference_command.sh").read_text()
     assert "--mask-original-image-after-tgvf-scope through_answer" in command
     assert "--loss-focus-target 1.5" in command
@@ -215,7 +222,9 @@ def test_stage2_deepstack_plan_disables_legacy_command(tmp_path, capsys) -> None
     payload = capsys.readouterr().out
     assert '"enabled": true' in payload
     assert '"original_image_scope": "evidence_only"' in payload
+    assert '"clean_native_training"' in payload
     assert '"executable": false' in payload
+    assert "DeepStack original-image injection/masking" in payload
     assert "historical Stage2 script has no DeepStack training controls" in payload
 
 

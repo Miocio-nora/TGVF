@@ -383,6 +383,8 @@ Resolved rule:
 Still required for implementation:
 
 - expose DeepStack state in canonical `run_config.json` and merged summaries;
+- real model execution with `deepstack.enabled=true` must fail fast until
+  original-image DeepStack injection/masking semantics are implemented;
 - keep prompt/continuation/parser/sample identity fixed when comparing forward
   paths;
 - add a smoke check that native no-DeepStack and manual no-DeepStack are
@@ -430,6 +432,9 @@ The clean benchmark runner must support:
 - sample manifest / sample identity export;
 - parser/scorer identity export;
 - DeepStack state export;
+- DeepStack execution guard: identity-only dry/materialize/render may record
+  DeepStack state, but model execution must not silently run without the
+  requested DeepStack behavior;
 - max image resolution export;
 - exact checkpoint and processor export;
 - row outputs, merged summary, and canonical `run_config.json`.
