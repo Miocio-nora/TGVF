@@ -2370,7 +2370,7 @@ entry, update this file immediately.
 
 ### EXP-20260625-191315-qwen3-other-benchmarks-nokv-19-vs-075
 
-- Status: RUNNING.
+- Status: STOPPED.
 - Question:
   - Compare the 20260619 open-answer checkpoint and the 20260623 prob=0.75
     through-answer checkpoint on non-BLINK benchmarks under the no-KV
@@ -2455,6 +2455,81 @@ entry, update this file immediately.
     comparison from this interrupted run.
   - The HR softforce/no-KV path needs inspection before running OCR full; OCR
     would otherwise inherit the same long-generation risk.
+- Ledger correction:
+  - Status was left as `RUNNING` after the 2026-06-25 stop. Updated to
+    `STOPPED` on 2026-06-26 before launching clean-native smoke work; no new
+    metrics were added.
+
+### EXP-20260626-030329-clean-native-stage2-vstar1-smoke
+
+- Status: PLANNED.
+- Question:
+  - Does the clean-native `tgvf_stage2_qwen3_native` backend load and execute a
+    one-sample Qwen3 Stage2 TGVF force smoke without using the historical
+    `Stage2ProtocolEvaluator` class?
+- Baseline anchor:
+  - Diagnostic only; not a benchmark comparison.
+  - Uses `BASE-20260619-open-answer-rowonly` checkpoint because it is a known
+    working open-answer Qwen3 Stage2 artifact.
+- Intended diff:
+  - Use the clean project backend `tgvf_stage2_qwen3_native` instead of the
+    historical Stage2 evaluator bridge.
+  - Use committed diagnostic manifest
+    `revisit_vlm_clean/benchmark_manifests/diagnostic_vstar_first_1_20260626.json`.
+- Allowed changed variables:
+  - Backend implementation path: clean-native only.
+  - Output directory for smoke artifacts.
+- Not allowed to change:
+  - Checkpoint and processor identity.
+  - Manifest sample id/hash.
+  - Protocol: `protocol_c_tool_observation`.
+  - Mode: `tgvf_force`.
+  - Forward mode: `kv_cache`.
+  - Continuation: `natural_continue`.
+  - Max image resolution: 512.
+  - Scoring backend: `auto`.
+- Code commit / worktree:
+  - Commit: `b9f73886bc7a360231a7c932ee89ad0f78e16dad`.
+  - Worktree will be dirty only from this ledger preflight entry during launch.
+- Stage1 checkpoint:
+  - Not used directly by benchmark runner.
+- Stage1 processor:
+  - Not used directly by benchmark runner.
+- Stage2 checkpoint/output:
+  - `outputs/tgvf_v3_protocol_c/protocol_c_toolobs_stage2_v4data_clean_imend_open_answer_multifocus_focus_imend_from_2gpu_stage1_bidirectional_2gpu_bs16_accum4_focus80_value1_1200step_20260619_014148/checkpoint_step_1200.pt`
+- Stage2 processor:
+  - `outputs/tgvf_v3_protocol_c/protocol_c_toolobs_stage2_v4data_clean_imend_open_answer_multifocus_focus_imend_from_2gpu_stage1_bidirectional_2gpu_bs16_accum4_focus80_value1_1200step_20260619_014148/processor_step_1200`
+- Train data:
+  - Not used.
+- Validation data:
+  - Stage2 runtime identity file:
+    `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend_open_answer/splits/tgvf_v4_teacher_stage2_protocol_c.test.jsonl`
+  - Diagnostic manifest:
+    `revisit_vlm_clean/benchmark_manifests/diagnostic_vstar_first_1_20260626.json`
+  - Manifest hash:
+    `851e301ea0730ee90086c83565135fa5c5fcc5d33b962fd074444d85241d6995`
+  - Benchmark source:
+    `/home/dredvpn009/Flash_Storage/datasets/benchmarks/vstar_bench/snapshot/test_questions.jsonl`
+  - Sample count: 1.
+- Benchmark output:
+  - `outputs/clean_native_smoke/qwen3_stage2_native_vstar1_force_20260626_030329`
+- Script / command:
+  - Planned command:
+    `CUDA_VISIBLE_DEVICES=2 PYTHONPATH=revisit_vlm_clean/src:src python -m revisit_vlm_clean.cli.benchmark --run-id clean_native_stage2_vstar1_force_20260626_030329 --checkpoint-path outputs/tgvf_v3_protocol_c/protocol_c_toolobs_stage2_v4data_clean_imend_open_answer_multifocus_focus_imend_from_2gpu_stage1_bidirectional_2gpu_bs16_accum4_focus80_value1_1200step_20260619_014148/checkpoint_step_1200.pt --model-id /nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking --processor-id outputs/tgvf_v3_protocol_c/protocol_c_toolobs_stage2_v4data_clean_imend_open_answer_multifocus_focus_imend_from_2gpu_stage1_bidirectional_2gpu_bs16_accum4_focus80_value1_1200step_20260619_014148/processor_step_1200 --mode tgvf_force --post-tgvf-forward-mode kv_cache --subset-id diagnostic_vstar_first_1_20260626 --manifest-path revisit_vlm_clean/benchmark_manifests/diagnostic_vstar_first_1_20260626.json --manifest-hash 851e301ea0730ee90086c83565135fa5c5fcc5d33b962fd074444d85241d6995 --benchmark-root /home/dredvpn009/Flash_Storage/datasets/benchmarks --output-dir outputs/clean_native_smoke/qwen3_stage2_native_vstar1_force_20260626_030329 --max-image-resolution 512 --max-action-tokens 64 --max-answer-tokens 64 --tgvf-protocol protocol_c_tool_observation --scoring-backend auto --runner-backend tgvf_stage2_qwen3_native --dtype bfloat16 --device cuda:0 --device-map cuda:0 --attn-implementation sdpa --stage2-checkpoint outputs/tgvf_v3_protocol_c/protocol_c_toolobs_stage2_v4data_clean_imend_open_answer_multifocus_focus_imend_from_2gpu_stage1_bidirectional_2gpu_bs16_accum4_focus80_value1_1200step_20260619_014148/checkpoint_step_1200.pt --stage2-eval-jsonl data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend_open_answer/splits/tgvf_v4_teacher_stage2_protocol_c.test.jsonl --stage2-d-condition correct_D --force-prefix-mode target_hint --execute`
+- GPUs:
+  - Planned: physical GPU 2 via `CUDA_VISIBLE_DEVICES=2`, runtime device
+    `cuda:0`.
+- tmux:
+  - None planned unless foreground command exceeds interactive runtime.
+- Started:
+- Finished:
+- Metrics:
+- Analysis:
+- Conclusion:
+- Comparable to baseline:
+  - No. Diagnostic smoke only.
+- Follow-up:
+  - If native smoke fails, fix clean-native runtime before any benchmark claim.
 
 ### DIAG-20260625-qwen3-native-vs-manual-prefix-cache
 

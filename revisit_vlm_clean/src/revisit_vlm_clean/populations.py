@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Iterable
 
 from .defaults import DEFAULT_CORE_DEV_SHORT_NAME, DEFAULT_CORE_DEV_SUBSET_ID
 
@@ -105,15 +105,36 @@ SUBSETS: dict[str, SubsetSpec] = {
         purpose="Main fast experimental comparison subset with balanced benchmark/task coverage.",
         allocations=(
             SubsetAllocation("vstar_test_questions_191", 191, "full population"),
-            SubsetAllocation("hr_bench_4k_800", 200, "balance category, cycle_category, and answer"),
-            SubsetAllocation("blink_val_all_subtasks_1901", 420, "14 subtasks, 30 rows per subtask"),
-            SubsetAllocation("ocrbench_v2_data_test_10000", 600, "30 type values, 20 rows per type"),
-            SubsetAllocation("mmmu_pro_standard10_test_1730", 300, "30 subjects, 10 rows per subject"),
-            SubsetAllocation("mathvista_testmini_1000", 300, "balance question_type and answer_type"),
+            SubsetAllocation(
+                "hr_bench_4k_800",
+                200,
+                "balance category, cycle_category, and answer",
+            ),
+            SubsetAllocation(
+                "blink_val_all_subtasks_1901",
+                420,
+                "14 subtasks, 30 rows per subtask",
+            ),
+            SubsetAllocation(
+                "ocrbench_v2_data_test_10000",
+                600,
+                "30 type values, 20 rows per type",
+            ),
+            SubsetAllocation(
+                "mmmu_pro_standard10_test_1730",
+                300,
+                "30 subjects, 10 rows per subject",
+            ),
+            SubsetAllocation(
+                "mathvista_testmini_1000",
+                300,
+                "balance question_type and answer_type",
+            ),
             SubsetAllocation(
                 "mathverse_testmini_3940",
                 500,
-                "5 problem_version values, 100 rows each, balanced across question_type where possible",
+                "5 problem_version values, 100 rows each, balanced across question_type "
+                "where possible",
             ),
         ),
     ),
@@ -125,6 +146,45 @@ SUBSETS: dict[str, SubsetSpec] = {
         allocations=tuple(
             SubsetAllocation(population.population_id, population.n, "full population")
             for population in CORE_POPULATIONS.values()
+        ),
+    ),
+    "diagnostic_vstar_first_1_20260626": SubsetSpec(
+        subset_id="diagnostic_vstar_first_1_20260626",
+        short_name="DiagVStarFirst-1",
+        n=1,
+        purpose="One fixed VStar row for runner/backend smoke validation only.",
+        allocations=(
+            SubsetAllocation(
+                "vstar_test_questions_191",
+                1,
+                "first vstar sample from committed CoreSmoke manifest",
+            ),
+        ),
+    ),
+    "diagnostic_vstar_core_smoke_first_8_20260626": SubsetSpec(
+        subset_id="diagnostic_vstar_core_smoke_first_8_20260626",
+        short_name="DiagVStarCoreSmokeFirst-8",
+        n=8,
+        purpose="Eight fixed VStar rows for runner/backend smoke validation only.",
+        allocations=(
+            SubsetAllocation(
+                "vstar_test_questions_191",
+                8,
+                "first eight VStar samples from committed CoreSmoke manifest",
+            ),
+        ),
+    ),
+    "diagnostic_vstar_core_smoke_32_20260626": SubsetSpec(
+        subset_id="diagnostic_vstar_core_smoke_32_20260626",
+        short_name="DiagVStarCoreSmoke-32",
+        n=32,
+        purpose="Thirty-two fixed VStar rows for runner/backend smoke validation only.",
+        allocations=(
+            SubsetAllocation(
+                "vstar_test_questions_191",
+                32,
+                "all VStar rows from committed CoreSmoke manifest",
+            ),
         ),
     ),
 }
