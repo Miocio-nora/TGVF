@@ -14,6 +14,32 @@ executable code from this repository just because an item is marked out here.
 
 ## Confirmed In
 
+### Data Generation Mainline
+
+Data generation is a first-class clean-project surface, not a side branch.
+
+- Keep the clean `tgvf_generate_data` entry point.
+- Keep deterministic, local transforms as clean-native code:
+  - `choice_to_open_answer`;
+  - `clean_imend`;
+  - V4 teacher rows to Protocol-C Stage1 focus data;
+  - V4 teacher rows to Protocol-C Stage2 conversation data.
+- Each generated dataset must record:
+  - source manifest path/hash or source run id;
+  - prompt/schema/protocol version;
+  - transform names and parameters;
+  - split policy and split hashes;
+  - field/span weights;
+  - focus/no-focus rules;
+  - mask behavior, mask probability, and mask scope;
+  - `im_end` policy.
+- Heavy teacher trajectory generation should remain available, but it is only
+  required in the clean project when we regenerate teacher traces. Existing
+  generated runs can be consumed by explicit path/hash identity.
+- Do not mix generated-data identity with training launch defaults. Training
+  launchers must consume generated JSONL by explicit path/hash and print that
+  identity before launch.
+
 ### Main Qwen3 Protocol
 
 - `protocol_c_tool_observation`.

@@ -758,7 +758,8 @@ land.
 
 Data generation remains a clean first-class asset in this tree. The deterministic
 Stage2/Stage1 transforms should be preserved; only heavy teacher trajectory
-generation remains to be ported.
+generation remains to be ported when we need to regenerate teacher traces rather
+than consume existing committed/generated runs.
 
 Validation:
 
@@ -960,10 +961,51 @@ This phase validates clean-native Stage2 softforce against the legacy bridge on
 a small mixed manifest with both triggered and no-trigger rows. It is still not
 a benchmark claim; no-KV and clean benchmark subset boundaries remain pending.
 
+## Phase 31: Stage2 Native No-KV Legacy Comparison
+
+Implemented after Phase 30.
+
+- ran clean-native and legacy bridge on the same fixed 8-row VStar manifest:
+  - manifest: `diagnostic_vstar_core_smoke_first_8_20260626`;
+  - manifest hash:
+    `3a6020b145c1543be3fc8a5541c17d00b4fc5d27aeddbecb90a10417d25c84f4`;
+  - mode: `tgvf_softforce`;
+  - prompt text: `Use focus tool.`;
+  - forward mode: `no_kv_full_sequence`;
+  - checkpoint: `BASE-20260619-open-answer-rowonly` Stage2 checkpoint;
+- outputs:
+  - native:
+    `outputs/clean_native_smoke/qwen3_stage2_native_vstar8_softforce_nokv_20260626_034311`;
+  - legacy:
+    `outputs/clean_native_smoke/qwen3_stage2_legacy_vstar8_softforce_nokv_20260626_034311`;
+- aggregate metrics matched exactly:
+  - n: 8;
+  - accuracy: 0.625;
+  - answer parse rate: 1.0;
+  - trigger rate: 0.25;
+  - focus valid rate: 0.25;
+  - append success rate: 1.0 over triggered rows;
+  - malformed rate: 0.0;
+- per-row outputs matched exactly for:
+  - trigger decision;
+  - focus validity;
+  - append success;
+  - parsed answer;
+  - score;
+  - focus target;
+  - raw output.
+
+Compared with the Phase 30 KV comparison, aggregate metrics, parsed answers,
+and scores were unchanged. One triggered row changed only explanatory wording.
+This validates clean-native no-KV/full-sequence parity with the legacy bridge on
+the fixed diagnostic manifest; it is still not a benchmark-scale effect claim.
+
 ## Later Phases
 
-1. Port teacher trajectory generation into `tgvf_generate_data`.
-2. Replace training launch plans with clean-native training execution.
-3. Run clean-native no-KV validation on a fixed diagnostic manifest.
-4. Clean benchmark subset boundaries for CoreSmoke/CoreDev execution.
-5. Full DeepStack training/eval execution support.
+1. Replace training launch plans with clean-native training execution.
+2. Clean benchmark subset boundaries for CoreSmoke/CoreDev execution.
+3. Full DeepStack training/eval execution support.
+4. Keep data generation first-class:
+   - deterministic Stage1/Stage2 transforms stay in `tgvf_generate_data`;
+   - heavy teacher trajectory generation is ported only when regeneration is
+     needed, with source manifest/hash and prompt/schema identity recorded.

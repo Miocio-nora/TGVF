@@ -2993,6 +2993,117 @@ entry, update this file immediately.
   - Run official small CoreSmoke slices only after the benchmark naming/sample
     rules are pinned in clean docs.
 
+### EXP-20260626-034311-clean-native-vs-legacy-vstar8-softforce-nokv
+
+- Status: DONE.
+- Question:
+  - Do clean-native and legacy Stage2 softforce agree on the same fixed 8-row
+    VStar diagnostic manifest under `no_kv_full_sequence` post-D continuation?
+- Baseline anchor:
+  - KV comparison:
+    `EXP-20260626-033554-clean-native-vs-legacy-vstar8-softforce`.
+- Intended diff:
+  - Change only `post_tgvf_forward_mode` from `kv_cache` to
+    `no_kv_full_sequence`.
+- Allowed changed variables:
+  - Forward mode.
+  - Output directories.
+- Not allowed to change:
+  - Checkpoint and processor identity.
+  - Manifest sample ids/hash.
+  - Protocol: `protocol_c_tool_observation`.
+  - Mode: `tgvf_softforce`.
+  - Softforce prompt text: `Use focus tool.`
+  - Continuation: `natural_continue`.
+  - Max image resolution: 512.
+  - Scoring backend: `auto`.
+- Code commit / worktree:
+  - Commit: `92ccb82eb44eab9792aa86b205c35327c38c4509`.
+  - Worktree dirty only from this RUNNING ledger update at launch.
+- Stage1 checkpoint:
+  - Not used directly by benchmark runner.
+- Stage1 processor:
+  - Not used directly by benchmark runner.
+- Stage2 checkpoint/output:
+  - `outputs/tgvf_v3_protocol_c/protocol_c_toolobs_stage2_v4data_clean_imend_open_answer_multifocus_focus_imend_from_2gpu_stage1_bidirectional_2gpu_bs16_accum4_focus80_value1_1200step_20260619_014148/checkpoint_step_1200.pt`
+- Stage2 processor:
+  - `outputs/tgvf_v3_protocol_c/protocol_c_toolobs_stage2_v4data_clean_imend_open_answer_multifocus_focus_imend_from_2gpu_stage1_bidirectional_2gpu_bs16_accum4_focus80_value1_1200step_20260619_014148/processor_step_1200`
+- Train data:
+  - Not used.
+- Validation data:
+  - Stage2 runtime identity file:
+    `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend_open_answer/splits/tgvf_v4_teacher_stage2_protocol_c.test.jsonl`
+  - Diagnostic manifest:
+    `revisit_vlm_clean/benchmark_manifests/diagnostic_vstar_core_smoke_first_8_20260626.json`
+  - Manifest hash:
+    `3a6020b145c1543be3fc8a5541c17d00b4fc5d27aeddbecb90a10417d25c84f4`
+  - Benchmark source:
+    `/home/dredvpn009/Flash_Storage/datasets/benchmarks/vstar_bench/snapshot/test_questions.jsonl`
+  - Sample count: 8.
+- Benchmark output:
+  - Native:
+    `outputs/clean_native_smoke/qwen3_stage2_native_vstar8_softforce_nokv_20260626_034311`
+  - Legacy:
+    `outputs/clean_native_smoke/qwen3_stage2_legacy_vstar8_softforce_nokv_20260626_034311`
+- Script / command:
+  - Native:
+    `CUDA_VISIBLE_DEVICES=4 PYTHONPATH=revisit_vlm_clean/src:src python -m revisit_vlm_clean.cli.benchmark --run-id clean_native_stage2_vstar8_softforce_nokv_20260626_034311 --checkpoint-path outputs/tgvf_v3_protocol_c/protocol_c_toolobs_stage2_v4data_clean_imend_open_answer_multifocus_focus_imend_from_2gpu_stage1_bidirectional_2gpu_bs16_accum4_focus80_value1_1200step_20260619_014148/checkpoint_step_1200.pt --model-id /nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking --processor-id outputs/tgvf_v3_protocol_c/protocol_c_toolobs_stage2_v4data_clean_imend_open_answer_multifocus_focus_imend_from_2gpu_stage1_bidirectional_2gpu_bs16_accum4_focus80_value1_1200step_20260619_014148/processor_step_1200 --mode tgvf_softforce --softforce-prompt-text "Use focus tool." --post-tgvf-forward-mode no_kv_full_sequence --subset-id diagnostic_vstar_core_smoke_first_8_20260626 --manifest-path revisit_vlm_clean/benchmark_manifests/diagnostic_vstar_core_smoke_first_8_20260626.json --manifest-hash 3a6020b145c1543be3fc8a5541c17d00b4fc5d27aeddbecb90a10417d25c84f4 --benchmark-root /home/dredvpn009/Flash_Storage/datasets/benchmarks --output-dir outputs/clean_native_smoke/qwen3_stage2_native_vstar8_softforce_nokv_20260626_034311 --max-image-resolution 512 --max-action-tokens 64 --max-answer-tokens 64 --tgvf-protocol protocol_c_tool_observation --scoring-backend auto --runner-backend tgvf_stage2_qwen3_native --dtype bfloat16 --device cuda:0 --device-map cuda:0 --attn-implementation sdpa --stage2-checkpoint outputs/tgvf_v3_protocol_c/protocol_c_toolobs_stage2_v4data_clean_imend_open_answer_multifocus_focus_imend_from_2gpu_stage1_bidirectional_2gpu_bs16_accum4_focus80_value1_1200step_20260619_014148/checkpoint_step_1200.pt --stage2-eval-jsonl data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend_open_answer/splits/tgvf_v4_teacher_stage2_protocol_c.test.jsonl --stage2-d-condition correct_D --force-prefix-mode target_hint --execute`
+  - Legacy:
+    `CUDA_VISIBLE_DEVICES=5 PYTHONPATH=revisit_vlm_clean/src:src python -m revisit_vlm_clean.cli.benchmark --run-id legacy_stage2_vstar8_softforce_nokv_20260626_034311 --checkpoint-path outputs/tgvf_v3_protocol_c/protocol_c_toolobs_stage2_v4data_clean_imend_open_answer_multifocus_focus_imend_from_2gpu_stage1_bidirectional_2gpu_bs16_accum4_focus80_value1_1200step_20260619_014148/checkpoint_step_1200.pt --model-id /nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking --processor-id outputs/tgvf_v3_protocol_c/protocol_c_toolobs_stage2_v4data_clean_imend_open_answer_multifocus_focus_imend_from_2gpu_stage1_bidirectional_2gpu_bs16_accum4_focus80_value1_1200step_20260619_014148/processor_step_1200 --mode tgvf_softforce --softforce-prompt-text "Use focus tool." --post-tgvf-forward-mode no_kv_full_sequence --subset-id diagnostic_vstar_core_smoke_first_8_20260626 --manifest-path revisit_vlm_clean/benchmark_manifests/diagnostic_vstar_core_smoke_first_8_20260626.json --manifest-hash 3a6020b145c1543be3fc8a5541c17d00b4fc5d27aeddbecb90a10417d25c84f4 --benchmark-root /home/dredvpn009/Flash_Storage/datasets/benchmarks --output-dir outputs/clean_native_smoke/qwen3_stage2_legacy_vstar8_softforce_nokv_20260626_034311 --max-image-resolution 512 --max-action-tokens 64 --max-answer-tokens 64 --tgvf-protocol protocol_c_tool_observation --scoring-backend auto --runner-backend tgvf_stage2_qwen3_legacy --dtype bfloat16 --device cuda:0 --device-map cuda:0 --attn-implementation sdpa --stage2-checkpoint outputs/tgvf_v3_protocol_c/protocol_c_toolobs_stage2_v4data_clean_imend_open_answer_multifocus_focus_imend_from_2gpu_stage1_bidirectional_2gpu_bs16_accum4_focus80_value1_1200step_20260619_014148/checkpoint_step_1200.pt --stage2-eval-jsonl data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend_open_answer/splits/tgvf_v4_teacher_stage2_protocol_c.test.jsonl --stage2-d-condition correct_D --force-prefix-mode target_hint --execute`
+- GPUs:
+  - Native: physical GPU 4 via `CUDA_VISIBLE_DEVICES=4`.
+  - Legacy: physical GPU 5 via `CUDA_VISIBLE_DEVICES=5`.
+- tmux:
+  - None planned unless foreground command exceeds interactive runtime.
+- Started:
+  - 2026-06-26T03:43:11+09:00.
+- Finished:
+  - 2026-06-26T03:52:28+09:00.
+- Metrics:
+  - Clean-native and legacy no-KV summaries matched exactly:
+    - `n_rows=8`.
+    - `n_scored=8`.
+    - `accuracy=0.625`.
+    - `answer_parse_rate=1.0`.
+    - `trigger_rate=0.25`.
+    - `focus_valid_rate=0.25`.
+    - `append_success_rate=1.0` over triggered rows.
+    - `malformed_rate=0.0`.
+  - Triggered sample ids:
+    - `vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/87_000087`
+    - `vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/53_000053`
+  - Wrong sample ids:
+    - `vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/9_000009`
+    - `vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/145_000145`
+    - `vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/65_000065`
+  - Native-vs-legacy row diff:
+    - `0/8` differences for sample id, trigger decision, focus validity,
+      append success, parsed answer, score, raw output, focus target, error,
+      malformed flag, and parse-success flag.
+  - Compared to KV baseline
+    `EXP-20260626-033554-clean-native-vs-legacy-vstar8-softforce`:
+    - aggregate metrics were unchanged;
+    - parsed answers and scores were unchanged;
+    - one triggered row changed only explanation wording:
+      `vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/53_000053`.
+- Analysis:
+  - The clean-native `no_kv_full_sequence` path aligns with the diagnostic
+    legacy bridge on this fixed VStar-8 softforce manifest.
+  - The CLI manifest hash for this run is the clean stable manifest hash
+    embedded in the manifest payload (`3a6020...`), not the raw file
+    `sha256sum` (`afaf6427...`) that includes the embedded hash field itself.
+  - Both outputs record DeepStack disabled and original-image scope off, so this
+    validates clean-native parity for the current clean default only.
+- Conclusion:
+  - PASS for clean-native Stage2 Qwen3 softforce no-KV/full-sequence diagnostic
+    parity against the legacy bridge on the fixed 8-row VStar manifest.
+  - This is not a benchmark-scale effect claim.
+- Comparable to baseline:
+  - Diagnostic comparison only.
+- Follow-up:
+  - Use larger fixed clean subsets only after benchmark subset boundaries and
+    scorer identity are pinned.
+
 ### DIAG-20260625-qwen3-native-vs-manual-prefix-cache
 
 - Status: DONE.
