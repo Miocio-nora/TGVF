@@ -9,6 +9,26 @@ Completed before this skeleton was created:
 - excluded local assets: `logs/`, `logs/tgvf_v4_teacher_50k.pid`,
   `third_party/VLMEvalKit/`
 
+## Current Boundary: Data Generation
+
+Data generation is treated as clean-native, not as a legacy bridge.
+
+- keep `tgvf_generate_data` in the final clean project;
+- preserve the deterministic transforms already ported into
+  `revisit_vlm_clean.data_generation`:
+  - `v4_to_protocol_c`;
+  - `v4_to_stage1_protocol_c_focus`;
+  - `choice_to_open_answer`;
+  - `clean_imend`;
+- require source path/hash, transform, protocol, schema, split/hash, field
+  weights, mask policy, and output file identities for every generated split;
+- do not rewrite this path as part of the current training/eval cleanup;
+- keep heavy teacher trajectory generation as an upstream trace-production path
+  until we intentionally regenerate traces.
+
+The active cleanup risk is training/eval execution identity, not deterministic
+data conversion.
+
 ## Phase 1: Skeleton
 
 Completed in commit `20a598c`.

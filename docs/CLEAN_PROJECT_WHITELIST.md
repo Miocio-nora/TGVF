@@ -21,6 +21,11 @@ deterministic dataset builders are already relatively clean, so the clean
 project should preserve and wrap that path rather than rewrite it as part of
 the current execution cleanup.
 
+Boundary decision: data generation is not the main cleanup risk. Treat the
+deterministic transform path as clean-native code that needs identity records,
+tests, and schema/version discipline, not as a legacy bridge to be replaced
+before training/eval cleanup can proceed.
+
 - Keep the clean `tgvf_generate_data` entry point.
 - Keep deterministic, local transforms as clean-native code:
   - `choice_to_open_answer`;
