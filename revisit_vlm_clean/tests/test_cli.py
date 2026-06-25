@@ -332,3 +332,107 @@ def test_generate_data_execute_v4_to_protocol_c(tmp_path) -> None:
     report = (output_dir / "transform_report.json").read_text()
     assert '"written_single_focus": 1' in report
     assert '"written_direct_answer": 1' in report
+
+
+def test_generate_data_execute_v4_to_stage1_protocol_c_focus(tmp_path) -> None:
+    input_root = tmp_path / "inputs"
+    input_root.mkdir()
+    source = input_root / "teacher.accepted.jsonl"
+    records = [
+        {
+            "item_type": "multi_refocus",
+            "teacher_prompt_version": "tgvf_v4_teacher",
+            "schema_version": "tgvf_teacher_schema_v4",
+            "image": "/tmp/chart.png",
+            "stable_image_uid": "toy:chart",
+            "source_dataset": "toy",
+            "source_profile": "chart",
+            "question": "Which bar is closest to 100?",
+            "choices": [{"label": "A", "text": "Capital"}, {"label": "B", "text": "Goods"}],
+            "answer": "A. Capital",
+            "answer_text": "Capital",
+            "answer_format": "multiple_choice",
+            "evidence_types": ["chart_value"],
+            "confidence": 0.8,
+            "uid": "toy:multi:0",
+            "question_type": "math_reasoning",
+            "focus_category": "chart_table_region",
+            "trace": [
+                {"type": "think", "text": "Need to find bars near 100."},
+                {
+                    "type": "focus",
+                    "focus_text": "bars near the 100 mark",
+                    "focused_evidence": "Capital at 93.47 and Goods at 49.58 are nearest.",
+                    "metadata": {
+                        "confidence": 0.95,
+                        "focus_descriptor_cues": ["chart_anchor", "number_like"],
+                        "target_leakage_risk": "low",
+                        "evidence_type": "chart_value",
+                    },
+                },
+                {"type": "think", "text": "Need the exact label for 93.47."},
+                {
+                    "type": "focus",
+                    "focus_text": "the label under the 93.47 bar",
+                    "focused_evidence": "The 93.47 bar is labeled Capital.",
+                    "metadata": {
+                        "confidence": 0.96,
+                        "focus_descriptor_cues": ["chart_anchor", "text_like"],
+                        "target_leakage_risk": "low",
+                        "evidence_type": "chart_value",
+                    },
+                },
+                {"type": "answer", "text": "A. Capital"},
+            ],
+        },
+        {
+            "item_type": "no_refocus_answer",
+            "image": "/tmp/chart.png",
+            "question": "Is the title visible?",
+            "answer": "yes",
+            "trace": [{"type": "think", "text": "The title is clear."}],
+        },
+    ]
+    source.write_text("\n".join(json.dumps(record) for record in records) + "\n", encoding="utf-8")
+    output_dir = tmp_path / "stage1"
+
+    assert (
+        generate_data_main(
+            [
+                "--run-id",
+                "stage1_focus",
+                "--stage",
+                "stage1_protocol_c_focus",
+                "--input-root",
+                str(input_root),
+                "--input-files",
+                "teacher.accepted.jsonl",
+                "--output-dir",
+                str(output_dir),
+                "--transform",
+                "v4_to_stage1_protocol_c_focus",
+                "--execute",
+            ]
+        )
+        == 0
+    )
+
+    rows = [json.loads(line) for line in (output_dir / "teacher.accepted.jsonl").read_text().splitlines()]
+    assert len(rows) == 2
+    assert rows[0]["schema_version"] == "tgvf_teacher_schema_v4_stage1_compat"
+    assert rows[0]["source_schema_version"] == "tgvf_teacher_schema_v4"
+    assert rows[0]["uid"] == "toy:multi:0::focus1"
+    assert rows[0]["source_uid"] == "toy:multi:0"
+    assert rows[0]["trajectory_type"] == "single_focus"
+    assert rows[0]["focus_step_index"] == 1
+    assert rows[0]["target"] == "bars near the 100 mark"
+    assert rows[0]["evidence_description"] == "Capital at 93.47 and Goods at 49.58 are nearest."
+    assert rows[0]["confidence"] == 0.95
+    assert rows[0]["short_answer"] == "Capital"
+    assert rows[0]["answer_format"] == "multiple_choice"
+    assert rows[1]["uid"] == "toy:multi:0::focus2"
+    assert rows[1]["target_cues"] == ["chart_anchor", "text_like"]
+    report = (output_dir / "transform_report.json").read_text()
+    assert '"source_rows": 2' in report
+    assert '"converted_focus_rows": 2' in report
+    assert '"skipped_no_refocus_answer": 1' in report

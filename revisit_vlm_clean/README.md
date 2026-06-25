@@ -45,9 +45,10 @@ rather than one isolated row at a time.
 
 The data-generation entrypoint records source files, hashes, protocol,
 transform, field weights, mask policy, and output intent. It can currently
-execute the deterministic `v4_to_protocol_c`, `choice_to_open_answer`, and
-`clean_imend` transforms; teacher trajectory generation and the full Stage1
-builder are still to be ported.
+execute the deterministic `v4_to_protocol_c`,
+`v4_to_stage1_protocol_c_focus`, `choice_to_open_answer`, and `clean_imend`
+transforms. Teacher trajectory generation and training launchers are still to
+be ported.
 
 ## Fixed Manifests
 
@@ -95,4 +96,6 @@ Data generation is expected to enter the clean tree as a first-class pipeline,
 not as an opaque historical script call. The clean data-generation path should
 record source manifests, protocol identity, field/span weights, mask behavior,
 split hashes, and Stage1/Stage2 dataset identities beside the generated JSONL
-artifacts.
+artifacts. The deterministic Stage1 focus and Stage2 conversation builders are
+now clean-native transforms; heavy teacher trajectory generation still remains
+outside the clean tree.

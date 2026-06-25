@@ -31,6 +31,7 @@ class DataGenerationStage(StrEnum):
 class DataGenerationTransform(StrEnum):
     NONE = "none"
     V4_TO_PROTOCOL_C = "v4_to_protocol_c"
+    V4_TO_STAGE1_PROTOCOL_C_FOCUS = "v4_to_stage1_protocol_c_focus"
     CLEAN_IMEND = "clean_imend"
     CHOICE_TO_OPEN_ANSWER = "choice_to_open_answer"
 
@@ -153,6 +154,8 @@ def execute_data_generation(config: DataGenerationConfig) -> dict[str, str]:
             report = _clean_protocol_split_file(input_path, output_path)
         elif config.transform == DataGenerationTransform.V4_TO_PROTOCOL_C:
             report = _convert_v4_to_protocol_c_file(input_path, output_path)
+        elif config.transform == DataGenerationTransform.V4_TO_STAGE1_PROTOCOL_C_FOCUS:
+            report = _convert_v4_to_stage1_protocol_c_focus_file(input_path, output_path)
         else:
             raise NotImplementedError(f"transform execution is not ported: {config.transform}")
         reports[rel] = report
@@ -304,6 +307,101 @@ def _convert_v4_to_protocol_c_file(input_path: Path, output_path: Path) -> dict[
     return dict(counts)
 
 
+def _convert_v4_to_stage1_protocol_c_focus_file(input_path: Path, output_path: Path) -> dict[str, Any]:
+    counts: Counter[str] = Counter()
+    unique_images: set[str] = set()
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with input_path.open(encoding="utf-8") as fin, output_path.open("w", encoding="utf-8") as fout:
+        for line in fin:
+            if not line.strip():
+                continue
+            record = json.loads(line)
+            counts["source_rows"] += 1
+            item_type = str(record.get("item_type") or record.get("trajectory_type") or "")
+            counts[f"source_{item_type or 'unknown'}"] += 1
+            rows = _convert_v4_record_to_stage1_focus_rows(record)
+            if not rows:
+                counts[f"skipped_{item_type or 'unknown'}"] += 1
+                continue
+            for row in rows:
+                image_uid = str(row.get("stable_image_uid") or row.get("image_id") or "")
+                if image_uid:
+                    unique_images.add(image_uid)
+                fout.write(json.dumps(row, ensure_ascii=False) + "\n")
+                counts["converted_focus_rows"] += 1
+                counts[f"converted_from_{item_type or 'unknown'}"] += 1
+    counts["unique_images"] = len(unique_images)
+    return dict(counts)
+
+
+def _convert_v4_record_to_stage1_focus_rows(record: dict[str, Any]) -> list[dict[str, Any]]:
+    item_type = str(record.get("item_type") or record.get("trajectory_type") or "")
+    if item_type not in {"single_refocus", "multi_refocus"}:
+        return []
+    common = _v4_stage1_common_fields(record)
+    if not common.get("image") or not common.get("question") or not common.get("answer"):
+        return []
+    steps = _v4_focus_steps(record, include_confidence=True)
+    rows: list[dict[str, Any]] = []
+    source_uid = str(record.get("uid") or record.get("source_uid") or record.get("v4_uid") or "").strip()
+    for index, step in enumerate(steps, start=1):
+        target = str(step.get("target") or "").strip()
+        evidence = str(step.get("evidence_description") or "").strip()
+        if not target or not evidence:
+            continue
+        row = common | {
+            "uid": f"{source_uid}::focus{index}" if source_uid else f"focus{index}",
+            "source_uid": source_uid or None,
+            "item_type": item_type,
+            "need_focus": True,
+            "evidence_state": "need_local_visual_evidence",
+            "trajectory_type": "single_focus",
+            "target": target,
+            "evidence_description": evidence,
+            "focus_step_index": index,
+            "confidence": step.get("confidence", record.get("confidence")),
+            "target_style": record.get("target_style") or "visual_descriptor",
+            "target_cues": step.get("target_cues") or record.get("focus_descriptor_cues") or [],
+            "target_leakage_risk": step.get("target_leakage_risk") or record.get("target_leakage_risk") or "low",
+            "evidence_specificity": record.get("evidence_specificity") or "specific",
+            "evidence_type": step.get("evidence_type") or _first_value(record.get("evidence_types")) or record.get("evidence_type") or "other",
+        }
+        rows.append(row)
+    return rows
+
+
+def _v4_stage1_common_fields(record: dict[str, Any]) -> dict[str, Any]:
+    answer = _v4_answer_text(record)
+    short_answer = str(record.get("short_answer") or record.get("answer_text") or "").strip()
+    if not short_answer:
+        short_answer = _strip_choice_letter_prefix(answer)
+    value_span = str(record.get("value_span_text") or record.get("answer_text") or short_answer or answer).strip()
+    trace = record.get("source_trace") if "source_trace" in record else record.get("trace")
+    return {
+        "schema_version": "tgvf_teacher_schema_v4_stage1_compat",
+        "teacher_version": record.get("teacher_version") or record.get("teacher_prompt_version") or "tgvf_v4_teacher",
+        "source_schema_version": record.get("source_schema_version")
+        or record.get("schema_version")
+        or record.get("teacher_schema_version"),
+        "image": record.get("image"),
+        "image_id": record.get("image_id") or record.get("stable_image_uid"),
+        "stable_image_uid": record.get("stable_image_uid") or record.get("image_id"),
+        "source_dataset": record.get("source_dataset"),
+        "source_profile": record.get("source_profile"),
+        "question": record.get("question"),
+        "choices": record.get("choices") or [],
+        "answer": answer,
+        "short_answer": short_answer,
+        "answer_format": record.get("answer_format") or "short_text",
+        "value_span_text": value_span,
+        "answer_type": record.get("answer_type") or record.get("question_type"),
+        "locality": record.get("locality") or record.get("focus_category"),
+        "visual_difficulty": record.get("visual_difficulty") or "unknown",
+        "visibility": record.get("visibility") or "unknown",
+        "source_trace": trace or [],
+    }
+
+
 def _convert_v4_record(record: dict[str, Any], *, line_no: int) -> dict[str, Any] | None:
     item_type = str(record.get("item_type") or record.get("trajectory_type") or "")
     common = _v4_common_fields(record)
@@ -393,7 +491,7 @@ def _v4_first_focus(record: dict[str, Any]) -> dict[str, Any] | None:
     return steps[0] if steps else None
 
 
-def _v4_focus_steps(record: dict[str, Any]) -> list[dict[str, Any]]:
+def _v4_focus_steps(record: dict[str, Any], *, include_confidence: bool = False) -> list[dict[str, Any]]:
     steps = []
     for step in record.get("trace") or []:
         if step.get("type") != "focus":
@@ -403,16 +501,17 @@ def _v4_focus_steps(record: dict[str, Any]) -> list[dict[str, Any]]:
         evidence = str(step.get("focused_evidence") or "").strip()
         if not target or not evidence:
             continue
-        steps.append(
-            {
-                "target": target,
-                "evidence_description": evidence,
-                "target_cues": metadata.get("focus_descriptor_cues") or [],
-                "target_leakage_risk": metadata.get("target_leakage_risk") or "low",
-                "evidence_type": metadata.get("evidence_type") or _first_value(record.get("evidence_types")) or "other",
-                "value_span_text": record.get("answer_text"),
-            }
-        )
+        focus_step = {
+            "target": target,
+            "evidence_description": evidence,
+            "target_cues": metadata.get("focus_descriptor_cues") or [],
+            "target_leakage_risk": metadata.get("target_leakage_risk") or "low",
+            "evidence_type": metadata.get("evidence_type") or _first_value(record.get("evidence_types")) or "other",
+            "value_span_text": record.get("answer_text"),
+        }
+        if include_confidence:
+            focus_step["confidence"] = metadata.get("confidence", record.get("confidence"))
+        steps.append(focus_step)
     return steps
 
 

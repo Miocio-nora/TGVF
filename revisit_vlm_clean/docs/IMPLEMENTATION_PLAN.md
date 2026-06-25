@@ -597,11 +597,55 @@ Validation:
 - `PYTHONPATH=revisit_vlm_clean/src pytest -q revisit_vlm_clean/tests`
   passed with 62 tests.
 
+## Phase 22: V4 Teacher to Stage1 Protocol-C Focus Builder
+
+Implemented after Phase 21.
+
+- `tgvf_generate_data --execute --transform v4_to_stage1_protocol_c_focus`
+  now ports the deterministic Stage1 focus-row builder into the clean data
+  generation entrypoint;
+- supported V4 item types:
+  - `single_refocus` -> one Stage1 focus row;
+  - `multi_refocus` -> one Stage1 focus row per focus step;
+  - `no_refocus_continue` and `no_refocus_answer` -> skipped, because Stage1
+    focus training consumes focus rows only;
+- output rows preserve the historical Stage1 compatibility contract:
+  - `schema_version=tgvf_teacher_schema_v4_stage1_compat`;
+  - `need_focus=true`;
+  - `evidence_state=need_local_visual_evidence`;
+  - `trajectory_type=single_focus`;
+  - required loader fields `image`, `question`, `target`,
+    `evidence_description`;
+  - source trace, answer/choice metadata, focus-step index, target cues,
+    leakage risk, evidence type, confidence, and source uid;
+- transform reports include source row counts, converted focus rows, skipped
+  no-focus rows, converted rows by source item type, and `unique_images` over
+  written focus rows.
+
+Validation:
+
+- tests execute the transform on a tiny `multi_refocus` V4 teacher row and
+  verify that two Stage1 focus rows are written while a no-focus row is skipped;
+- temporary execution against the historical 50k split matched the old Stage1
+  split reports:
+
+```text
+tgvf_v4_teacher_50k.train.jsonl:
+  converted_focus_rows=40021
+  unique_images=9561
+tgvf_v4_teacher_1k.test.jsonl:
+  converted_focus_rows=867
+  unique_images=203
+```
+
+- full clean test suite passed:
+  `PYTHONPATH=revisit_vlm_clean/src pytest -q revisit_vlm_clean/tests`
+  -> 63 tests.
+
 ## Later Phases
 
 1. Port teacher trajectory generation into `tgvf_generate_data`.
-2. Port the Stage1 Protocol-C focus JSONL builder into `tgvf_generate_data`.
-3. Stage1/Stage2 launchers wired to clean generated dataset identities.
-4. Native clean Stage2 runner replacing the legacy bridge.
-5. Clean benchmark subset boundaries for CoreSmoke/CoreDev execution.
-6. DeepStack training/eval support.
+2. Stage1/Stage2 launchers wired to clean generated dataset identities.
+3. Native clean Stage2 runner replacing the legacy bridge.
+4. Clean benchmark subset boundaries for CoreSmoke/CoreDev execution.
+5. DeepStack training/eval support.
