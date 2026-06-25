@@ -2723,7 +2723,7 @@ entry, update this file immediately.
 
 ### EXP-20260626-010550-clean-stage2-vstar32-smoke
 
-- Status: PLANNED.
+- Status: RUNNING.
 - Question:
   - Does the clean `tgvf_stage2_qwen3` bridge remain stable on the full VStar allocation from `CoreSmoke-256`, before moving toward larger clean benchmark subsets?
 - Baseline anchor:
@@ -2784,9 +2784,9 @@ entry, update this file immediately.
 - GPUs:
   - Planned: GPU 4 only.
 - tmux:
-  - Planned: `clean_stage2_vstar32_20260626_010550`.
+  - `clean_stage2_vstar32_20260626_010550`.
 - Started:
-  - Pending.
+  - 2026-06-26T01:07:55+09:00.
 - Finished:
   - Pending.
 - Metrics:
