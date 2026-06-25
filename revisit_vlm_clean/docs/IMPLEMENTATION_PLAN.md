@@ -170,9 +170,28 @@ eval_jsonl:
   no_focus=145
 ```
 
+## Phase 9: Stage2 Backend Legacy Bridge
+
+Implemented in commit `cbacf10`.
+
+- `tgvf_stage2_qwen3` backend is wired to the historical
+  `Stage2ProtocolEvaluator`;
+- clean runner still owns manifest/sample/render/rows/summary identity;
+- legacy bridge maps clean modes as:
+  - `tgvf_force` -> `force_end2end`;
+  - `tgvf_free` and `tgvf_softforce` -> free-router style execution;
+- legacy bridge maps forward modes as:
+  - `kv_cache` -> legacy `append_prefill_mode=kv_cache`;
+  - `no_kv_full_sequence` -> legacy `append_prefill_mode=full_sequence`;
+- only `correct_D`, `target_hint`, `native_source_grid`, path-backed images are
+  currently allowed.
+
+Not yet validated with real TGVF execution. A real smoke is an evaluation
+launch and needs the normal preflight gate first.
+
 ## Later Phases
 
-1. TGVF Stage2 controller execution path.
+1. Real one-sample TGVF Stage2 execution smoke.
 2. Official scorer wrapper port.
 3. Stage1/Stage2 launchers.
 4. DeepStack training/eval support.
