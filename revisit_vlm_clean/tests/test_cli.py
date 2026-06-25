@@ -204,6 +204,78 @@ def test_valkit_prepare_execution_cli(tmp_path) -> None:
     assert status["will_launch_valkit"] is False
 
 
+def test_valkit_execute_cli_uses_clean_run_py_not_legacy_wrapper(tmp_path) -> None:
+    checkpoint = tmp_path / "model.pt"
+    checkpoint.write_bytes(b"checkpoint\n")
+    valkit_root = tmp_path / "VLMEvalKit"
+    valkit_root.mkdir()
+    fake_run = valkit_root / "run.py"
+    fake_run.write_text(
+        "import json\n"
+        "import pathlib\n"
+        "import sys\n"
+        "work_dir = pathlib.Path(sys.argv[sys.argv.index('--work-dir') + 1])\n"
+        "work_dir.mkdir(parents=True, exist_ok=True)\n"
+        "(work_dir / 'argv.json').write_text(json.dumps(sys.argv), encoding='utf-8')\n",
+        encoding="utf-8",
+    )
+    output_dir = tmp_path / "valkit_execute"
+    work_dir = tmp_path / "valkit_work"
+
+    assert (
+        valkit_main(
+            [
+                "--run-id",
+                "valkit_execute",
+                "--checkpoint-path",
+                str(checkpoint),
+                "--output-dir",
+                str(output_dir),
+                "--benchmark",
+                "vstar",
+                "--benchmark",
+                "blink",
+                "--valkit-root",
+                str(valkit_root),
+                "--valkit-model-name",
+                "clean_tgvf_qwen3",
+                "--valkit-run-mode",
+                "infer",
+                "--work-dir",
+                str(work_dir),
+                "--execute",
+            ]
+        )
+        == 0
+    )
+
+    execution_dir = output_dir / "clean_valkit_execution"
+    plan = json.loads((output_dir / "valkit_plan.json").read_text())
+    bundle = json.loads((execution_dir / "valkit_execution_bundle.json").read_text())
+    status = json.loads((execution_dir / "valkit_execution_status.json").read_text())
+    result = json.loads((execution_dir / "valkit_execution_result.json").read_text())
+    argv = json.loads((work_dir / "argv.json").read_text())
+    launch_script = (execution_dir / "valkit_launch_command.sh").read_text()
+    assert plan["runner"]["executable"] is True
+    assert plan["runner"]["legacy_shell_wrapper_allowed"] is False
+    assert bundle["runner"]["status"] == "clean_valkit_execution_completed"
+    assert bundle["runner"]["will_launch_valkit"] is True
+    assert bundle["runner"]["valkit_runtime_ported"] is True
+    assert bundle["runner"]["returncode"] == 0
+    assert status["runner_status"] == "clean_valkit_execution_completed"
+    assert status["will_launch_valkit"] is True
+    assert status["returncode"] == 0
+    assert result["returncode"] == 0
+    assert "--data" in argv
+    assert "vstar" in argv
+    assert "blink" in argv
+    assert "--model" in argv
+    assert "clean_tgvf_qwen3" in argv
+    assert "--mode" in argv
+    assert "infer" in argv
+    assert "scripts/run_vlmevalkit_tgvf.sh" not in launch_script
+
+
 def test_valkit_tgvf_mode_requires_stage2_checkpoint(tmp_path) -> None:
     checkpoint = tmp_path / "model.pt"
     checkpoint.write_bytes(b"checkpoint\n")

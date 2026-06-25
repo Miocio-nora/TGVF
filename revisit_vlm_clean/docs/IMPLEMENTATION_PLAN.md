@@ -1308,8 +1308,9 @@ Implemented after Phase 46.
   - `valkit_plan.json`;
   - `valkit_plan.txt`;
   - `valkit_preflight_report.json`;
-- clean ValKit execution is still not ported. The new surface is identity-only
-  and explicitly refuses to shell out to historical wrappers.
+- ValKit execution is not launched by preflight/write-plan. The clean surface
+  requires explicit `--execute` plus `--valkit-root` and `--valkit-model-name`
+  before it can call ValKit.
 
 ## Phase 48: Clean Parser/Scorer Identity Finalization
 
@@ -1464,7 +1465,31 @@ Implemented after Phase 55.
   state;
 - the handoff still records `will_launch_valkit=false`,
   `valkit_runtime_ported=false`, and `legacy_shell_wrapper_allowed=false`.
-  Real ValKit execution remains unported.
+  Real ValKit execution is performed only by explicit `--execute`.
+
+## Phase 63: Clean ValKit Runtime Execution
+
+Implemented after Phase 62.
+
+- `tgvf_eval_valkit` now supports explicit `--execute`;
+- execution requires:
+  - `--valkit-root`, pointing at a directory containing `run.py`;
+  - `--valkit-model-name`, the model key registered in VLMEvalKit config;
+- the clean runner builds a direct ValKit command:
+  `python <valkit-root>/run.py --data ... --model ... --work-dir ... --mode ...`;
+- the command is owned by the clean runner and does not call
+  `scripts/run_vlmevalkit_tgvf.sh` or other historical shell wrappers;
+- execution writes:
+  - `valkit_launch_command.sh`;
+  - `valkit_execution_result.json`;
+  - `valkit_stdout.log`;
+  - `valkit_stderr.log`;
+  - updated `valkit_execution_bundle.json`;
+  - updated `valkit_execution_status.json`;
+- tests execute a fake ValKit `run.py` to prove the clean subprocess path works
+  without launching a heavyweight benchmark;
+- ValKit results remain a separate `eval_family=valkit` surface and are not
+  silently comparable with project-native benchmark rows.
 
 ## Phase 57: Lazy Legacy Stage2 Bridge Isolation
 

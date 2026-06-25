@@ -50,10 +50,13 @@ The ValKit entrypoint is separate:
 ```bash
 tgvf_eval_valkit --run-id valkit_preflight --checkpoint-path /path/to/model.pt --output-dir /tmp/valkit --benchmark vstar --preflight-only
 tgvf_eval_valkit --run-id valkit_preflight --checkpoint-path /path/to/model.pt --output-dir /tmp/valkit --benchmark vstar --prepare-execution
+tgvf_eval_valkit --run-id valkit_run --checkpoint-path /path/to/model.pt --output-dir /tmp/valkit --benchmark vstar --valkit-root third_party/VLMEvalKit --valkit-model-name clean_tgvf_qwen3 --execute
 ```
 
-It currently writes a clean ValKit plan/preflight report plus an optional
-prepare-execution bundle, and refuses to call historical shell wrappers.
+It writes a clean ValKit plan/preflight report plus an optional
+prepare-execution bundle. With explicit `--execute`, it calls
+`<valkit-root>/run.py` directly and records the launch command, stdout, stderr,
+return code, and execution status. It refuses to call historical shell wrappers.
 
 Scoring is applied after all rows are produced. This is intentional: some
 official scorers, including OCRBench-v2, need batch-level prediction files

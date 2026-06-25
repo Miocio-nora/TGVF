@@ -14,6 +14,7 @@ from revisit_vlm_clean.valkit import (
     ValKitRunConfig,
     build_valkit_plan,
     build_valkit_preflight_report,
+    execute_valkit_plan,
     write_valkit_execution_bundle,
     write_valkit_plan,
 )
@@ -39,11 +40,25 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--stage2-checkpoint", default=None)
     parser.add_argument("--valkit-root", default=None)
+    parser.add_argument(
+        "--valkit-model-name",
+        default=None,
+        help="Model key registered in VLMEvalKit config. Required for --execute.",
+    )
+    parser.add_argument(
+        "--valkit-run-mode",
+        choices=("all", "infer", "eval"),
+        default="all",
+        help="VLMEvalKit run.py --mode value.",
+    )
+    parser.add_argument("--reuse", action="store_true", help="Pass --reuse to VLMEvalKit.")
+    parser.add_argument("--verbose", action="store_true", help="Pass --verbose to VLMEvalKit.")
     parser.add_argument("--work-dir", default=None)
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--write-plan", action="store_true")
     parser.add_argument("--preflight-only", action="store_true")
     parser.add_argument("--prepare-execution", action="store_true")
+    parser.add_argument("--execute", action="store_true")
     parser.add_argument("--execution-dir", default=None)
     return parser
 
@@ -64,6 +79,10 @@ def main(argv: list[str] | None = None) -> int:
         post_tgvf_forward_mode=ForwardMode(args.post_tgvf_forward_mode),
         stage2_checkpoint=args.stage2_checkpoint,
         valkit_root=args.valkit_root,
+        valkit_model_name=args.valkit_model_name,
+        valkit_run_mode=args.valkit_run_mode,
+        reuse=args.reuse,
+        verbose=args.verbose,
         work_dir=args.work_dir,
         git_commit=git_commit,
         dirty_worktree=dirty_worktree,
@@ -78,13 +97,19 @@ def main(argv: list[str] | None = None) -> int:
         execution_artifacts = write_valkit_execution_bundle(execution_dir, plan)
         print_json({**plan_artifacts, **execution_artifacts})
         return 0
+    if args.execute:
+        plan_artifacts = write_valkit_plan(args.output_dir, plan)
+        execution_dir = args.execution_dir or str(Path(args.output_dir) / "clean_valkit_execution")
+        execution_artifacts = execute_valkit_plan(execution_dir, plan)
+        print_json({**plan_artifacts, **execution_artifacts})
+        return int(execution_artifacts["returncode"])
     if args.write_plan or args.preflight_only:
         print_json(write_valkit_plan(args.output_dir, plan))
         return 0
     print_json(build_valkit_preflight_report(plan))
     return exit_not_implemented(
-        "clean ValKit execution is not implemented yet; use --preflight-only, "
-        "--write-plan, or --prepare-execution"
+        "clean ValKit execution requires explicit --execute; use --preflight-only, "
+        "--write-plan, --prepare-execution, or --execute"
     )
 
 

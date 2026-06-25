@@ -621,10 +621,11 @@ Clean-project target:
   runner emits the same identity fields and sample definitions.
 - `tgvf_eval_benchmark` is not the ValKit runner and must reject
   `eval_family=valkit`.
-- ValKit's clean surface is `tgvf_eval_valkit`. It may write identity,
-  preflight, and prepare-execution handoff artifacts before real execution is
-  ported, but it must not shell out to historical wrapper scripts as the clean
-  mainline.
+- ValKit's clean surface is `tgvf_eval_valkit`. It writes identity, preflight,
+  and prepare-execution handoff artifacts without launching by default. Real
+  ValKit execution requires explicit `--execute`, `--valkit-root`, and
+  `--valkit-model-name`, and must call `<valkit-root>/run.py` directly rather
+  than historical wrapper scripts.
 
 Clean prompt policy:
 
