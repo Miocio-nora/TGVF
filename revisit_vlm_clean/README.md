@@ -25,8 +25,9 @@ tgvf_train_stage1 --print-defaults
 tgvf_train_stage2 --print-defaults
 ```
 
-The entrypoints are stubs in this phase. They parse and validate identity, but
-they do not run model training or benchmark inference yet.
+The benchmark entrypoint can now validate identity, build/materialize fixed
+manifests, and render model input rows for smoke checks. It does not run model
+training or benchmark inference yet.
 
 ## Fixed Manifests
 
@@ -40,3 +41,10 @@ benchmark_manifests/core_full_19562.json
 
 `CoreDev-2511` is the default fast development comparison subset. Manifest
 generation is deterministic and tested by count/hash.
+
+## Render Semantics
+
+- `original`: question/media only, no TGVF controller.
+- `tgvf_free`: question/media only; no extra prompt text.
+- `tgvf_force`: question/media only plus a protocol control prefix.
+- `tgvf_softforce`: question/media plus the configured short prompt text.

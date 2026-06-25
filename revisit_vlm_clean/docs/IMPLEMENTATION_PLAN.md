@@ -61,6 +61,52 @@ Implemented:
 - benchmark CLI can write `run_config.json`, `rows.jsonl`, `summary.json`, and
   `sample_manifest.json` without model inference for schema validation.
 
+## Phase 5: Manifest-Backed Sample Materialization
+
+Implemented in commit `f2f52f2`.
+
+- clean runner can materialize fixed manifest rows back into benchmark samples;
+- source identity comes from `source_file + metadata.row_index`, not tier/limit;
+- materialized smoke output writes `materialized_rows.jsonl` without image bytes;
+- embedded-image datasets keep payload metadata separate from prompt/render rows.
+
+Smoke command:
+
+```bash
+PYTHONPATH=revisit_vlm_clean/src python -m revisit_vlm_clean.cli.benchmark \
+  --run-id materialize_smoke \
+  --checkpoint-path outputs/checkpoint.pt \
+  --mode tgvf_force \
+  --post-tgvf-forward-mode kv_cache \
+  --manifest-path revisit_vlm_clean/benchmark_manifests/core_smoke_256_seed20260625.json \
+  --manifest-hash 7da4963199c7d75baee224e52049625129a0f9335d156dd84efd652b2df0c036 \
+  --subset-id core_smoke_256_seed20260625 \
+  --benchmark-root /home/dredvpn009/Flash_Storage/datasets/benchmarks \
+  --output-dir /tmp/tgvf_clean_materialize_smoke \
+  --materialize-samples
+```
+
+Validated on 2026-06-25: 256 rows, expected benchmark distribution, no zero-media
+samples.
+
+## Phase 6: Rendered Input Smoke
+
+Implemented after sample materialization.
+
+- clean render rows are written to `rendered_inputs.jsonl`;
+- `original` and `tgvf_free` do not add extra prompt text;
+- `tgvf_force` keeps the user prompt unchanged and records a protocol control
+  prefix;
+- `tgvf_softforce` appends only the configured short prompt text;
+- current supported protocols are `protocol_c_tool_observation` and
+  `protocol_c_tool_observation_qwen2_no_think`.
+
+Validated on 2026-06-25 with `CoreSmoke-256`:
+
+- `tgvf_free`: 256/256 require TGVF controller, no force prefix, no softforce text;
+- `tgvf_force`: 256/256 have force control prefix, prompt unchanged;
+- `tgvf_softforce`: 256/256 append `Use focus tool.`, no force prefix.
+
 ## Later Phases
 
 1. Full benchmark runner with model inference.

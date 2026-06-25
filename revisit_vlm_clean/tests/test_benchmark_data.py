@@ -100,3 +100,45 @@ def test_benchmark_materialize_samples_cli(tmp_path) -> None:
     assert len(rows) == 1
     assert json.loads(rows[0])["gold_answer"] == "B"
     assert "sample materialization smoke" in (output_dir / "summary.json").read_text()
+
+
+def test_benchmark_render_inputs_cli(tmp_path) -> None:
+    root = tmp_path / "benchmarks"
+    _write_toy_vstar(root)
+    manifest_path = _write_toy_manifest(tmp_path / "manifest.json")
+    output_dir = tmp_path / "render"
+
+    assert (
+        benchmark_main(
+            [
+                "--run-id",
+                "render",
+                "--checkpoint-path",
+                "outputs/checkpoint.pt",
+                "--mode",
+                "tgvf_softforce",
+                "--softforce-prompt-text",
+                "Use focus tool.",
+                "--post-tgvf-forward-mode",
+                "kv_cache",
+                "--population-id",
+                "vstar_test_questions_191",
+                "--manifest-path",
+                str(manifest_path),
+                "--manifest-hash",
+                "toyhash",
+                "--benchmark-root",
+                str(root),
+                "--output-dir",
+                str(output_dir),
+                "--render-inputs",
+            ]
+        )
+        == 0
+    )
+    rows = (output_dir / "rendered_inputs.jsonl").read_text().splitlines()
+    assert len(rows) == 1
+    row = json.loads(rows[0])
+    assert row["user_prompt"].endswith("\n\nUse focus tool.")
+    assert row["requires_tgvf_controller"] is True
+    assert "rendered input smoke" in (output_dir / "summary.json").read_text()

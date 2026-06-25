@@ -8,6 +8,7 @@ from typing import Any
 
 from .benchmark_data import BenchmarkSample
 from .manifest import SampleManifest, manifest_payload
+from .rendering import RenderedBenchmarkInput
 from .schema import EvalSummary, RunConfig, _to_jsonable
 
 
@@ -114,6 +115,56 @@ def write_materialized_sample_output(
         "output_dir": str(out),
         "run_config": str(run_config_path),
         "materialized_rows": str(materialized_rows_path),
+        "summary": str(summary_path),
+        "sample_manifest": str(manifest_path),
+    }
+
+
+def write_rendered_input_output(
+    output_dir: str | Path,
+    *,
+    config: RunConfig,
+    manifest: dict[str, Any],
+    rendered_inputs: list[RenderedBenchmarkInput],
+) -> dict[str, Any]:
+    out = Path(output_dir)
+    out.mkdir(parents=True, exist_ok=True)
+
+    run_config_path = out / "run_config.json"
+    rendered_inputs_path = out / "rendered_inputs.jsonl"
+    summary_path = out / "summary.json"
+    manifest_path = out / "sample_manifest.json"
+
+    _write_json(run_config_path, config)
+    _write_json(manifest_path, manifest)
+    with rendered_inputs_path.open("w") as handle:
+        for rendered in rendered_inputs:
+            handle.write(json.dumps(rendered.to_row(), sort_keys=True) + "\n")
+
+    manifest_hash = manifest.get("manifest_hash")
+    summary = EvalSummary(
+        run_id=config.run_id,
+        n_rows=len(rendered_inputs),
+        n_scored=0,
+        accuracy=None,
+        answer_parse_rate=None,
+        malformed_rate=None,
+        manifest_hash=manifest_hash,
+        comparable=False,
+        comparability_note="rendered input smoke output; no model inference executed",
+    )
+    summary_payload = summary.to_dict()
+    summary_payload["parser_scorer"] = config.parser_scorer.to_dict()
+    summary_payload["deepstack"] = config.deepstack.to_dict()
+    summary_payload["post_tgvf_forward_mode"] = str(config.post_tgvf_forward_mode)
+    summary_payload["post_tgvf_continuation"] = str(config.post_tgvf_continuation)
+    summary_payload["rendered_input_count"] = len(rendered_inputs)
+    _write_json(summary_path, summary_payload)
+
+    return {
+        "output_dir": str(out),
+        "run_config": str(run_config_path),
+        "rendered_inputs": str(rendered_inputs_path),
         "summary": str(summary_path),
         "sample_manifest": str(manifest_path),
     }

@@ -10,8 +10,13 @@ from revisit_vlm_clean.benchmark_data import (
 )
 from revisit_vlm_clean.cli.common import exit_not_implemented, print_json
 from revisit_vlm_clean.manifest import build_manifest, manifest_payload
-from revisit_vlm_clean.outputs import write_empty_benchmark_output, write_materialized_sample_output
+from revisit_vlm_clean.outputs import (
+    write_empty_benchmark_output,
+    write_materialized_sample_output,
+    write_rendered_input_output,
+)
 from revisit_vlm_clean.populations import get_population, get_subset
+from revisit_vlm_clean.rendering import render_benchmark_inputs
 from revisit_vlm_clean.schema import (
     DeepStackScope,
     DeepStackState,
@@ -58,6 +63,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Write materialized benchmark sample rows from a clean manifest without model inference.",
     )
+    parser.add_argument(
+        "--render-inputs",
+        action="store_true",
+        help="Write rendered prompt/media/control rows from a clean manifest without model inference.",
+    )
     return parser
 
 
@@ -103,19 +113,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.materialize_samples:
         if not args.output_dir:
             raise ValueError("--materialize-samples requires --output-dir")
-        if args.manifest_path:
-            resolved_manifest = load_manifest_payload(args.manifest_path)
-        elif args.subset_id:
-            resolved_manifest = manifest_payload(
-                build_manifest(subset_id=args.subset_id, benchmark_root=args.benchmark_root)
-            )
-        else:
-            raise ValueError("--materialize-samples with --population-id requires --manifest-path")
-        if args.manifest_hash and resolved_manifest.get("manifest_hash") != args.manifest_hash:
-            raise ValueError(
-                f"manifest hash mismatch: expected {args.manifest_hash}, "
-                f"got {resolved_manifest.get('manifest_hash')}"
-            )
+        resolved_manifest = _resolve_manifest_payload(args)
         samples = materialize_samples_from_manifest_payload(
             resolved_manifest,
             benchmark_root=args.benchmark_root,
@@ -130,7 +128,43 @@ def main(argv: list[str] | None = None) -> int:
             )
         )
         return 0
+    if args.render_inputs:
+        if not args.output_dir:
+            raise ValueError("--render-inputs requires --output-dir")
+        resolved_manifest = _resolve_manifest_payload(args)
+        samples = materialize_samples_from_manifest_payload(
+            resolved_manifest,
+            benchmark_root=args.benchmark_root,
+            metadata_only=True,
+        )
+        rendered_inputs = render_benchmark_inputs(samples, config)
+        print_json(
+            write_rendered_input_output(
+                args.output_dir,
+                config=config,
+                manifest=resolved_manifest,
+                rendered_inputs=rendered_inputs,
+            )
+        )
+        return 0
     return exit_not_implemented("benchmark execution is phase 4; phase 1 only validates run identity")
+
+
+def _resolve_manifest_payload(args: argparse.Namespace) -> dict:
+    if args.manifest_path:
+        resolved_manifest = load_manifest_payload(args.manifest_path)
+    elif args.subset_id:
+        resolved_manifest = manifest_payload(
+            build_manifest(subset_id=args.subset_id, benchmark_root=args.benchmark_root)
+        )
+    else:
+        raise ValueError("manifest-backed smoke output with --population-id requires --manifest-path")
+    if args.manifest_hash and resolved_manifest.get("manifest_hash") != args.manifest_hash:
+        raise ValueError(
+            f"manifest hash mismatch: expected {args.manifest_hash}, "
+            f"got {resolved_manifest.get('manifest_hash')}"
+        )
+    return resolved_manifest
 
 
 if __name__ == "__main__":
