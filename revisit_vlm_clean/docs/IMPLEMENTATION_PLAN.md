@@ -1356,6 +1356,25 @@ Implemented after Phase 49.
 - tests assert the default print surface, launch-plan optimizer identity, and
   generated command text.
 
+## Phase 51: Stage2 LoRA and Optimizer Identity
+
+Implemented after Phase 50.
+
+- Stage2 launch plans now record the clean LoRA config explicitly:
+  - target modules:
+    `q_proj,k_proj,v_proj,o_proj,gate_proj,up_proj,down_proj`;
+  - rank `64`, alpha `256`, dropout `0.05`, bias `none`;
+- Stage2 optimizer identity now records:
+  - optimizer name `adamw`;
+  - Adam betas `[0.9, 0.95]`;
+  - epsilon `1e-8`;
+  - weight decay `0.01`;
+  - max grad norm `1.0`;
+- Stage2 legacy reference command text passes these values explicitly instead
+  of relying on raw-script defaults;
+- Stage1 optimizer identity now records `max_grad_norm=1.0` and passes it in
+  the reference command.
+
 ## Later Phases
 
 1. Replace training launch plans with clean-native training execution.

@@ -16,6 +16,7 @@ from revisit_vlm_clean.defaults import (
 from revisit_vlm_clean.schema import DeepStackScope, DeepStackState
 from revisit_vlm_clean.tgvf_protocol import SUPPORTED_PROTOCOLS
 from revisit_vlm_clean.training_plan import (
+    DEFAULT_STAGE2_LORA_TARGET_MODULES,
     DEFAULT_STAGE2_SPAN_WEIGHTS,
     OriginalImageMaskScope,
     Stage2LaunchConfig,
@@ -79,6 +80,14 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Defaults to the mask scope when --deepstack-enabled is set.",
     )
+    parser.add_argument("--lora-rank", type=int, default=64)
+    parser.add_argument("--lora-alpha", type=int, default=256)
+    parser.add_argument("--lora-dropout", type=float, default=0.05)
+    parser.add_argument("--lora-bias", choices=("none", "all", "lora_only"), default="none")
+    parser.add_argument(
+        "--lora-target-modules",
+        default=",".join(DEFAULT_STAGE2_LORA_TARGET_MODULES),
+    )
     parser.add_argument("--lr-lora", type=float, default=2e-5)
     parser.add_argument("--lr-tgvf", type=float, default=5e-6)
     parser.add_argument("--lr-calibration", type=float, default=1e-5)
@@ -90,6 +99,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--warmup-ratio", type=float, default=0.03)
     parser.add_argument("--warmup-steps", type=int, default=100)
     parser.add_argument("--min-lr-ratio", type=float, default=0.1)
+    parser.add_argument("--adam-beta1", type=float, default=0.9)
+    parser.add_argument("--adam-beta2", type=float, default=0.95)
+    parser.add_argument("--adam-eps", type=float, default=1e-8)
+    parser.add_argument("--weight-decay", type=float, default=0.01)
+    parser.add_argument("--max-grad-norm", type=float, default=1.0)
     parser.add_argument("--loss-visual-token-manifold", type=float, default=0.0)
     parser.add_argument(
         "--loss-evidence-state",
@@ -175,11 +189,22 @@ def _defaults() -> dict[str, object]:
         "mask_original_image_after_tgvf_scope": "through_answer",
         "deepstack_enabled": False,
         "deepstack_supported": True,
+        "lora": {
+            "rank": 64,
+            "alpha": 256,
+            "dropout": 0.05,
+            "bias": "none",
+            "target_modules": list(DEFAULT_STAGE2_LORA_TARGET_MODULES),
+        },
         "weighted_span_loss": dict(DEFAULT_STAGE2_SPAN_WEIGHTS),
         "lr_scheduler": "cosine",
         "warmup_steps": 100,
         "warmup_ratio": 0.03,
         "min_lr_ratio": 0.1,
+        "adam_betas": [0.9, 0.95],
+        "adam_eps": 1e-8,
+        "weight_decay": 0.01,
+        "max_grad_norm": 1.0,
         "clean_launcher_actions": ["dry_run", "write_plan"],
     }
 
@@ -245,6 +270,11 @@ def _config_from_args(args: argparse.Namespace) -> Stage2LaunchConfig:
         mask_original_image_after_tgvf_prob=args.mask_original_image_after_tgvf_prob,
         mask_original_image_after_tgvf_scope=mask_scope,
         deepstack=deepstack,
+        lora_rank=args.lora_rank,
+        lora_alpha=args.lora_alpha,
+        lora_dropout=args.lora_dropout,
+        lora_bias=args.lora_bias,
+        lora_target_modules=_parse_lora_target_modules(args.lora_target_modules),
         lr_lora=args.lr_lora,
         lr_tgvf=args.lr_tgvf,
         lr_calibration=args.lr_calibration,
@@ -252,6 +282,11 @@ def _config_from_args(args: argparse.Namespace) -> Stage2LaunchConfig:
         warmup_ratio=args.warmup_ratio,
         warmup_steps=args.warmup_steps,
         min_lr_ratio=args.min_lr_ratio,
+        adam_beta1=args.adam_beta1,
+        adam_beta2=args.adam_beta2,
+        adam_eps=args.adam_eps,
+        weight_decay=args.weight_decay,
+        max_grad_norm=args.max_grad_norm,
         loss_visual_token_manifold=args.loss_visual_token_manifold,
         weighted_span_loss=weighted_span_loss,
         min_confidence=args.min_confidence,
@@ -259,6 +294,13 @@ def _config_from_args(args: argparse.Namespace) -> Stage2LaunchConfig:
         wandb_mode=args.wandb_mode,
         batch=batch,
     )
+
+
+def _parse_lora_target_modules(text: str) -> tuple[str, ...]:
+    modules = tuple(item.strip() for item in str(text).split(",") if item.strip())
+    if not modules:
+        raise ValueError("--lora-target-modules must contain at least one module name")
+    return modules
 
 
 def _git_identity() -> tuple[str | None, bool | None]:

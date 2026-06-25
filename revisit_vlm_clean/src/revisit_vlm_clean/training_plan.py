@@ -48,6 +48,16 @@ DEFAULT_STAGE2_SPAN_WEIGHTS = {
     "no_focus_answer": 1.0,
 }
 
+DEFAULT_STAGE2_LORA_TARGET_MODULES = (
+    "q_proj",
+    "k_proj",
+    "v_proj",
+    "o_proj",
+    "gate_proj",
+    "up_proj",
+    "down_proj",
+)
+
 TRAINING_PLAN_SCHEMA_VERSION = "clean_training_plan_v1"
 
 
@@ -105,6 +115,7 @@ class Stage1LaunchConfig:
     lr_scheduler: str = "cosine"
     warmup_steps: int = 100
     min_lr_ratio: float = 0.1
+    max_grad_norm: float = 1.0
     loss_gen: float = 1.0
     loss_visual_token_manifold: float = 0.1
     loss_same_image_negative: float = 1.0
@@ -148,6 +159,8 @@ class Stage1LaunchConfig:
             raise ValueError("warmup_steps must be >= 0")
         if not 0.0 <= float(self.min_lr_ratio) <= 1.0:
             raise ValueError("min_lr_ratio must be in [0, 1]")
+        if float(self.max_grad_norm) <= 0:
+            raise ValueError("max_grad_norm must be > 0")
         self.batch.validate()
 
 
@@ -180,6 +193,11 @@ class Stage2LaunchConfig:
         OriginalImageMaskScope.THROUGH_ANSWER
     )
     deepstack: DeepStackState = field(default_factory=DeepStackState)
+    lora_rank: int = 64
+    lora_alpha: int = 256
+    lora_dropout: float = 0.05
+    lora_bias: str = "none"
+    lora_target_modules: tuple[str, ...] = DEFAULT_STAGE2_LORA_TARGET_MODULES
     lr_lora: float = 2e-5
     lr_tgvf: float = 5e-6
     lr_calibration: float = 1e-5
@@ -187,6 +205,11 @@ class Stage2LaunchConfig:
     warmup_ratio: float = 0.03
     warmup_steps: int | None = 100
     min_lr_ratio: float = 0.1
+    adam_beta1: float = 0.9
+    adam_beta2: float = 0.95
+    adam_eps: float = 1e-8
+    weight_decay: float = 0.01
+    max_grad_norm: float = 1.0
     loss_visual_token_manifold: float = 0.0
     weighted_span_loss: dict[str, float] = field(
         default_factory=lambda: dict(DEFAULT_STAGE2_SPAN_WEIGHTS)
@@ -226,6 +249,22 @@ class Stage2LaunchConfig:
             raise ValueError("lr_scheduler must be constant, linear, or cosine")
         if self.warmup_steps is not None and int(self.warmup_steps) < 0:
             raise ValueError("warmup_steps must be >= 0")
+        if int(self.lora_rank) < 1:
+            raise ValueError("lora_rank must be >= 1")
+        if int(self.lora_alpha) < 1:
+            raise ValueError("lora_alpha must be >= 1")
+        if not 0.0 <= float(self.lora_dropout) <= 1.0:
+            raise ValueError("lora_dropout must be in [0, 1]")
+        if self.lora_bias not in {"none", "all", "lora_only"}:
+            raise ValueError("lora_bias must be none, all, or lora_only")
+        if not self.lora_target_modules:
+            raise ValueError("lora_target_modules must not be empty")
+        if float(self.adam_eps) <= 0:
+            raise ValueError("adam_eps must be > 0")
+        if float(self.weight_decay) < 0:
+            raise ValueError("weight_decay must be >= 0")
+        if float(self.max_grad_norm) <= 0:
+            raise ValueError("max_grad_norm must be > 0")
         missing_weights = set(DEFAULT_STAGE2_SPAN_WEIGHTS) - set(self.weighted_span_loss)
         if missing_weights:
             raise ValueError(f"weighted_span_loss missing keys: {sorted(missing_weights)}")
@@ -330,10 +369,12 @@ def build_stage1_launch_plan(
             "same_image_negative": config.loss_same_image_negative,
         },
         "optimizer": {
+            "name": "adamw",
             "learning_rate": config.learning_rate,
             "lr_scheduler": config.lr_scheduler,
             "warmup_steps": config.warmup_steps,
             "min_lr_ratio": config.min_lr_ratio,
+            "max_grad_norm": config.max_grad_norm,
         },
         "wandb": {
             "project": config.wandb_project,
@@ -421,11 +462,19 @@ def build_stage2_launch_plan(
             ),
         },
         "deepstack": config.deepstack.to_dict(),
+        "lora": {
+            "rank": config.lora_rank,
+            "alpha": config.lora_alpha,
+            "dropout": config.lora_dropout,
+            "bias": config.lora_bias,
+            "target_modules": list(config.lora_target_modules),
+        },
         "loss": {
             "weighted_span_loss": dict(config.weighted_span_loss),
             "visual_token_manifold": config.loss_visual_token_manifold,
         },
         "optimizer": {
+            "name": "adamw",
             "lr_lora": config.lr_lora,
             "lr_tgvf": config.lr_tgvf,
             "lr_calibration": config.lr_calibration,
@@ -433,6 +482,10 @@ def build_stage2_launch_plan(
             "warmup_ratio": config.warmup_ratio,
             "warmup_steps": config.warmup_steps,
             "min_lr_ratio": config.min_lr_ratio,
+            "betas": [config.adam_beta1, config.adam_beta2],
+            "eps": config.adam_eps,
+            "weight_decay": config.weight_decay,
+            "max_grad_norm": config.max_grad_norm,
         },
         "wandb": {
             "project": config.wandb_project,
@@ -707,6 +760,8 @@ def _stage1_legacy_command(config: Stage1LaunchConfig) -> list[str]:
         str(config.loss_same_image_negative),
         "--same-image-negative-mode",
         config.same_image_negative_mode,
+        "--max-grad-norm",
+        str(config.max_grad_norm),
     ]
     _append_optional(command, "--processor-id", config.processor_id)
     _append_optional(command, "--min-confidence", config.min_confidence)
@@ -763,6 +818,16 @@ def _stage2_legacy_command(config: Stage2LaunchConfig) -> list[str]:
         str(config.max_seq_len),
         "--fvt-position-mode",
         config.fvt_position_mode,
+        "--lora-rank",
+        str(config.lora_rank),
+        "--lora-alpha",
+        str(config.lora_alpha),
+        "--lora-dropout",
+        str(config.lora_dropout),
+        "--lora-bias",
+        config.lora_bias,
+        "--lora-target-modules",
+        ",".join(config.lora_target_modules),
         "--mask-original-image-after-tgvf-prob",
         str(config.mask_original_image_after_tgvf_prob),
         "--mask-original-image-after-tgvf-scope",
@@ -781,7 +846,22 @@ def _stage2_legacy_command(config: Stage2LaunchConfig) -> list[str]:
         str(config.loss_visual_token_manifold),
     ]
     _append_optional(command, "--warmup-steps", config.warmup_steps)
-    command.extend(["--min-lr-ratio", str(config.min_lr_ratio)])
+    command.extend(
+        [
+            "--min-lr-ratio",
+            str(config.min_lr_ratio),
+            "--adam-beta1",
+            str(config.adam_beta1),
+            "--adam-beta2",
+            str(config.adam_beta2),
+            "--adam-eps",
+            str(config.adam_eps),
+            "--weight-decay",
+            str(config.weight_decay),
+            "--max-grad-norm",
+            str(config.max_grad_norm),
+        ]
+    )
     _append_optional(command, "--processor-id", config.processor_id)
     _append_optional(command, "--val-file", config.val_file)
     _append_optional(command, "--target-focus-ratio", config.target_focus_ratio)

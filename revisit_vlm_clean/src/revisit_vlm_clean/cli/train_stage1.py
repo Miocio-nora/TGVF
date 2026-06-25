@@ -63,6 +63,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--warmup-steps", type=int, default=100)
     parser.add_argument("--min-lr-ratio", type=float, default=0.1)
+    parser.add_argument("--max-grad-norm", type=float, default=1.0)
     parser.add_argument("--loss-gen", type=float, default=1.0)
     parser.add_argument("--loss-visual-token-manifold", type=float, default=0.1)
     parser.add_argument("--loss-same-image-negative", type=float, default=1.0)
@@ -127,6 +128,7 @@ def _defaults() -> dict[str, object]:
         "lr_scheduler": "cosine",
         "warmup_steps": 100,
         "min_lr_ratio": 0.1,
+        "max_grad_norm": 1.0,
         "clean_launcher_actions": ["dry_run", "write_plan"],
     }
 
@@ -167,6 +169,7 @@ def _config_from_args(args: argparse.Namespace) -> Stage1LaunchConfig:
         lr_scheduler=args.lr_scheduler,
         warmup_steps=args.warmup_steps,
         min_lr_ratio=args.min_lr_ratio,
+        max_grad_norm=args.max_grad_norm,
         loss_gen=args.loss_gen,
         loss_visual_token_manifold=args.loss_visual_token_manifold,
         loss_same_image_negative=args.loss_same_image_negative,

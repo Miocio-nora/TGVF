@@ -190,10 +190,14 @@ def test_training_default_clis(capsys) -> None:
     assert '"focus_action_im_end": true' in stage1_defaults
     assert '"lr_scheduler": "cosine"' in stage1_defaults
     assert '"warmup_steps": 100' in stage1_defaults
+    assert '"max_grad_norm": 1.0' in stage1_defaults
     assert stage2_main(["--print-defaults"]) == 0
     stage2_defaults = capsys.readouterr().out
     assert "through_answer" in stage2_defaults
+    assert '"target_modules": [' in stage2_defaults
+    assert '"q_proj"' in stage2_defaults
     assert '"warmup_steps": 100' in stage2_defaults
+    assert '"adam_betas": [' in stage2_defaults
 
 
 def test_stage1_training_write_plan_cli(tmp_path) -> None:
@@ -241,6 +245,7 @@ def test_stage1_training_write_plan_cli(tmp_path) -> None:
     assert plan["optimizer"]["lr_scheduler"] == "cosine"
     assert plan["optimizer"]["warmup_steps"] == 100
     assert plan["optimizer"]["min_lr_ratio"] == 0.1
+    assert plan["optimizer"]["max_grad_norm"] == 1.0
     assert plan["module_policy"]["trainable"] == [
         "tgvf_module",
         "protocol_c_token_rows_row_only",
@@ -272,6 +277,7 @@ def test_stage1_training_write_plan_cli(tmp_path) -> None:
     assert "--lr-scheduler cosine" in command
     assert "--warmup-steps 100" in command
     assert "--min-lr-ratio 0.1" in command
+    assert "--max-grad-norm 1.0" in command
     assert "--gradient-accumulation-steps 2" in command
     assert "--protocol-token-row-mode row_only" in command
 
@@ -396,9 +402,28 @@ def test_stage2_training_write_plan_cli(tmp_path) -> None:
     assert plan["batch"]["gradient_accumulation_steps"] == 8
     assert plan["mask_policy"]["mask_original_image_after_tgvf_scope"] == "through_answer"
     assert plan["loss"]["weighted_span_loss"]["focus_target"] == 1.5
+    assert plan["lora"] == {
+        "alpha": 256,
+        "bias": "none",
+        "dropout": 0.05,
+        "rank": 64,
+        "target_modules": [
+            "q_proj",
+            "k_proj",
+            "v_proj",
+            "o_proj",
+            "gate_proj",
+            "up_proj",
+            "down_proj",
+        ],
+    }
     assert plan["optimizer"]["lr_scheduler"] == "cosine"
     assert plan["optimizer"]["warmup_steps"] == 100
     assert plan["optimizer"]["min_lr_ratio"] == 0.1
+    assert plan["optimizer"]["betas"] == [0.9, 0.95]
+    assert plan["optimizer"]["eps"] == 1e-8
+    assert plan["optimizer"]["weight_decay"] == 0.01
+    assert plan["optimizer"]["max_grad_norm"] == 1.0
     assert "qwen_lora_adapters" in plan["module_policy"]["trainable"]
     assert "qwen_visual_merger" in plan["module_policy"]["frozen"]
     assert plan["module_policy"]["visual_merger"]["trainable"] is False
@@ -426,7 +451,20 @@ def test_stage2_training_write_plan_cli(tmp_path) -> None:
     command = (output_dir / "legacy_reference_command.sh").read_text()
     assert command.startswith("# not executable:")
     assert "--mask-original-image-after-tgvf-scope through_answer" in command
+    assert "--lora-rank 64" in command
+    assert "--lora-alpha 256" in command
+    assert "--lora-dropout 0.05" in command
+    assert "--lora-bias none" in command
+    assert (
+        "--lora-target-modules q_proj,k_proj,v_proj,o_proj,gate_proj,up_proj,down_proj"
+        in command
+    )
     assert "--warmup-steps 100" in command
+    assert "--adam-beta1 0.9" in command
+    assert "--adam-beta2 0.95" in command
+    assert "--adam-eps 1e-08" in command
+    assert "--weight-decay 0.01" in command
+    assert "--max-grad-norm 1.0" in command
     assert "--loss-focus-target 1.5" in command
 
 
