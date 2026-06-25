@@ -2,7 +2,8 @@
 
 The clean training CLIs do not launch long-running jobs yet. They produce
 auditable launch plans that bind dataset/checkpoint identities, batch math, mask
-semantics, and the temporary historical command mapping.
+semantics, clean-native executor status, and the temporary historical command
+mapping.
 """
 
 from __future__ import annotations
@@ -46,6 +47,8 @@ DEFAULT_STAGE2_SPAN_WEIGHTS = {
     "no_focus_evidence_state": 0.2,
     "no_focus_answer": 1.0,
 }
+
+TRAINING_PLAN_SCHEMA_VERSION = "clean_training_plan_v1"
 
 
 @dataclass(frozen=True)
@@ -280,6 +283,7 @@ def build_stage1_launch_plan(
     train_identity = _required_file_identity(config.train_file, label="train_file")
     command = _stage1_legacy_command(config)
     return {
+        "training_plan_schema_version": TRAINING_PLAN_SCHEMA_VERSION,
         "stage": TrainingStage.STAGE1,
         "run_id": config.run_id,
         "output_dir": config.output_dir,
@@ -328,6 +332,11 @@ def build_stage1_launch_plan(
             "fvt_position_mode_whitelist": ["native_source_grid"],
         },
         "clean_native_training": _clean_native_training_status(TrainingStage.STAGE1),
+        "clean_training_command": _clean_training_command_payload(
+            TrainingStage.STAGE1,
+            world_size=config.batch.world_size,
+            output_dir=config.output_dir,
+        ),
         "legacy_reference_command": _command_payload(command, executable=True),
     }
 
@@ -350,6 +359,7 @@ def build_stage2_launch_plan(
     command = _stage2_legacy_command(config) if not config.deepstack.enabled else None
     legacy_executable = command is not None
     return {
+        "training_plan_schema_version": TRAINING_PLAN_SCHEMA_VERSION,
         "stage": TrainingStage.STAGE2,
         "run_id": config.run_id,
         "output_dir": config.output_dir,
@@ -416,6 +426,11 @@ def build_stage2_launch_plan(
             TrainingStage.STAGE2,
             deepstack_enabled=config.deepstack.enabled,
         ),
+        "clean_training_command": _clean_training_command_payload(
+            TrainingStage.STAGE2,
+            world_size=config.batch.world_size,
+            output_dir=config.output_dir,
+        ),
         "legacy_reference_command": _command_payload(
             command or [],
             executable=legacy_executable,
@@ -433,6 +448,7 @@ def write_training_plan(output_dir: str | Path, plan: dict[str, Any]) -> dict[st
     text_path = out / "training_plan.txt"
     dataset_path = out / "dataset_identity.json"
     native_status_path = out / "clean_native_training_status.json"
+    clean_command_path = out / "clean_training_command.sh"
     command_path = out / "legacy_reference_command.sh"
     plan_path.write_text(
         json.dumps(_to_jsonable(plan), indent=2, sort_keys=True) + "\n",
@@ -452,14 +468,21 @@ def write_training_plan(output_dir: str | Path, plan: dict[str, Any]) -> dict[st
         + "\n",
         encoding="utf-8",
     )
-    command = ((plan.get("legacy_reference_command") or {}).get("shell") or "").strip()
-    command_path.write_text((command + "\n") if command else "# unavailable\n", encoding="utf-8")
+    clean_command_path.write_text(
+        _command_script_text(plan.get("clean_training_command") or {}),
+        encoding="utf-8",
+    )
+    command_path.write_text(
+        _command_script_text(plan.get("legacy_reference_command") or {}),
+        encoding="utf-8",
+    )
     return {
         "output_dir": str(out),
         "training_plan": str(plan_path),
         "training_plan_txt": str(text_path),
         "dataset_identity": str(dataset_path),
         "clean_native_training_status": str(native_status_path),
+        "clean_training_command": str(clean_command_path),
         "legacy_reference_command": str(command_path),
     }
 
@@ -480,10 +503,51 @@ def _command_payload(
     return {
         "executable": executable,
         "status": "temporary_legacy_reference_not_final_clean_native",
+        "final_clean_native": False,
         "unavailable_reason": unavailable_reason,
         "argv": command,
         "shell": shlex.join(command) if command else "",
     }
+
+
+def _clean_training_command_payload(
+    stage: TrainingStage,
+    *,
+    world_size: int,
+    output_dir: str,
+) -> dict[str, Any]:
+    entrypoint = f"revisit_vlm_clean.training.{stage.value}_executor"
+    command = [
+        "torchrun",
+        "--nproc-per-node",
+        str(world_size),
+        "-m",
+        entrypoint,
+        "--plan",
+        str(Path(output_dir) / "training_plan.json"),
+    ]
+    return {
+        "executable": False,
+        "status": "clean_native_executor_not_ported",
+        "final_clean_native": True,
+        "planned_entrypoint": entrypoint,
+        "unavailable_reason": (
+            "clean-native training executor is not implemented yet; "
+            "do not launch historical scripts as the clean mainline"
+        ),
+        "argv": command,
+        "shell": shlex.join(command),
+    }
+
+
+def _command_script_text(command: dict[str, Any]) -> str:
+    shell = str(command.get("shell") or "").strip()
+    if not shell:
+        return "# unavailable\n"
+    if command.get("executable"):
+        return shell + "\n"
+    reason = str(command.get("unavailable_reason") or "not executable").strip()
+    return f"# not executable: {reason}\n# {shell}\n"
 
 
 def _clean_native_training_status(
@@ -722,6 +786,7 @@ def _append_optional(command: list[str], flag: str, value: Any | None) -> None:
 def _training_plan_text(plan: dict[str, Any]) -> str:
     batch = plan["batch"]
     lines = [
+        f"training_plan_schema_version: {plan.get('training_plan_schema_version')}",
         f"run_id: {plan['run_id']}",
         f"stage: {plan['stage']}",
         f"output_dir: {plan['output_dir']}",
@@ -736,6 +801,7 @@ def _training_plan_text(plan: dict[str, Any]) -> str:
             f"{batch['micro_batch_size']} * {batch['gradient_accumulation_steps']}"
         ),
     ]
+    clean_command = plan.get("clean_training_command") or {}
     command = plan.get("legacy_reference_command") or {}
     native = plan.get("clean_native_training") or {}
     module_policy = plan.get("module_policy") or {}
@@ -743,10 +809,16 @@ def _training_plan_text(plan: dict[str, Any]) -> str:
         [
             f"clean_native_training_executable: {native.get('executable')}",
             f"clean_native_training_status: {native.get('status')}",
+            f"clean_training_command_executable: {clean_command.get('executable')}",
+            f"clean_training_command_status: {clean_command.get('status')}",
             f"trainable_modules: {json.dumps(module_policy.get('trainable', []))}",
             f"frozen_modules: {json.dumps(module_policy.get('frozen', []))}",
         ]
     )
+    if clean_command.get("unavailable_reason"):
+        lines.append(f"clean_training_unavailable_reason: {clean_command['unavailable_reason']}")
+    if clean_command.get("shell"):
+        lines.extend(["clean_training_command:", clean_command["shell"]])
     lines.extend(
         [
             f"legacy_reference_executable: {command.get('executable')}",

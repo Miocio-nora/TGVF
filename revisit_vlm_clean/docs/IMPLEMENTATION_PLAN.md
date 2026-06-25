@@ -1188,6 +1188,25 @@ Implemented after Phase 39.
   now passes;
 - full clean tests still pass.
 
+## Phase 41: Training Plan Clean-Command Separation
+
+Implemented after Phase 40.
+
+- training plans now carry
+  `training_plan_schema_version=clean_training_plan_v1`;
+- Stage1 and Stage2 plan outputs now write both:
+  - `clean_training_command.sh`;
+  - `legacy_reference_command.sh`;
+- `clean_training_command.sh` is the intended final clean-native entrypoint
+  shape, but it is commented and marked not executable until the native
+  Stage1/Stage2 training executors are ported;
+- legacy command payloads now record `final_clean_native=false`;
+- clean command payloads record `final_clean_native=true`,
+  `planned_entrypoint`, `status=clean_native_executor_not_ported`, and a
+  clear unavailable reason;
+- this does not launch training. It removes ambiguity: historical scripts are
+  preserved only as references, not as the clean mainline.
+
 ## Later Phases
 
 1. Replace training launch plans with clean-native training execution.

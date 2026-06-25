@@ -76,6 +76,9 @@ Data generation is a first-class clean-project surface, not a side branch.
 - Clean launch plans must emit this module policy in machine-readable form,
   including frozen merger state, training `use_cache=false`, and the requirement
   to print trainable parameter names before launch.
+- Clean launch plans may keep historical script commands as references only.
+  The final training entrypoint must be the clean-native command/status channel,
+  not `legacy_reference_command.sh`.
 - Loss defaults:
   - generation/readout LM loss: `1.0`;
   - visual token manifold: `0.1`;
@@ -146,6 +149,9 @@ Data generation is a first-class clean-project surface, not a side branch.
   including the PEFT token-row implementation caveat, frozen merger state,
   training `use_cache=false`, gradient checkpointing state, and the requirement
   to print trainable parameter names before launch.
+- Clean launch plans may keep historical script commands as references only.
+  The final training entrypoint must be the clean-native command/status channel,
+  not `legacy_reference_command.sh`.
 - Focus/no-focus sampling:
   - `target_focus_ratio=0.8`.
 - Batch/default run scale:

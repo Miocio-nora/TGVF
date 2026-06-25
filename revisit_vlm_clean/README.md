@@ -54,8 +54,11 @@ outside the clean tree.
 
 The training entrypoints currently produce auditable launch plans with
 dataset/checkpoint hashes, batch math, mask policy, weighted losses, DeepStack
-state, and a temporary legacy reference command. They do not start training
-jobs yet; clean-native training execution is still to be ported.
+state, a clean-native executor status, and a separate temporary legacy
+reference command. They also write a commented `clean_training_command.sh`
+showing the intended final clean entrypoint, but that command is explicitly
+not executable until the native training executors are ported. They do not
+start training jobs yet.
 
 ## Fixed Manifests
 

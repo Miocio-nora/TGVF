@@ -115,6 +115,7 @@ def test_stage1_training_write_plan_cli(tmp_path) -> None:
     )
 
     plan = json.loads((output_dir / "training_plan.json").read_text())
+    assert plan["training_plan_schema_version"] == "clean_training_plan_v1"
     assert plan["stage"] == "stage1"
     assert plan["dataset"]["train_file"]["line_count"] == 1
     assert plan["batch"] == {
@@ -133,8 +134,18 @@ def test_stage1_training_write_plan_cli(tmp_path) -> None:
     assert plan["module_policy"]["training_runtime"]["use_cache"] is False
     assert plan["clean_native_training"]["executable"] is False
     assert plan["clean_native_training"]["required_for_final_clean_project"] is True
+    assert plan["clean_training_command"]["final_clean_native"] is True
+    assert plan["clean_training_command"]["executable"] is False
+    assert (
+        plan["clean_training_command"]["planned_entrypoint"]
+        == "revisit_vlm_clean.training.stage1_executor"
+    )
+    assert plan["legacy_reference_command"]["final_clean_native"] is False
     native_status = json.loads((output_dir / "clean_native_training_status.json").read_text())
     assert native_status["status"] == "not_implemented"
+    clean_command = (output_dir / "clean_training_command.sh").read_text()
+    assert "not executable" in clean_command
+    assert "revisit_vlm_clean.training.stage1_executor" in clean_command
     command = (output_dir / "legacy_reference_command.sh").read_text()
     assert "torchrun --nproc-per-node 4" in command
     assert "--gradient-accumulation-steps 2" in command
@@ -182,6 +193,7 @@ def test_stage2_training_write_plan_cli(tmp_path) -> None:
     )
 
     plan = json.loads((output_dir / "training_plan.json").read_text())
+    assert plan["training_plan_schema_version"] == "clean_training_plan_v1"
     assert plan["stage"] == "stage2"
     assert plan["dataset"]["train_file"]["line_count"] == 1
     assert plan["dataset"]["val_file"]["line_count"] == 1
@@ -200,7 +212,17 @@ def test_stage2_training_write_plan_cli(tmp_path) -> None:
     )
     assert plan["clean_native_training"]["executable"] is False
     assert plan["clean_native_training"]["legacy_reference_is_final"] is False
+    assert plan["clean_training_command"]["final_clean_native"] is True
+    assert plan["clean_training_command"]["executable"] is False
+    assert (
+        plan["clean_training_command"]["planned_entrypoint"]
+        == "revisit_vlm_clean.training.stage2_executor"
+    )
+    assert plan["legacy_reference_command"]["final_clean_native"] is False
     assert (output_dir / "clean_native_training_status.json").exists()
+    clean_command = (output_dir / "clean_training_command.sh").read_text()
+    assert "not executable" in clean_command
+    assert "revisit_vlm_clean.training.stage2_executor" in clean_command
     command = (output_dir / "legacy_reference_command.sh").read_text()
     assert "--mask-original-image-after-tgvf-scope through_answer" in command
     assert "--loss-focus-target 1.5" in command
