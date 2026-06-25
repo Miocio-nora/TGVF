@@ -39,7 +39,9 @@ The benchmark entrypoint can now validate identity, build/materialize fixed
 manifests, render model input rows for smoke checks, and execute the dry-run or
 original-Qwen backend. It can also execute the diagnostic Qwen3 Stage2 TGVF
 bridge backend for path-backed samples; full benchmark claims still require
-explicit manifest and ledger identity.
+explicit manifest and ledger identity. This entrypoint is for
+`project_native_external` and `internal_diagnostic` eval families only; ValKit
+must use a separate runner surface.
 
 Scoring is applied after all rows are produced. This is intentional: some
 official scorers, including OCRBench-v2, need batch-level prediction files

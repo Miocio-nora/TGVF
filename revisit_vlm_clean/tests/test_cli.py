@@ -1,5 +1,6 @@
 import json
 
+import pytest
 from revisit_vlm_clean.cli.benchmark import main as benchmark_main
 from revisit_vlm_clean.cli.generate_data import main as generate_data_main
 from revisit_vlm_clean.cli.manifest import main as manifest_main
@@ -69,6 +70,27 @@ def test_benchmark_dry_run_cli_accepts_explicit_internal_diagnostic_family(capsy
         == 0
     )
     assert '"eval_family": "internal_diagnostic"' in capsys.readouterr().out
+
+
+def test_benchmark_cli_rejects_valkit_eval_family() -> None:
+    with pytest.raises(SystemExit):
+        benchmark_main(
+            [
+                "--run-id",
+                "valkit_wrong_runner",
+                "--checkpoint-path",
+                "outputs/checkpoint.pt",
+                "--eval-family",
+                "valkit",
+                "--mode",
+                "tgvf_force",
+                "--post-tgvf-forward-mode",
+                "kv_cache",
+                "--subset-id",
+                "core_smoke_256_seed20260625",
+                "--dry-run",
+            ]
+        )
 
 
 def test_benchmark_write_empty_output_cli(tmp_path) -> None:

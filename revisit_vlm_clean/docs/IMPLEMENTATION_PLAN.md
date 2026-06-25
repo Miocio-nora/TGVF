@@ -1276,6 +1276,19 @@ Implemented after Phase 44.
   - legacy Stage2 backend rejects non-diagnostic configs;
   - legacy Stage2 backend remains available for explicit diagnostic configs.
 
+## Phase 46: ValKit Eval-Family Separation
+
+Implemented after Phase 45.
+
+- `tgvf_eval_benchmark` now accepts only:
+  - `project_native_external`;
+  - `internal_diagnostic`;
+- `valkit` remains in the shared schema as a preserved eval family, but it is
+  rejected by the project-native benchmark CLI;
+- tests assert that `--eval-family valkit` fails on `tgvf_eval_benchmark`;
+- this prevents ValKit results from being silently produced through the
+  project-native runner with incompatible sample/scoring semantics.
+
 ## Later Phases
 
 1. Replace training launch plans with clean-native training execution.

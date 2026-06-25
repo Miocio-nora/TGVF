@@ -49,6 +49,11 @@ from revisit_vlm_clean.stage2_runtime import (
 )
 from revisit_vlm_clean.tgvf_protocol import SUPPORTED_PROTOCOLS
 
+PROJECT_NATIVE_CLI_EVAL_FAMILIES = (
+    EvalFamily.PROJECT_NATIVE_EXTERNAL,
+    EvalFamily.INTERNAL_DIAGNOSTIC,
+)
+
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Clean TGVF external benchmark runner skeleton.")
@@ -58,7 +63,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--processor-id", default=None)
     parser.add_argument(
         "--eval-family",
-        choices=[item.value for item in EvalFamily],
+        choices=[item.value for item in PROJECT_NATIVE_CLI_EVAL_FAMILIES],
         default=EvalFamily.PROJECT_NATIVE_EXTERNAL.value,
     )
     parser.add_argument("--mode", choices=[item.value for item in EvalMode], required=True)

@@ -566,6 +566,8 @@ Clean-project target:
 - VLMEvalKit should remain a first-class preserved eval family, but not silently
   interchangeable with project-native external benchmark results unless its
   runner emits the same identity fields and sample definitions.
+- `tgvf_eval_benchmark` is not the ValKit runner and must reject
+  `eval_family=valkit`.
 
 Clean prompt policy:
 
