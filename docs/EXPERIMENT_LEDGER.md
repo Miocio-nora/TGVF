@@ -2518,3 +2518,79 @@ entry, update this file immediately.
   - For this controlled sample, the native/manual difference is fully explained by DeepStack injection.
   - Forward-entry, position ids, rope deltas, and cache length do not produce residual difference once DeepStack is disabled.
   - This supports the interpretation that old KV eval mixed a native DeepStack prefix cache with manual TGVF D append, while training/no-KV answer loss uses the manual no-DeepStack full-sequence path.
+
+### EXP-20260626-002759-clean-stage2-vstar1-smoke
+
+- Status: PLANNED.
+- Question:
+  - Can the new `revisit_vlm_clean` executable runner load a real historical Qwen3 Stage2 checkpoint through the narrow legacy adapter and run one deterministic path-backed VStar sample end to end?
+- Baseline anchor:
+  - `BASE-20260617-rowonly-original-stage2`.
+- Intended diff:
+  - This is not an accuracy comparison.
+  - It validates the clean runner contract, deterministic diagnostic manifest, `run_config.txt` launch identity output, and Stage2 legacy bridge on one VStar row.
+- Allowed changed variables:
+  - Clean wrapper/adapter path.
+  - Single diagnostic sample manifest.
+  - Smaller `max_answer_tokens=32` for smoke runtime.
+- Not allowed to change:
+  - Stage2 checkpoint.
+  - Stage1 processor recorded in checkpoint.
+  - TGVF protocol.
+  - Sample id.
+  - Max image resolution 512.
+  - DeepStack state: clean default off.
+  - Post-TGVF continuation: `natural_continue`.
+- Code commit / worktree:
+  - Planned from branch `clean/tgvf-clean-project-20260625`.
+  - Pre-ledger code commit: `eed5a59534e23351fc5a8914ff54e5d6fa51a7f0`.
+  - Launch must occur from a tracked-clean worktree after this PLANNED entry is committed; exact runtime commit will be recorded in `run_config.txt`.
+  - Untracked paths ignored for code identity: `logs/`, `third_party/`.
+- Stage1 checkpoint:
+  - `outputs/tgvf_v3_protocol_c_stage1_8b/protocol_c_toolobs_stage1_v4data_clean_rowonly_gpu0_3_focus_imend_bidirectional_4gpu_bs4_accum2_gbs32_2000step_20260617/train/checkpoint_step_2000.pt`
+- Stage1 processor:
+  - `outputs/tgvf_v3_protocol_c_stage1_8b/protocol_c_toolobs_stage1_v4data_clean_rowonly_gpu0_3_focus_imend_bidirectional_4gpu_bs4_accum2_gbs32_2000step_20260617/train/processor_step_2000`
+- Stage2 checkpoint/output:
+  - `outputs/tgvf_v3_protocol_c/protocol_c_toolobs_stage2_v4data_clean_rowonly_gpu0_3_multifocus_focus_imend_from_clean_rowonly_focus_imend_stage1_bidirectional_4gpu_bs16_accum2_focus80_value1_1200step_20260617/checkpoint_step_1200.pt`
+- Train data:
+  - Recorded in checkpoint config:
+    `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend/splits/tgvf_v4_teacher_stage2_protocol_c.train.jsonl`
+- Validation data:
+  - Stage2 runtime validation jsonl:
+    `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend/splits/tgvf_v4_teacher_stage2_protocol_c.test.jsonl`
+  - Runtime identity check returned `n_rows=1002`, `need_focus=857`, `no_focus=145`.
+- Benchmark sample:
+  - Manifest:
+    `revisit_vlm_clean/benchmark_manifests/diagnostic_vstar_first_1_20260626.json`
+  - Manifest hash:
+    `851e301ea0730ee90086c83565135fa5c5fcc5d33b962fd074444d85241d6995`
+  - Sample id:
+    `vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/0_000000`
+  - Source:
+    `vstar_bench/snapshot/test_questions.jsonl`, row index `0`.
+  - Image:
+    `/home/dredvpn009/Flash_Storage/datasets/benchmarks/vstar_bench/snapshot/direct_attributes/sa_4690.jpg`
+  - Gold:
+    `A`.
+- Benchmark output:
+  - `outputs/clean_smokes/stage2_tgvf_force_vstar1_20260626_002759`
+- Script / command:
+  - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=revisit_vlm_clean/src:src python -m revisit_vlm_clean.cli.benchmark --run-id clean_stage2_tgvf_force_vstar1_20260626_002759 --checkpoint-path outputs/tgvf_v3_protocol_c/protocol_c_toolobs_stage2_v4data_clean_rowonly_gpu0_3_multifocus_focus_imend_from_clean_rowonly_focus_imend_stage1_bidirectional_4gpu_bs16_accum2_focus80_value1_1200step_20260617/checkpoint_step_1200.pt --model-id /nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking --processor-id outputs/tgvf_v3_protocol_c_stage1_8b/protocol_c_toolobs_stage1_v4data_clean_rowonly_gpu0_3_focus_imend_bidirectional_4gpu_bs4_accum2_gbs32_2000step_20260617/train/processor_step_2000 --mode tgvf_force --post-tgvf-forward-mode kv_cache --tgvf-protocol protocol_c_tool_observation --population-id vstar_test_questions_191 --manifest-path revisit_vlm_clean/benchmark_manifests/diagnostic_vstar_first_1_20260626.json --manifest-hash 851e301ea0730ee90086c83565135fa5c5fcc5d33b962fd074444d85241d6995 --benchmark-root /home/dredvpn009/Flash_Storage/datasets/benchmarks --output-dir outputs/clean_smokes/stage2_tgvf_force_vstar1_20260626_002759 --max-image-resolution 512 --max-action-tokens 64 --max-answer-tokens 32 --execute --runner-backend tgvf_stage2_qwen3 --dtype bfloat16 --device cuda:0 --device-map cuda:0 --attn-implementation sdpa --stage2-checkpoint outputs/tgvf_v3_protocol_c/protocol_c_toolobs_stage2_v4data_clean_rowonly_gpu0_3_multifocus_focus_imend_from_clean_rowonly_focus_imend_stage1_bidirectional_4gpu_bs16_accum2_focus80_value1_1200step_20260617/checkpoint_step_1200.pt --stage2-eval-jsonl data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend/splits/tgvf_v4_teacher_stage2_protocol_c.test.jsonl --stage2-d-condition correct_D --force-prefix-mode target_hint`
+- GPUs:
+  - Planned: GPU 0 only.
+- tmux:
+  - Planned: `clean_stage2_vstar1_20260626_002759`.
+- Started:
+  - Pending.
+- Finished:
+  - Pending.
+- Metrics:
+  - Pending.
+- Analysis:
+  - Pending.
+- Conclusion:
+  - Pending.
+- Comparable to baseline:
+  - No; diagnostic launch smoke only.
+- Follow-up:
+  - If this passes, run the same clean backend on a small multi-row manifest before any benchmark claims.
