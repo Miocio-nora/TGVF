@@ -91,6 +91,7 @@ tgvf_train_stage2_executor --plan /path/to/training_plan.json --preflight-only
 tgvf_train_stage1_executor --plan /path/to/training_plan.json --prepare-execution
 tgvf_train_stage2_executor --plan /path/to/training_plan.json --prepare-execution
 tgvf_train_stage2_executor --plan /path/to/training_plan.json --prepare-execution --audit-runtime
+tgvf_train_stage2_executor --plan /path/to/training_plan.json --prepare-execution --audit-runtime --audit-model-parameters
 ```
 
 Without `--preflight-only`, `--prepare-execution`, or `--audit-runtime`, these
@@ -111,6 +112,10 @@ writes `clean_training_runtime_audit.json`,
 That trainable-parameter artifact is explicitly marked
 `pending_model_load_not_actual_parameter_audit`; the real trainer loop must
 overwrite it after loading the model and before the first optimizer step.
+With explicit `--audit-model-parameters`, the runtime audit loads the planned
+Stage1/Stage2 model components and writes an actual trainable/frozen parameter
+audit instead. This is an expensive model-load check and still does not run
+optimizer steps or mark `will_launch_training=true`.
 
 ## Fixed Manifests
 

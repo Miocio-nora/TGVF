@@ -78,6 +78,15 @@ def build_parser(stage: TrainingStage) -> argparse.ArgumentParser:
             "<execution-dir>/clean_training_runtime_audit.json."
         ),
     )
+    parser.add_argument(
+        "--audit-model-parameters",
+        action="store_true",
+        help=(
+            "During --audit-runtime, load the planned model components and replace "
+            "the placeholder trainable-parameter artifact with an actual parameter audit. "
+            "This can be expensive and still does not launch training."
+        ),
+    )
     return parser
 
 
@@ -106,6 +115,7 @@ def main_for_stage(stage: TrainingStage, argv: list[str] | None = None) -> int:
                 bundle_path=prepared["execution_bundle"],
                 expected_stage=stage,
                 report_path=args.runtime_audit_report,
+                audit_model_parameters=args.audit_model_parameters,
             )
             prepared["runtime_audit"] = audit["runtime_audit"]
             prepared["trainable_parameters"] = audit["trainable_parameters"]
@@ -121,6 +131,7 @@ def main_for_stage(stage: TrainingStage, argv: list[str] | None = None) -> int:
             bundle_path=bundle_path,
             expected_stage=stage,
             report_path=args.runtime_audit_report,
+            audit_model_parameters=args.audit_model_parameters,
         )
         audit["preflight_report"] = str(report_path)
         print_json(audit)
@@ -212,6 +223,7 @@ def audit_training_runtime(
     bundle_path: str | Path,
     expected_stage: TrainingStage,
     report_path: str | Path | None = None,
+    audit_model_parameters: bool = False,
 ) -> dict[str, Any]:
     bundle_file = Path(bundle_path)
     if not bundle_file.exists():
@@ -220,9 +232,17 @@ def audit_training_runtime(
     _validate_execution_bundle(bundle, expected_stage=expected_stage)
     execution_dir = Path(str(bundle.get("execution_dir") or bundle_file.parent))
     artifacts = _load_runtime_artifacts(bundle, expected_stage=expected_stage)
-    trainable_parameters = _write_trainable_parameters_placeholder(
-        execution_dir=execution_dir,
-        bundle=bundle,
+    trainable_parameters = (
+        _write_actual_trainable_parameters_audit(
+            execution_dir=execution_dir,
+            bundle=bundle,
+            expected_stage=expected_stage,
+        )
+        if audit_model_parameters
+        else _write_trainable_parameters_placeholder(
+            execution_dir=execution_dir,
+            bundle=bundle,
+        )
     )
     audit = _runtime_audit_report(
         bundle_path=bundle_file,
@@ -627,6 +647,316 @@ def _write_trainable_parameters_placeholder(
     return {"path": str(path), "payload": payload}
 
 
+def _write_actual_trainable_parameters_audit(
+    *,
+    execution_dir: Path,
+    bundle: dict[str, Any],
+    expected_stage: TrainingStage,
+) -> dict[str, Any]:
+    loaded = _load_training_parameter_audit_modules(bundle, expected_stage=expected_stage)
+    modules = dict(loaded.get("modules") or {})
+    if not modules:
+        raise ValueError("model parameter audit loader returned no modules")
+    module_summaries = {
+        name: _parameter_module_summary(module, prefix=f"{name}.")
+        for name, module in sorted(modules.items())
+    }
+    trainable_names = [
+        parameter["name"]
+        for summary in module_summaries.values()
+        for parameter in summary["parameters"]
+        if parameter["requires_grad"]
+    ]
+    frozen_names = [
+        parameter["name"]
+        for summary in module_summaries.values()
+        for parameter in summary["parameters"]
+        if not parameter["requires_grad"]
+    ]
+    payload = {
+        "schema_version": "clean_trainable_parameters_audit_v1",
+        "stage": bundle.get("stage"),
+        "run_id": bundle.get("run_id"),
+        "status": "actual_model_parameter_audit",
+        "actual_model_parameters_loaded": True,
+        "must_be_replaced_before_first_optimizer_step": False,
+        "loader": loaded.get("loader") or {},
+        "expected_trainable_policy": list(
+            (bundle.get("module_policy") or {}).get("trainable") or []
+        ),
+        "expected_frozen_policy": list((bundle.get("module_policy") or {}).get("frozen") or []),
+        "visual_merger": (bundle.get("module_policy") or {}).get("visual_merger"),
+        "training_runtime": (bundle.get("module_policy") or {}).get("training_runtime"),
+        "module_summaries": module_summaries,
+        "trainable_parameter_names": trainable_names,
+        "frozen_parameter_names_sample": frozen_names[:200],
+        "trainable_tensor_count": len(trainable_names),
+        "frozen_tensor_count": len(frozen_names),
+        "trainable_numel": sum(summary["trainable_numel"] for summary in module_summaries.values()),
+        "frozen_numel": sum(summary["frozen_numel"] for summary in module_summaries.values()),
+        "notes": [
+            "actual model components were loaded for parameter audit",
+            "this audit still does not run optimizer steps or save training checkpoints",
+        ],
+    }
+    path = execution_dir / "trainable_parameters.json"
+    _write_json(path, payload)
+    return {"path": str(path), "payload": payload}
+
+
+def _parameter_module_summary(module: Any, *, prefix: str) -> dict[str, Any]:
+    if not hasattr(module, "named_parameters"):
+        raise TypeError(f"parameter audit object is not a torch-style module: {type(module)!r}")
+    parameters = []
+    trainable_numel = 0
+    frozen_numel = 0
+    for name, parameter in module.named_parameters():
+        full_name = prefix + str(name)
+        numel = _numel(parameter)
+        requires_grad = bool(getattr(parameter, "requires_grad", False))
+        if requires_grad:
+            trainable_numel += numel
+        else:
+            frozen_numel += numel
+        parameters.append(
+            {
+                "name": full_name,
+                "shape": _shape_list(parameter),
+                "numel": numel,
+                "requires_grad": requires_grad,
+            }
+        )
+    return {
+        "module_type": type(module).__name__,
+        "parameter_count": len(parameters),
+        "trainable_tensor_count": sum(1 for parameter in parameters if parameter["requires_grad"]),
+        "frozen_tensor_count": sum(1 for parameter in parameters if not parameter["requires_grad"]),
+        "trainable_numel": trainable_numel,
+        "frozen_numel": frozen_numel,
+        "parameters": parameters,
+    }
+
+
+def _load_training_parameter_audit_modules(
+    bundle: dict[str, Any],
+    *,
+    expected_stage: TrainingStage,
+) -> dict[str, Any]:
+    if expected_stage == TrainingStage.STAGE1:
+        return _load_stage1_parameter_audit_modules(bundle)
+    return _load_stage2_parameter_audit_modules(bundle)
+
+
+def _load_stage1_parameter_audit_modules(bundle: dict[str, Any]) -> dict[str, Any]:
+    try:
+        import torch
+
+        from revisit_vlm.qwen3_vl_tgvf import (
+            PROTOCOL_C_THINKING_SPECIAL,
+            PROTOCOL_C_TOOL_OBSERVATION,
+            PROTOCOL_C_TOOL_OBSERVATION_QWEN2_NO_THINK,
+            PROTOCOL_E_ACTION_EVIDENCE_SPECIAL,
+            ensure_tgvf_protocol_tokens,
+            load_qwen3_vl,
+        )
+        from revisit_vlm.tgvf_training import build_tgvf_module
+        from revisit_vlm.tgvf_v3_stage1 import (
+            TGVFv3Stage1Dataset,
+            freeze_qwen_backbone,
+            infer_qwen3_stage1_dims,
+        )
+        from scripts.train_tgvf_v3_stage1 import _enable_protocol_c_token_row_training
+    except Exception as exc:
+        raise RuntimeError("Stage1 model parameter audit dependencies are unavailable") from exc
+    model_cfg = bundle.get("model") or {}
+    training = bundle.get("training") or {}
+    dataset = bundle.get("dataset") or {}
+    train_file = ((dataset.get("train_file") or {}).get("path"))
+    if not train_file:
+        raise ValueError("Stage1 parameter audit requires dataset.train_file.path")
+    samples = TGVFv3Stage1Dataset(train_file, focus_only=True)
+    if len(samples) == 0:
+        raise RuntimeError("Stage1 parameter audit found no focus samples")
+    loaded = load_qwen3_vl(
+        model_cfg.get("model_id"),
+        processor_id=model_cfg.get("processor_id"),
+        dtype=str(model_cfg.get("dtype") or "bfloat16"),
+        device_map=model_cfg.get("device_map") or "auto",
+        attn_implementation=model_cfg.get("attn_implementation"),
+    )
+    model = loaded.model
+    processor = loaded.processor
+    if getattr(processor.tokenizer, "pad_token", None) is None:
+        processor.tokenizer.pad_token = processor.tokenizer.eos_token
+    protocol = str(bundle.get("protocol"))
+    token_row_protocols = {
+        PROTOCOL_C_THINKING_SPECIAL,
+        PROTOCOL_C_TOOL_OBSERVATION,
+        PROTOCOL_C_TOOL_OBSERVATION_QWEN2_NO_THINK,
+        PROTOCOL_E_ACTION_EVIDENCE_SPECIAL,
+    }
+    token_info: dict[str, Any] = {}
+    if protocol in token_row_protocols:
+        token_info = ensure_tgvf_protocol_tokens(processor.tokenizer, model, protocol=protocol)
+    freeze_qwen_backbone(model)
+    token_row_info: dict[str, Any] = {}
+    if protocol in token_row_protocols:
+        token_row_info, _ = _enable_protocol_c_token_row_training(
+            model=model,
+            tokenizer=processor.tokenizer,
+            protocol=protocol,
+            mode=str(training.get("token_row_mode") or "row_only"),
+        )
+    device = _parameter_audit_device(torch)
+    dims = infer_qwen3_stage1_dims(
+        model=model,
+        processor=processor,
+        sample=samples[0],
+        device=device,
+        max_image_resolution=training.get("max_image_resolution"),
+    )
+    tgvf = build_tgvf_module(
+        variant=str(training.get("variant") or "tgvf_v2_bidirectional"),
+        d_lm=dims["d_lm"],
+        d_v=dims["d_v"],
+        num_foveated_tokens=None,
+        spatial_merge_size=dims["spatial_merge_size"],
+    ).to(device=device, dtype=next(model.parameters()).dtype)
+    return {
+        "modules": {"qwen": model, "tgvf": tgvf},
+        "loader": {
+            "backend": "stage1_qwen3_training_parameter_audit",
+            "processor_id": getattr(loaded, "processor_id", model_cfg.get("processor_id")),
+            "protocol_token_info": token_info,
+            "protocol_token_rows": token_row_info,
+            "dims": dims,
+        },
+    }
+
+
+def _load_stage2_parameter_audit_modules(bundle: dict[str, Any]) -> dict[str, Any]:
+    try:
+        import torch
+        from peft import LoraConfig, get_peft_model
+
+        from revisit_vlm.qwen3_vl_tgvf import (
+            PROTOCOL_C_THINKING_SPECIAL,
+            PROTOCOL_C_TOOL_OBSERVATION,
+            PROTOCOL_C_TOOL_OBSERVATION_QWEN2_NO_THINK,
+            PROTOCOL_E_ACTION_EVIDENCE_SPECIAL,
+            ensure_tgvf_protocol_tokens,
+            load_qwen3_vl,
+        )
+        from revisit_vlm.tgvf_training import build_tgvf_module
+        from revisit_vlm.tgvf_v3_stage1 import freeze_qwen_backbone, infer_qwen3_stage1_dims
+        from revisit_vlm.tgvf_v3_stage2 import TGVFv3Stage2Dataset
+        from scripts.train_tgvf_v3_stage2 import _restore_protocol_c_token_rows_from_stage1
+    except Exception as exc:
+        raise RuntimeError("Stage2 model parameter audit dependencies are unavailable") from exc
+    model_cfg = bundle.get("model") or {}
+    dataset = bundle.get("dataset") or {}
+    training = bundle.get("training") or {}
+    lora = bundle.get("lora") or {}
+    train_file = ((dataset.get("train_file") or {}).get("path"))
+    checkpoint_path = ((dataset.get("stage1_checkpoint") or {}).get("path"))
+    if not train_file or not checkpoint_path:
+        raise ValueError("Stage2 parameter audit requires train_file and stage1_checkpoint")
+    samples = TGVFv3Stage2Dataset(train_file)
+    focus_sample = next((sample for sample in samples.samples if sample.need_focus), None)
+    if focus_sample is None:
+        raise RuntimeError("Stage2 parameter audit needs at least one focus sample")
+    loaded = load_qwen3_vl(
+        model_cfg.get("model_id"),
+        processor_id=model_cfg.get("processor_id"),
+        dtype=str(model_cfg.get("dtype") or "bfloat16"),
+        device_map=model_cfg.get("device_map") or "auto",
+        attn_implementation=model_cfg.get("attn_implementation"),
+    )
+    model = loaded.model
+    processor = loaded.processor
+    if getattr(processor.tokenizer, "pad_token", None) is None:
+        processor.tokenizer.pad_token = processor.tokenizer.eos_token
+    protocol = str(bundle.get("protocol"))
+    token_row_protocols = {
+        PROTOCOL_C_THINKING_SPECIAL,
+        PROTOCOL_C_TOOL_OBSERVATION,
+        PROTOCOL_C_TOOL_OBSERVATION_QWEN2_NO_THINK,
+        PROTOCOL_E_ACTION_EVIDENCE_SPECIAL,
+    }
+    token_info: dict[str, Any] = {}
+    if protocol in token_row_protocols:
+        token_info = ensure_tgvf_protocol_tokens(processor.tokenizer, model, protocol=protocol)
+    freeze_qwen_backbone(model)
+    runtime = ((bundle.get("module_policy") or {}).get("training_runtime") or {})
+    if runtime.get("gradient_checkpointing") and hasattr(model, "gradient_checkpointing_enable"):
+        model.gradient_checkpointing_enable()
+    if hasattr(model, "config"):
+        model.config.use_cache = False
+    modules_to_save = ["embed_tokens", "lm_head"] if protocol in token_row_protocols else None
+    model = get_peft_model(
+        model,
+        LoraConfig(
+            r=int(lora.get("rank") or 64),
+            lora_alpha=int(lora.get("alpha") or 256),
+            target_modules=list(lora.get("target_modules") or []),
+            lora_dropout=float(lora.get("dropout") or 0.0),
+            bias=str(lora.get("bias") or "none"),
+            task_type="CAUSAL_LM",
+            modules_to_save=modules_to_save,
+            ensure_weight_tying=False,
+        ),
+    )
+    utility_model = model.get_base_model() if hasattr(model, "get_base_model") else model
+    stage1_checkpoint = torch.load(checkpoint_path, map_location="cpu")
+    if protocol in token_row_protocols:
+        _restore_protocol_c_token_rows_from_stage1(
+            model=model,
+            tokenizer=processor.tokenizer,
+            protocol=protocol,
+            stage1_checkpoint=stage1_checkpoint,
+        )
+    device = _parameter_audit_device(torch)
+    dims = infer_qwen3_stage1_dims(
+        model=utility_model,
+        processor=processor,
+        sample=focus_sample,  # type: ignore[arg-type]
+        device=device,
+        max_image_resolution=training.get("max_image_resolution"),
+    )
+    tgvf_cfg = (stage1_checkpoint.get("config") or {}).get("tgvf") or {}
+    tgvf = build_tgvf_module(
+        variant=str(tgvf_cfg.get("variant") or training.get("variant") or "tgvf_v2_bidirectional"),
+        d_lm=dims["d_lm"],
+        d_v=dims["d_v"],
+        num_foveated_tokens=tgvf_cfg.get("num_foveated_tokens"),
+        spatial_merge_size=int(tgvf_cfg.get("spatial_merge_size") or dims["spatial_merge_size"]),
+        attn_dim=tgvf_cfg.get("attn_dim"),
+        encoder_adapter_layers=tuple(tgvf_cfg.get("encoder_adapter_layers") or (8, 16, 24)),
+        encoder_adapter_gate_init=float(tgvf_cfg.get("encoder_adapter_gate_init", 0.0)),
+        encoder_adapter_share_weights=bool(tgvf_cfg.get("encoder_adapter_share_weights", False)),
+        encoder_adapter_layer_index_base=int(tgvf_cfg.get("encoder_adapter_layer_index_base", 0)),
+        encoder_reencode_deepstack_compatible=bool(
+            tgvf_cfg.get("encoder_reencode_deepstack_compatible", False)
+        ),
+    ).to(device=device, dtype=next(model.parameters()).dtype)
+    tgvf.load_state_dict(stage1_checkpoint["tgvf_module"], strict=True)
+    return {
+        "modules": {"qwen_lora": model, "tgvf": tgvf},
+        "loader": {
+            "backend": "stage2_qwen3_lora_tgvf_parameter_audit",
+            "processor_id": getattr(loaded, "processor_id", model_cfg.get("processor_id")),
+            "protocol_token_info": token_info,
+            "dims": dims,
+            "stage1_global_step": stage1_checkpoint.get("global_step"),
+            "modules_to_save": modules_to_save,
+        },
+    }
+
+
+def _parameter_audit_device(torch_module: Any) -> Any:
+    return torch_module.device("cuda:0" if torch_module.cuda.is_available() else "cpu")
+
+
 def _runtime_audit_report(
     *,
     bundle_path: Path,
@@ -697,6 +1027,27 @@ def _launch_gate_audit(
         "build_dataset_loader_from_plan_identity",
         "construct_optimizer_and_scheduler_from_plan",
     }
+    actual_parameters_loaded = bool(
+        trainable_parameters["payload"].get("actual_model_parameters_loaded")
+    )
+    if actual_parameters_loaded:
+        satisfied.update(
+            {
+                "load_model_and_processor",
+                "ensure_protocol_token_rows",
+                "set_training_use_cache_false",
+                "emit_trainable_parameter_audit",
+            }
+        )
+        if bundle.get("stage") == str(TrainingStage.STAGE1):
+            satisfied.add("build_tgvf_module_from_stage1_plan")
+        if bundle.get("stage") == str(TrainingStage.STAGE2):
+            satisfied.update(
+                {
+                    "load_stage1_checkpoint_tgvf_and_protocol_rows",
+                    "attach_lora_modules_from_plan",
+                }
+            )
     pending_model_load = {
         "load_model_and_processor",
         "ensure_protocol_token_rows",

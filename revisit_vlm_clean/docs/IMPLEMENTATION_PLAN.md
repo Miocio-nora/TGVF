@@ -1624,6 +1624,34 @@ Implemented after Phase 61.
 - the runtime audit still records `will_launch_training=false` and
   `training_runtime_ported=false`.
 
+## Phase 65: Actual Model Parameter Audit Gate
+
+Implemented after Phase 64.
+
+- Stage1/Stage2 executors now support explicit `--audit-model-parameters`
+  together with `--audit-runtime`;
+- default runtime audit remains lightweight and writes
+  `status=pending_model_load_not_actual_parameter_audit`;
+- with `--audit-model-parameters`, the executor loads the planned training
+  model components and writes `trainable_parameters.json` with:
+  - `status=actual_model_parameter_audit`;
+  - trainable and frozen parameter names;
+  - per-module trainable/frozen tensor counts;
+  - trainable/frozen numel totals;
+  - loader identity and expected trainable/frozen module policy;
+- the Stage1 loader uses the clean Stage1 plan plus Qwen/TGVF primitives to
+  freeze Qwen, enable protocol token-row training, infer dimensions, and build
+  the TGVF module;
+- the Stage2 loader uses the clean Stage2 plan plus the Stage1 checkpoint to
+  attach LoRA, restore Protocol-C token rows, load Stage1 TGVF weights, and
+  build the TGVF module for audit;
+- runtime launch gates now mark model-load, protocol-token, cache-disable, and
+  trainable-parameter audit gates as `identity_validated` only when an actual
+  parameter audit was written;
+- this phase still does not run optimizer steps, weighted losses, checkpoint
+  save/load parity, or DeepStack training execution. `will_launch_training`
+  remains `false`.
+
 ## Later Phases
 
 1. Replace training launch plans with clean-native training execution.
