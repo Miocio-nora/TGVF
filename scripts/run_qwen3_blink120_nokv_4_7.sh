@@ -20,7 +20,7 @@ STAGE2_PROCESSOR="${STAGE2_PROCESSOR:-outputs/tgvf_v3_protocol_c/protocol_c_tool
 RUN_ROOT="${RUN_ROOT:-outputs/no_kv_benchmarks/qwen3_blink120_oldmask075_correct_stage1_nokv_${STAMP}}"
 BENCH_GPUS="${BENCH_GPUS:-4,5,6,7}"
 NUM_SHARDS="${NUM_SHARDS:-4}"
-LIMIT="${LIMIT:-120}"
+POPULATION_ID="${POPULATION_ID:-blink_counting_val_120}"
 
 SCORING_BACKEND="${SCORING_BACKEND:-auto}"
 OFFICIAL_LLM_MODE="${OFFICIAL_LLM_MODE:-disabled}"
@@ -38,6 +38,7 @@ mkdir -p "${RUN_ROOT}/logs"
 COUNTING_ROOT="${RUN_ROOT}/benchmark_root_counting_only"
 mkdir -p "${COUNTING_ROOT}/blink/snapshot"
 ln -sfn "${SOURCE_BENCHMARK_ROOT}/blink/snapshot/Counting" "${COUNTING_ROOT}/blink/snapshot/Counting"
+ln -sfn "${SOURCE_BENCHMARK_ROOT}/blink/official_code" "${COUNTING_ROOT}/blink/official_code"
 BENCHMARK_ROOT="${COUNTING_ROOT}"
 
 cat > "${RUN_ROOT}/run_config.txt" <<CFG
@@ -50,8 +51,9 @@ benchmark_root=${BENCHMARK_ROOT}
 stage2_ckpt=${STAGE2_CKPT}
 stage2_processor=${STAGE2_PROCESSOR}
 benchmark=blink
+population_id=${POPULATION_ID}
 tier=full
-limit=${LIMIT}
+limit=None
 blink_subset=Counting
 max_image_resolution=${MAX_IMAGE_RESOLUTION}
 max_action_tokens=${ACTION_MAX_TOKENS}
@@ -67,7 +69,7 @@ run_mode() {
   local suffix="$2"
   local out="${RUN_ROOT}/blink/${mode}"
   mkdir -p "${out}"
-  echo "[$(date -Is)] start blink ${mode} limit=${LIMIT} forward=${POST_TGVF_FORWARD_MODE}" | tee -a "${RUN_ROOT}/logs/run.log"
+  echo "[$(date -Is)] start blink ${mode} population=${POPULATION_ID} limit=None forward=${POST_TGVF_FORWARD_MODE}" | tee -a "${RUN_ROOT}/logs/run.log"
   for shard in $(seq 0 $((NUM_SHARDS - 1))); do
     local gpu="${GPUS[$shard]}"
     local shard_out="${out}/shard_${shard}"
@@ -129,6 +131,6 @@ for mode in ("free", "free_softforce_focus"):
         "trigger_rate": method.get("trigger_rate"),
         "post_tgvf_forward_mode": "${POST_TGVF_FORWARD_MODE}",
     })
-(root / "summary_blink120_nokv.json").write_text(json.dumps(rows, indent=2, ensure_ascii=False) + "\n")
+(root / f"summary_blink120_${POST_TGVF_FORWARD_MODE}.json").write_text(json.dumps(rows, indent=2, ensure_ascii=False) + "\n")
 print(json.dumps(rows, indent=2, ensure_ascii=False))
 PY

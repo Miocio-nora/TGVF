@@ -7,6 +7,27 @@ description: Use when working in this TGVF/revisit_vlm repository on training, e
 
 This repository is fragile because code, adapters, prompts, checkpoints, and benchmark surfaces have all changed over time. Do not trust memory, script names, or words like "full" until they are resolved to concrete artifacts.
 
+## General Work Rule
+
+Start every non-trivial task with a macro plan before execution. The plan must
+name:
+
+- the actual objective;
+- the repository/worktree strategy;
+- what will be changed now;
+- what will not be touched;
+- unresolved decisions that require user confirmation;
+- how the result will be verified.
+
+Do not improvise the plan after starting implementation. If the task scope
+changes, stop, restate the updated macro plan, and wait for user confirmation
+when the change affects code, experiments, cleanup, benchmark identity, or
+reported conclusions.
+
+User confirmation of a direction is not the same as permission to edit every
+related file. Translate confirmation into a concrete next action and state it
+before touching files.
+
 ## Non-Negotiable Rule
 
 Before launching any training or evaluation, prove the experiment identity from files. If it cannot be proven, stop and ask the user.
@@ -19,6 +40,7 @@ Experiment identity means:
 - exact sample count and sample ids or deterministic source rule;
 - exact prompt/continuation mode;
 - exact evaluation mode and scoring backend;
+- exact DeepStack state for original-image features and any post-TGVF mask scope;
 - exact GPU/world-size/micro-batch/accumulation relationship for training.
 
 ## Required Preflight
@@ -92,14 +114,29 @@ Before Stage1/Stage2 training:
 - record global batch as `world_size * micro_batch * grad_accum`;
 - keep global batch constant when changing GPU count unless the user approves;
 - record mask behavior, mask probability, mask scope, token-row mode, manifold loss weight, D norm statistics, and visual merger training state;
+- record DeepStack support/state separately from attention masks:
+  - clean Qwen3 must support DeepStack training semantics, but the default is
+    DeepStack off unless the run explicitly enables it;
+  - if DeepStack is enabled, original-image DeepStack injection after D must
+    follow the same scope as original-image visual-key masking;
+  - `through_answer` means original-image DeepStack is blocked from D/evidence
+    through answer;
+  - `evidence_only` means original-image DeepStack is blocked for D/evidence
+    and restored for answer;
+  - D remains a v-merge-level visual-token span by default; do not add
+    DeepStack-like D features unless it is a named ablation;
 - verify whether KV cache is used for training efficiency only, separately from eval generation semantics.
 
 ## Evaluation Rules
 
-Post-D evaluation defaults:
+Post-D evaluation identity:
 
-- Prefer no-KV full-sequence continuation for correctness-path post-D evaluation unless explicitly studying KV cache behavior.
-- Label any KV result as KV-continuation.
+- Record the forward mode, but do not explain a result as "KV vs no-KV" unless
+  DeepStack state, position ids, rope deltas, prompt/continuation, and parser are
+  controlled.
+- For Qwen3, treat DeepStack on/off as a first-class eval variable. If a manual
+  full-sequence path disables DeepStack and a native path enables it, the result
+  difference must be reported as DeepStack on/off, not as cache behavior.
 - Keep `post_tgvf_continuation`, `question_suffix`, `max_image_resolution`, and parser behavior fixed when comparing.
 
 For external benchmark tables:
@@ -110,6 +147,16 @@ For external benchmark tables:
 
 ## Cleanup Rules
 
+Cleanup must start with a macro plan, not local edits. Before changing or deleting code for project normalization, first present the user with:
+
+- the intended repository strategy: archive-only, in-place cleanup branch, new clean project/tree, or a staged combination;
+- the exact role of the current branch;
+- a whitelist of files/modules/scripts/protocols that will enter the clean project;
+- a separate archive/remove list;
+- a list of unresolved decisions that will not be touched yet.
+
+Do not infer that "this option should not enter the clean project" means "delete it from the current repo now." Treat those as different actions. Deletion from the working tree requires explicit confirmation that the current branch is the implementation cleanup branch, not merely a planning or audit branch.
+
 Do not normalize or delete project assets until:
 
 - current worktree is archived by a user-approved commit/branch/tag;
@@ -119,3 +166,4 @@ Do not normalize or delete project assets until:
 
 When unclear, ask the user to choose between 2-3 concrete options.
 
+If the user is still confirming the whitelist, do not edit executable code. At most update planning docs or the skill itself, and clearly say that no implementation cleanup has started.

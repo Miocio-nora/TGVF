@@ -21,7 +21,9 @@ Before any run, write or update an entry in `docs/EXPERIMENT_LEDGER.md` and veri
 - Resolved sample ids or old adapter source rule.
 - Mode: original, free, softforce, force, teacher-forced, or protocol eval.
 - Prompt suffix and post-TGVF continuation.
-- Post-D forward mode: no-KV full-sequence or KV continuation.
+- Post-D forward mode.
+- DeepStack state for original-image features, including post-TGVF mask scope if
+  DeepStack is enabled.
 - Scoring backend and parser.
 - GPU set and sharding.
 
@@ -99,6 +101,17 @@ Training runs must record:
 - Frozen and trainable modules.
 - Global batch formula.
 - Mask mode, probability, and scope.
+- DeepStack support/state:
+  - clean Qwen3 must support DeepStack training semantics;
+  - default training setting is DeepStack off unless explicitly enabled;
+  - when enabled, original-image DeepStack injection after D follows the same
+    scope as original-image visual-key masking;
+  - `through_answer` blocks original-image DeepStack from D/evidence through
+    answer;
+  - `evidence_only` blocks original-image DeepStack for D/evidence and restores
+    it for answer;
+  - D remains a v-merge-level visual-token span by default, with no
+    DeepStack-like D features unless named as an ablation.
 - Protocol token-row mode.
 - Manifold loss weight and D norm diagnostics.
 - Whether the visual merger is trained.
@@ -107,12 +120,18 @@ Changing GPU count is allowed only if the global batch is kept constant or the c
 
 ## Eval Contract
 
-Post-D eval should default to no-KV full-sequence continuation for correctness-path evaluation. KV continuation is allowed only as a labeled ablation.
+Post-D eval must record forward mode, but do not interpret a result as a
+KV/no-KV effect unless DeepStack state is controlled. For Qwen3, DeepStack
+on/off is a first-class variable. If one path uses native image forward with
+DeepStack and another path uses manual `inputs_embeds` without DeepStack, report
+the comparison as DeepStack on/off rather than cache behavior.
 
 The eval report must state:
 
 - `post_tgvf_forward_mode`;
 - `post_tgvf_continuation`;
+- `deepstack_enabled`;
+- `deepstack_original_image_scope` when applicable;
 - `question_suffix`;
 - parser/scoring backend;
 - max image resolution;
@@ -127,4 +146,3 @@ If a launched run is discovered to be invalid:
 3. Explain the mismatch.
 4. Preserve enough output to debug the mistake.
 5. Do not quote its metric as comparable.
-

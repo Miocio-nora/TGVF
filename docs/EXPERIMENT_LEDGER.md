@@ -1380,7 +1380,7 @@ entry, update this file immediately.
 
 ### EXP-20260624-qwen2vl2b-no-think-stage1-stage2-512-0_3
 
-- Status: RUNNING.
+- Status: INTERRUPTED_PARTIAL.
 - Question:
   - Does a Qwen2-specific no-think tool-observation protocol fix the Stage2
     continuation/answer parsing failure seen in `EXP-20260624-qwen2vl2b-tgvf-stage1-stage2-512-0_3`?
@@ -2034,7 +2034,7 @@ entry, update this file immediately.
 
 ### EXP-20260625-132715-qwen3-blink120-nokv-oldmask075
 
-- Status: RUNNING.
+- Status: INVALID_SIDE_RESULT.
 - Question:
   - Re-test Qwen3 BLINK under the historical full-benchmark table setting (`n=120`, not current 1901 full BLINK) with no-KV full-sequence post-D continuation.
 - Baseline anchor:
@@ -2068,4 +2068,453 @@ entry, update this file immediately.
 - Started:
   - 2026-06-25T13:27:15+09:00.
 - Metrics:
-  - pending.
+  - Free mode partial merged result: n=120, accuracy 43.33, parse 97.50, trigger 3.33.
+- Invalid reason:
+  - This did not evaluate the historical BLINK Counting-120 population.
+  - Row audit showed old IDs like `val-00000-of-00001-0`, but this run produced
+    IDs like `Art_Style/val-00000-of-00001-11`.
+  - Therefore it changed sample identity, not only post-D forward mode.
+  - Do not use this run for the KV vs no-KV judgment.
+
+### EXP-20260625-173956-qwen3-blink-counting120-nokv-standard
+
+- Status: DONE.
+- Question:
+  - Judge Qwen3 BLINK Counting-120 under the exact historical standard, changing
+    only post-D forward mode from KV continuation to no-KV full-sequence.
+- Baseline anchor:
+  - `EXP-20260623-005426-oldmask075-correct-stage1` BLINK rows:
+    - free: n=120, accuracy 59.17, parse 98.33, trigger 7.50.
+    - softforce: n=120, accuracy 65.00, parse 96.67, trigger 51.67.
+- Intended diff:
+  - Eval only: `post_tgvf_forward_mode=no_kv_full_sequence` instead of the old
+    KV continuation path.
+- Allowed changed variables:
+  - Post-D evaluation forward mode only.
+- Not allowed to change:
+  - Stage2 checkpoint/processor.
+  - Benchmark population: BLINK Counting validation parquet, all 120 rows.
+  - Max image resolution 512.
+  - Continuation surface: `natural_continue`.
+  - Eval modes: `free` and `free_softforce_focus`.
+  - Scoring: BLINK official exact-match scorer, no LLM judge.
+- Stage2 checkpoint:
+  - `outputs/tgvf_v3_protocol_c/protocol_c_toolobs_stage2_v4data_clean_imend_open_answer_oldmaskprob075_throughanswer_from_20260619_stage1_train47_eval03_4gpu_bs16_accum2_focus80_value1_1200step_20260623_005426/checkpoint_step_1200.pt`
+- Stage2 processor:
+  - `outputs/tgvf_v3_protocol_c/protocol_c_toolobs_stage2_v4data_clean_imend_open_answer_oldmaskprob075_throughanswer_from_20260619_stage1_train47_eval03_4gpu_bs16_accum2_focus80_value1_1200step_20260623_005426/processor_step_1200`
+- Benchmark source:
+  - `/nvmesv/dredvpn009/datasets/benchmarks/blink/snapshot/Counting/val-00000-of-00001.parquet`
+  - official scorer symlinked from `/nvmesv/dredvpn009/datasets/benchmarks/blink/official_code`
+- Benchmark output:
+  - `outputs/no_kv_benchmarks/qwen3_blink_counting120_standard_nokv_20260625_173956`
+- Script / command:
+  - `STAMP=20260625_173956 RUN_ROOT=outputs/no_kv_benchmarks/qwen3_blink_counting120_standard_nokv_20260625_173956 bash scripts/run_qwen3_blink120_nokv_4_7.sh`
+  - Fixed args include `--benchmark blink --tier full --max-image-resolution 512 --eval-mode free --post-tgvf-continuation natural_continue --post-tgvf-forward-mode no_kv_full_sequence`.
+  - No `--limit`; sample count is 120 because the temporary benchmark root exposes only the Counting validation parquet.
+  - Modes: `free`, `free_softforce_focus` via `--question-suffix "use focus tool"`.
+- GPUs:
+  - 4,5,6,7.
+- tmux:
+  - `qwen3_blink_counting120_nokv_4_7_20260625_173956`
+- Started:
+  - 2026-06-25T17:41:12+09:00.
+- Finished:
+  - 2026-06-25T17:49:42+09:00.
+- Elapsed:
+  - 8m30s.
+- Metrics:
+  - free:
+    - n: 120.
+    - accuracy: 60.00.
+    - answer parse rate: 100.00.
+    - trigger rate: 7.50.
+  - free_softforce_focus:
+    - n: 120.
+    - accuracy: 70.00.
+    - answer parse rate: 100.00.
+    - trigger rate: 51.67.
+- Validation:
+  - Old KV baseline and this no-KV run have identical sample order after stripping
+    the new adapter prefix `Counting/`.
+  - All four shards in both modes used `official_blink_exact_match`.
+  - All shard summaries report `limit=None` and the temporary
+    `benchmark_root_counting_only`.
+  - Merged summaries report `second_full_forward_used_any=True`, confirming the
+    no-KV full-sequence path was used.
+- Result files:
+  - `outputs/no_kv_benchmarks/qwen3_blink_counting120_standard_nokv_20260625_173956/summary_blink120_nokv.json`
+  - `outputs/no_kv_benchmarks/qwen3_blink_counting120_standard_nokv_20260625_173956/blink/free/merged_summary.json`
+  - `outputs/no_kv_benchmarks/qwen3_blink_counting120_standard_nokv_20260625_173956/blink/free_softforce_focus/merged_summary.json`
+- Conclusion:
+  - Under the controlled BLINK Counting-120 setting for the 20260623 oldmask075
+    correct-stage1 checkpoint, changing only post-D continuation from KV to
+    no-KV full-sequence does not hurt Qwen3.
+  - no-KV is slightly higher than the 20260623 KV baseline in both modes:
+    free 59.17 -> 60.00, softforce 65.00 -> 70.00.
+  - This is not the no-KV counterpart of the 20260620 cross-benchmark reference
+    table where BLINK was free 65.83 and softforce 62.50. That table used the
+    20260619 open-answer checkpoint:
+    `outputs/tgvf_v3_protocol_c/protocol_c_toolobs_stage2_v4data_clean_imend_open_answer_multifocus_focus_imend_from_2gpu_stage1_bidirectional_2gpu_bs16_accum4_focus80_value1_1200step_20260619_014148/checkpoint_step_1200.pt`.
+
+### EXP-20260625-175818-qwen3-blink-counting120-nokv-20260619-open-answer
+
+- Status: DONE.
+- Question:
+  - Re-run the 20260620 BLINK Counting-120 open-answer reference checkpoint with
+    no-KV full-sequence post-D continuation.
+- Baseline anchor:
+  - `EXP-20260620-original-free-softforce-full-summary` BLINK row:
+    - free: n=120, accuracy 65.83, trigger 5.83.
+    - softforce: n=120, accuracy 62.50, trigger 45.83.
+- Intended diff:
+  - Eval only: `post_tgvf_forward_mode=no_kv_full_sequence` instead of the old
+    KV continuation path.
+- Allowed changed variables:
+  - Post-D evaluation forward mode only.
+- Not allowed to change:
+  - Stage2 checkpoint/processor.
+  - Benchmark population: BLINK Counting validation parquet, all 120 rows.
+  - Max image resolution 512.
+  - Continuation surface: `natural_continue`.
+  - Eval modes: `free` and `free_softforce_focus`.
+  - Scoring: BLINK official exact-match scorer, no LLM judge.
+- Stage2 checkpoint:
+  - `outputs/tgvf_v3_protocol_c/protocol_c_toolobs_stage2_v4data_clean_imend_open_answer_multifocus_focus_imend_from_2gpu_stage1_bidirectional_2gpu_bs16_accum4_focus80_value1_1200step_20260619_014148/checkpoint_step_1200.pt`
+- Stage2 processor:
+  - `outputs/tgvf_v3_protocol_c/protocol_c_toolobs_stage2_v4data_clean_imend_open_answer_multifocus_focus_imend_from_2gpu_stage1_bidirectional_2gpu_bs16_accum4_focus80_value1_1200step_20260619_014148/processor_step_1200`
+- Benchmark source:
+  - `/nvmesv/dredvpn009/datasets/benchmarks/blink/snapshot/Counting/val-00000-of-00001.parquet`
+  - official scorer symlinked from `/nvmesv/dredvpn009/datasets/benchmarks/blink/official_code`
+- Benchmark output:
+  - `outputs/no_kv_benchmarks/qwen3_blink_counting120_20260619_open_answer_nokv_20260625_175818`
+- Script / command:
+  - `STAMP=20260625_175818 RUN_ROOT=outputs/no_kv_benchmarks/qwen3_blink_counting120_20260619_open_answer_nokv_20260625_175818 STAGE2_CKPT=outputs/tgvf_v3_protocol_c/protocol_c_toolobs_stage2_v4data_clean_imend_open_answer_multifocus_focus_imend_from_2gpu_stage1_bidirectional_2gpu_bs16_accum4_focus80_value1_1200step_20260619_014148/checkpoint_step_1200.pt STAGE2_PROCESSOR=outputs/tgvf_v3_protocol_c/protocol_c_toolobs_stage2_v4data_clean_imend_open_answer_multifocus_focus_imend_from_2gpu_stage1_bidirectional_2gpu_bs16_accum4_focus80_value1_1200step_20260619_014148/processor_step_1200 bash scripts/run_qwen3_blink120_nokv_4_7.sh`
+  - No `--limit`; sample count is 120 because the temporary benchmark root exposes only the Counting validation parquet.
+  - Modes: `free`, `free_softforce_focus` via `--question-suffix "use focus tool"`.
+- GPUs:
+  - 4,5,6,7.
+- tmux:
+  - `qwen3_blink_counting120_20260619_nokv_4_7_20260625_175818`
+- Started:
+  - 2026-06-25T17:59:30+09:00.
+- Finished:
+  - 2026-06-25T18:07:41+09:00.
+- Elapsed:
+  - 8m11s.
+- Metrics:
+  - free:
+    - n: 120.
+    - accuracy: 65.83.
+    - answer parse rate: 100.00.
+    - trigger rate: 5.83.
+  - free_softforce_focus:
+    - n: 120.
+    - accuracy: 64.17.
+    - answer parse rate: 100.00.
+    - trigger rate: 45.83.
+- Validation:
+  - Old KV baseline and this no-KV run have identical sample order after stripping
+    the new adapter prefix `Counting/`.
+  - All four shards in both modes used `official_blink_exact_match`.
+  - All shard summaries report `limit=None`.
+  - Merged summaries report `second_full_forward_used_any=True`, confirming the
+    no-KV full-sequence path was used for triggered post-D continuation.
+- Result files:
+  - `outputs/no_kv_benchmarks/qwen3_blink_counting120_20260619_open_answer_nokv_20260625_175818/summary_blink120_nokv.json`
+  - `outputs/no_kv_benchmarks/qwen3_blink_counting120_20260619_open_answer_nokv_20260625_175818/blink/free/merged_summary.json`
+  - `outputs/no_kv_benchmarks/qwen3_blink_counting120_20260619_open_answer_nokv_20260625_175818/blink/free_softforce_focus/merged_summary.json`
+- Conclusion:
+  - On the true 20260620 BLINK Counting-120 reference checkpoint, no-KV leaves
+    low-trigger free unchanged: 65.83 -> 65.83.
+  - no-KV improves high-trigger softforce modestly: 62.50 -> 64.17.
+  - Together with the 20260623 oldmask075 result, the pattern is consistent:
+    higher trigger rate exposes more post-D continuation sensitivity, but the
+    gain size is checkpoint-dependent.
+
+### EXP-20260625-184230-qwen3-blink-counting120-nokv-maskprob50-evidenceonly
+
+- Status: DONE.
+- Question:
+  - Re-test the `mask_original_image_after_tgvf_prob=0.5` evidence-only Stage2
+    checkpoint under BLINK Counting-120 no-KV full-sequence post-D continuation.
+- Baseline anchor:
+  - Same checkpoint under old KV BLINK Counting-120 was not found locally as a
+    merged BLINK output. Treat this first as a standalone no-KV measurement.
+  - This checkpoint is not a clean ablation of the 20260619 open-answer baseline
+    because it uses the 20260617 Stage1 checkpoint.
+- Intended diff:
+  - Evaluation setting: `post_tgvf_forward_mode=no_kv_full_sequence`.
+- Stage2 checkpoint:
+  - `outputs/tgvf_v3_protocol_c/protocol_c_toolobs_stage2_v4data_clean_imend_open_answer_maskprob50_evidenceonly_from_clean_imend_stage1_4gpu_bs16_accum2_focus80_value1_1200step_20260622_021650/checkpoint_step_1200.pt`
+- Stage2 processor:
+  - `outputs/tgvf_v3_protocol_c/protocol_c_toolobs_stage2_v4data_clean_imend_open_answer_maskprob50_evidenceonly_from_clean_imend_stage1_4gpu_bs16_accum2_focus80_value1_1200step_20260622_021650/processor_step_1200`
+- Stage1 lineage:
+  - `outputs/tgvf_v3_protocol_c_stage1_8b/protocol_c_toolobs_stage1_v4data_clean_rowonly_gpu0_3_focus_imend_bidirectional_4gpu_bs4_accum2_gbs32_2000step_20260617/train/checkpoint_step_2000.pt`
+- Stage2 training highlights:
+  - `mask_original_image_after_tgvf=true`
+  - `mask_original_image_after_tgvf_prob=0.5`
+  - evidence-only scope per experiment ledger
+  - open-answer Stage2 data
+  - 4GPU, batch size 16, grad accum 2, global batch 128, 1200 steps
+- Benchmark source:
+  - BLINK Counting validation parquet, all 120 rows.
+  - official BLINK exact-match scorer, no LLM judge.
+- Benchmark output:
+  - `outputs/no_kv_benchmarks/qwen3_blink_counting120_maskprob50_evidenceonly_nokv_20260625_184230`
+- Script / command:
+  - `STAMP=20260625_184230 RUN_ROOT=outputs/no_kv_benchmarks/qwen3_blink_counting120_maskprob50_evidenceonly_nokv_20260625_184230 STAGE2_CKPT=outputs/tgvf_v3_protocol_c/protocol_c_toolobs_stage2_v4data_clean_imend_open_answer_maskprob50_evidenceonly_from_clean_imend_stage1_4gpu_bs16_accum2_focus80_value1_1200step_20260622_021650/checkpoint_step_1200.pt STAGE2_PROCESSOR=outputs/tgvf_v3_protocol_c/protocol_c_toolobs_stage2_v4data_clean_imend_open_answer_maskprob50_evidenceonly_from_clean_imend_stage1_4gpu_bs16_accum2_focus80_value1_1200step_20260622_021650/processor_step_1200 bash scripts/run_qwen3_blink120_nokv_4_7.sh`
+  - Modes: `free`, `free_softforce_focus`.
+- GPUs:
+  - 4,5,6,7.
+- tmux:
+  - `qwen3_blink_counting120_maskprob50_nokv_4_7_20260625_184230`
+- Started:
+  - 2026-06-25T18:44:47+09:00.
+- Finished:
+  - 2026-06-25T18:53:13+09:00.
+- Elapsed:
+  - 8m26s.
+- Metrics:
+  - free:
+    - n: 120.
+    - accuracy: 63.33.
+    - answer parse rate: 100.00.
+    - trigger rate: 10.00.
+  - free_softforce_focus:
+    - n: 120.
+    - accuracy: 62.50.
+    - answer parse rate: 100.00.
+    - trigger rate: 42.50.
+- Validation:
+  - Evaluated 120 unique BLINK Counting validation samples.
+  - All four shards in both modes used `official_blink_exact_match`.
+  - All shard summaries report `limit=None`.
+  - Merged summaries report `second_full_forward_used_any=True`.
+- Result files:
+  - `outputs/no_kv_benchmarks/qwen3_blink_counting120_maskprob50_evidenceonly_nokv_20260625_184230/summary_blink120_nokv.json`
+  - `outputs/no_kv_benchmarks/qwen3_blink_counting120_maskprob50_evidenceonly_nokv_20260625_184230/blink/free/merged_summary.json`
+  - `outputs/no_kv_benchmarks/qwen3_blink_counting120_maskprob50_evidenceonly_nokv_20260625_184230/blink/free_softforce_focus/merged_summary.json`
+- Conclusion:
+  - The prob=0.5 evidence-only checkpoint does not show the same high-trigger
+    BLINK lift as the 20260623 prob=0.75 through-answer checkpoint.
+  - Under no-KV BLINK Counting-120 it reaches free 63.33 and softforce 62.50.
+    Compared with the prob=0.75 through-answer no-KV result, free is higher
+    (63.33 vs 60.00) but the high-trigger softforce mode is much lower
+    (62.50 vs 70.00).
+  - This supports separating two effects: no-KV fixes post-D continuation, but
+    the Stage2 mask/training setting still determines whether triggered TGVF is
+    actually beneficial.
+
+### EXP-20260625-185857-qwen3-blink-counting120-kv-maskprob50-evidenceonly
+
+- Status: DONE.
+- Question:
+  - Run the same prob=0.5 evidence-only Stage2 checkpoint on BLINK Counting-120
+    with the old KV continuation path, to compare directly against
+    `EXP-20260625-184230-qwen3-blink-counting120-nokv-maskprob50-evidenceonly`.
+- Intended diff from the no-KV run:
+  - `post_tgvf_forward_mode=kv_cache` instead of `no_kv_full_sequence`.
+- Held fixed:
+  - Stage2 checkpoint/processor.
+  - BLINK Counting validation population, all 120 rows.
+  - `natural_continue`.
+  - free and free_softforce_focus modes.
+  - official BLINK exact-match scorer.
+  - max image resolution 512.
+- Stage2 checkpoint:
+  - `outputs/tgvf_v3_protocol_c/protocol_c_toolobs_stage2_v4data_clean_imend_open_answer_maskprob50_evidenceonly_from_clean_imend_stage1_4gpu_bs16_accum2_focus80_value1_1200step_20260622_021650/checkpoint_step_1200.pt`
+- Stage2 processor:
+  - `outputs/tgvf_v3_protocol_c/protocol_c_toolobs_stage2_v4data_clean_imend_open_answer_maskprob50_evidenceonly_from_clean_imend_stage1_4gpu_bs16_accum2_focus80_value1_1200step_20260622_021650/processor_step_1200`
+- Benchmark output:
+  - `outputs/kv_benchmarks/qwen3_blink_counting120_maskprob50_evidenceonly_kv_20260625_185857`
+- Script / command:
+  - `STAMP=20260625_185857 RUN_ROOT=outputs/kv_benchmarks/qwen3_blink_counting120_maskprob50_evidenceonly_kv_20260625_185857 POST_TGVF_FORWARD_MODE=kv_cache STAGE2_CKPT=outputs/tgvf_v3_protocol_c/protocol_c_toolobs_stage2_v4data_clean_imend_open_answer_maskprob50_evidenceonly_from_clean_imend_stage1_4gpu_bs16_accum2_focus80_value1_1200step_20260622_021650/checkpoint_step_1200.pt STAGE2_PROCESSOR=outputs/tgvf_v3_protocol_c/protocol_c_toolobs_stage2_v4data_clean_imend_open_answer_maskprob50_evidenceonly_from_clean_imend_stage1_4gpu_bs16_accum2_focus80_value1_1200step_20260622_021650/processor_step_1200 bash scripts/run_qwen3_blink120_nokv_4_7.sh`
+- GPUs:
+  - 4,5,6,7.
+- tmux:
+  - `qwen3_blink_counting120_maskprob50_kv_4_7_20260625_185857`
+- Started:
+  - 2026-06-25T18:59:50+09:00.
+- Finished:
+  - 2026-06-25T19:06:03+09:00.
+- Elapsed:
+  - 6m13s.
+- Metrics:
+  - free:
+    - n: 120.
+    - accuracy: 62.50.
+    - answer parse rate: 100.00.
+    - trigger rate: 10.00.
+  - free_softforce_focus:
+    - n: 120.
+    - accuracy: 63.33.
+    - answer parse rate: 100.00.
+    - trigger rate: 42.50.
+- Validation:
+  - Same sample order as the no-KV prob=0.5 run.
+  - All shards used `official_blink_exact_match`.
+  - Merged summaries report `second_full_forward_used_any=False`, confirming the
+    KV continuation path.
+- Result files:
+  - `outputs/kv_benchmarks/qwen3_blink_counting120_maskprob50_evidenceonly_kv_20260625_185857/summary_blink120_kv_cache.json`
+  - `outputs/kv_benchmarks/qwen3_blink_counting120_maskprob50_evidenceonly_kv_20260625_185857/blink/free/merged_summary.json`
+  - `outputs/kv_benchmarks/qwen3_blink_counting120_maskprob50_evidenceonly_kv_20260625_185857/blink/free_softforce_focus/merged_summary.json`
+- Comparison to no-KV:
+  - free: KV 62.50 -> no-KV 63.33, +0.83.
+  - softforce: KV 63.33 -> no-KV 62.50, -0.83.
+- Conclusion:
+  - For this prob=0.5 evidence-only checkpoint, no-KV does not create the
+    high-trigger improvement observed in the prob=0.75 through-answer checkpoint.
+  - The post-D continuation fix is not sufficient by itself; the Stage2 mask /
+    training setting still determines whether triggered TGVF helps.
+
+### EXP-20260625-191315-qwen3-other-benchmarks-nokv-19-vs-075
+
+- Status: RUNNING.
+- Question:
+  - Compare the 20260619 open-answer checkpoint and the 20260623 prob=0.75
+    through-answer checkpoint on non-BLINK benchmarks under the no-KV
+    full-sequence post-D continuation standard.
+- Motivation:
+  - BLINK Counting-120 showed that no-KV especially matters when TGVF trigger
+    rate is high. Need check whether the same pattern appears on VStar, HR, and
+    OCR.
+- Checkpoints:
+  - ckpt19:
+    `outputs/tgvf_v3_protocol_c/protocol_c_toolobs_stage2_v4data_clean_imend_open_answer_multifocus_focus_imend_from_2gpu_stage1_bidirectional_2gpu_bs16_accum4_focus80_value1_1200step_20260619_014148/checkpoint_step_1200.pt`
+  - ckpt075:
+    `outputs/tgvf_v3_protocol_c/protocol_c_toolobs_stage2_v4data_clean_imend_open_answer_oldmaskprob075_throughanswer_from_20260619_stage1_train47_eval03_4gpu_bs16_accum2_focus80_value1_1200step_20260623_005426/checkpoint_step_1200.pt`
+- Benchmark population:
+  - `vstar_bench`, tier full.
+  - `hr_bench_4k`, tier full.
+  - `ocrbench_v2`, tier full under current adapter.
+- Modes:
+  - `free`.
+  - `free_softforce_focus` with question suffix `use focus tool`.
+- Held fixed:
+  - `post_tgvf_continuation=natural_continue`.
+  - `post_tgvf_forward_mode=no_kv_full_sequence`.
+  - `tgvf_protocol=protocol_c_tool_observation`.
+  - max image resolution 512.
+  - official/project scoring backend `auto`, no LLM judge.
+- Script / command:
+  - `STAMP=20260625_191315 RUN_ROOT=outputs/no_kv_benchmarks/qwen3_other_benchmarks_19_vs_075_nokv_20260625_191315 BENCH_GPUS=4,5,6,7 bash scripts/run_qwen3_two_ckpts_other_benchmarks_nokv_4gpu.sh`
+- Output:
+  - `outputs/no_kv_benchmarks/qwen3_other_benchmarks_19_vs_075_nokv_20260625_191315`
+- GPUs:
+  - 4,5,6,7.
+- tmux:
+  - `qwen3_other_benchmarks_19_vs_075_nokv_4_7_20260625_191315`
+- Started:
+  - 2026-06-25T19:13:15+09:00.
+- Stopped:
+  - 2026-06-25T19:48+09:00.
+- Stop reason:
+  - `ckpt19/hr_bench_4k/free_softforce_focus` entered an abnormal long-running
+    state: all four shards stayed at logged `{"index": 1, "total": 200}` for
+    about 10 minutes, while GPU processes remained active and no merged summary
+    was produced. The tmux session was killed to avoid wasting GPUs and to avoid
+    treating the incomplete run as a full benchmark result.
+- Metrics:
+  - VStar, ckpt19, free:
+    - n: 191.
+    - accuracy: 49.21.
+    - trigger rate: 0.00.
+  - VStar, ckpt19, free_softforce_focus:
+    - n: 191.
+    - accuracy: 46.07.
+    - trigger rate: 40.84.
+  - VStar, ckpt075, free:
+    - n: 191.
+    - accuracy: 51.83.
+    - trigger rate: 1.57.
+  - VStar, ckpt075, free_softforce_focus:
+    - n: 191.
+    - accuracy: 49.74.
+    - trigger rate: 63.87.
+  - HR-Bench-4K, ckpt19, free:
+    - n: 800.
+    - accuracy: 53.25.
+    - trigger rate: 17.00.
+- Missing metrics:
+  - HR-Bench-4K, ckpt19, free_softforce_focus.
+  - HR-Bench-4K, ckpt075, free/free_softforce_focus.
+  - OCRBench-v2, both checkpoints and both modes.
+- Result files:
+  - `outputs/no_kv_benchmarks/qwen3_other_benchmarks_19_vs_075_nokv_20260625_191315/ckpt19/vstar_bench/free/merged_summary.json`
+  - `outputs/no_kv_benchmarks/qwen3_other_benchmarks_19_vs_075_nokv_20260625_191315/ckpt19/vstar_bench/free_softforce_focus/merged_summary.json`
+  - `outputs/no_kv_benchmarks/qwen3_other_benchmarks_19_vs_075_nokv_20260625_191315/ckpt075/vstar_bench/free/merged_summary.json`
+  - `outputs/no_kv_benchmarks/qwen3_other_benchmarks_19_vs_075_nokv_20260625_191315/ckpt075/vstar_bench/free_softforce_focus/merged_summary.json`
+  - `outputs/no_kv_benchmarks/qwen3_other_benchmarks_19_vs_075_nokv_20260625_191315/ckpt19/hr_bench_4k/free/merged_summary.json`
+- Interim conclusion:
+  - On VStar, the 20260623 prob=0.75 through-answer checkpoint is stronger than
+    the 20260619 open-answer checkpoint under no-KV in both free and softforce,
+    but softforce hurts both checkpoints despite higher trigger rates.
+  - HR-Bench free for ckpt19 is available, but the paired ckpt075/free and
+    softforce rows are not yet available, so HR cannot be used for ckpt
+    comparison from this interrupted run.
+  - The HR softforce/no-KV path needs inspection before running OCR full; OCR
+    would otherwise inherit the same long-generation risk.
+
+### DIAG-20260625-qwen3-native-vs-manual-prefix-cache
+
+- Status: DONE.
+- Question:
+  - Check whether differences besides DeepStack have measurable effects between native image prefix and manual `inputs_embeds` prefix for Qwen3 Stage2 20260623 prob=0.75.
+- Checkpoint:
+  - `outputs/tgvf_v3_protocol_c/protocol_c_toolobs_stage2_v4data_clean_imend_open_answer_oldmaskprob075_throughanswer_from_20260619_stage1_train47_eval03_4gpu_bs16_accum2_focus80_value1_1200step_20260623_005426/checkpoint_step_1200.pt`
+- Method:
+  - One teacher-forced Stage2 sample, max image resolution 512.
+  - Compare native pixel/image prefix cache against manual `inputs_embeds` prefix with original visual positions replaced by tapped `v_merge`.
+  - Then append the same `correct_D` with `natural_continue` and compare logits again.
+- Result:
+  - Sample: `visual_genome:2410492`.
+  - Prefix logits native vs manual:
+    - max abs diff: 1.5703.
+    - mean abs diff: 0.2883.
+    - cosine: 0.9978.
+    - top token: both `<|im_end|>`.
+  - After appending the same D, native-cache+D vs manual-cache+D:
+    - max abs diff: 3.0547.
+    - mean abs diff: 0.4216.
+    - cosine: 0.9939.
+    - top token: both `<think>`.
+  - Position / rope:
+    - manual position ids vs recomputed position ids max abs diff: 0.
+    - native rope deltas and manual rope deltas: both `[[-144]]`.
+    - native and manual cache length: both 380.
+- Conclusion:
+  - There is a measurable effect from native prefix vs manual prefix even before D append, and it grows after D append.
+  - In this probe, position ids / rope deltas / cache length do not explain the difference.
+  - The remaining concrete implementation difference is the native image path side effects, especially DeepStack / native visual forward behavior, versus manual `v_merge` inputs_embeds.
+
+### DIAG-20260625-qwen3-deepstack-ablation-native-vs-manual
+
+- Status: DONE.
+- Question:
+  - Check whether the measured native-prefix vs manual-prefix difference is actually caused by DeepStack rather than generic forward-entry, position ids, rope deltas, or cache length.
+- Checkpoint:
+  - `outputs/tgvf_v3_protocol_c/protocol_c_toolobs_stage2_v4data_clean_imend_open_answer_oldmaskprob075_throughanswer_from_20260619_stage1_train47_eval03_4gpu_bs16_accum2_focus80_value1_1200step_20260623_005426/checkpoint_step_1200.pt`
+- Output:
+  - `outputs/diagnostics/qwen3_deepstack_ablation_20260625_205846/result.json`
+- Method:
+  - One teacher-forced Stage2 sample `visual_genome:2410492`, max image resolution 512.
+  - Compare three prefix caches: native with DeepStack, native with `_deepstack_process` monkeypatched to no-op, and manual `inputs_embeds` with original image positions replaced by tapped `v_merge`.
+  - Append the same `correct_D` with `natural_continue`, then compare post-D logits.
+- Results:
+  - Prefix native+DeepStack vs manual:
+    - max abs diff 1.5703, mean abs diff 0.2883, cosine 0.9978.
+  - Prefix native no-DeepStack vs manual:
+    - max abs diff 0.0, mean abs diff 0.0, cosine 1.0.
+  - After D, native+DeepStack cache vs manual cache:
+    - max abs diff 3.0547, mean abs diff 0.4216, cosine 0.9939.
+  - After D, native no-DeepStack cache vs manual cache:
+    - max abs diff 0.0, mean abs diff 0.0, cosine 1.0.
+  - Position / rope / cache length:
+    - manual vs computed position ids max diff 0.
+    - rope deltas all `[[-144]]`.
+    - cache length all 380.
+- Conclusion:
+  - For this controlled sample, the native/manual difference is fully explained by DeepStack injection.
+  - Forward-entry, position ids, rope deltas, and cache length do not produce residual difference once DeepStack is disabled.
+  - This supports the interpretation that old KV eval mixed a native DeepStack prefix cache with manual TGVF D append, while training/no-KV answer loss uses the manual no-DeepStack full-sequence path.
