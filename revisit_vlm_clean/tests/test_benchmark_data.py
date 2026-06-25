@@ -650,6 +650,8 @@ def test_benchmark_execute_dry_run_auto_uses_blink_official_choice(tmp_path) -> 
     assert rows[0]["runner_backend"] == "dry_run"
     assert rows[0]["resolved_runner_backend"] == "dry_run"
     assert rows[0]["runner_backend_deprecated_alias"] is False
+    assert rows[0]["runner_backend_stage2_generic_alias"] is False
+    assert rows[0]["runner_backend_alias_target"] is None
     assert rows[0]["scorer_name"] == "official_blink_exact_match"
     assert rows[0]["official_tool_used"] is True
     assert summary.accuracy == 1.0

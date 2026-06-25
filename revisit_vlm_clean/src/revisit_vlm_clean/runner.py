@@ -23,13 +23,13 @@ from .stage2_runtime import Stage2RuntimeConfig
 
 STAGE2_NATIVE_BACKEND = "tgvf_stage2_qwen3_native"
 STAGE2_LEGACY_BACKEND = "tgvf_stage2_qwen3_legacy"
-STAGE2_LEGACY_ALIAS = "tgvf_stage2_qwen3"
+STAGE2_GENERIC_BACKEND = "tgvf_stage2_qwen3"
 RUNNER_BACKENDS = (
     "dry_run",
     "qwen3_original",
+    STAGE2_GENERIC_BACKEND,
     STAGE2_NATIVE_BACKEND,
     STAGE2_LEGACY_BACKEND,
-    STAGE2_LEGACY_ALIAS,
 )
 
 
@@ -48,7 +48,9 @@ class BackendConfig:
         return {
             "backend": self.backend,
             "resolved_backend": resolved_backend,
-            "deprecated_alias": self.backend == STAGE2_LEGACY_ALIAS,
+            "stage2_generic_alias": self.backend == STAGE2_GENERIC_BACKEND,
+            "alias_target": resolved_backend if self.backend != resolved_backend else None,
+            "deprecated_alias": False,
             "dtype": self.dtype,
             "device": self.device,
             "device_map": self.device_map,
@@ -469,8 +471,8 @@ def _native_stage2_result_to_model_run_result(
 
 
 def resolve_backend_name(name: str) -> str:
-    if name == STAGE2_LEGACY_ALIAS:
-        return STAGE2_LEGACY_BACKEND
+    if name == STAGE2_GENERIC_BACKEND:
+        return STAGE2_NATIVE_BACKEND
     return name
 
 
@@ -550,7 +552,13 @@ def run_benchmark_rows(
                 ),
                 "runner_backend": backend_config.backend,
                 "resolved_runner_backend": resolved_backend,
-                "runner_backend_deprecated_alias": backend_config.backend == STAGE2_LEGACY_ALIAS,
+                "runner_backend_deprecated_alias": False,
+                "runner_backend_stage2_generic_alias": (
+                    backend_config.backend == STAGE2_GENERIC_BACKEND
+                ),
+                "runner_backend_alias_target": (
+                    resolved_backend if backend_config.backend != resolved_backend else None
+                ),
                 "question": sample.question,
                 "choices": list(sample.choices),
                 "gold_answer": sample.gold_answer,

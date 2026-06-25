@@ -501,8 +501,9 @@ Validation:
 - `tgvf_stage2_qwen3_legacy` is a diagnostic bridge only. The final clean
   project must replace it with a native clean Stage2 runner before first-class
   benchmark or training claims rely on the clean tree.
-- `tgvf_stage2_qwen3` is a deprecated alias for the legacy bridge, not a final
-  backend.
+- `tgvf_stage2_qwen3` is the generic clean Stage2 backend name and must resolve
+  to the native clean backend. Legacy use must request
+  `tgvf_stage2_qwen3_legacy` explicitly.
 - Data generation must be part of the clean project, because it is already a
   natural pure pipeline:
   - fixed source manifests and sample ids;
@@ -709,6 +710,8 @@ Implemented after Phase 23.
   - `tgvf_stage2_qwen3_native`: reserved final clean-native backend name;
   - `tgvf_stage2_qwen3`: deprecated alias resolving to
     `tgvf_stage2_qwen3_legacy`;
+- superseded by Phase 42: `tgvf_stage2_qwen3` now resolves to
+  `tgvf_stage2_qwen3_native`;
 - `BackendConfig.to_dict()` now records:
   - requested backend;
   - resolved backend;
@@ -1206,6 +1209,20 @@ Implemented after Phase 40.
   clear unavailable reason;
 - this does not launch training. It removes ambiguity: historical scripts are
   preserved only as references, not as the clean mainline.
+
+## Phase 42: Stage2 Generic Backend Resolves to Native
+
+Implemented after Phase 41.
+
+- `tgvf_stage2_qwen3` now resolves to `tgvf_stage2_qwen3_native`;
+- `tgvf_stage2_qwen3_legacy` remains available only as an explicit diagnostic
+  bridge name;
+- backend identity output now records:
+  - `stage2_generic_alias`;
+  - `alias_target`;
+  - `deprecated_alias=false`;
+- tests assert the generic backend constructs the clean-native backend rather
+  than the historical bridge.
 
 ## Later Phases
 

@@ -6,6 +6,7 @@ import revisit_vlm_clean.stage2_native as stage2_native
 from revisit_vlm_clean.benchmark_data import BenchmarkSample
 from revisit_vlm_clean.rendering import render_benchmark_input
 from revisit_vlm_clean.runner import (
+    STAGE2_GENERIC_BACKEND,
     STAGE2_LEGACY_BACKEND,
     STAGE2_NATIVE_BACKEND,
     BackendConfig,
@@ -92,19 +93,28 @@ def test_make_tgvf_stage2_backend_without_prepare(tmp_path) -> None:
     assert isinstance(backend, TGVFStage2Qwen3Backend)
 
 
-def test_stage2_legacy_alias_is_explicit(tmp_path) -> None:
+def test_stage2_generic_backend_resolves_to_clean_native(monkeypatch, tmp_path) -> None:
     runtime = Stage2RuntimeConfig(
         stage2_checkpoint=str(tmp_path / "ckpt.pt"),
         eval_jsonl=str(tmp_path / "eval.jsonl"),
     )
     config = _run_config()
-    backend_config = BackendConfig(backend="tgvf_stage2_qwen3", stage2=runtime)
+
+    class FakeNativeEngine:
+        def __init__(self, *, stage2_config, backend_options) -> None:
+            self.stage2_config = stage2_config
+            self.backend_options = backend_options
+
+    monkeypatch.setattr(runner_module, "NativeStage2Engine", FakeNativeEngine)
+    backend_config = BackendConfig(backend=STAGE2_GENERIC_BACKEND, stage2=runtime)
     backend = make_backend(backend_config, config=config)
 
-    assert resolve_backend_name("tgvf_stage2_qwen3") == STAGE2_LEGACY_BACKEND
-    assert isinstance(backend, TGVFStage2Qwen3Backend)
-    assert backend_config.to_dict()["deprecated_alias"] is True
-    assert backend_config.to_dict()["resolved_backend"] == STAGE2_LEGACY_BACKEND
+    assert resolve_backend_name(STAGE2_GENERIC_BACKEND) == STAGE2_NATIVE_BACKEND
+    assert isinstance(backend, TGVFStage2Qwen3NativeBackend)
+    assert backend_config.to_dict()["stage2_generic_alias"] is True
+    assert backend_config.to_dict()["deprecated_alias"] is False
+    assert backend_config.to_dict()["alias_target"] == STAGE2_NATIVE_BACKEND
+    assert backend_config.to_dict()["resolved_backend"] == STAGE2_NATIVE_BACKEND
 
 
 def test_stage2_native_backend_uses_clean_native_engine(monkeypatch, tmp_path) -> None:

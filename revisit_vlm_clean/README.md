@@ -95,9 +95,9 @@ Diagnostic manifests are for runner validation only, not benchmark reporting.
   evaluator for `tgvf_force`, `tgvf_free`, and `tgvf_softforce` on path-backed
   image samples. It preserves clean manifest/render/output identity while the
   native clean TGVF runner is still being ported.
-- `tgvf_stage2_qwen3`: deprecated alias for `tgvf_stage2_qwen3_legacy`;
-  outputs record both names.
-- `tgvf_stage2_qwen3_native`: final clean-native backend name. It now owns a
+- `tgvf_stage2_qwen3`: generic clean Stage2 backend name. It resolves to the
+  clean-native backend.
+- `tgvf_stage2_qwen3_native`: explicit clean-native backend name. It now owns a
   native engine and does not use the legacy evaluator class. Force/free/
   softforce control flow, lazy checkpoint/model loading, D construction, visual
   D append, and post-TGVF continuation are ported into the clean tree. A
