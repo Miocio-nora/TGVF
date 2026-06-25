@@ -12,7 +12,6 @@ from pathlib import Path
 from typing import Any
 
 from .benchmark_data import BenchmarkSample
-from .legacy_stage2_adapter import build_legacy_stage2_args, make_legacy_stage2_sample
 from .rendering import RenderedBenchmarkInput
 from .schema import DeepStackScope, EvalFamily, EvalMode, EvalSummary, RunConfig
 from .scoring import score_output_rows
@@ -289,6 +288,8 @@ class TGVFStage2Qwen3Backend(CleanRunnerBackend):
     def prepare(self, config: RunConfig) -> None:
         _reject_unported_deepstack_execution(config, backend=STAGE2_LEGACY_BACKEND)
         self.stage2_config.validate()
+        from .legacy_stage2_adapter import build_legacy_stage2_args
+
         args = build_legacy_stage2_args(
             runtime=self.stage2_config,
             run_config=config,
@@ -321,6 +322,8 @@ class TGVFStage2Qwen3Backend(CleanRunnerBackend):
             raise RuntimeError("TGVFStage2Qwen3Backend.prepare must be called before run")
         started = time.perf_counter()
         try:
+            from .legacy_stage2_adapter import make_legacy_stage2_sample
+
             legacy_sample = make_legacy_stage2_sample(sample, rendered)
             if rendered.mode == EvalMode.TGVF_FORCE:
                 result_row = self._run_force(legacy_sample)

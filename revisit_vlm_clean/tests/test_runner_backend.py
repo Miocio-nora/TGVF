@@ -104,6 +104,13 @@ def test_stage2_legacy_backend_requires_internal_diagnostic_family(tmp_path) -> 
         )
 
 
+def test_runner_does_not_top_level_import_legacy_stage2_adapter() -> None:
+    source = inspect.getsource(runner_module)
+    top_level_import_block = "\n".join(source.splitlines()[:40])
+
+    assert "legacy_stage2_adapter import" not in top_level_import_block
+
+
 def test_make_tgvf_stage2_legacy_backend_without_prepare_for_diagnostic(tmp_path) -> None:
     runtime = Stage2RuntimeConfig(
         stage2_checkpoint=str(tmp_path / "ckpt.pt"),

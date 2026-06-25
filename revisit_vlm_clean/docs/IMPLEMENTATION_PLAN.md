@@ -1464,6 +1464,19 @@ Implemented after Phase 55.
   `valkit_runtime_ported=false`, and `legacy_shell_wrapper_allowed=false`.
   Real ValKit execution remains unported.
 
+## Phase 57: Lazy Legacy Stage2 Bridge Isolation
+
+Implemented after Phase 56.
+
+- the clean benchmark runner no longer imports `legacy_stage2_adapter` at module
+  import time;
+- the historical Stage2 bridge is loaded only inside the explicit
+  `tgvf_stage2_qwen3_legacy` diagnostic backend;
+- generic `tgvf_stage2_qwen3` and explicit `tgvf_stage2_qwen3_native` continue
+  to resolve to the clean-native engine;
+- tests guard against reintroducing a top-level legacy adapter import in the
+  runner.
+
 ## Later Phases
 
 1. Replace training launch plans with clean-native training execution.
