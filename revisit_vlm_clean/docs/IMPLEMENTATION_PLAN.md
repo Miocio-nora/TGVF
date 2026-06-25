@@ -240,9 +240,56 @@ malformed_rate:
 This validates executable wiring only. It is not a benchmark comparison or
 evidence about focus-target quality.
 
+## Phase 11: Real Multi-Row Stage2 Smoke
+
+Implemented on 2026-06-26.
+
+- committed deterministic manifest
+  `benchmark_manifests/diagnostic_vstar_core_smoke_first_8_20260626.json`;
+- manifest rule:
+  first eight VStar samples from committed `CoreSmoke-256`;
+- verified materialization/render/dry execution before launch:
+  - 8 rows materialized;
+  - all image paths exist;
+  - force control prefix is stable;
+  - no `Choices:` duplication in rendered prompts;
+- ran `tgvf_stage2_qwen3` on all 8 rows with the same 20260617 row-only Stage2
+  checkpoint used in Phase 10.
+
+Smoke result:
+
+```text
+output:
+  outputs/clean_smokes/stage2_tgvf_force_vstar8_20260626_004135
+manifest:
+  diagnostic_vstar_core_smoke_first_8_20260626
+manifest_hash:
+  3a6020b145c1543be3fc8a5541c17d00b4fc5d27aeddbecb90a10417d25c84f4
+mode:
+  tgvf_force
+backend:
+  tgvf_stage2_qwen3
+n_rows:
+  8
+accuracy:
+  0.625
+trigger_rate:
+  1.0
+focus_valid_rate:
+  1.0
+append_success_rate:
+  1.0
+malformed_rate:
+  0.0
+```
+
+This validates multi-row bridge stability. It is still not a benchmark
+comparison. The legacy debug field `target_answer_leakage_flag` fired on all 8
+rows, so these rows should not be used for focus-target quality claims.
+
 ## Later Phases
 
-1. Multi-row TGVF Stage2 smoke on a deterministic path-backed manifest.
-2. Official scorer wrapper port.
+1. Official scorer wrapper parity against historical project/official scoring.
+2. Larger clean path-backed subset smoke before CoreDev-scale runs.
 3. Stage1/Stage2 launchers.
 4. DeepStack training/eval support.
