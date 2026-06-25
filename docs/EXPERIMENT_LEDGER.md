@@ -2620,7 +2620,7 @@ entry, update this file immediately.
 
 ### EXP-20260626-004135-clean-stage2-vstar8-smoke
 
-- Status: RUNNING.
+- Status: DONE.
 - Question:
   - Does the clean `tgvf_stage2_qwen3` bridge remain stable on a deterministic multi-row path-backed VStar manifest, beyond the one-row smoke?
 - Baseline anchor:
@@ -2684,13 +2684,38 @@ entry, update this file immediately.
 - Started:
   - 2026-06-26T00:44:03+09:00.
 - Finished:
-  - Pending.
+  - 2026-06-26T00:45:26+09:00.
 - Metrics:
-  - Pending.
+  - `n_rows=8`.
+  - `n_scored=8`.
+  - `accuracy=0.625`.
+  - `answer_parse_rate=1.0`.
+  - `trigger_rate=1.0`.
+  - `focus_valid_rate=1.0`.
+  - `append_success_rate=1.0`.
+  - `malformed_rate=0.0`.
+  - Scores by row:
+    `[1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 1.0, 1.0]`.
+  - Gold labels:
+    `[A, B, C, D, A, B, A, B]`.
+  - Parsed labels:
+    `[A, B, C, A, B, A, A, B]`.
+  - Wrong sample ids:
+    - `vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/9_000009`
+    - `vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/145_000145`
+    - `vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/162_000162`
+  - `target_answer_leakage_flag=true` on 8/8 legacy debug rows.
 - Analysis:
-  - Pending.
+  - The clean Stage2 bridge remained stable across all 8 rows: no errors, no malformed rows, all focus captures valid, and all D appends succeeded.
+  - `run_config.txt`, `run_config.json`, `sample_manifest.json`, `rows.jsonl`, and `summary.json` were written.
+  - Runtime code identity was recorded in `run_config.txt` as commit `c753a7206f8848cd4901f4c94c83c508583f9654` with `dirty_worktree=False`.
+  - Output path:
+    `outputs/clean_smokes/stage2_tgvf_force_vstar8_20260626_004135`.
+  - The 62.5% accuracy is a diagnostic row result only; the manifest is deliberately tiny and not representative.
+  - The universal legacy `target_answer_leakage_flag` means this smoke should not be used for focus-target quality claims.
 - Conclusion:
-  - Pending.
+  - Clean Stage2 multi-row force smoke passed.
+  - The next clean-project risk is no longer basic Stage2 bridge executability; it is scorer parity and broader benchmark identity.
 - Comparable to baseline:
   - No; diagnostic multi-row launch smoke only.
 - Follow-up:
