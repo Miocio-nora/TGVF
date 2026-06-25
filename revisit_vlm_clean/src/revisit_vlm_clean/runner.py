@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from .benchmark_data import BenchmarkSample
-from .legacy_stage2_adapter import build_legacy_stage2_args
+from .legacy_stage2_adapter import build_legacy_stage2_args, make_legacy_stage2_sample
 from .rendering import RenderedBenchmarkInput
 from .schema import EvalMode, EvalSummary, RunConfig, ScoringBackend
 from .scoring import parse_and_score
@@ -226,20 +226,114 @@ class Qwen3OriginalBackend(CleanRunnerBackend):
 
 
 class TGVFStage2Qwen3Backend(CleanRunnerBackend):
-    def __init__(self, *, stage2_config: Stage2RuntimeConfig | None) -> None:
+    def __init__(self, *, stage2_config: Stage2RuntimeConfig | None, backend_config: BackendConfig) -> None:
         if stage2_config is None:
             raise ValueError("tgvf_stage2_qwen3 backend requires Stage2RuntimeConfig")
         self.stage2_config = stage2_config
+        self.backend_config = backend_config
+        self._evaluator: Any | None = None
 
     def prepare(self, config: RunConfig) -> None:
         self.stage2_config.validate()
-        build_legacy_stage2_args(
+        args = build_legacy_stage2_args(
             runtime=self.stage2_config,
             run_config=config,
-            output_dir="/tmp/revisit_vlm_clean_stage2_identity",
+            output_dir=f"/tmp/revisit_vlm_clean_stage2_runtime/{config.run_id}",
         )
-        raise NotImplementedError(
-            "tgvf_stage2_qwen3 execution is not ported yet; Stage2 identity validation passed"
+        args.dtype = self.backend_config.dtype
+        args.device = self.backend_config.device if self.backend_config.device != "auto" else "cuda:0"
+        args.device_map = self.backend_config.device_map or args.device
+        args.attn_implementation = self.backend_config.attn_implementation
+        try:
+            from eval.eval_v3_stage2_protocol import Stage2ProtocolEvaluator
+        except Exception as exc:
+            raise RuntimeError(
+                "legacy Stage2 evaluator is unavailable; run with repository src/ on PYTHONPATH"
+            ) from exc
+        evaluator = Stage2ProtocolEvaluator(args)
+        evaluator.load()
+        self._evaluator = evaluator
+
+    def run(self, sample: BenchmarkSample, rendered: RenderedBenchmarkInput, config: RunConfig) -> ModelRunResult:
+        del config
+        if self._evaluator is None:
+            raise RuntimeError("TGVFStage2Qwen3Backend.prepare must be called before run")
+        started = time.perf_counter()
+        try:
+            legacy_sample = make_legacy_stage2_sample(sample, rendered)
+            if rendered.mode == EvalMode.TGVF_FORCE:
+                result_row = self._run_force(legacy_sample)
+            elif rendered.mode in {EvalMode.TGVF_FREE, EvalMode.TGVF_SOFTFORCE}:
+                result_row = self._run_free(legacy_sample)
+            else:
+                raise ValueError(f"tgvf_stage2_qwen3 does not support mode={rendered.mode.value!r}")
+            return ModelRunResult(
+                raw_output=str(result_row.get("final_raw_output") or result_row.get("raw_output") or ""),
+                triggered=bool(result_row.get("trigger_focus_decision")),
+                focus_target=str(result_row.get("parsed_focus_target") or result_row.get("focus_target") or ""),
+                focus_valid=result_row.get("focus_valid"),
+                append_success=result_row.get("append_success"),
+                wall_time_sec=time.perf_counter() - started,
+                error=_row_error(result_row),
+                debug=result_row,
+            )
+        except Exception as exc:
+            return ModelRunResult(
+                raw_output="",
+                wall_time_sec=time.perf_counter() - started,
+                error=f"{type(exc).__name__}: {exc}",
+            )
+
+    def _run_force(self, legacy_sample: Any) -> dict[str, Any]:
+        evaluator = self._evaluator
+        assert evaluator is not None
+        capture = evaluator._capture_generated_focus(legacy_sample, force_prefix=True)
+        if not capture.capture_found:
+            parsed = evaluator._capture_fields(
+                capture,
+                _legacy_parse_v3_action(capture.generated_text, evaluator.args.tgvf_protocol),
+            )
+            parsed.update(
+                final_raw_output=capture.generated_text,
+                trigger_focus_decision=False,
+                append_success=False,
+                errors=["focus_capture_not_found"],
+            )
+            return parsed
+        correct_d = evaluator._d_from_capture(legacy_sample, capture, focus_source="clean_force")
+        return evaluator._run_post_tgvf_condition(
+            sample=legacy_sample,
+            capture=capture,
+            correct_d=correct_d,
+            condition=self.stage2_config.d_condition,
+            block="clean_force_end2end",
+            focus_source="clean_force",
+        )
+
+    def _run_free(self, legacy_sample: Any) -> dict[str, Any]:
+        evaluator = self._evaluator
+        assert evaluator is not None
+        capture = evaluator._capture_free_router(legacy_sample)
+        parsed = _legacy_parse_v3_action(capture.generated_text, evaluator.args.tgvf_protocol)
+        trigger = capture.capture_found
+        if not trigger:
+            row = evaluator._capture_fields(capture, parsed)
+            row.update(
+                final_raw_output=capture.generated_text,
+                parsed_answer=parsed.answer,
+                answer_parse_success=parsed.answer_valid,
+                trigger_focus_decision=False,
+                append_success=None,
+            )
+            return row
+        correct_d = evaluator._d_from_capture(legacy_sample, capture, focus_source="clean_free")
+        return evaluator._run_post_tgvf_condition(
+            sample=legacy_sample,
+            capture=capture,
+            correct_d=correct_d,
+            condition=self.stage2_config.d_condition,
+            block="clean_free_end2end",
+            focus_source="clean_free",
         )
 
 
@@ -259,7 +353,7 @@ def make_backend(
             max_answer_tokens=config.max_answer_tokens,
         )
     if backend_config.backend == "tgvf_stage2_qwen3":
-        return TGVFStage2Qwen3Backend(stage2_config=backend_config.stage2)
+        return TGVFStage2Qwen3Backend(stage2_config=backend_config.stage2, backend_config=backend_config)
     raise ValueError(f"unknown clean runner backend: {backend_config.backend}")
 
 
@@ -426,6 +520,21 @@ def _move_tensors(value: Any, device: Any) -> Any:
     if isinstance(value, list):
         return [_move_tensors(item, device) for item in value]
     return value
+
+
+def _legacy_parse_v3_action(text: str, protocol: str) -> Any:
+    from revisit_vlm.qwen3_vl_tgvf import parse_v3_action
+
+    return parse_v3_action(text, protocol=protocol)
+
+
+def _row_error(row: dict[str, Any]) -> str | None:
+    errors = row.get("errors")
+    if isinstance(errors, list) and errors:
+        return "; ".join(str(item) for item in errors)
+    if row.get("append_success") is False and row.get("trigger_focus_decision"):
+        return "append_failed"
+    return None
 
 
 def _mean(values: Iterable[float]) -> float | None:
