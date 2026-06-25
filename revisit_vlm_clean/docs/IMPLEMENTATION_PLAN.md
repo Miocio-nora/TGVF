@@ -464,9 +464,58 @@ Validation:
 - `PYTHONPATH=revisit_vlm_clean/src pytest -q revisit_vlm_clean/tests`
   passed with 51 tests.
 
+## Phase 18: MathVista and MathVerse Official Scorer Parity
+
+Implemented after Phase 17.
+
+- clean official scoring now resolves:
+  - MathVista:
+    `benchmark_root/mathvista/official_code/evaluation/calculate_score.py`;
+  - MathVerse:
+    `benchmark_root/mathverse/official_code/evaluation/score_answer_s2.py`;
+- MathVista is ported for the default disabled-LLM path:
+  - extract final answer from model output;
+  - normalize multiple-choice, integer, float, list, and text answers using the
+    same local rules as the historical wrapper;
+  - write per-row `prediction`, `score`, `official_tool_path`, and
+    `llm_judge_used=false`;
+- MathVerse is ported for the default disabled-LLM path:
+  - parse the local multiple-choice/final-answer prediction;
+  - score with the same local choice scorer as the historical wrapper;
+  - write per-row `official_tool_path` and `llm_judge_used=false`;
+- explicit `official` scoring fails fast when the required local official code
+  path is missing.
+
+Validation:
+
+- scorer tests compare clean MathVista and MathVerse behavior against the
+  historical `src/tgvf_eval/official_tools.py` wrappers with
+  `official_llm_mode=disabled`;
+- runner-level dry backend tests verify that clean `RunConfig.benchmark_root`
+  reaches both official scorer paths;
+- `PYTHONPATH=revisit_vlm_clean/src pytest -q revisit_vlm_clean/tests`
+  passed with 57 tests.
+
+## Clean-Native Exit Criteria
+
+- `tgvf_stage2_qwen3` is a diagnostic bridge only. The final clean project must
+  replace it with a native clean Stage2 runner before first-class benchmark or
+  training claims rely on the clean tree.
+- Data generation must be part of the clean project, because it is already a
+  natural pure pipeline:
+  - fixed source manifests and sample ids;
+  - teacher/focus trajectory generation;
+  - Stage1 target/description/D dataset generation;
+  - Stage2 protocol conversation generation;
+  - field/span weights, mask behavior, `im_end` policy, no-focus rules, and
+    split hashes recorded beside generated JSONL artifacts.
+- Stage1/Stage2 launchers must consume those clean generated datasets by
+  explicit path/hash identity.
+
 ## Later Phases
 
-1. Official wrapper parity for MathVista and MathVerse.
-2. Clean benchmark subset boundaries for CoreSmoke/CoreDev execution.
-3. Stage1/Stage2 launchers.
-4. DeepStack training/eval support.
+1. Clean data-generation pipeline for teacher, Stage1, and Stage2 JSONL.
+2. Stage1/Stage2 launchers wired to clean generated dataset identities.
+3. Native clean Stage2 runner replacing the legacy bridge.
+4. Clean benchmark subset boundaries for CoreSmoke/CoreDev execution.
+5. DeepStack training/eval support.

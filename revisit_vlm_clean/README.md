@@ -19,8 +19,9 @@ later phases after each contract is validated.
   `run_config.txt`.
 - `official` scoring currently supports official-compatible multiple-choice
   parsing/scoring for BLINK and HR-Bench-4K, plus official batch scorers for
-  OCRBench-v2 and MMMU-Pro when their local `official_code` trees are present.
-  MathVista and MathVerse still fail fast until wrapper parity is completed.
+  OCRBench-v2, MMMU-Pro, MathVista, and MathVerse when their local
+  `official_code` trees are present. MathVista and MathVerse currently use the
+  default disabled-LLM path only.
 
 ## Entry Points
 
@@ -74,4 +75,17 @@ Diagnostic manifests are for runner validation only, not benchmark reporting.
 - `tgvf_stage2_qwen3`: diagnostic bridge to the historical Stage2 evaluator for
   `tgvf_force`, `tgvf_free`, and `tgvf_softforce` on path-backed image samples.
   It preserves clean manifest/render/output identity while the native clean
-  TGVF runner is still being ported.
+  TGVF runner is still being ported. This backend is temporary and cannot be
+  the final clean-native Stage2 implementation.
+
+## Clean-Native Exit Criteria
+
+The final clean project must not depend on historical evaluator or launcher
+entrypoints for first-class workflows. The current Stage2 bridge is allowed only
+as a diagnostic compatibility layer until the native runner replaces it.
+
+Data generation is expected to enter the clean tree as a first-class pipeline,
+not as an opaque historical script call. The clean data-generation path should
+record source manifests, protocol identity, field/span weights, mask behavior,
+split hashes, and Stage1/Stage2 dataset identities beside the generated JSONL
+artifacts.

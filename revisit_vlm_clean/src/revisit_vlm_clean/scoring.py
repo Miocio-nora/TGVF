@@ -106,6 +106,30 @@ def score_output_rows(
 
     consumed_row_ids: set[int] = set()
     if backend != ScoringBackend.PROJECT:
+        mathvista_rows = [row for row in pending_rows if row.get("benchmark") == "mathvista"]
+        if mathvista_rows:
+            official_path = _mathvista_eval_path(benchmark_root)
+            if official_path is None:
+                if backend == ScoringBackend.OFFICIAL:
+                    raise NotImplementedError(
+                        "official MathVista scoring requires benchmark_root/mathvista/official_code"
+                    )
+            else:
+                _score_mathvista_rows(mathvista_rows, official_eval_path=official_path)
+                consumed_row_ids.update(id(row) for row in mathvista_rows)
+
+        mathverse_rows = [row for row in pending_rows if row.get("benchmark") == "mathverse"]
+        if mathverse_rows:
+            official_path = _mathverse_eval_path(benchmark_root)
+            if official_path is None:
+                if backend == ScoringBackend.OFFICIAL:
+                    raise NotImplementedError(
+                        "official MathVerse scoring requires benchmark_root/mathverse/official_code"
+                    )
+            else:
+                _score_mathverse_rows(mathverse_rows, official_eval_path=official_path)
+                consumed_row_ids.update(id(row) for row in mathverse_rows)
+
         mmmu_rows = [row for row in pending_rows if row.get("benchmark") == "mmmu_pro"]
         if mmmu_rows:
             official_path = _mmmu_pro_eval_path(benchmark_root)
@@ -312,6 +336,74 @@ def _mmmu_pro_eval_path(benchmark_root: str | Path | None) -> Path | None:
     return path if path.exists() else None
 
 
+def _mathvista_eval_path(benchmark_root: str | Path | None) -> Path | None:
+    if benchmark_root is None:
+        return None
+    path = Path(benchmark_root) / "mathvista" / "official_code" / "evaluation" / "calculate_score.py"
+    return path if path.exists() else None
+
+
+def _mathverse_eval_path(benchmark_root: str | Path | None) -> Path | None:
+    if benchmark_root is None:
+        return None
+    path = Path(benchmark_root) / "mathverse" / "official_code" / "evaluation" / "score_answer_s2.py"
+    return path if path.exists() else None
+
+
+def _score_mathvista_rows(rows: list[dict], *, official_eval_path: Path) -> None:
+    for row in rows:
+        row["scorer_name"] = "official_mathvista"
+        row["official_tool_used"] = True
+        row["official_tool_path"] = str(official_eval_path)
+        row["official_compatible"] = False
+        row["llm_judge_used"] = False
+        metadata = dict(row.get("metadata") or {})
+        choices = list(row.get("choices") or metadata.get("choices") or [])
+        gold = row.get("gold_answer")
+        if gold in (None, ""):
+            row["parsed_answer"] = ""
+            row["answer_parse_success"] = False
+            row["prediction"] = None
+            row["score"] = None
+            continue
+        extraction = row.get("parsed_answer") or extract_final_answer(row.get("raw_output") or "")
+        prediction = _mathvista_normalize(
+            extraction,
+            choices,
+            str(metadata.get("question_type") or ("multi_choice" if choices else "free_form")),
+            str(metadata.get("answer_type") or "text"),
+            metadata.get("precision", 0),
+        )
+        answer = _mathvista_gold(str(gold), choices)
+        row["parsed_answer"] = str(extraction or "")
+        row["answer_parse_success"] = bool(row["parsed_answer"])
+        row["prediction"] = prediction
+        row["score"] = 1.0 if prediction is not None and _safe_equal(str(prediction), str(answer)) else 0.0
+
+
+def _score_mathverse_rows(rows: list[dict], *, official_eval_path: Path) -> None:
+    for row in rows:
+        row["scorer_name"] = "official_mathverse"
+        row["official_tool_used"] = True
+        row["official_tool_path"] = str(official_eval_path)
+        row["official_compatible"] = False
+        row["llm_judge_used"] = False
+        gold = row.get("gold_answer")
+        if gold in (None, ""):
+            row["parsed_answer"] = ""
+            row["answer_parse_success"] = False
+            row["score"] = None
+            continue
+        choices = list(row.get("choices") or (row.get("metadata") or {}).get("choices") or [])
+        pred = row.get("parsed_answer") or extract_choice_official_compatible(
+            str(row.get("raw_output") or ""),
+            choices,
+        ) or extract_final_answer(row.get("raw_output") or "")
+        row["parsed_answer"] = str(pred or "")
+        row["answer_parse_success"] = bool(row["parsed_answer"])
+        row["score"] = score_choice(row["parsed_answer"], str(gold), choices)
+
+
 def _score_mmmu_pro_rows(rows: list[dict], *, official_eval_path: Path) -> None:
     module = _load_module_from_path(official_eval_path)
     random_state = random.getstate()
@@ -405,6 +497,69 @@ def _as_list(value: Any) -> list[Any]:
 def _stable_seed(row: dict, index: int) -> int:
     key = str(row.get("sample_id") or row.get("id") or index)
     return sum((offset + 1) * ord(char) for offset, char in enumerate(key)) % (2**32)
+
+
+def _mathvista_normalize(
+    extraction: Any,
+    choices: list[str],
+    question_type: str,
+    answer_type: str,
+    precision: Any,
+) -> str | None:
+    extraction_text = clean_answer(extraction)
+    if question_type in {"multi_choice", "multi-choice"} or choices:
+        letter = choice_letter(extraction_text)
+        if letter and choices:
+            index = ord(letter) - ord("A")
+            if 0 <= index < len(choices):
+                return choices[index]
+        if extraction_text in choices:
+            return extraction_text
+        if choices:
+            return min(choices, key=lambda choice: _edit_distance(extraction_text, choice))
+        return extraction_text or None
+    if answer_type == "integer":
+        numbers = re.findall(r"-?\d+(?:\.\d+)?", extraction_text.replace(",", ""))
+        if not numbers:
+            return None
+        try:
+            return str(int(float(numbers[-1])))
+        except Exception:
+            return None
+    if answer_type == "float":
+        numbers = re.findall(r"-?\d+(?:\.\d+)?", extraction_text.replace(",", ""))
+        if not numbers:
+            return None
+        try:
+            return str(round(float(numbers[-1]), int(float(precision or 0))))
+        except Exception:
+            return None
+    if answer_type == "list":
+        return extraction_text
+    return extraction_text or None
+
+
+def _mathvista_gold(gold: str, choices: list[str]) -> str:
+    letter = choice_letter(gold)
+    if letter and choices:
+        index = ord(letter) - ord("A")
+        if 0 <= index < len(choices):
+            return choices[index]
+    return gold
+
+
+def _safe_equal(prediction: str, answer: str) -> bool:
+    return prediction == answer
+
+
+def _edit_distance(a: str, b: str) -> int:
+    prev = list(range(len(b) + 1))
+    for i, ca in enumerate(a, start=1):
+        curr = [i]
+        for j, cb in enumerate(b, start=1):
+            curr.append(min(prev[j] + 1, curr[j - 1] + 1, prev[j - 1] + (ca != cb)))
+        prev = curr
+    return prev[-1]
 
 
 @contextmanager

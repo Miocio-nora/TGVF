@@ -145,6 +145,20 @@ def eval_multi_choice(gold_i, pred_i):
     return eval_path
 
 
+def _write_fake_mathvista_official(root):
+    eval_path = root / "mathvista" / "official_code" / "evaluation" / "calculate_score.py"
+    eval_path.parent.mkdir(parents=True)
+    eval_path.write_text("# fake MathVista official scorer path for clean tests\n")
+    return eval_path
+
+
+def _write_fake_mathverse_official(root):
+    eval_path = root / "mathverse" / "official_code" / "evaluation" / "score_answer_s2.py"
+    eval_path.parent.mkdir(parents=True)
+    eval_path.write_text("# fake MathVerse official scorer path for clean tests\n")
+    return eval_path
+
+
 def test_materialize_samples_from_manifest_path(tmp_path) -> None:
     root = tmp_path / "benchmarks"
     _write_toy_vstar(root)
@@ -459,4 +473,111 @@ def test_benchmark_execute_dry_run_uses_mmmu_pro_official_batch_scorer(tmp_path)
     assert rows[0]["scorer_name"] == "official_mmmu_pro"
     assert rows[0]["official_tool_used"] is True
     assert rows[0]["official_tool_path"] == str(eval_path)
+    assert summary.accuracy == 1.0
+
+
+def test_benchmark_execute_dry_run_uses_mathvista_official_scorer(tmp_path) -> None:
+    root = tmp_path / "benchmarks"
+    eval_path = _write_fake_mathvista_official(root)
+
+    from revisit_vlm_clean.benchmark_data import BenchmarkSample
+    from revisit_vlm_clean.rendering import render_benchmark_inputs
+    from revisit_vlm_clean.runner import BackendConfig, run_benchmark_rows
+    from revisit_vlm_clean.schema import (
+        EvalMode,
+        ForwardMode,
+        ParserScorerIdentity,
+        RunConfig,
+        ScoringBackend,
+    )
+
+    sample = BenchmarkSample(
+        sample_id="mathvista/sample/0",
+        benchmark="mathvista",
+        population_id="mathvista_testmini_1000",
+        source_file="mathvista/snapshot/data/toy.parquet",
+        question="What is the value?",
+        choices=(),
+        gold_answer="2",
+        metadata={"question_type": "free_form", "answer_type": "integer"},
+    )
+    config = RunConfig(
+        run_id="mathvista",
+        checkpoint_path="outputs/checkpoint.pt",
+        mode=EvalMode.ORIGINAL,
+        post_tgvf_forward_mode=ForwardMode.KV_CACHE,
+        population_id="mathvista_testmini_1000",
+        benchmark_root=str(root),
+        parser_scorer=ParserScorerIdentity(
+            scoring_backend=ScoringBackend.OFFICIAL,
+            fallback_allowed=False,
+        ),
+    )
+    rows, summary = run_benchmark_rows(
+        [sample],
+        render_benchmark_inputs([sample], config),
+        config=config,
+        backend_config=BackendConfig(backend="dry_run"),
+    )
+
+    assert rows[0]["raw_output"] == "2"
+    assert rows[0]["parsed_answer"] == "2"
+    assert rows[0]["prediction"] == "2"
+    assert rows[0]["score"] == 1.0
+    assert rows[0]["scorer_name"] == "official_mathvista"
+    assert rows[0]["official_tool_path"] == str(eval_path)
+    assert rows[0]["llm_judge_used"] is False
+    assert summary.accuracy == 1.0
+
+
+def test_benchmark_execute_dry_run_uses_mathverse_official_scorer(tmp_path) -> None:
+    root = tmp_path / "benchmarks"
+    eval_path = _write_fake_mathverse_official(root)
+
+    from revisit_vlm_clean.benchmark_data import BenchmarkSample
+    from revisit_vlm_clean.rendering import render_benchmark_inputs
+    from revisit_vlm_clean.runner import BackendConfig, run_benchmark_rows
+    from revisit_vlm_clean.schema import (
+        EvalMode,
+        ForwardMode,
+        ParserScorerIdentity,
+        RunConfig,
+        ScoringBackend,
+    )
+
+    sample = BenchmarkSample(
+        sample_id="mathverse/sample/0",
+        benchmark="mathverse",
+        population_id="mathverse_testmini_3940",
+        source_file="mathverse/snapshot/testmini.json",
+        question="Select the answer.\nA:40\nB:60\nC:120\nD:140",
+        choices=("40", "60", "120", "140"),
+        gold_answer="D",
+        metadata={"problem_version": "Text Dominant", "question_type": "multi-choice"},
+    )
+    config = RunConfig(
+        run_id="mathverse",
+        checkpoint_path="outputs/checkpoint.pt",
+        mode=EvalMode.ORIGINAL,
+        post_tgvf_forward_mode=ForwardMode.KV_CACHE,
+        population_id="mathverse_testmini_3940",
+        benchmark_root=str(root),
+        parser_scorer=ParserScorerIdentity(
+            scoring_backend=ScoringBackend.OFFICIAL,
+            fallback_allowed=False,
+        ),
+    )
+    rows, summary = run_benchmark_rows(
+        [sample],
+        render_benchmark_inputs([sample], config),
+        config=config,
+        backend_config=BackendConfig(backend="dry_run"),
+    )
+
+    assert rows[0]["raw_output"] == "D"
+    assert rows[0]["parsed_answer"] == "D"
+    assert rows[0]["score"] == 1.0
+    assert rows[0]["scorer_name"] == "official_mathverse"
+    assert rows[0]["official_tool_path"] == str(eval_path)
+    assert rows[0]["llm_judge_used"] is False
     assert summary.accuracy == 1.0

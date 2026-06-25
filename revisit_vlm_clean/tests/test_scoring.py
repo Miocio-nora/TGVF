@@ -83,6 +83,20 @@ def eval_multi_choice(gold_i, pred_i):
     return eval_path
 
 
+def _write_fake_mathvista_official(root: Path) -> Path:
+    eval_path = root / "mathvista" / "official_code" / "evaluation" / "calculate_score.py"
+    eval_path.parent.mkdir(parents=True)
+    eval_path.write_text("# fake MathVista official scorer path for clean tests\n")
+    return eval_path
+
+
+def _write_fake_mathverse_official(root: Path) -> Path:
+    eval_path = root / "mathverse" / "official_code" / "evaluation" / "score_answer_s2.py"
+    eval_path.parent.mkdir(parents=True)
+    eval_path.write_text("# fake MathVerse official scorer path for clean tests\n")
+    return eval_path
+
+
 def test_extract_choice_strict_answer_tag() -> None:
     assert extract_choice_strict("<ANSWER>(B)</ANSWER>", ["red", "blue", "green"]) == "B"
 
@@ -338,6 +352,122 @@ def test_score_output_rows_mmmu_pro_official_requires_local_tool(tmp_path) -> No
             "choices": ["red", "blue"],
             "gold_answer": "A",
             "metadata": {"subject": "Art"},
+            "error": None,
+        }
+    ]
+
+    with pytest.raises(NotImplementedError):
+        score_output_rows(rows, scoring_backend=ScoringBackend.OFFICIAL, benchmark_root=tmp_path)
+
+
+def test_score_output_rows_mathvista_official_disabled_llm_matches_legacy(tmp_path) -> None:
+    eval_path = _write_fake_mathvista_official(tmp_path)
+    rows = [
+        {
+            "sample_id": "mathvista/sample/0",
+            "benchmark": "mathvista",
+            "raw_output": "We compute the value. Final answer is 1.23",
+            "choices": [],
+            "gold_answer": "1.2",
+            "metadata": {"question_type": "free_form", "answer_type": "float", "precision": 1},
+            "error": None,
+        }
+    ]
+
+    score_output_rows(rows, scoring_backend=ScoringBackend.OFFICIAL, benchmark_root=tmp_path)
+
+    legacy = _legacy_official_tools()
+    legacy_info = legacy.OfficialToolInfo(
+        official_tool_used=False,
+        official_tool_path=str(tmp_path / "mathvista" / "official_code"),
+        scorer_name="fallback",
+        prompt_source="project",
+    )
+    legacy_scorer = legacy.MathVistaOfficialScorer(legacy_info, official_llm_mode="disabled")
+    legacy_rows = [
+        {
+            "sample_id": rows[0]["sample_id"],
+            "raw_output": rows[0]["raw_output"],
+            "choices": rows[0]["choices"],
+            "gold_answer": rows[0]["gold_answer"],
+            "metadata": rows[0]["metadata"],
+        }
+    ]
+    legacy_scorer.score_predictions(legacy_rows)
+
+    assert rows[0]["parsed_answer"] == legacy_rows[0]["parsed_answer"] == "1.23"
+    assert rows[0]["prediction"] == legacy_rows[0]["prediction"] == "1.2"
+    assert rows[0]["score"] == legacy_rows[0]["score"] == 1.0
+    assert rows[0]["scorer_name"] == "official_mathvista"
+    assert rows[0]["official_tool_path"] == str(eval_path)
+    assert rows[0]["llm_judge_used"] is False
+
+
+def test_score_output_rows_mathvista_official_requires_local_tool(tmp_path) -> None:
+    rows = [
+        {
+            "benchmark": "mathvista",
+            "raw_output": "1",
+            "gold_answer": "1",
+            "metadata": {"question_type": "free_form", "answer_type": "integer"},
+            "error": None,
+        }
+    ]
+
+    with pytest.raises(NotImplementedError):
+        score_output_rows(rows, scoring_backend=ScoringBackend.OFFICIAL, benchmark_root=tmp_path)
+
+
+def test_score_output_rows_mathverse_official_disabled_llm_matches_legacy(tmp_path) -> None:
+    eval_path = _write_fake_mathverse_official(tmp_path)
+    rows = [
+        {
+            "sample_id": "mathverse/sample/0",
+            "benchmark": "mathverse",
+            "raw_output": "The final answer is (D).",
+            "choices": ["40°", "60°", "120°", "140°"],
+            "gold_answer": "D",
+            "metadata": {"problem_version": "Text Dominant", "question_type": "multi-choice"},
+            "error": None,
+        }
+    ]
+
+    score_output_rows(rows, scoring_backend=ScoringBackend.OFFICIAL, benchmark_root=tmp_path)
+
+    legacy = _legacy_official_tools()
+    legacy_info = legacy.OfficialToolInfo(
+        official_tool_used=False,
+        official_tool_path=str(tmp_path / "mathverse" / "official_code"),
+        scorer_name="fallback",
+        prompt_source="project",
+    )
+    legacy_scorer = legacy.MathVerseOfficialScorer(legacy_info, official_llm_mode="disabled")
+    legacy_rows = [
+        {
+            "sample_id": rows[0]["sample_id"],
+            "raw_output": rows[0]["raw_output"],
+            "choices": rows[0]["choices"],
+            "gold_answer": rows[0]["gold_answer"],
+            "metadata": rows[0]["metadata"],
+        }
+    ]
+    legacy_scorer.score_predictions(legacy_rows)
+
+    assert rows[0]["parsed_answer"] == legacy_rows[0]["parsed_answer"] == "D"
+    assert rows[0]["score"] == legacy_rows[0]["score"] == 1.0
+    assert rows[0]["scorer_name"] == "official_mathverse"
+    assert rows[0]["official_tool_path"] == str(eval_path)
+    assert rows[0]["llm_judge_used"] is False
+
+
+def test_score_output_rows_mathverse_official_requires_local_tool(tmp_path) -> None:
+    rows = [
+        {
+            "benchmark": "mathverse",
+            "raw_output": "A",
+            "choices": ["x", "y"],
+            "gold_answer": "A",
+            "metadata": {"question_type": "multi-choice"},
             "error": None,
         }
     ]
