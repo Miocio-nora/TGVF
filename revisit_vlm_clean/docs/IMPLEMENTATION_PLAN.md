@@ -572,10 +572,35 @@ Validation:
 - `PYTHONPATH=revisit_vlm_clean/src pytest -q revisit_vlm_clean/tests`
   passed with 61 tests.
 
+## Phase 21: V4 Teacher to Protocol-C Stage2 Builder
+
+Implemented after Phase 20.
+
+- `tgvf_generate_data --execute --transform v4_to_protocol_c` now ports the
+  deterministic historical `build_tgvf_v4_stage2_protocol_c.py` behavior;
+- supported V4 item types:
+  - `single_refocus` -> `single_focus`;
+  - `multi_refocus` -> `multi_focus` with exactly two focus steps;
+  - `no_refocus_continue` and `no_refocus_answer` -> `direct_answer`;
+- output rows preserve the Stage2 compatibility schema:
+  - `schema_version=tgvf_teacher_schema_v4_stage2_compat`;
+  - image/source/question/choice/answer fields;
+  - target, evidence description, target cues, leakage risk, evidence state;
+  - pre/post focus think spans where available;
+- transform reports include raw/written counts, focus/no-focus counts, and
+  focus ratios.
+
+Validation:
+
+- tests execute the transform on tiny `single_refocus` and `no_refocus_answer`
+  V4 teacher rows;
+- `PYTHONPATH=revisit_vlm_clean/src pytest -q revisit_vlm_clean/tests`
+  passed with 62 tests.
+
 ## Later Phases
 
 1. Port teacher trajectory generation into `tgvf_generate_data`.
-2. Port Stage1/Stage2 JSONL builders into `tgvf_generate_data`.
+2. Port the Stage1 Protocol-C focus JSONL builder into `tgvf_generate_data`.
 3. Stage1/Stage2 launchers wired to clean generated dataset identities.
 4. Native clean Stage2 runner replacing the legacy bridge.
 5. Clean benchmark subset boundaries for CoreSmoke/CoreDev execution.

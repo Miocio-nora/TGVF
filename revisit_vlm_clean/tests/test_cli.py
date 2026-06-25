@@ -246,3 +246,89 @@ def test_generate_data_execute_clean_imend(tmp_path) -> None:
     assert '"input": 2' in report
     assert '"kept": 1' in report
     assert '"dropped": 1' in report
+
+
+def test_generate_data_execute_v4_to_protocol_c(tmp_path) -> None:
+    input_root = tmp_path / "inputs"
+    input_root.mkdir()
+    source = input_root / "teacher.accepted.jsonl"
+    records = [
+        {
+            "item_type": "single_refocus",
+            "teacher_prompt_version": "tgvf_v4_teacher",
+            "image": "/tmp/image.jpg",
+            "stable_image_uid": "toy:image",
+            "source_dataset": "toy",
+            "source_profile": "unit",
+            "question": "What color is the mark?",
+            "choices": [{"label": "A", "text": "red"}, {"label": "B", "text": "blue"}],
+            "answer": "B. blue",
+            "answer_text": "blue",
+            "answer_format": "multiple_choice",
+            "evidence_types": ["color_attribute"],
+            "confidence": 0.9,
+            "uid": "toy:0",
+            "question_type": "color_attribute",
+            "focus_category": "color_surface",
+            "trace": [
+                {"type": "think", "text": "Need a closer look."},
+                {
+                    "type": "focus",
+                    "focus_text": "the small mark",
+                    "focused_evidence": "The mark is blue.",
+                    "metadata": {
+                        "focus_descriptor_cues": ["location", "color"],
+                        "target_leakage_risk": "low",
+                        "evidence_type": "color_attribute",
+                    },
+                },
+                {"type": "think", "text": "It is blue."},
+                {"type": "answer", "text": "B. blue"},
+            ],
+        },
+        {
+            "item_type": "no_refocus_answer",
+            "image": "/tmp/image.jpg",
+            "question": "Is this visible?",
+            "answer": "yes",
+            "answer_text": "yes",
+            "trace": [{"type": "think", "text": "The image is sufficient."}],
+        },
+    ]
+    source.write_text("\n".join(json.dumps(record) for record in records) + "\n", encoding="utf-8")
+    output_dir = tmp_path / "protocol"
+
+    assert (
+        generate_data_main(
+            [
+                "--run-id",
+                "v4_protocol",
+                "--stage",
+                "stage2_protocol_c",
+                "--input-root",
+                str(input_root),
+                "--input-files",
+                "teacher.accepted.jsonl",
+                "--output-dir",
+                str(output_dir),
+                "--transform",
+                "v4_to_protocol_c",
+                "--execute",
+            ]
+        )
+        == 0
+    )
+
+    rows = [json.loads(line) for line in (output_dir / "teacher.accepted.jsonl").read_text().splitlines()]
+    assert rows[0]["schema_version"] == "tgvf_teacher_schema_v4_stage2_compat"
+    assert rows[0]["trajectory_type"] == "single_focus"
+    assert rows[0]["need_focus"] is True
+    assert rows[0]["target"] == "the small mark"
+    assert rows[0]["evidence_description"] == "The mark is blue."
+    assert rows[0]["pre_focus_think"] == "Need a closer look."
+    assert rows[0]["post_focus_think"] == "It is blue."
+    assert rows[1]["trajectory_type"] == "direct_answer"
+    assert rows[1]["need_focus"] is False
+    report = (output_dir / "transform_report.json").read_text()
+    assert '"written_single_focus": 1' in report
+    assert '"written_direct_answer": 1' in report

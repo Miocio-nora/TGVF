@@ -45,9 +45,9 @@ rather than one isolated row at a time.
 
 The data-generation entrypoint records source files, hashes, protocol,
 transform, field weights, mask policy, and output intent. It can currently
-execute the deterministic `choice_to_open_answer` and `clean_imend` transforms;
-teacher trajectory generation and the full Stage1/Stage2 builders are still to
-be ported.
+execute the deterministic `v4_to_protocol_c`, `choice_to_open_answer`, and
+`clean_imend` transforms; teacher trajectory generation and the full Stage1
+builder are still to be ported.
 
 ## Fixed Manifests
 
