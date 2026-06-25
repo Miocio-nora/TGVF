@@ -104,6 +104,8 @@ class RunConfig:
     post_tgvf_forward_mode: ForwardMode
     output_schema_version: str = "clean_benchmark_run_v1"
     started_at: str | None = None
+    num_shards: int = 1
+    shard_index: int = 0
     eval_family: EvalFamily = EvalFamily.PROJECT_NATIVE_EXTERNAL
     mode: EvalMode = EvalMode.ORIGINAL
     model_id: str = DEFAULT_MODEL_ID
@@ -134,6 +136,10 @@ class RunConfig:
             raise ValueError("exactly one of population_id or subset_id is required")
         if not self.benchmark_root:
             raise ValueError("benchmark_root is required")
+        if int(self.num_shards) < 1:
+            raise ValueError("num_shards must be >= 1")
+        if not 0 <= int(self.shard_index) < int(self.num_shards):
+            raise ValueError("shard_index must be in [0, num_shards)")
         if self.post_tgvf_continuation != ContinuationMode.NATURAL_CONTINUE:
             raise ValueError("clean benchmark continuation must be natural_continue")
         if self.mode in {EvalMode.ORIGINAL, EvalMode.TGVF_FREE} and (

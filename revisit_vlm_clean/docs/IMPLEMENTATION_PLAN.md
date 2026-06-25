@@ -1090,6 +1090,21 @@ Implemented after Phase 34.
 This closes another clean output-schema gap: new benchmark outputs now carry
 the run start time and schema version in the canonical run config.
 
+## Phase 36: Unsharded Run Shard Identity
+
+Implemented after Phase 35.
+
+- `RunConfig` now includes explicit shard identity:
+  - `num_shards=1`;
+  - `shard_index=0`;
+- validation rejects invalid shard identities;
+- executed rows include `num_shards` and `shard_index`;
+- `run_config.txt` prints both fields.
+
+This does not implement real sharded execution or deterministic merge yet. It
+does make the unsharded case explicit in the same schema that future shard
+outputs will use.
+
 ## Later Phases
 
 1. Replace training launch plans with clean-native training execution.

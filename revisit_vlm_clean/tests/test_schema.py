@@ -21,6 +21,8 @@ def test_run_config_json_roundtrip() -> None:
     assert restored.benchmark_root == "/home/dredvpn009/Flash_Storage/datasets/benchmarks"
     assert restored.output_schema_version == "clean_benchmark_run_v1"
     assert restored.started_at is None
+    assert restored.num_shards == 1
+    assert restored.shard_index == 0
 
 
 def test_free_mode_rejects_prompt_suffix() -> None:
@@ -33,6 +35,20 @@ def test_free_mode_rejects_prompt_suffix() -> None:
         prompt_suffix="use focus tool",
     )
     with pytest.raises(ValueError, match="must not include prompt"):
+        config.validate()
+
+
+def test_run_config_rejects_invalid_shard_identity() -> None:
+    config = RunConfig(
+        run_id="bad_shard",
+        checkpoint_path="outputs/checkpoint.pt",
+        mode=EvalMode.ORIGINAL,
+        subset_id="core_smoke_256_seed20260625",
+        post_tgvf_forward_mode=ForwardMode.KV_CACHE,
+        num_shards=2,
+        shard_index=2,
+    )
+    with pytest.raises(ValueError, match="shard_index"):
         config.validate()
 
 

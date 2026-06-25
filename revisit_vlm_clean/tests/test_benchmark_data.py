@@ -383,6 +383,8 @@ def test_benchmark_execute_dry_run_cli(tmp_path) -> None:
     assert row["scorer_name"] == "project_choice_exact_match"
     assert row["official_tool_used"] is False
     assert row["eval_family"] == "project_native_external"
+    assert row["num_shards"] == 1
+    assert row["shard_index"] == 0
     assert row["tgvf_protocol"] == "protocol_c_tool_observation"
     assert row["post_tgvf_continuation"] == "natural_continue"
     assert row["post_tgvf_forward_mode"] == "kv_cache"

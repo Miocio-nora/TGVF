@@ -537,6 +537,8 @@ def run_benchmark_rows(
                 "population_id": sample.population_id,
                 "subset_id": config.subset_id,
                 "source_file": sample.source_file,
+                "num_shards": config.num_shards,
+                "shard_index": config.shard_index,
                 "method": config.mode.value,
                 "eval_family": config.eval_family.value,
                 "tgvf_protocol": config.tgvf_protocol,
