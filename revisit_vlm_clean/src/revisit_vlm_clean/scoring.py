@@ -75,6 +75,35 @@ def parse_and_score(
     )
 
 
+def score_output_rows(
+    rows: list[dict],
+    *,
+    scoring_backend: ScoringBackend | str = ScoringBackend.AUTO,
+) -> None:
+    for row in rows:
+        if row.get("error"):
+            row.setdefault("parsed_answer", "")
+            row.setdefault("score", None)
+            row.setdefault("answer_parse_success", False)
+            row.setdefault("scorer_name", "")
+            row.setdefault("official_tool_used", False)
+            row.setdefault("official_compatible", False)
+            continue
+        parsed = parse_and_score(
+            str(row.get("raw_output") or ""),
+            choices=list(row.get("choices") or []),
+            gold_answer=row.get("gold_answer"),
+            benchmark=row.get("benchmark"),
+            scoring_backend=scoring_backend,
+        )
+        row["parsed_answer"] = parsed.parsed_answer
+        row["score"] = parsed.score
+        row["answer_parse_success"] = parsed.answer_parse_success
+        row["scorer_name"] = parsed.scorer_name
+        row["official_tool_used"] = parsed.official_tool_used
+        row["official_compatible"] = parsed.official_compatible
+
+
 def extract_answer_text(text: str) -> str:
     cleaned = str(text or "")
     matches = list(re.finditer(r"<ANSWER>\s*(.*?)(?:</ANSWER>|$)", cleaned, flags=re.IGNORECASE | re.DOTALL))

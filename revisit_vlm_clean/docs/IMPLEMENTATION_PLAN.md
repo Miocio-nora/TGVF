@@ -385,6 +385,25 @@ malformed_rate:
 This validates larger path-backed bridge stability only. It is not a benchmark
 comparison. Legacy `target_answer_leakage_flag` fired on 30/32 rows.
 
+## Phase 15: Batch Scoring Hook
+
+Implemented after Phase 14.
+
+- runner now collects model output rows first and then applies a single
+  `score_output_rows(...)` pass;
+- row-level project and official-compatible choice scoring behavior is preserved;
+- error rows are skipped by the scoring pass and keep `score=None`;
+- this creates the required integration point for future official scorers that
+  need to score a whole row set, such as OCRBench-v2, MMMU-Pro, MathVista, and
+  MathVerse.
+
+Validation:
+
+- clean tests cover BLINK auto scoring through the runner;
+- clean tests cover batch scoring and error-row skip behavior;
+- `PYTHONPATH=revisit_vlm_clean/src pytest -q revisit_vlm_clean/tests`
+  passed with 44 tests.
+
 ## Later Phases
 
 1. Official wrapper parity for MMMU-Pro, OCRBench-v2, MathVista, and MathVerse.

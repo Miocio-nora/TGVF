@@ -5,7 +5,12 @@ from pathlib import Path
 import pytest
 
 from revisit_vlm_clean.schema import ScoringBackend
-from revisit_vlm_clean.scoring import extract_choice_official_compatible, extract_choice_strict, parse_and_score
+from revisit_vlm_clean.scoring import (
+    extract_choice_official_compatible,
+    extract_choice_strict,
+    parse_and_score,
+    score_output_rows,
+)
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -133,3 +138,33 @@ def test_official_backend_not_ported_for_unsupported_benchmark() -> None:
             benchmark="vstar_bench",
             scoring_backend=ScoringBackend.OFFICIAL,
         )
+
+
+def test_score_output_rows_batch_scores_and_skips_error_rows() -> None:
+    rows = [
+        {
+            "benchmark": "blink",
+            "raw_output": "(B) two",
+            "choices": ["one", "two"],
+            "gold_answer": "B",
+            "error": None,
+        },
+        {
+            "benchmark": "blink",
+            "raw_output": "(A) one",
+            "choices": ["one", "two"],
+            "gold_answer": "A",
+            "error": "RuntimeError: failed",
+        },
+    ]
+
+    score_output_rows(rows, scoring_backend=ScoringBackend.AUTO)
+
+    assert rows[0]["parsed_answer"] == "B"
+    assert rows[0]["score"] == 1.0
+    assert rows[0]["scorer_name"] == "official_blink_exact_match"
+    assert rows[0]["official_tool_used"] is True
+    assert rows[1]["parsed_answer"] == ""
+    assert rows[1]["score"] is None
+    assert rows[1]["answer_parse_success"] is False
+    assert rows[1]["scorer_name"] == ""
