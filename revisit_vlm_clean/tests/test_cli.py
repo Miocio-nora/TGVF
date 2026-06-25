@@ -11,6 +11,36 @@ from revisit_vlm_clean.training.stage1_executor import main as stage1_executor_m
 from revisit_vlm_clean.training.stage2_executor import main as stage2_executor_main
 
 
+def _write_minimal_stage1_checkpoint(
+    path,
+    *,
+    protocol: str = "protocol_c_tool_observation",
+) -> None:
+    import torch
+
+    torch.save(
+        {
+            "tgvf_module": {"dummy.weight": torch.zeros(2, 3)},
+            "config": {
+                "stage": "tgvf_v3_stage1",
+                "tgvf_protocol": protocol,
+                "model_id": "Qwen/Qwen3-VL-8B-Thinking",
+                "processor_id": "processor-unit",
+                "tgvf": {"variant": "tgvf_v2_bidirectional"},
+            },
+            "global_step": 2000,
+            "protocol_c_token_rows": {
+                "protocol": protocol,
+                "tokens": ["<|focus_start|>", "<|focus_end|>"],
+                "token_ids": {"<|focus_start|>": 1, "<|focus_end|>": 2},
+                "input_embeddings": torch.zeros(2, 4),
+                "output_embeddings": torch.zeros(2, 4),
+            },
+        },
+        path,
+    )
+
+
 def test_manifest_list_cli(capsys) -> None:
     assert manifest_main(["--list"]) == 0
     captured = capsys.readouterr()
@@ -453,6 +483,9 @@ def test_stage1_training_executor_prepare_execution_cli(tmp_path, capsys) -> Non
     assert "emit_trainable_parameter_audit" in contract["required_launch_gates"]
     assert "stage1_readout_context_uses_qwen_v_merge" in contract["required_launch_gates"]
     assert "dataset_runtime_identity.json" in contract["required_runtime_artifacts"]
+    checkpoint_contract = json.loads((execution_dir / "checkpoint_contract.json").read_text())
+    assert checkpoint_contract["status"] == "no_input_checkpoint_required"
+    assert checkpoint_contract["input_checkpoint_required"] is False
     dataset_runtime = json.loads((execution_dir / "dataset_runtime_identity.json").read_text())
     first_batch = json.loads((execution_dir / "first_batch_identity.json").read_text())
     assert dataset_runtime["stage"] == "stage1"
@@ -562,7 +595,7 @@ def test_stage2_training_write_plan_cli(tmp_path) -> None:
         '"need_focus": true, "evidence_state": "need_local_visual_evidence"}\n',
         encoding="utf-8",
     )
-    checkpoint.write_bytes(b"checkpoint\n")
+    _write_minimal_stage1_checkpoint(checkpoint)
     output_dir = tmp_path / "stage2_plan"
 
     assert (
@@ -693,7 +726,7 @@ def test_stage2_training_executor_preflight_cli(tmp_path, capsys) -> None:
         '"need_focus": true, "evidence_state": "need_local_visual_evidence"}\n',
         encoding="utf-8",
     )
-    checkpoint.write_bytes(b"checkpoint\n")
+    _write_minimal_stage1_checkpoint(checkpoint)
     output_dir = tmp_path / "stage2_plan"
     assert (
         stage2_main(
@@ -749,7 +782,7 @@ def test_stage2_training_executor_prepare_execution_cli(tmp_path, capsys) -> Non
         '"need_focus": true, "evidence_state": "need_local_visual_evidence"}\n',
         encoding="utf-8",
     )
-    checkpoint.write_bytes(b"checkpoint\n")
+    _write_minimal_stage1_checkpoint(checkpoint)
     output_dir = tmp_path / "stage2_plan"
     assert (
         stage2_main(
@@ -803,10 +836,18 @@ def test_stage2_training_executor_prepare_execution_cli(tmp_path, capsys) -> Non
     assert first_batch["requested_global_batch_size"] == 128
     assert first_batch["materialized_batch_size"] == 1
     assert first_batch["rows"][0]["need_focus"] is True
+    checkpoint_contract = json.loads((execution_dir / "checkpoint_contract.json").read_text())
+    assert checkpoint_contract["status"] == "validated"
+    assert checkpoint_contract["global_step"] == 2000
+    assert checkpoint_contract["tgvf_module"]["num_tensors"] == 1
+    assert checkpoint_contract["protocol_c_token_rows"]["protocol"] == (
+        "protocol_c_tool_observation"
+    )
     assert bundle["safety"]["legacy_reference_allowed"] is False
     status = json.loads((execution_dir / "clean_training_execution_status.json").read_text())
     assert status["bundle_valid"] is True
     assert status["trainer_runtime_contract_status"] == "not_ported"
+    assert status["checkpoint_contract_status"] == "validated"
     assert status["will_launch_training"] is False
 
 
@@ -837,6 +878,43 @@ def test_stage2_prepare_execution_rejects_missing_required_dataset_fields(tmp_pa
     )
 
     with pytest.raises(ValueError, match="missing required fields"):
+        stage2_executor_main(
+            [
+                "--plan",
+                str(output_dir / "training_plan.json"),
+                "--prepare-execution",
+            ]
+        )
+
+
+def test_stage2_prepare_execution_rejects_unloadable_stage1_checkpoint(tmp_path) -> None:
+    train_file = tmp_path / "stage2.train.jsonl"
+    checkpoint = tmp_path / "stage1.pt"
+    train_file.write_text(
+        '{"image": "/tmp/image.jpg", "question": "q", "answer": "a", '
+        '"need_focus": true, "evidence_state": "need_local_visual_evidence"}\n',
+        encoding="utf-8",
+    )
+    checkpoint.write_bytes(b"not a torch checkpoint\n")
+    output_dir = tmp_path / "stage2_plan"
+    assert (
+        stage2_main(
+            [
+                "--run-id",
+                "stage2_bad_checkpoint",
+                "--train-file",
+                str(train_file),
+                "--stage1-checkpoint",
+                str(checkpoint),
+                "--output-dir",
+                str(output_dir),
+                "--write-plan",
+            ]
+        )
+        == 0
+    )
+
+    with pytest.raises(ValueError, match="not loadable by torch"):
         stage2_executor_main(
             [
                 "--plan",

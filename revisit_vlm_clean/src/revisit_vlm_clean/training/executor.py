@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from collections.abc import Mapping
 from hashlib import sha256
 from pathlib import Path
 from typing import Any
@@ -117,9 +118,18 @@ def prepare_training_execution(
         plan=plan,
         expected_stage=expected_stage,
     )
-    bundle["runtime_artifacts"] = dataset_runtime["paths"]
+    checkpoint_contract = _write_checkpoint_contract_artifact(
+        execution_dir=out,
+        plan=plan,
+        expected_stage=expected_stage,
+    )
+    bundle["runtime_artifacts"] = {
+        **dataset_runtime["paths"],
+        "checkpoint_contract": checkpoint_contract["path"],
+    }
     bundle["dataset_runtime"] = dataset_runtime["dataset_runtime"]
     bundle["first_batch_identity"] = dataset_runtime["first_batch_identity"]
+    bundle["checkpoint_contract"] = checkpoint_contract["contract"]
     status = _execution_status(bundle)
     bundle_path = out / "clean_training_execution_bundle.json"
     status_path = out / "clean_training_execution_status.json"
@@ -138,6 +148,7 @@ def prepare_training_execution(
         "training_runtime_ported": False,
         "dataset_runtime_identity": dataset_runtime["paths"]["dataset_runtime_identity"],
         "first_batch_identity": dataset_runtime["paths"]["first_batch_identity"],
+        "checkpoint_contract": checkpoint_contract["path"],
         "runner_status": status["runner_status"],
     }
 
@@ -280,6 +291,7 @@ def _execution_status(bundle: dict[str, Any]) -> dict[str, Any]:
         "trainer_runtime_contract_status": (
             (bundle.get("trainer_runtime_contract") or {}).get("status")
         ),
+        "checkpoint_contract_status": (bundle.get("checkpoint_contract") or {}).get("status"),
         "will_launch_training": bool(safety.get("will_launch_training")),
         "legacy_reference_allowed": bool(safety.get("legacy_reference_allowed")),
         "blocking_items": list(executor.get("blocking_items") or []),
@@ -304,6 +316,7 @@ def _execution_bundle_text(bundle: dict[str, Any], status: dict[str, Any]) -> st
         f"runner_status: {status.get('runner_status')}",
         f"training_runtime_ported: {status.get('training_runtime_ported')}",
         f"trainer_runtime_contract_status: {status.get('trainer_runtime_contract_status')}",
+        f"checkpoint_contract_status: {status.get('checkpoint_contract_status')}",
         f"will_launch_training: {status.get('will_launch_training')}",
         f"legacy_reference_allowed: {status.get('legacy_reference_allowed')}",
     ]
@@ -437,6 +450,142 @@ def _write_dataset_runtime_artifacts(
         "dataset_runtime": dataset_runtime,
         "first_batch_identity": first_batch_identity,
     }
+
+
+def _write_checkpoint_contract_artifact(
+    *,
+    execution_dir: Path,
+    plan: dict[str, Any],
+    expected_stage: TrainingStage,
+) -> dict[str, Any]:
+    contract = _checkpoint_contract(plan=plan, expected_stage=expected_stage)
+    path = execution_dir / "checkpoint_contract.json"
+    _write_json(path, contract)
+    return {"path": str(path), "contract": contract}
+
+
+def _checkpoint_contract(*, plan: dict[str, Any], expected_stage: TrainingStage) -> dict[str, Any]:
+    if expected_stage == TrainingStage.STAGE1:
+        return {
+            "schema_version": "clean_training_checkpoint_contract_v1",
+            "stage": str(expected_stage),
+            "status": "no_input_checkpoint_required",
+            "input_checkpoint_required": False,
+            "output_checkpoint_required_keys": [
+                "tgvf_module",
+                "config",
+                "global_step",
+            ],
+            "protocol_token_rows_required_for_protocol_c": True,
+        }
+    dataset = plan.get("dataset") or {}
+    identity = dataset.get("stage1_checkpoint") or {}
+    _validate_file_identity(identity, label="stage1_checkpoint")
+    checkpoint = _load_torch_checkpoint(str(identity["path"]))
+    if not isinstance(checkpoint, Mapping):
+        raise ValueError("stage1_checkpoint must load to a mapping")
+    keys = sorted(str(key) for key in checkpoint.keys())
+    config = checkpoint.get("config") or {}
+    if not isinstance(config, Mapping):
+        raise ValueError("stage1_checkpoint config must be a mapping")
+    protocol = config.get("tgvf_protocol")
+    requested_protocol = plan.get("protocol")
+    if protocol and requested_protocol and protocol != requested_protocol:
+        raise ValueError(
+            "stage1_checkpoint protocol mismatch: "
+            f"{protocol!r} != requested {requested_protocol!r}"
+        )
+    tgvf_module = checkpoint.get("tgvf_module")
+    if not isinstance(tgvf_module, Mapping) or not tgvf_module:
+        raise ValueError("stage1_checkpoint missing non-empty tgvf_module state dict")
+    token_rows = checkpoint.get("protocol_c_token_rows")
+    protocol_c_required = str(requested_protocol or "").startswith("protocol_c_")
+    if protocol_c_required:
+        if not isinstance(token_rows, Mapping):
+            raise ValueError("stage1_checkpoint missing protocol_c_token_rows")
+        row_protocol = token_rows.get("protocol")
+        if row_protocol and requested_protocol and row_protocol != requested_protocol:
+            raise ValueError(
+                "stage1 checkpoint protocol token rows mismatch: "
+                f"{row_protocol!r} != requested {requested_protocol!r}"
+            )
+    return {
+        "schema_version": "clean_training_checkpoint_contract_v1",
+        "stage": str(expected_stage),
+        "status": "validated",
+        "input_checkpoint_required": True,
+        "checkpoint_identity": identity,
+        "checkpoint_keys": keys,
+        "global_step": checkpoint.get("global_step"),
+        "config": {
+            "stage": config.get("stage"),
+            "tgvf_protocol": protocol,
+            "model_id": config.get("model_id"),
+            "processor_id": config.get("processor_id"),
+            "tgvf": config.get("tgvf"),
+        },
+        "tgvf_module": _state_dict_summary(tgvf_module),
+        "protocol_c_token_rows": _protocol_token_rows_summary(token_rows),
+        "protocol_c_token_rows_required": protocol_c_required,
+    }
+
+
+def _load_torch_checkpoint(path: str) -> Any:
+    try:
+        import torch
+    except Exception as exc:
+        raise RuntimeError("torch is required to validate Stage2 checkpoint contracts") from exc
+    try:
+        return torch.load(path, map_location="cpu", weights_only=False)
+    except TypeError:
+        try:
+            return torch.load(path, map_location="cpu")
+        except Exception as exc:
+            raise ValueError(f"stage1_checkpoint is not loadable by torch: {path}") from exc
+    except Exception as exc:
+        raise ValueError(f"stage1_checkpoint is not loadable by torch: {path}") from exc
+
+
+def _state_dict_summary(state: Mapping[Any, Any]) -> dict[str, Any]:
+    items = list(state.items())
+    return {
+        "num_tensors": len(items),
+        "total_numel": sum(_numel(value) for _, value in items),
+        "sample_keys": [str(key) for key, _ in items[:10]],
+        "sample_shapes": {
+            str(key): _shape_list(value)
+            for key, value in items[:10]
+            if _shape_list(value) is not None
+        },
+    }
+
+
+def _protocol_token_rows_summary(payload: Any) -> dict[str, Any] | None:
+    if not isinstance(payload, Mapping):
+        return None
+    token_ids = payload.get("token_ids") or {}
+    tokens = payload.get("tokens") or []
+    return {
+        "protocol": payload.get("protocol"),
+        "num_tokens": len(tokens) if isinstance(tokens, list) else None,
+        "token_ids": dict(token_ids) if isinstance(token_ids, Mapping) else None,
+        "input_embeddings_shape": _shape_list(payload.get("input_embeddings")),
+        "output_embeddings_shape": _shape_list(payload.get("output_embeddings")),
+    }
+
+
+def _shape_list(value: Any) -> list[int] | None:
+    shape = getattr(value, "shape", None)
+    if shape is None:
+        return None
+    return [int(item) for item in shape]
+
+
+def _numel(value: Any) -> int:
+    try:
+        return int(value.numel())
+    except Exception:
+        return 0
 
 
 def _scan_training_jsonl(

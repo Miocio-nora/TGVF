@@ -1512,6 +1512,23 @@ Implemented after Phase 58.
   fields now fail during prepare-execution before any future trainer loop can
   launch.
 
+## Phase 60: Stage2 Checkpoint Contract Validation
+
+Implemented after Phase 59.
+
+- Stage1/Stage2 `--prepare-execution` now writes `checkpoint_contract.json`;
+- Stage1 records that no input checkpoint is required and lists required output
+  checkpoint keys for the future clean trainer;
+- Stage2 prepare-execution now actually `torch.load`s the Stage1 checkpoint
+  before handoff;
+- Stage2 rejects checkpoints that are not loadable mappings, are missing a
+  non-empty `tgvf_module`, have a protocol mismatch, or are missing Protocol-C
+  token rows for Protocol-C training;
+- the contract records checkpoint keys, global step, selected config identity,
+  TGVF state-dict summary, and Protocol-C token-row summary;
+- execution status now reports `checkpoint_contract_status=validated` for a
+  valid Stage2 handoff.
+
 ## Later Phases
 
 1. Replace training launch plans with clean-native training execution.

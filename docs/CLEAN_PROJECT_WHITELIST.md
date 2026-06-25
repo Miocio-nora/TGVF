@@ -92,6 +92,9 @@ the current execution cleanup.
 - Prepare-execution must also write `dataset_runtime_identity.json` and
   `first_batch_identity.json` by actually scanning the training JSONL; malformed
   rows or missing required clean training fields must fail before launch.
+- Prepare-execution must write `checkpoint_contract.json`; Stage1 records its
+  required output checkpoint keys, while Stage2 must load and validate the
+  Stage1 checkpoint before accepting the handoff.
 - `clean_prepare_execution_command.sh` is the runnable clean handoff command;
   `clean_training_command.sh` stays non-executable until the trainer loop is
   ported.
@@ -176,6 +179,9 @@ the current execution cleanup.
 - Prepare-execution must also write `dataset_runtime_identity.json` and
   `first_batch_identity.json` by actually scanning the training JSONL; malformed
   rows or missing required clean training fields must fail before launch.
+- Prepare-execution must write `checkpoint_contract.json`; Stage1 records its
+  required output checkpoint keys, while Stage2 must load and validate the
+  Stage1 checkpoint before accepting the handoff.
 - `clean_prepare_execution_command.sh` is the runnable clean handoff command;
   `clean_training_command.sh` stays non-executable until the trainer loop is
   ported.
