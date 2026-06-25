@@ -89,6 +89,9 @@ the current execution cleanup.
 - Clean executors may write `clean_training_execution_bundle.json` as the
   executor-owned handoff artifact; until the trainer loop is ported it must
   record `will_launch_training=false`.
+- Prepare-execution must also write `dataset_runtime_identity.json` and
+  `first_batch_identity.json` by actually scanning the training JSONL; malformed
+  rows or missing required clean training fields must fail before launch.
 - `clean_prepare_execution_command.sh` is the runnable clean handoff command;
   `clean_training_command.sh` stays non-executable until the trainer loop is
   ported.
@@ -170,6 +173,9 @@ the current execution cleanup.
 - Clean executors may write `clean_training_execution_bundle.json` as the
   executor-owned handoff artifact; until the trainer loop is ported it must
   record `will_launch_training=false`.
+- Prepare-execution must also write `dataset_runtime_identity.json` and
+  `first_batch_identity.json` by actually scanning the training JSONL; malformed
+  rows or missing required clean training fields must fail before launch.
 - `clean_prepare_execution_command.sh` is the runnable clean handoff command;
   `clean_training_command.sh` stays non-executable until the trainer loop is
   ported.

@@ -1493,6 +1493,25 @@ Implemented after Phase 57.
   DeepStack scope when enabled;
 - execution status now reports `trainer_runtime_contract_status=not_ported`.
 
+## Phase 59: Dataset Runtime Artifacts for Training Handoff
+
+Implemented after Phase 58.
+
+- Stage1/Stage2 `--prepare-execution` now scans the training JSONL instead of
+  only copying file identities from the plan;
+- prepare-execution writes:
+  - `dataset_runtime_identity.json`;
+  - `first_batch_identity.json`;
+- `dataset_runtime_identity.json` records required field checks, line count,
+  focus/no-focus counts when present, answer-format counts, and source-dataset
+  counts;
+- `first_batch_identity.json` records the requested global batch size,
+  materialized first-batch size, stable row digests, and row-level identity
+  fields;
+- malformed JSONL, empty training data, or missing required clean training
+  fields now fail during prepare-execution before any future trainer loop can
+  launch.
+
 ## Later Phases
 
 1. Replace training launch plans with clean-native training execution.

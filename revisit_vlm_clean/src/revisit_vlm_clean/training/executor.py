@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
@@ -111,6 +112,14 @@ def prepare_training_execution(
         expected_stage=expected_stage,
         execution_dir=out,
     )
+    dataset_runtime = _write_dataset_runtime_artifacts(
+        execution_dir=out,
+        plan=plan,
+        expected_stage=expected_stage,
+    )
+    bundle["runtime_artifacts"] = dataset_runtime["paths"]
+    bundle["dataset_runtime"] = dataset_runtime["dataset_runtime"]
+    bundle["first_batch_identity"] = dataset_runtime["first_batch_identity"]
     status = _execution_status(bundle)
     bundle_path = out / "clean_training_execution_bundle.json"
     status_path = out / "clean_training_execution_status.json"
@@ -127,6 +136,8 @@ def prepare_training_execution(
         "run_id": plan.get("run_id"),
         "will_launch_training": False,
         "training_runtime_ported": False,
+        "dataset_runtime_identity": dataset_runtime["paths"]["dataset_runtime_identity"],
+        "first_batch_identity": dataset_runtime["paths"]["first_batch_identity"],
         "runner_status": status["runner_status"],
     }
 
@@ -319,6 +330,7 @@ def _trainer_runtime_contract(
         "global_batch_size": (plan.get("batch") or {}).get("global_batch_size"),
         "required_launch_gates": _required_launch_gates(expected_stage),
         "required_runtime_artifacts": [
+            "dataset_runtime_identity.json",
             "trainable_parameters.json",
             "optimizer_groups.json",
             "first_batch_identity.json",
@@ -370,6 +382,170 @@ def _write_json(path: Path, payload: dict[str, Any]) -> None:
         json.dumps(_to_jsonable(payload), indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
+
+
+def _write_dataset_runtime_artifacts(
+    *,
+    execution_dir: Path,
+    plan: dict[str, Any],
+    expected_stage: TrainingStage,
+) -> dict[str, Any]:
+    dataset = plan.get("dataset") or {}
+    batch = plan.get("batch") or {}
+    requested_batch = int(batch.get("global_batch_size") or 1)
+    train_identity = dataset.get("train_file") or {}
+    train_summary, first_batch = _scan_training_jsonl(
+        train_identity,
+        stage=expected_stage,
+        label="train_file",
+        first_batch_size=requested_batch,
+    )
+    val_summary = None
+    if expected_stage == TrainingStage.STAGE2 and dataset.get("val_file") is not None:
+        val_summary, _ = _scan_training_jsonl(
+            dataset.get("val_file") or {},
+            stage=expected_stage,
+            label="val_file",
+            first_batch_size=0,
+        )
+    dataset_runtime = {
+        "schema_version": "clean_training_dataset_runtime_identity_v1",
+        "stage": str(expected_stage),
+        "train_file": train_summary,
+        "val_file": val_summary,
+        "global_batch_size": requested_batch,
+        "plan_dataset_identity": dataset,
+    }
+    first_batch_identity = {
+        "schema_version": "clean_training_first_batch_identity_v1",
+        "stage": str(expected_stage),
+        "requested_global_batch_size": requested_batch,
+        "materialized_batch_size": len(first_batch),
+        "row_digests": [row["row_sha256"] for row in first_batch],
+        "batch_sha256": _payload_sha256(first_batch),
+        "rows": first_batch,
+    }
+    dataset_path = execution_dir / "dataset_runtime_identity.json"
+    first_batch_path = execution_dir / "first_batch_identity.json"
+    _write_json(dataset_path, dataset_runtime)
+    _write_json(first_batch_path, first_batch_identity)
+    return {
+        "paths": {
+            "dataset_runtime_identity": str(dataset_path),
+            "first_batch_identity": str(first_batch_path),
+        },
+        "dataset_runtime": dataset_runtime,
+        "first_batch_identity": first_batch_identity,
+    }
+
+
+def _scan_training_jsonl(
+    identity: dict[str, Any],
+    *,
+    stage: TrainingStage,
+    label: str,
+    first_batch_size: int,
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    _validate_file_identity(identity, label=label)
+    path = Path(str(identity["path"]))
+    required_fields = _required_dataset_fields(stage)
+    line_count = 0
+    missing_counts = {field: 0 for field in required_fields}
+    need_focus = 0
+    no_focus = 0
+    missing_need_focus = 0
+    answer_formats: dict[str, int] = {}
+    source_datasets: dict[str, int] = {}
+    malformed: list[dict[str, Any]] = []
+    first_rows: list[dict[str, Any]] = []
+    with path.open("r", encoding="utf-8") as handle:
+        for line_no, line in enumerate(handle, start=1):
+            if not line.strip():
+                continue
+            line_count += 1
+            try:
+                record = json.loads(line)
+            except json.JSONDecodeError as exc:
+                malformed.append({"line": line_no, "error": str(exc)})
+                continue
+            for field_name in required_fields:
+                if record.get(field_name) in (None, ""):
+                    missing_counts[field_name] += 1
+            if "need_focus" in record:
+                if bool(record.get("need_focus")):
+                    need_focus += 1
+                else:
+                    no_focus += 1
+            else:
+                missing_need_focus += 1
+            answer_format = str(record.get("answer_format") or "unknown")
+            answer_formats[answer_format] = answer_formats.get(answer_format, 0) + 1
+            source_dataset = str(record.get("source_dataset") or "unknown")
+            source_datasets[source_dataset] = source_datasets.get(source_dataset, 0) + 1
+            if len(first_rows) < first_batch_size:
+                first_rows.append(_row_runtime_identity(record, line_no=line_no))
+    if malformed:
+        raise ValueError(f"malformed JSONL rows in {path}: {malformed[:3]}")
+    if line_count < 1:
+        raise ValueError(f"training JSONL is empty: {path}")
+    missing_required = {key: value for key, value in missing_counts.items() if value}
+    if missing_required:
+        raise ValueError(f"training JSONL missing required fields in {path}: {missing_required}")
+    summary = {
+        "path": str(path),
+        "identity": identity,
+        "line_count": line_count,
+        "required_fields": required_fields,
+        "missing_required_counts": missing_counts,
+        "need_focus": need_focus,
+        "no_focus": no_focus,
+        "missing_need_focus": missing_need_focus,
+        "answer_formats": answer_formats,
+        "source_datasets": source_datasets,
+    }
+    return summary, first_rows
+
+
+def _required_dataset_fields(stage: TrainingStage) -> list[str]:
+    if stage == TrainingStage.STAGE1:
+        return ["image", "question", "target"]
+    return ["image", "question", "answer", "need_focus", "evidence_state"]
+
+
+def _row_runtime_identity(record: dict[str, Any], *, line_no: int) -> dict[str, Any]:
+    row_sha = _payload_sha256(record)
+    return {
+        "line_no": line_no,
+        "row_key": str(
+            record.get("uid")
+            or record.get("v4_uid")
+            or record.get("source_uid")
+            or f"line-{line_no}-{row_sha[:12]}"
+        ),
+        "row_sha256": row_sha,
+        "image": record.get("image"),
+        "image_id": record.get("image_id") or record.get("stable_image_uid"),
+        "source_dataset": record.get("source_dataset"),
+        "question_sha256": _text_sha256(record.get("question")),
+        "target_sha256": _text_sha256(record.get("target")),
+        "answer_sha256": _text_sha256(record.get("answer")),
+        "need_focus": record.get("need_focus"),
+        "answer_format": record.get("answer_format"),
+        "trajectory_type": record.get("trajectory_type"),
+    }
+
+
+def _payload_sha256(payload: Any) -> str:
+    blob = json.dumps(_to_jsonable(payload), sort_keys=True, separators=(",", ":")).encode(
+        "utf-8"
+    )
+    return sha256(blob).hexdigest()
+
+
+def _text_sha256(value: Any) -> str | None:
+    if value in (None, ""):
+        return None
+    return sha256(str(value).encode("utf-8")).hexdigest()
 
 
 def _validate_training_plan(plan: dict[str, Any], *, expected_stage: TrainingStage) -> None:

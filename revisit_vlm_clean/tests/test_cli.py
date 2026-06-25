@@ -452,6 +452,14 @@ def test_stage1_training_executor_prepare_execution_cli(tmp_path, capsys) -> Non
     assert contract["launch_permitted"] is False
     assert "emit_trainable_parameter_audit" in contract["required_launch_gates"]
     assert "stage1_readout_context_uses_qwen_v_merge" in contract["required_launch_gates"]
+    assert "dataset_runtime_identity.json" in contract["required_runtime_artifacts"]
+    dataset_runtime = json.loads((execution_dir / "dataset_runtime_identity.json").read_text())
+    first_batch = json.loads((execution_dir / "first_batch_identity.json").read_text())
+    assert dataset_runtime["stage"] == "stage1"
+    assert dataset_runtime["train_file"]["line_count"] == 1
+    assert dataset_runtime["train_file"]["missing_required_counts"]["target"] == 0
+    assert first_batch["materialized_batch_size"] == 1
+    assert first_batch["rows"][0]["row_sha256"]
     assert bundle["plan_identity"]["sha256"]
     assert status["runner_status"] == "trainer_loop_not_ported"
     assert status["trainer_runtime_contract_status"] == "not_ported"
@@ -545,11 +553,13 @@ def test_stage2_training_write_plan_cli(tmp_path) -> None:
     val_file = tmp_path / "stage2.test.jsonl"
     checkpoint = tmp_path / "stage1.pt"
     train_file.write_text(
-        '{"image": "/tmp/image.jpg", "question": "q", "answer": "a"}\n',
+        '{"image": "/tmp/image.jpg", "question": "q", "answer": "a", '
+        '"need_focus": true, "evidence_state": "need_local_visual_evidence"}\n',
         encoding="utf-8",
     )
     val_file.write_text(
-        '{"image": "/tmp/image.jpg", "question": "q", "answer": "a"}\n',
+        '{"image": "/tmp/image.jpg", "question": "q", "answer": "a", '
+        '"need_focus": true, "evidence_state": "need_local_visual_evidence"}\n',
         encoding="utf-8",
     )
     checkpoint.write_bytes(b"checkpoint\n")
@@ -674,11 +684,13 @@ def test_stage2_training_executor_preflight_cli(tmp_path, capsys) -> None:
     val_file = tmp_path / "stage2.test.jsonl"
     checkpoint = tmp_path / "stage1.pt"
     train_file.write_text(
-        '{"image": "/tmp/image.jpg", "question": "q", "answer": "a"}\n',
+        '{"image": "/tmp/image.jpg", "question": "q", "answer": "a", '
+        '"need_focus": true, "evidence_state": "need_local_visual_evidence"}\n',
         encoding="utf-8",
     )
     val_file.write_text(
-        '{"image": "/tmp/image.jpg", "question": "q", "answer": "a"}\n',
+        '{"image": "/tmp/image.jpg", "question": "q", "answer": "a", '
+        '"need_focus": true, "evidence_state": "need_local_visual_evidence"}\n',
         encoding="utf-8",
     )
     checkpoint.write_bytes(b"checkpoint\n")
@@ -728,11 +740,13 @@ def test_stage2_training_executor_prepare_execution_cli(tmp_path, capsys) -> Non
     val_file = tmp_path / "stage2.test.jsonl"
     checkpoint = tmp_path / "stage1.pt"
     train_file.write_text(
-        '{"image": "/tmp/image.jpg", "question": "q", "answer": "a"}\n',
+        '{"image": "/tmp/image.jpg", "question": "q", "answer": "a", '
+        '"need_focus": true, "evidence_state": "need_local_visual_evidence"}\n',
         encoding="utf-8",
     )
     val_file.write_text(
-        '{"image": "/tmp/image.jpg", "question": "q", "answer": "a"}\n',
+        '{"image": "/tmp/image.jpg", "question": "q", "answer": "a", '
+        '"need_focus": true, "evidence_state": "need_local_visual_evidence"}\n',
         encoding="utf-8",
     )
     checkpoint.write_bytes(b"checkpoint\n")
@@ -781,11 +795,55 @@ def test_stage2_training_executor_prepare_execution_cli(tmp_path, capsys) -> Non
     assert "attach_lora_modules_from_plan" in contract["required_launch_gates"]
     assert "apply_weighted_span_losses_from_plan" in contract["required_launch_gates"]
     assert "trainable_parameters.json" in contract["required_runtime_artifacts"]
+    dataset_runtime = json.loads((execution_dir / "dataset_runtime_identity.json").read_text())
+    first_batch = json.loads((execution_dir / "first_batch_identity.json").read_text())
+    assert dataset_runtime["stage"] == "stage2"
+    assert dataset_runtime["train_file"]["need_focus"] == 1
+    assert dataset_runtime["val_file"]["line_count"] == 1
+    assert first_batch["requested_global_batch_size"] == 128
+    assert first_batch["materialized_batch_size"] == 1
+    assert first_batch["rows"][0]["need_focus"] is True
     assert bundle["safety"]["legacy_reference_allowed"] is False
     status = json.loads((execution_dir / "clean_training_execution_status.json").read_text())
     assert status["bundle_valid"] is True
     assert status["trainer_runtime_contract_status"] == "not_ported"
     assert status["will_launch_training"] is False
+
+
+def test_stage2_prepare_execution_rejects_missing_required_dataset_fields(tmp_path) -> None:
+    train_file = tmp_path / "stage2.train.jsonl"
+    checkpoint = tmp_path / "stage1.pt"
+    train_file.write_text(
+        '{"image": "/tmp/image.jpg", "question": "q", "answer": "a"}\n',
+        encoding="utf-8",
+    )
+    checkpoint.write_bytes(b"checkpoint\n")
+    output_dir = tmp_path / "stage2_plan"
+    assert (
+        stage2_main(
+            [
+                "--run-id",
+                "stage2_bad_dataset",
+                "--train-file",
+                str(train_file),
+                "--stage1-checkpoint",
+                str(checkpoint),
+                "--output-dir",
+                str(output_dir),
+                "--write-plan",
+            ]
+        )
+        == 0
+    )
+
+    with pytest.raises(ValueError, match="missing required fields"):
+        stage2_executor_main(
+            [
+                "--plan",
+                str(output_dir / "training_plan.json"),
+                "--prepare-execution",
+            ]
+        )
 
 
 def test_stage2_deepstack_plan_disables_legacy_command(tmp_path, capsys) -> None:

@@ -95,9 +95,10 @@ report next to the plan by default, or to `--preflight-report` when that path is
 provided.
 `--prepare-execution` writes executor-owned
 `clean_training_execution_bundle.json`, `clean_training_execution_status.json`,
-and a text summary without launching training. These artifacts are the clean
-handoff surface for the future trainer loop; they still record
-`will_launch_training=false` until that loop is ported.
+`dataset_runtime_identity.json`, `first_batch_identity.json`, and a text summary
+without launching training. These artifacts are the clean handoff surface for
+the future trainer loop; they still record `will_launch_training=false` until
+that loop is ported.
 
 ## Fixed Manifests
 
