@@ -1,0 +1,44 @@
+import pytest
+
+from revisit_vlm_clean.schema import (
+    DeepStackScope,
+    DeepStackState,
+    EvalMode,
+    ForwardMode,
+    RunConfig,
+)
+
+
+def test_run_config_json_roundtrip() -> None:
+    config = RunConfig(
+        run_id="smoke",
+        checkpoint_path="outputs/checkpoint.pt",
+        mode=EvalMode.TGVF_FORCE,
+        subset_id="core_smoke_256_seed20260625",
+        post_tgvf_forward_mode=ForwardMode.KV_CACHE,
+    )
+    restored = RunConfig.from_json(config.to_json())
+    assert restored == config
+
+
+def test_free_mode_rejects_prompt_suffix() -> None:
+    config = RunConfig(
+        run_id="bad",
+        checkpoint_path="outputs/checkpoint.pt",
+        mode=EvalMode.TGVF_FREE,
+        subset_id="core_smoke_256_seed20260625",
+        post_tgvf_forward_mode=ForwardMode.KV_CACHE,
+        prompt_suffix="use focus tool",
+    )
+    with pytest.raises(ValueError, match="must not include prompt"):
+        config.validate()
+
+
+def test_deepstack_enabled_requires_scope() -> None:
+    with pytest.raises(ValueError, match="requires a non-off"):
+        DeepStackState(enabled=True, original_image_scope=DeepStackScope.OFF).validate()
+
+
+def test_deepstack_disabled_rejects_scope() -> None:
+    with pytest.raises(ValueError, match="disabled DeepStack"):
+        DeepStackState(enabled=False, original_image_scope=DeepStackScope.THROUGH_ANSWER).validate()

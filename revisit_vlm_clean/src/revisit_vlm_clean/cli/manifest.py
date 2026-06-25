@@ -1,0 +1,40 @@
+"""Manifest CLI skeleton."""
+
+from __future__ import annotations
+
+import argparse
+
+from revisit_vlm_clean.cli.common import exit_not_implemented, print_json
+from revisit_vlm_clean.manifest import describe_subset
+from revisit_vlm_clean.populations import iter_core_populations, iter_subsets
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Clean TGVF benchmark manifest tool.")
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument("--list", action="store_true", help="List known clean populations and subsets.")
+    group.add_argument("--describe-subset", help="Describe a known subset id.")
+    group.add_argument("--build", help="Build a manifest for a known subset id. Not implemented in phase 1.")
+    parser.add_argument("--benchmark-root", default="/home/dredvpn009/Flash_Storage/datasets/benchmarks")
+    parser.add_argument("--output", default=None)
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
+    if args.list:
+        print_json(
+            {
+                "populations": list(iter_core_populations()),
+                "subsets": list(iter_subsets()),
+            }
+        )
+        return 0
+    if args.describe_subset:
+        print_json(describe_subset(args.describe_subset))
+        return 0
+    return exit_not_implemented("manifest build is phase 2; phase 1 only defines the interface")
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
