@@ -31,6 +31,8 @@ tgvf_generate_data --help
 tgvf_eval_benchmark --help
 tgvf_train_stage1 --print-defaults
 tgvf_train_stage2 --print-defaults
+tgvf_train_stage1_executor --help
+tgvf_train_stage2_executor --help
 ```
 
 The benchmark entrypoint can now validate identity, build/materialize fixed
@@ -65,10 +67,13 @@ The planned clean training modules are importable:
 ```bash
 python -m revisit_vlm_clean.training.stage1_executor --plan /path/to/training_plan.json --preflight-only
 python -m revisit_vlm_clean.training.stage2_executor --plan /path/to/training_plan.json --preflight-only
+tgvf_train_stage1_executor --plan /path/to/training_plan.json --preflight-only
+tgvf_train_stage2_executor --plan /path/to/training_plan.json --preflight-only
 ```
 
 Without `--preflight-only`, these executors fail fast instead of launching a
-partial or legacy training path.
+partial or legacy training path. Preflight writes a JSON report next to the
+plan by default, or to `--preflight-report` when that path is provided.
 
 ## Fixed Manifests
 

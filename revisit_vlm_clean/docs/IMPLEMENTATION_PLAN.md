@@ -1244,6 +1244,22 @@ Implemented after Phase 42.
   the rule that incomplete native training must not silently fall back to old
   scripts.
 
+## Phase 44: Training Preflight Report Artifacts
+
+Implemented after Phase 43.
+
+- added package scripts:
+  - `tgvf_train_stage1_executor`;
+  - `tgvf_train_stage2_executor`;
+- executor preflight now writes a JSON report:
+  - default path:
+    `<plan-dir>/<stage>_training_preflight_report.json`;
+  - override path: `--preflight-report`;
+- tests assert report creation for Stage1 and custom report path behavior for
+  Stage2;
+- this keeps training launch fail-safe while making executor validation
+  auditable as a file artifact, not just terminal output.
+
 ## Later Phases
 
 1. Replace training launch plans with clean-native training execution.

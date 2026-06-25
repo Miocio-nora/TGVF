@@ -19,6 +19,8 @@ tgvf_merge_benchmark = "revisit_vlm_clean.cli.merge_benchmark:main"
 tgvf_generate_data = "revisit_vlm_clean.cli.generate_data:main"
 tgvf_train_stage1 = "revisit_vlm_clean.cli.train_stage1:main"
 tgvf_train_stage2 = "revisit_vlm_clean.cli.train_stage2:main"
+tgvf_train_stage1_executor = "revisit_vlm_clean.training.stage1_executor:main"
+tgvf_train_stage2_executor = "revisit_vlm_clean.training.stage2_executor:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

@@ -191,6 +191,10 @@ def test_stage1_training_executor_preflight_cli(tmp_path, capsys) -> None:
     assert '"plan_valid": true' in payload
     assert '"will_launch_training": false' in payload
     assert '"stage": "stage1"' in payload
+    report = json.loads((output_dir / "stage1_training_preflight_report.json").read_text())
+    assert report["plan_valid"] is True
+    assert report["will_launch_training"] is False
+    assert report["preflight_report"].endswith("stage1_training_preflight_report.json")
     assert stage1_executor_main(["--plan", str(output_dir / "training_plan.json")]) == 2
 
 
@@ -309,6 +313,8 @@ def test_stage2_training_executor_preflight_cli(tmp_path, capsys) -> None:
                 "--plan",
                 str(output_dir / "training_plan.json"),
                 "--preflight-only",
+                "--preflight-report",
+                str(output_dir / "reports" / "stage2_preflight.json"),
             ]
         )
         == 0
@@ -317,6 +323,9 @@ def test_stage2_training_executor_preflight_cli(tmp_path, capsys) -> None:
     assert '"plan_valid": true' in payload
     assert '"will_launch_training": false' in payload
     assert '"stage": "stage2"' in payload
+    report = json.loads((output_dir / "reports" / "stage2_preflight.json").read_text())
+    assert report["plan_valid"] is True
+    assert report["stage"] == "stage2"
 
 
 def test_stage2_deepstack_plan_disables_legacy_command(tmp_path, capsys) -> None:

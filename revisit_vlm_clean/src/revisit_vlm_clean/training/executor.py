@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from revisit_vlm_clean.cli.common import exit_not_implemented, print_json
+from revisit_vlm_clean.schema import _to_jsonable
 from revisit_vlm_clean.training_plan import TRAINING_PLAN_SCHEMA_VERSION, TrainingStage
 
 
@@ -24,12 +25,27 @@ def build_parser(stage: TrainingStage) -> argparse.ArgumentParser:
         action="store_true",
         help="Validate the plan and print executor status without launching training.",
     )
+    parser.add_argument(
+        "--preflight-report",
+        default=None,
+        help=(
+            "Path for the preflight report JSON. Defaults to "
+            "<plan-dir>/<stage>_training_preflight_report.json."
+        ),
+    )
     return parser
 
 
 def main_for_stage(stage: TrainingStage, argv: list[str] | None = None) -> int:
     args = build_parser(stage).parse_args(argv)
     report = preflight_training_plan(args.plan, expected_stage=stage)
+    report_path = _preflight_report_path(
+        plan_path=args.plan,
+        stage=stage,
+        requested=args.preflight_report,
+    )
+    report["preflight_report"] = str(report_path)
+    _write_json(report_path, report)
     print_json(report)
     if args.preflight_only:
         return 0
@@ -59,6 +75,25 @@ def preflight_training_plan(path: str | Path, *, expected_stage: TrainingStage) 
         "will_launch_training": False,
         "blocking_items": list(native_status.get("blocking_items") or []),
     }
+
+
+def _preflight_report_path(
+    *,
+    plan_path: str | Path,
+    stage: TrainingStage,
+    requested: str | None,
+) -> Path:
+    if requested:
+        return Path(requested)
+    return Path(plan_path).resolve().parent / f"{stage.value}_training_preflight_report.json"
+
+
+def _write_json(path: Path, payload: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(_to_jsonable(payload), indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
 
 
 def _validate_training_plan(plan: dict[str, Any], *, expected_stage: TrainingStage) -> None:
@@ -147,4 +182,3 @@ def _validate_clean_command(command: dict[str, Any], *, stage: TrainingStage) ->
             "clean_training_command planned_entrypoint mismatch: "
             f"{command.get('planned_entrypoint')!r} != {expected_entrypoint!r}"
         )
-
