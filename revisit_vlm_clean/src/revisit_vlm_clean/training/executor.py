@@ -1055,18 +1055,111 @@ def _write_actual_training_step_runtime_audit(
 ) -> dict[str, Any]:
     if loaded_modules is None:
         raise ValueError("training-step audit requires loaded model modules")
-    if expected_stage != TrainingStage.STAGE2:
-        raise NotImplementedError("training-step runtime audit is currently implemented for Stage2")
-    result = _run_stage2_training_step_probe(
-        bundle=bundle,
-        artifacts=artifacts,
-        loaded_modules=loaded_modules,
+    result = (
+        _run_stage1_training_step_probe(
+            bundle=bundle,
+            artifacts=artifacts,
+            loaded_modules=loaded_modules,
+        )
+        if expected_stage == TrainingStage.STAGE1
+        else _run_stage2_training_step_probe(
+            bundle=bundle,
+            artifacts=artifacts,
+            loaded_modules=loaded_modules,
+        )
     )
     debug = dict(result.get("debug") or {})
-    expected_weights = dict((bundle.get("loss") or {}).get("weighted_span_loss") or {})
-    mask_policy = bundle.get("mask_policy") or {}
     loss_total = result.get("loss_total")
     loss_total_finite = loss_total is not None and math.isfinite(float(loss_total))
+    stage_flags = (
+        _stage1_training_step_flags(bundle=bundle, result=result, debug=debug)
+        if expected_stage == TrainingStage.STAGE1
+        else _stage2_training_step_flags(bundle=bundle, result=result, debug=debug)
+    )
+    payload = {
+        "schema_version": "clean_training_step_runtime_audit_v1",
+        "stage": bundle.get("stage"),
+        "run_id": bundle.get("run_id"),
+        "status": f"actual_{expected_stage.value}_training_step_forward_audit",
+        "actual_training_step_forward": bool(result.get("forward_completed")),
+        "backward_called": False,
+        "optimizer_step_called": False,
+        "scheduler_step_called": False,
+        "loss_total": loss_total,
+        "loss_total_finite": loss_total_finite,
+        "loss_focus": result.get("loss_focus"),
+        "loss_no_focus": result.get("loss_no_focus"),
+        "loss_gen": result.get("loss_gen"),
+        "loss_same_image_negative": result.get("loss_same_image_negative"),
+        "loss_visual_token_manifold": result.get("loss_visual_token_manifold"),
+        "sample_count": result.get("sample_count"),
+        "focus_count": debug.get("focus_count"),
+        "no_focus_count": debug.get("no_focus_count"),
+        **stage_flags,
+        "debug": debug,
+        "notes": [
+            f"{expected_stage.value} training-step probe ran a forward pass only",
+            (
+                "this audit does not call backward, optimizer.step, "
+                "scheduler.step, or save checkpoints"
+            ),
+        ],
+    }
+    path = execution_dir / "training_step_runtime.json"
+    _write_json(path, payload)
+    return {"path": str(path), "payload": payload}
+
+
+def _stage1_training_step_flags(
+    *,
+    bundle: dict[str, Any],
+    result: dict[str, Any],
+    debug: dict[str, Any],
+) -> dict[str, Any]:
+    loss = bundle.get("loss") or {}
+    expected_mode = str((bundle.get("training") or {}).get("same_image_negative_mode"))
+    observed_loss_weights = dict(debug.get("loss_weights") or {})
+    readout_context_applied = (
+        debug.get("readout_append_mode") == "qwen3_visual_special_tokens_embedding_replace"
+    )
+    position_ids_applied = (
+        debug.get("position_ids_source") == "qwen3_native_source_grid_full_trajectory"
+    )
+    matrix_ce_and_manifold_applied = bool(
+        result.get("forward_completed")
+        and debug.get("same_image_negative_mode") == expected_mode
+        and observed_loss_weights.get("same_image_negative") == loss.get("same_image_negative")
+        and observed_loss_weights.get("visual_token_manifold")
+        == loss.get("visual_token_manifold")
+        and debug.get("visual_token_manifold_active") is True
+    )
+    return {
+        "stage1_readout_context_applied": readout_context_applied,
+        "stage1_position_ids_applied": position_ids_applied,
+        "stage1_matrix_ce_and_manifold_losses_applied": matrix_ce_and_manifold_applied,
+        "expected_stage1_loss": loss,
+        "observed_stage1_loss_weights": observed_loss_weights,
+        "expected_same_image_negative_mode": expected_mode,
+        "observed_same_image_negative_mode": debug.get("same_image_negative_mode"),
+        "observed_readout_context": {
+            "readout_append_mode": debug.get("readout_append_mode"),
+            "attention_mask_mode": debug.get("attention_mask_mode"),
+            "position_ids_source": debug.get("position_ids_source"),
+            "image_keys_blocked_for_tgvf_evidence_answer": debug.get(
+                "image_keys_blocked_for_tgvf_evidence_answer"
+            ),
+        },
+    }
+
+
+def _stage2_training_step_flags(
+    *,
+    bundle: dict[str, Any],
+    result: dict[str, Any],
+    debug: dict[str, Any],
+) -> dict[str, Any]:
+    expected_weights = dict((bundle.get("loss") or {}).get("weighted_span_loss") or {})
+    mask_policy = bundle.get("mask_policy") or {}
     fast_path_used = debug.get("fast_batched_stage2") is True
     weighted_span_loss_applied = bool(
         result.get("forward_completed")
@@ -1082,26 +1175,10 @@ def _write_actual_training_step_runtime_audit(
         and str(mask_policy.get("mask_original_image_after_tgvf_scope"))
         == str(debug.get("mask_original_image_after_tgvf_scope"))
     )
-    payload = {
-        "schema_version": "clean_training_step_runtime_audit_v1",
-        "stage": bundle.get("stage"),
-        "run_id": bundle.get("run_id"),
-        "status": "actual_stage2_training_step_forward_audit",
-        "actual_training_step_forward": bool(result.get("forward_completed")),
-        "backward_called": False,
-        "optimizer_step_called": False,
-        "scheduler_step_called": False,
+    return {
         "fast_batched_stage2_used": fast_path_used,
         "weighted_span_loss_applied": weighted_span_loss_applied,
         "mask_scope_applied": mask_scope_matches,
-        "loss_total": loss_total,
-        "loss_total_finite": loss_total_finite,
-        "loss_focus": result.get("loss_focus"),
-        "loss_no_focus": result.get("loss_no_focus"),
-        "loss_visual_token_manifold": result.get("loss_visual_token_manifold"),
-        "sample_count": result.get("sample_count"),
-        "focus_count": debug.get("focus_count"),
-        "no_focus_count": debug.get("no_focus_count"),
         "expected_weighted_span_loss": expected_weights,
         "observed_loss_token_weights": {
             "focus": debug.get("focus_loss_token_weight"),
@@ -1119,18 +1196,77 @@ def _write_actual_training_step_runtime_audit(
             "focus_sample_mask_active_rate": debug.get("focus_sample_mask_active_rate"),
             "no_focus_mask_active_rate": debug.get("no_focus_mask_active_rate"),
         },
-        "debug": debug,
-        "notes": [
-            "Stage2 training-step probe ran a forward pass only",
-            (
-                "this audit does not call backward, optimizer.step, "
-                "scheduler.step, or save checkpoints"
-            ),
-        ],
     }
-    path = execution_dir / "training_step_runtime.json"
-    _write_json(path, payload)
-    return {"path": str(path), "payload": payload}
+
+
+def _run_stage1_training_step_probe(
+    *,
+    bundle: dict[str, Any],
+    artifacts: dict[str, dict[str, Any]],
+    loaded_modules: dict[str, Any],
+) -> dict[str, Any]:
+    try:
+        import torch
+
+        from revisit_vlm.tgvf_training import LossWeights
+        from revisit_vlm.tgvf_v3_stage1 import TGVFv3Stage1Dataset, v3_stage1_training_step
+    except Exception as exc:
+        raise RuntimeError("Stage1 training-step audit dependencies are unavailable") from exc
+    modules = dict(loaded_modules.get("modules") or {})
+    qwen_model = modules.get("qwen")
+    if qwen_model is None:
+        raise ValueError("Stage1 training-step audit requires qwen module")
+    processor = loaded_modules.get("processor")
+    if processor is None:
+        raise ValueError("Stage1 training-step audit requires processor")
+    foveal_module = modules.get("tgvf")
+    if foveal_module is None:
+        raise ValueError("Stage1 training-step audit requires tgvf module")
+    train_file = (((bundle.get("dataset") or {}).get("train_file") or {}).get("path"))
+    if not train_file:
+        raise ValueError("Stage1 training-step audit requires dataset.train_file.path")
+    dataset = TGVFv3Stage1Dataset(train_file, focus_only=True)
+    samples = _select_stage1_step_probe_samples(
+        dataset.samples,
+        requested_count=max(1, int(((bundle.get("batch") or {}).get("micro_batch_size")) or 1)),
+    )
+    if not samples:
+        raise ValueError("Stage1 training-step audit found no usable focus samples")
+    loss = bundle.get("loss") or {}
+    training = bundle.get("training") or {}
+    output = v3_stage1_training_step(
+        qwen_model=qwen_model,
+        processor=processor,
+        foveal_module=foveal_module,
+        reencode_qwen_model=None,
+        samples=samples,
+        loss_weights=LossWeights(
+            gen=float(loss.get("gen") or 0.0),
+            visual_token_manifold=float(loss.get("visual_token_manifold") or 0.0),
+            same_image_negative=float(loss.get("same_image_negative") or 0.0),
+            contrastive_alignment=float(loss.get("contrastive_alignment") or 0.0),
+        ),
+        device=_parameter_audit_device(torch),
+        hidden_state_index=int(training.get("capture_layer") or -1),
+        same_image_negative_mode=str(training.get("same_image_negative_mode") or "matrix_ce"),
+        mask_original_image_after_tgvf=bool(
+            training.get("mask_original_image_after_tgvf")
+        ),
+        position_mode=str(training.get("fvt_position_mode") or "native_source_grid"),
+        max_image_resolution=training.get("max_image_resolution"),
+        capture_mode=str(training.get("capture_mode") or "teacher_forced"),
+        protocol=str(bundle.get("protocol")),
+        focus_action_im_end=bool(training.get("focus_action_im_end")),
+    )
+    return {
+        "forward_completed": True,
+        "sample_count": len(samples),
+        "loss_total": _scalar_float(output.loss_total),
+        "loss_gen": _scalar_float(output.loss_gen),
+        "loss_visual_token_manifold": _scalar_float(output.loss_visual_token_manifold),
+        "loss_same_image_negative": _scalar_float(output.loss_same_image_negative),
+        "debug": output.debug,
+    }
 
 
 def _run_stage2_training_step_probe(
@@ -1210,6 +1346,20 @@ def _run_stage2_training_step_probe(
         ),
         "debug": output.debug,
     }
+
+
+def _select_stage1_step_probe_samples(samples: list[Any], *, requested_count: int) -> list[Any]:
+    by_image: dict[str, list[Any]] = {}
+    for sample in samples:
+        image_key = str(getattr(sample, "image_id", None) or getattr(sample, "image", ""))
+        by_image.setdefault(image_key, []).append(sample)
+    same_image_group = next(
+        (group for group in by_image.values() if len(group) > 1),
+        None,
+    )
+    if same_image_group is not None:
+        return same_image_group[: max(2, requested_count)]
+    return samples[:requested_count]
 
 
 def _select_stage2_step_probe_samples(samples: list[Any], *, requested_count: int) -> list[Any]:
@@ -1844,12 +1994,13 @@ def _runtime_audit_report(
         and checkpoint_runtime["payload"].get("actual_checkpoint_loaded")
     ):
         blocking_items.append("checkpoint save/load parity requires --audit-checkpoint")
-    if expected_stage == TrainingStage.STAGE2 and not (
+    if not (
         training_step_runtime
         and training_step_runtime["payload"].get("actual_training_step_forward")
     ):
         blocking_items.append(
-            "Stage2 no-backward training-step forward requires --audit-training-step"
+            f"{expected_stage.value} no-backward training-step forward requires "
+            "--audit-training-step"
         )
     return {
         "schema_version": "clean_training_runtime_audit_v1",
@@ -1942,6 +2093,12 @@ def _launch_gate_audit(
         satisfied.add("save_checkpoint_with_clean_contract")
     if training_step_runtime is not None:
         step_payload = training_step_runtime["payload"]
+        if step_payload.get("stage1_readout_context_applied"):
+            satisfied.add("stage1_readout_context_uses_qwen_v_merge")
+        if step_payload.get("stage1_position_ids_applied"):
+            satisfied.add("stage1_position_ids_use_real_qwen3_mrope")
+        if step_payload.get("stage1_matrix_ce_and_manifold_losses_applied"):
+            satisfied.add("stage1_matrix_ce_and_manifold_losses_match_plan")
         if step_payload.get("fast_batched_stage2_used"):
             satisfied.add("use_fast_batched_stage2_path")
         if step_payload.get("weighted_span_loss_applied"):

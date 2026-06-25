@@ -1731,15 +1731,23 @@ Implemented after Phase 66.
   weighted losses, or DeepStack training execution. `will_launch_training`
   remains `false`.
 
-## Phase 68: Stage2 No-Backward Training-Step Audit Gate
+## Phase 68: Stage1/Stage2 No-Backward Training-Step Audit Gate
 
 Implemented after Phase 67.
 
-- Stage2 executor now supports explicit `--audit-training-step` together with
-  `--audit-runtime`;
+- Stage1/Stage2 executors now support explicit `--audit-training-step` together
+  with `--audit-runtime`;
 - the audit loads model components when needed and writes
   `training_step_runtime.json`;
-- the real path runs a forward-only probe through
+- Stage1 real path runs a forward-only probe through `v3_stage1_training_step`
+  using:
+  - the first usable Stage1 train samples, preferring same-image groups when
+    available for matrix-CE coverage;
+  - the clean Stage1 loss config;
+  - the clean Stage1 `native_source_grid` position mode;
+  - the clean Stage1 original-image mask behavior;
+  - the clean Stage1 Protocol-C identity;
+- Stage2 real path runs a forward-only probe through
   `v3_stage2_batched_training_step` using:
   - the first usable Stage2 train samples;
   - the clean Stage2 weighted-span loss config;
@@ -1751,9 +1759,14 @@ Implemented after Phase 67.
   - `use_fast_batched_stage2_path`;
   - `apply_weighted_span_losses_from_plan`;
   - `apply_original_image_mask_scope_from_plan`;
+- runtime launch gates now mark the following Stage1 gates as
+  `identity_validated` only when the probe payload proves them:
+  - `stage1_readout_context_uses_qwen_v_merge`;
+  - `stage1_position_ids_use_real_qwen3_mrope`;
+  - `stage1_matrix_ce_and_manifold_losses_match_plan`;
 - this phase still does not run backward, optimizer steps, scheduler steps,
-  publish training checkpoints, implement Stage1 step parity, or implement
-  DeepStack training execution. `will_launch_training` remains `false`.
+  publish training checkpoints, or implement DeepStack training execution.
+  `will_launch_training` remains `false`.
 
 ## Later Phases
 

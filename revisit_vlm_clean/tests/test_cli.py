@@ -1430,6 +1430,113 @@ def test_stage2_training_executor_runtime_audit_can_write_training_step_probe(
     assert gate_status["save_checkpoint_with_clean_contract"] == "pending_real_trainer_loop"
 
 
+def test_stage1_training_executor_runtime_audit_can_write_training_step_probe(
+    tmp_path,
+    monkeypatch,
+    capsys,
+) -> None:
+    import torch
+
+    train_file = tmp_path / "stage1.train.jsonl"
+    train_file.write_text(
+        '{"image": "/tmp/image.jpg", "question": "q", "target": "mark", '
+        '"evidence_description": "The mark is visible."}\n',
+        encoding="utf-8",
+    )
+    output_dir = tmp_path / "stage1_plan"
+    qwen = torch.nn.Linear(2, 2)
+    tgvf = torch.nn.Sequential(torch.nn.Linear(2, 1))
+
+    def fake_loader(bundle, *, expected_stage):
+        assert expected_stage.value == "stage1"
+        assert bundle["stage"] == "stage1"
+        return {
+            "modules": {"qwen": qwen, "tgvf": tgvf},
+            "loader": {"backend": "fake_stage1_training_step_audit_loader"},
+        }
+
+    def fake_step_probe(*, bundle, artifacts, loaded_modules):
+        assert bundle["stage"] == "stage1"
+        assert artifacts["dataset_runtime_identity"]["stage"] == "stage1"
+        assert loaded_modules["modules"]["qwen"] is qwen
+        return {
+            "forward_completed": True,
+            "sample_count": 1,
+            "loss_total": 2.0,
+            "loss_gen": 1.0,
+            "loss_visual_token_manifold": 0.5,
+            "loss_same_image_negative": 0.25,
+            "debug": {
+                "stage": "tgvf_v3_stage1",
+                "loss_weights": {
+                    "gen": 1.0,
+                    "visual_token_manifold": 0.1,
+                    "same_image_negative": 1.0,
+                    "contrastive_alignment": 0.0,
+                },
+                "same_image_negative_mode": "matrix_ce",
+                "readout_append_mode": "qwen3_visual_special_tokens_embedding_replace",
+                "position_ids_source": "qwen3_native_source_grid_full_trajectory",
+                "attention_mask_mode": "weak_strict_after_tgvf",
+                "image_keys_blocked_for_tgvf_evidence_answer": True,
+                "visual_token_manifold_active": True,
+            },
+        }
+
+    monkeypatch.setattr(training_executor, "_load_training_parameter_audit_modules", fake_loader)
+    monkeypatch.setattr(training_executor, "_run_stage1_training_step_probe", fake_step_probe)
+    assert (
+        stage1_main(
+            [
+                "--run-id",
+                "stage1_training_step_audit",
+                "--train-file",
+                str(train_file),
+                "--output-dir",
+                str(output_dir),
+                "--write-plan",
+            ]
+        )
+        == 0
+    )
+
+    assert (
+        stage1_executor_main(
+            [
+                "--plan",
+                str(output_dir / "training_plan.json"),
+                "--prepare-execution",
+                "--audit-runtime",
+                "--audit-training-step",
+            ]
+        )
+        == 0
+    )
+    payload = capsys.readouterr().out
+    assert '"training_step_runtime"' in payload
+    execution_dir = output_dir / "clean_training_execution"
+    step_runtime = json.loads((execution_dir / "training_step_runtime.json").read_text())
+    runtime_audit = json.loads((execution_dir / "clean_training_runtime_audit.json").read_text())
+    assert step_runtime["status"] == "actual_stage1_training_step_forward_audit"
+    assert step_runtime["actual_training_step_forward"] is True
+    assert step_runtime["backward_called"] is False
+    assert step_runtime["stage1_readout_context_applied"] is True
+    assert step_runtime["stage1_position_ids_applied"] is True
+    assert step_runtime["stage1_matrix_ce_and_manifold_losses_applied"] is True
+    assert step_runtime["observed_same_image_negative_mode"] == "matrix_ce"
+    gate_status = {
+        gate["name"]: gate["status"] for gate in runtime_audit["launch_gates"]["gates"]
+    }
+    assert runtime_audit["launch_gates"]["training_step_runtime_status"] == (
+        "actual_stage1_training_step_forward_audit"
+    )
+    assert gate_status["stage1_readout_context_uses_qwen_v_merge"] == "identity_validated"
+    assert gate_status["stage1_position_ids_use_real_qwen3_mrope"] == "identity_validated"
+    assert gate_status["stage1_matrix_ce_and_manifold_losses_match_plan"] == (
+        "identity_validated"
+    )
+
+
 def test_stage2_prepare_execution_rejects_missing_required_dataset_fields(tmp_path) -> None:
     train_file = tmp_path / "stage2.train.jsonl"
     checkpoint = tmp_path / "stage1.pt"

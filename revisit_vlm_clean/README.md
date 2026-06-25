@@ -131,10 +131,11 @@ saving and reloading the clean checkpoint schema from loaded modules plus
 optimizer/scheduler state. This is checkpoint contract evidence, not a training
 checkpoint, and it still does not call `backward`, `optimizer.step`, or
 `scheduler.step`.
-With explicit `--audit-training-step`, Stage2 runtime audit writes
-`training_step_runtime.json` after running a no-backward forward probe through
-the fast batched Stage2 path. This records evidence for weighted-span loss
-application and original-image mask scope without calling `backward`,
+With explicit `--audit-training-step`, runtime audit writes
+`training_step_runtime.json` after running a no-backward forward probe. Stage1
+records readout-context, M-RoPE position-id, matrix-CE, and manifold-loss
+evidence. Stage2 records fast batched path, weighted-span loss, and
+original-image mask-scope evidence. This still does not call `backward`,
 `optimizer.step`, `scheduler.step`, or checkpoint save.
 
 ## Fixed Manifests

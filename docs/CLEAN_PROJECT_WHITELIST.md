@@ -122,11 +122,12 @@ before training/eval cleanup can proceed.
   schema from loaded modules and optimizer/scheduler state. The probe is audit
   evidence only, not a publishable training checkpoint, and it still must not run
   backward, optimizer steps, or scheduler steps.
-- Explicit Stage2 training-step audit may write `training_step_runtime.json`
-  after a no-backward forward probe through the fast batched Stage2 path. This
-  may validate weighted-span loss wiring and original-image mask scope, but it
-  still must not run backward, optimizer steps, scheduler steps, or checkpoint
-  saving.
+- Explicit training-step audit may write `training_step_runtime.json` after a
+  no-backward forward probe. Stage1 may validate readout context, M-RoPE
+  position ids, matrix-CE mode, and manifold-loss wiring. Stage2 may validate
+  fast batched path, weighted-span loss wiring, and original-image mask scope.
+  This still must not run backward, optimizer steps, scheduler steps, or
+  checkpoint saving.
 - `clean_prepare_execution_command.sh` is the runnable clean handoff command;
   `clean_training_command.sh` stays non-executable until the trainer loop is
   ported.
@@ -236,11 +237,12 @@ before training/eval cleanup can proceed.
   schema from loaded modules and optimizer/scheduler state. The probe is audit
   evidence only, not a publishable training checkpoint, and it still must not run
   backward, optimizer steps, or scheduler steps.
-- Explicit Stage2 training-step audit may write `training_step_runtime.json`
-  after a no-backward forward probe through the fast batched Stage2 path. This
-  may validate weighted-span loss wiring and original-image mask scope, but it
-  still must not run backward, optimizer steps, scheduler steps, or checkpoint
-  saving.
+- Explicit training-step audit may write `training_step_runtime.json` after a
+  no-backward forward probe. Stage1 may validate readout context, M-RoPE
+  position ids, matrix-CE mode, and manifold-loss wiring. Stage2 may validate
+  fast batched path, weighted-span loss wiring, and original-image mask scope.
+  This still must not run backward, optimizer steps, scheduler steps, or
+  checkpoint saving.
 - `clean_prepare_execution_command.sh` is the runnable clean handoff command;
   `clean_training_command.sh` stays non-executable until the trainer loop is
   ported.
