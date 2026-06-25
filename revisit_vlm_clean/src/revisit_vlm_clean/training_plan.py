@@ -1,0 +1,656 @@
+"""Clean training launch-plan contracts.
+
+The clean training CLIs do not launch long-running jobs yet. They produce
+auditable launch plans that bind dataset/checkpoint identities, batch math, mask
+semantics, and the temporary historical command mapping.
+"""
+
+from __future__ import annotations
+
+import json
+import shlex
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
+from .data_generation import FileIdentity, file_identity
+from .defaults import (
+    DEFAULT_MAX_IMAGE_RESOLUTION,
+    DEFAULT_MODEL_ID,
+    DEFAULT_PROTOCOL,
+    DEFAULT_STAGE1_GLOBAL_BATCH,
+    DEFAULT_STAGE1_MAX_STEPS,
+    DEFAULT_STAGE2_GLOBAL_BATCH,
+    DEFAULT_STAGE2_MAX_STEPS,
+)
+from .schema import DeepStackScope, DeepStackState, StrEnum, _to_jsonable
+from .tgvf_protocol import SUPPORTED_PROTOCOLS
+
+
+class TrainingStage(StrEnum):
+    STAGE1 = "stage1"
+    STAGE2 = "stage2"
+
+
+class OriginalImageMaskScope(StrEnum):
+    THROUGH_ANSWER = "through_answer"
+    EVIDENCE_ONLY = "evidence_only"
+
+
+DEFAULT_STAGE2_SPAN_WEIGHTS = {
+    "evidence_state": 0.2,
+    "focus_target": 1.5,
+    "evidence": 1.0,
+    "value_span": 1.0,
+    "answer": 1.0,
+    "no_focus_evidence_state": 0.2,
+    "no_focus_answer": 1.0,
+}
+
+
+@dataclass(frozen=True)
+class BatchIdentity:
+    world_size: int
+    micro_batch_size: int
+    gradient_accumulation_steps: int
+    global_batch_size: int
+
+    def validate(self) -> None:
+        for name, value in (
+            ("world_size", self.world_size),
+            ("micro_batch_size", self.micro_batch_size),
+            ("gradient_accumulation_steps", self.gradient_accumulation_steps),
+            ("global_batch_size", self.global_batch_size),
+        ):
+            if int(value) < 1:
+                raise ValueError(f"{name} must be >= 1")
+        resolved = self.world_size * self.micro_batch_size * self.gradient_accumulation_steps
+        if resolved != self.global_batch_size:
+            raise ValueError(
+                "global_batch_size must equal "
+                "world_size * micro_batch_size * gradient_accumulation_steps "
+                f"({self.world_size} * {self.micro_batch_size} * "
+                f"{self.gradient_accumulation_steps} = {resolved}, "
+                f"got {self.global_batch_size})"
+            )
+
+    def to_dict(self) -> dict[str, Any]:
+        return _to_jsonable(self)
+
+
+@dataclass(frozen=True)
+class Stage1LaunchConfig:
+    run_id: str
+    train_file: str
+    output_dir: str
+    model_id: str = DEFAULT_MODEL_ID
+    processor_id: str | None = None
+    protocol: str = DEFAULT_PROTOCOL
+    max_image_resolution: int = DEFAULT_MAX_IMAGE_RESOLUTION
+    max_steps: int = DEFAULT_STAGE1_MAX_STEPS
+    save_every: int = DEFAULT_STAGE1_MAX_STEPS
+    seed: int = 20260525
+    dtype: str = "bfloat16"
+    attn_implementation: str = "sdpa"
+    variant: str = "tgvf_v2_bidirectional"
+    token_row_mode: str = "row_only"
+    capture_mode: str = "teacher_forced"
+    fvt_position_mode: str = "native_source_grid"
+    focus_action_im_end: bool = False
+    mask_original_image_after_tgvf: bool = True
+    learning_rate: float = 1e-4
+    lr_scheduler: str = "constant"
+    warmup_steps: int = 0
+    loss_gen: float = 1.0
+    loss_visual_token_manifold: float = 0.1
+    loss_same_image_negative: float = 1.0
+    same_image_negative_mode: str = "matrix_ce"
+    min_confidence: float | None = None
+    wandb_project: str | None = None
+    wandb_mode: str | None = None
+    batch: BatchIdentity = field(
+        default_factory=lambda: resolve_batch_identity(
+            global_batch_size=DEFAULT_STAGE1_GLOBAL_BATCH,
+            world_size=1,
+            micro_batch_size=1,
+            gradient_accumulation_steps=None,
+        )
+    )
+
+    def validate(self) -> None:
+        if not self.run_id:
+            raise ValueError("run_id is required")
+        if not self.train_file:
+            raise ValueError("train_file is required")
+        if not self.output_dir:
+            raise ValueError("output_dir is required")
+        if self.protocol not in SUPPORTED_PROTOCOLS:
+            raise ValueError(f"unsupported protocol: {self.protocol}")
+        if self.token_row_mode != "row_only":
+            raise ValueError("clean Stage1 launcher currently keeps only token_row_mode='row_only'")
+        if self.capture_mode != "teacher_forced":
+            raise ValueError(
+                "clean Stage1 launcher removed decode_loop; capture_mode must be teacher_forced"
+            )
+        if self.fvt_position_mode != "native_source_grid":
+            raise ValueError(
+                "clean Stage1 launcher keeps only fvt_position_mode='native_source_grid'"
+            )
+        if self.same_image_negative_mode not in {"matrix_ce", "cyclic_margin"}:
+            raise ValueError("same_image_negative_mode must be matrix_ce or cyclic_margin")
+        self.batch.validate()
+
+
+@dataclass(frozen=True)
+class Stage2LaunchConfig:
+    run_id: str
+    train_file: str
+    output_dir: str
+    stage1_checkpoint: str
+    val_file: str | None = None
+    model_id: str = DEFAULT_MODEL_ID
+    processor_id: str | None = None
+    protocol: str = DEFAULT_PROTOCOL
+    max_image_resolution: int = DEFAULT_MAX_IMAGE_RESOLUTION
+    max_seq_len: int = 2048
+    max_steps: int = DEFAULT_STAGE2_MAX_STEPS
+    save_every: int = 300
+    eval_every: int = 300
+    seed: int = 20260525
+    dtype: str = "bfloat16"
+    attn_implementation: str = "sdpa"
+    variant: str = "tgvf_v2_bidirectional"
+    use_stage1_tgvf_config: bool = True
+    fast_batched_stage2: bool = True
+    fvt_position_mode: str = "native_source_grid"
+    target_focus_ratio: float | None = 0.8
+    mask_original_image_after_tgvf: bool = True
+    mask_original_image_after_tgvf_prob: float = 1.0
+    mask_original_image_after_tgvf_scope: OriginalImageMaskScope = (
+        OriginalImageMaskScope.THROUGH_ANSWER
+    )
+    deepstack: DeepStackState = field(default_factory=DeepStackState)
+    lr_lora: float = 2e-5
+    lr_tgvf: float = 5e-6
+    lr_calibration: float = 1e-5
+    lr_scheduler: str = "cosine"
+    warmup_ratio: float = 0.03
+    min_lr_ratio: float = 0.1
+    loss_visual_token_manifold: float = 0.0
+    weighted_span_loss: dict[str, float] = field(
+        default_factory=lambda: dict(DEFAULT_STAGE2_SPAN_WEIGHTS)
+    )
+    min_confidence: float | None = None
+    wandb_project: str | None = None
+    wandb_mode: str | None = None
+    batch: BatchIdentity = field(
+        default_factory=lambda: resolve_batch_identity(
+            global_batch_size=DEFAULT_STAGE2_GLOBAL_BATCH,
+            world_size=1,
+            micro_batch_size=1,
+            gradient_accumulation_steps=None,
+        )
+    )
+
+    def validate(self) -> None:
+        if not self.run_id:
+            raise ValueError("run_id is required")
+        if not self.train_file:
+            raise ValueError("train_file is required")
+        if not self.output_dir:
+            raise ValueError("output_dir is required")
+        if not self.stage1_checkpoint:
+            raise ValueError("stage1_checkpoint is required")
+        if self.protocol not in SUPPORTED_PROTOCOLS:
+            raise ValueError(f"unsupported protocol: {self.protocol}")
+        if self.fvt_position_mode != "native_source_grid":
+            raise ValueError(
+                "clean Stage2 launcher keeps only fvt_position_mode='native_source_grid'"
+            )
+        if not 0.0 <= float(self.mask_original_image_after_tgvf_prob) <= 1.0:
+            raise ValueError("mask_original_image_after_tgvf_prob must be in [0, 1]")
+        if self.target_focus_ratio is not None and not 0.0 < float(self.target_focus_ratio) < 1.0:
+            raise ValueError("target_focus_ratio must be between 0 and 1")
+        missing_weights = set(DEFAULT_STAGE2_SPAN_WEIGHTS) - set(self.weighted_span_loss)
+        if missing_weights:
+            raise ValueError(f"weighted_span_loss missing keys: {sorted(missing_weights)}")
+        self.deepstack.validate()
+        if self.deepstack.enabled:
+            expected_scope = DeepStackScope(str(self.mask_original_image_after_tgvf_scope))
+            if self.deepstack.original_image_scope != expected_scope:
+                raise ValueError(
+                    "enabled DeepStack original_image_scope must match "
+                    "mask_original_image_after_tgvf_scope"
+                )
+            if not self.mask_original_image_after_tgvf:
+                raise ValueError("enabled DeepStack requires original-image masking semantics")
+        self.batch.validate()
+
+
+def resolve_batch_identity(
+    *,
+    global_batch_size: int,
+    world_size: int,
+    micro_batch_size: int | None,
+    gradient_accumulation_steps: int | None,
+) -> BatchIdentity:
+    global_batch_size = int(global_batch_size)
+    world_size = int(world_size)
+    if world_size < 1:
+        raise ValueError("world_size must be >= 1")
+    if global_batch_size < 1:
+        raise ValueError("global_batch_size must be >= 1")
+    if micro_batch_size is None and gradient_accumulation_steps is None:
+        micro_batch_size = 1
+        denom = world_size * micro_batch_size
+        if global_batch_size % denom:
+            raise ValueError("global_batch_size must be divisible by world_size")
+        gradient_accumulation_steps = global_batch_size // denom
+    elif micro_batch_size is None:
+        gradient_accumulation_steps = int(gradient_accumulation_steps or 0)
+        denom = world_size * gradient_accumulation_steps
+        if denom < 1 or global_batch_size % denom:
+            raise ValueError(
+                "global_batch_size must be divisible by world_size * gradient_accumulation_steps"
+            )
+        micro_batch_size = global_batch_size // denom
+    elif gradient_accumulation_steps is None:
+        micro_batch_size = int(micro_batch_size)
+        denom = world_size * micro_batch_size
+        if denom < 1 or global_batch_size % denom:
+            raise ValueError("global_batch_size must be divisible by world_size * micro_batch_size")
+        gradient_accumulation_steps = global_batch_size // denom
+    batch = BatchIdentity(
+        world_size=world_size,
+        micro_batch_size=int(micro_batch_size),
+        gradient_accumulation_steps=int(gradient_accumulation_steps),
+        global_batch_size=global_batch_size,
+    )
+    batch.validate()
+    return batch
+
+
+def build_stage1_launch_plan(
+    config: Stage1LaunchConfig,
+    *,
+    git_commit: str | None = None,
+    dirty_worktree: bool | None = None,
+) -> dict[str, Any]:
+    config.validate()
+    train_identity = _required_file_identity(config.train_file, label="train_file")
+    command = _stage1_legacy_command(config)
+    return {
+        "stage": TrainingStage.STAGE1,
+        "run_id": config.run_id,
+        "output_dir": config.output_dir,
+        "git_commit": git_commit,
+        "dirty_worktree": dirty_worktree,
+        "model": {
+            "model_id": config.model_id,
+            "processor_id": config.processor_id,
+            "dtype": config.dtype,
+            "attn_implementation": config.attn_implementation,
+        },
+        "protocol": config.protocol,
+        "dataset": {"train_file": train_identity.to_dict()},
+        "batch": config.batch.to_dict(),
+        "training": {
+            "max_steps": config.max_steps,
+            "save_every": config.save_every,
+            "seed": config.seed,
+            "max_image_resolution": config.max_image_resolution,
+            "variant": config.variant,
+            "token_row_mode": config.token_row_mode,
+            "capture_mode": config.capture_mode,
+            "fvt_position_mode": config.fvt_position_mode,
+            "focus_action_im_end": config.focus_action_im_end,
+            "mask_original_image_after_tgvf": config.mask_original_image_after_tgvf,
+            "same_image_negative_mode": config.same_image_negative_mode,
+        },
+        "loss": {
+            "gen": config.loss_gen,
+            "visual_token_manifold": config.loss_visual_token_manifold,
+            "same_image_negative": config.loss_same_image_negative,
+        },
+        "optimizer": {
+            "learning_rate": config.learning_rate,
+            "lr_scheduler": config.lr_scheduler,
+            "warmup_steps": config.warmup_steps,
+        },
+        "wandb": {
+            "project": config.wandb_project,
+            "mode": config.wandb_mode,
+        },
+        "clean_constraints": {
+            "decode_loop_removed": True,
+            "token_row_mode_whitelist": ["row_only"],
+            "fvt_position_mode_whitelist": ["native_source_grid"],
+        },
+        "legacy_reference_command": _command_payload(command, executable=True),
+    }
+
+
+def build_stage2_launch_plan(
+    config: Stage2LaunchConfig,
+    *,
+    git_commit: str | None = None,
+    dirty_worktree: bool | None = None,
+) -> dict[str, Any]:
+    config.validate()
+    train_identity = _required_file_identity(config.train_file, label="train_file")
+    val_identity = file_identity(config.val_file).to_dict() if config.val_file else None
+    if config.val_file and not val_identity["exists"]:
+        raise FileNotFoundError(f"val_file does not exist: {config.val_file}")
+    checkpoint_identity = _required_file_identity(
+        config.stage1_checkpoint,
+        label="stage1_checkpoint",
+    )
+    command = _stage2_legacy_command(config) if not config.deepstack.enabled else None
+    legacy_executable = command is not None
+    return {
+        "stage": TrainingStage.STAGE2,
+        "run_id": config.run_id,
+        "output_dir": config.output_dir,
+        "git_commit": git_commit,
+        "dirty_worktree": dirty_worktree,
+        "model": {
+            "model_id": config.model_id,
+            "processor_id": config.processor_id,
+            "dtype": config.dtype,
+            "attn_implementation": config.attn_implementation,
+        },
+        "protocol": config.protocol,
+        "dataset": {
+            "train_file": train_identity.to_dict(),
+            "val_file": val_identity,
+            "stage1_checkpoint": checkpoint_identity.to_dict(),
+        },
+        "batch": config.batch.to_dict(),
+        "training": {
+            "max_steps": config.max_steps,
+            "save_every": config.save_every,
+            "eval_every": config.eval_every,
+            "seed": config.seed,
+            "max_image_resolution": config.max_image_resolution,
+            "max_seq_len": config.max_seq_len,
+            "variant": config.variant,
+            "use_stage1_tgvf_config": config.use_stage1_tgvf_config,
+            "fast_batched_stage2": config.fast_batched_stage2,
+            "fvt_position_mode": config.fvt_position_mode,
+            "target_focus_ratio": config.target_focus_ratio,
+        },
+        "mask_policy": {
+            "mask_original_image_after_tgvf": config.mask_original_image_after_tgvf,
+            "mask_original_image_after_tgvf_prob": config.mask_original_image_after_tgvf_prob,
+            "mask_original_image_after_tgvf_scope": str(
+                config.mask_original_image_after_tgvf_scope
+            ),
+        },
+        "deepstack": config.deepstack.to_dict(),
+        "loss": {
+            "weighted_span_loss": dict(config.weighted_span_loss),
+            "visual_token_manifold": config.loss_visual_token_manifold,
+        },
+        "optimizer": {
+            "lr_lora": config.lr_lora,
+            "lr_tgvf": config.lr_tgvf,
+            "lr_calibration": config.lr_calibration,
+            "lr_scheduler": config.lr_scheduler,
+            "warmup_ratio": config.warmup_ratio,
+            "min_lr_ratio": config.min_lr_ratio,
+        },
+        "wandb": {
+            "project": config.wandb_project,
+            "mode": config.wandb_mode,
+        },
+        "clean_constraints": {
+            "fvt_position_mode_whitelist": ["native_source_grid"],
+            "deepstack_training_semantics_supported": True,
+            "d_deepstack_features_default": False,
+            "legacy_command_is_final": False,
+        },
+        "legacy_reference_command": _command_payload(
+            command or [],
+            executable=legacy_executable,
+            unavailable_reason=None
+            if legacy_executable
+            else "historical Stage2 script has no DeepStack training controls",
+        ),
+    }
+
+
+def write_training_plan(output_dir: str | Path, plan: dict[str, Any]) -> dict[str, str]:
+    out = Path(output_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    plan_path = out / "training_plan.json"
+    text_path = out / "training_plan.txt"
+    dataset_path = out / "dataset_identity.json"
+    command_path = out / "legacy_reference_command.sh"
+    plan_path.write_text(
+        json.dumps(_to_jsonable(plan), indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    text_path.write_text(_training_plan_text(plan), encoding="utf-8")
+    dataset_path.write_text(
+        json.dumps(_to_jsonable(plan.get("dataset", {})), indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    command = ((plan.get("legacy_reference_command") or {}).get("shell") or "").strip()
+    command_path.write_text((command + "\n") if command else "# unavailable\n", encoding="utf-8")
+    return {
+        "output_dir": str(out),
+        "training_plan": str(plan_path),
+        "training_plan_txt": str(text_path),
+        "dataset_identity": str(dataset_path),
+        "legacy_reference_command": str(command_path),
+    }
+
+
+def _required_file_identity(path: str, *, label: str) -> FileIdentity:
+    identity = file_identity(path)
+    if not identity.exists:
+        raise FileNotFoundError(f"{label} does not exist: {path}")
+    return identity
+
+
+def _command_payload(
+    command: list[str],
+    *,
+    executable: bool,
+    unavailable_reason: str | None = None,
+) -> dict[str, Any]:
+    return {
+        "executable": executable,
+        "status": "temporary_legacy_reference_not_final_clean_native",
+        "unavailable_reason": unavailable_reason,
+        "argv": command,
+        "shell": shlex.join(command) if command else "",
+    }
+
+
+def _stage1_legacy_command(config: Stage1LaunchConfig) -> list[str]:
+    command = [
+        "torchrun",
+        "--nproc-per-node",
+        str(config.batch.world_size),
+        "scripts/train_tgvf_v3_stage1.py",
+        "--train-file",
+        config.train_file,
+        "--output-dir",
+        config.output_dir,
+        "--model-id",
+        config.model_id,
+        "--tgvf-protocol",
+        config.protocol,
+        "--dtype",
+        config.dtype,
+        "--attn-implementation",
+        config.attn_implementation,
+        "--variant",
+        config.variant,
+        "--batch-size",
+        str(config.batch.micro_batch_size),
+        "--gradient-accumulation-steps",
+        str(config.batch.gradient_accumulation_steps),
+        "--max-steps",
+        str(config.max_steps),
+        "--save-every",
+        str(config.save_every),
+        "--seed",
+        str(config.seed),
+        "--max-image-resolution",
+        str(config.max_image_resolution),
+        "--protocol-token-row-mode",
+        config.token_row_mode,
+        "--capture-mode",
+        config.capture_mode,
+        "--fvt-position-mode",
+        config.fvt_position_mode,
+        "--learning-rate",
+        str(config.learning_rate),
+        "--lr-scheduler",
+        config.lr_scheduler,
+        "--warmup-steps",
+        str(config.warmup_steps),
+        "--loss-gen",
+        str(config.loss_gen),
+        "--loss-visual-token-manifold",
+        str(config.loss_visual_token_manifold),
+        "--loss-same-image-negative",
+        str(config.loss_same_image_negative),
+        "--same-image-negative-mode",
+        config.same_image_negative_mode,
+    ]
+    _append_optional(command, "--processor-id", config.processor_id)
+    _append_optional(command, "--min-confidence", config.min_confidence)
+    _append_optional(command, "--wandb-project", config.wandb_project)
+    _append_optional(command, "--wandb-mode", config.wandb_mode)
+    command.append(
+        "--focus-action-im-end" if config.focus_action_im_end else "--no-focus-action-im-end"
+    )
+    command.append(
+        "--mask-original-image-after-tgvf"
+        if config.mask_original_image_after_tgvf
+        else "--no-mask-original-image-after-tgvf"
+    )
+    return command
+
+
+def _stage2_legacy_command(config: Stage2LaunchConfig) -> list[str]:
+    command = [
+        "torchrun",
+        "--nproc-per-node",
+        str(config.batch.world_size),
+        "scripts/train_tgvf_v3_stage2.py",
+        "--train-file",
+        config.train_file,
+        "--output-dir",
+        config.output_dir,
+        "--stage1-checkpoint",
+        config.stage1_checkpoint,
+        "--model-id",
+        config.model_id,
+        "--tgvf-protocol",
+        config.protocol,
+        "--dtype",
+        config.dtype,
+        "--attn-implementation",
+        config.attn_implementation,
+        "--variant",
+        config.variant,
+        "--batch-size",
+        str(config.batch.micro_batch_size),
+        "--gradient-accumulation-steps",
+        str(config.batch.gradient_accumulation_steps),
+        "--max-steps",
+        str(config.max_steps),
+        "--save-every",
+        str(config.save_every),
+        "--eval-every",
+        str(config.eval_every),
+        "--seed",
+        str(config.seed),
+        "--max-image-resolution",
+        str(config.max_image_resolution),
+        "--max-seq-len",
+        str(config.max_seq_len),
+        "--fvt-position-mode",
+        config.fvt_position_mode,
+        "--mask-original-image-after-tgvf-prob",
+        str(config.mask_original_image_after_tgvf_prob),
+        "--mask-original-image-after-tgvf-scope",
+        str(config.mask_original_image_after_tgvf_scope),
+        "--lr-lora",
+        str(config.lr_lora),
+        "--lr-tgvf",
+        str(config.lr_tgvf),
+        "--lr-calibration",
+        str(config.lr_calibration),
+        "--lr-scheduler",
+        config.lr_scheduler,
+        "--warmup-ratio",
+        str(config.warmup_ratio),
+        "--min-lr-ratio",
+        str(config.min_lr_ratio),
+        "--loss-visual-token-manifold",
+        str(config.loss_visual_token_manifold),
+    ]
+    _append_optional(command, "--processor-id", config.processor_id)
+    _append_optional(command, "--val-file", config.val_file)
+    _append_optional(command, "--target-focus-ratio", config.target_focus_ratio)
+    _append_optional(command, "--min-confidence", config.min_confidence)
+    _append_optional(command, "--wandb-project", config.wandb_project)
+    _append_optional(command, "--wandb-mode", config.wandb_mode)
+    command.append(
+        "--use-stage1-tgvf-config"
+        if config.use_stage1_tgvf_config
+        else "--no-use-stage1-tgvf-config"
+    )
+    command.append(
+        "--fast-batched-stage2" if config.fast_batched_stage2 else "--no-fast-batched-stage2"
+    )
+    command.append(
+        "--mask-original-image-after-tgvf"
+        if config.mask_original_image_after_tgvf
+        else "--no-mask-original-image-after-tgvf"
+    )
+    for key, value in config.weighted_span_loss.items():
+        command.extend([f"--loss-{key.replace('_', '-')}", str(value)])
+    return command
+
+
+def _append_optional(command: list[str], flag: str, value: Any | None) -> None:
+    if value is None:
+        return
+    command.extend([flag, str(value)])
+
+
+def _training_plan_text(plan: dict[str, Any]) -> str:
+    batch = plan["batch"]
+    lines = [
+        f"run_id: {plan['run_id']}",
+        f"stage: {plan['stage']}",
+        f"output_dir: {plan['output_dir']}",
+        f"git_commit: {plan.get('git_commit')}",
+        f"dirty_worktree: {plan.get('dirty_worktree')}",
+        f"protocol: {plan['protocol']}",
+        f"model_id: {plan['model']['model_id']}",
+        f"processor_id: {plan['model'].get('processor_id')}",
+        (
+            "global_batch: "
+            f"{batch['global_batch_size']} = {batch['world_size']} * "
+            f"{batch['micro_batch_size']} * {batch['gradient_accumulation_steps']}"
+        ),
+    ]
+    command = plan.get("legacy_reference_command") or {}
+    lines.extend(
+        [
+            f"legacy_reference_executable: {command.get('executable')}",
+            f"legacy_reference_status: {command.get('status')}",
+        ]
+    )
+    if command.get("unavailable_reason"):
+        lines.append(f"legacy_reference_unavailable_reason: {command['unavailable_reason']}")
+    if command.get("shell"):
+        lines.extend(["legacy_reference_command:", command["shell"]])
+    return "\n".join(lines) + "\n"

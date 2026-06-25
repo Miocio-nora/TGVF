@@ -642,10 +642,59 @@ tgvf_v4_teacher_1k.test.jsonl:
   `PYTHONPATH=revisit_vlm_clean/src pytest -q revisit_vlm_clean/tests`
   -> 63 tests.
 
+## Phase 23: Clean Training Launch Plans
+
+Implemented after Phase 22.
+
+- added `training_plan.py` as the shared contract for Stage1/Stage2 training
+  launch identity;
+- `tgvf_train_stage1` and `tgvf_train_stage2` now support:
+  - `--print-defaults`;
+  - `--dry-run`;
+  - `--write-plan`;
+- launch plans bind:
+  - exact train/val JSONL and Stage1 checkpoint file identities;
+  - model, processor, protocol, dtype, max resolution, and sequence limits;
+  - global batch math as
+    `world_size * micro_batch_size * gradient_accumulation_steps`;
+  - Stage1 clean constraints: `teacher_forced`, `row_only`,
+    `native_source_grid`;
+  - Stage2 mask policy, weighted span losses, target focus ratio, and
+    DeepStack state;
+  - git commit and tracked dirty-worktree state;
+  - a temporary historical reference command for auditability;
+- the historical reference command is explicitly marked as
+  `temporary_legacy_reference_not_final_clean_native`;
+- if Stage2 DeepStack training semantics are enabled, the launcher records the
+  intended state but marks the historical command non-executable, because the
+  old Stage2 script has no DeepStack training controls.
+
+Artifacts written by `--write-plan`:
+
+```text
+training_plan.json
+training_plan.txt
+dataset_identity.json
+legacy_reference_command.sh
+```
+
+Validation:
+
+- tests cover Stage1 launch-plan writing, automatic accumulation-step
+  resolution, Stage2 train/val/checkpoint identity, mask/span-loss command
+  mapping, and the DeepStack legacy-command gate;
+- targeted CLI tests passed:
+  `PYTHONPATH=revisit_vlm_clean/src pytest -q revisit_vlm_clean/tests/test_cli.py -q`
+  -> 13 tests.
+- targeted ruff passed for the new launcher/planning code and touched CLI tests;
+- full clean test suite passed:
+  `PYTHONPATH=revisit_vlm_clean/src pytest -q revisit_vlm_clean/tests`
+  -> 66 tests.
+
 ## Later Phases
 
 1. Port teacher trajectory generation into `tgvf_generate_data`.
-2. Stage1/Stage2 launchers wired to clean generated dataset identities.
+2. Replace training launch plans with clean-native training execution.
 3. Native clean Stage2 runner replacing the legacy bridge.
 4. Clean benchmark subset boundaries for CoreSmoke/CoreDev execution.
-5. DeepStack training/eval support.
+5. Full DeepStack training/eval execution support.

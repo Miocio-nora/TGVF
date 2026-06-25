@@ -84,6 +84,141 @@ def test_training_default_clis(capsys) -> None:
     assert "through_answer" in capsys.readouterr().out
 
 
+def test_stage1_training_write_plan_cli(tmp_path) -> None:
+    train_file = tmp_path / "stage1.train.jsonl"
+    train_file.write_text(
+        '{"image": "/tmp/image.jpg", "question": "q", "target": "mark", '
+        '"evidence_description": "The mark is blue."}\n',
+        encoding="utf-8",
+    )
+    output_dir = tmp_path / "stage1_plan"
+
+    assert (
+        stage1_main(
+            [
+                "--run-id",
+                "stage1_unit",
+                "--train-file",
+                str(train_file),
+                "--output-dir",
+                str(output_dir),
+                "--global-batch",
+                "32",
+                "--world-size",
+                "4",
+                "--micro-batch-size",
+                "4",
+                "--write-plan",
+            ]
+        )
+        == 0
+    )
+
+    plan = json.loads((output_dir / "training_plan.json").read_text())
+    assert plan["stage"] == "stage1"
+    assert plan["dataset"]["train_file"]["line_count"] == 1
+    assert plan["batch"] == {
+        "global_batch_size": 32,
+        "gradient_accumulation_steps": 2,
+        "micro_batch_size": 4,
+        "world_size": 4,
+    }
+    assert plan["training"]["token_row_mode"] == "row_only"
+    command = (output_dir / "legacy_reference_command.sh").read_text()
+    assert "torchrun --nproc-per-node 4" in command
+    assert "--gradient-accumulation-steps 2" in command
+    assert "--protocol-token-row-mode row_only" in command
+
+
+def test_stage2_training_write_plan_cli(tmp_path) -> None:
+    train_file = tmp_path / "stage2.train.jsonl"
+    val_file = tmp_path / "stage2.test.jsonl"
+    checkpoint = tmp_path / "stage1.pt"
+    train_file.write_text(
+        '{"image": "/tmp/image.jpg", "question": "q", "answer": "a"}\n',
+        encoding="utf-8",
+    )
+    val_file.write_text(
+        '{"image": "/tmp/image.jpg", "question": "q", "answer": "a"}\n',
+        encoding="utf-8",
+    )
+    checkpoint.write_bytes(b"checkpoint\n")
+    output_dir = tmp_path / "stage2_plan"
+
+    assert (
+        stage2_main(
+            [
+                "--run-id",
+                "stage2_unit",
+                "--train-file",
+                str(train_file),
+                "--val-file",
+                str(val_file),
+                "--stage1-checkpoint",
+                str(checkpoint),
+                "--output-dir",
+                str(output_dir),
+                "--global-batch",
+                "128",
+                "--world-size",
+                "4",
+                "--micro-batch-size",
+                "4",
+                "--write-plan",
+            ]
+        )
+        == 0
+    )
+
+    plan = json.loads((output_dir / "training_plan.json").read_text())
+    assert plan["stage"] == "stage2"
+    assert plan["dataset"]["train_file"]["line_count"] == 1
+    assert plan["dataset"]["val_file"]["line_count"] == 1
+    assert plan["dataset"]["stage1_checkpoint"]["exists"] is True
+    assert plan["batch"]["gradient_accumulation_steps"] == 8
+    assert plan["mask_policy"]["mask_original_image_after_tgvf_scope"] == "through_answer"
+    assert plan["loss"]["weighted_span_loss"]["focus_target"] == 1.5
+    command = (output_dir / "legacy_reference_command.sh").read_text()
+    assert "--mask-original-image-after-tgvf-scope through_answer" in command
+    assert "--loss-focus-target 1.5" in command
+
+
+def test_stage2_deepstack_plan_disables_legacy_command(tmp_path, capsys) -> None:
+    train_file = tmp_path / "stage2.train.jsonl"
+    checkpoint = tmp_path / "stage1.pt"
+    train_file.write_text(
+        '{"image": "/tmp/image.jpg", "question": "q", "answer": "a"}\n',
+        encoding="utf-8",
+    )
+    checkpoint.write_bytes(b"checkpoint\n")
+
+    assert (
+        stage2_main(
+            [
+                "--run-id",
+                "stage2_deepstack",
+                "--train-file",
+                str(train_file),
+                "--stage1-checkpoint",
+                str(checkpoint),
+                "--output-dir",
+                str(tmp_path / "stage2_deepstack_plan"),
+                "--mask-original-image-after-tgvf-scope",
+                "evidence_only",
+                "--deepstack-enabled",
+                "--dry-run",
+            ]
+        )
+        == 0
+    )
+
+    payload = capsys.readouterr().out
+    assert '"enabled": true' in payload
+    assert '"original_image_scope": "evidence_only"' in payload
+    assert '"executable": false' in payload
+    assert "historical Stage2 script has no DeepStack training controls" in payload
+
+
 def test_generate_data_dry_run_cli(tmp_path, capsys) -> None:
     input_root = tmp_path / "inputs"
     input_root.mkdir()
@@ -160,7 +295,9 @@ def test_generate_data_write_plan_cli(tmp_path) -> None:
     assert (output_dir / "input_files.json").exists()
     assert (output_dir / "data_generation_report.json").exists()
     assert "identity_only: true" in (output_dir / "data_generation_config.txt").read_text()
-    assert "generated_data_written: false" in (output_dir / "data_generation_config.txt").read_text()
+    assert "generated_data_written: false" in (
+        output_dir / "data_generation_config.txt"
+    ).read_text()
 
 
 def test_generate_data_execute_choice_to_open_answer(tmp_path) -> None:
@@ -319,7 +456,10 @@ def test_generate_data_execute_v4_to_protocol_c(tmp_path) -> None:
         == 0
     )
 
-    rows = [json.loads(line) for line in (output_dir / "teacher.accepted.jsonl").read_text().splitlines()]
+    rows = [
+        json.loads(line)
+        for line in (output_dir / "teacher.accepted.jsonl").read_text().splitlines()
+    ]
     assert rows[0]["schema_version"] == "tgvf_teacher_schema_v4_stage2_compat"
     assert rows[0]["trajectory_type"] == "single_focus"
     assert rows[0]["need_focus"] is True
@@ -417,7 +557,10 @@ def test_generate_data_execute_v4_to_stage1_protocol_c_focus(tmp_path) -> None:
         == 0
     )
 
-    rows = [json.loads(line) for line in (output_dir / "teacher.accepted.jsonl").read_text().splitlines()]
+    rows = [
+        json.loads(line)
+        for line in (output_dir / "teacher.accepted.jsonl").read_text().splitlines()
+    ]
     assert len(rows) == 2
     assert rows[0]["schema_version"] == "tgvf_teacher_schema_v4_stage1_compat"
     assert rows[0]["source_schema_version"] == "tgvf_teacher_schema_v4"

@@ -47,8 +47,12 @@ The data-generation entrypoint records source files, hashes, protocol,
 transform, field weights, mask policy, and output intent. It can currently
 execute the deterministic `v4_to_protocol_c`,
 `v4_to_stage1_protocol_c_focus`, `choice_to_open_answer`, and `clean_imend`
-transforms. Teacher trajectory generation and training launchers are still to
-be ported.
+transforms. Teacher trajectory generation still remains outside the clean tree.
+
+The training entrypoints currently produce auditable launch plans with
+dataset/checkpoint hashes, batch math, mask policy, weighted losses, DeepStack
+state, and a temporary legacy reference command. They do not start training
+jobs yet; clean-native training execution is still to be ported.
 
 ## Fixed Manifests
 
@@ -91,6 +95,8 @@ Diagnostic manifests are for runner validation only, not benchmark reporting.
 The final clean project must not depend on historical evaluator or launcher
 entrypoints for first-class workflows. The current Stage2 bridge is allowed only
 as a diagnostic compatibility layer until the native runner replaces it.
+The current training launchers may write temporary historical reference
+commands, but those commands are not final clean-native execution paths.
 
 Data generation is expected to enter the clean tree as a first-class pipeline,
 not as an opaque historical script call. The clean data-generation path should
