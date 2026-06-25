@@ -1477,6 +1477,22 @@ Implemented after Phase 56.
 - tests guard against reintroducing a top-level legacy adapter import in the
   runner.
 
+## Phase 58: Trainer Runtime Contract in Execution Bundle
+
+Implemented after Phase 57.
+
+- Stage1/Stage2 `--prepare-execution` bundles now include
+  `trainer_runtime_contract`;
+- the contract records the future clean executor launch function, launch
+  permission state, required launch gates, required runtime artifacts, and
+  before-first-optimizer-step audit requirements;
+- Stage1 gates include Qwen `V_merge` readout context, real Qwen3 M-RoPE
+  position ids, and matrix-CE/manifold loss parity;
+- Stage2 gates include Stage1 checkpoint restoration, LoRA attachment,
+  fast-batched Stage2, weighted-span losses, original-image mask scope, and
+  DeepStack scope when enabled;
+- execution status now reports `trainer_runtime_contract_status=not_ported`.
+
 ## Later Phases
 
 1. Replace training launch plans with clean-native training execution.

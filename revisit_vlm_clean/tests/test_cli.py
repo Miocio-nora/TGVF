@@ -446,8 +446,15 @@ def test_stage1_training_executor_prepare_execution_cli(tmp_path, capsys) -> Non
     assert bundle["clean_executor"]["owns_execution_bundle"] is True
     assert bundle["safety"]["legacy_reference_allowed"] is False
     assert bundle["readout_context"]["position_ids"] == "real_qwen3_mrope_full_trajectory"
+    contract = bundle["trainer_runtime_contract"]
+    assert contract["contract_schema_version"] == "clean_trainer_runtime_contract_v1"
+    assert contract["status"] == "not_ported"
+    assert contract["launch_permitted"] is False
+    assert "emit_trainable_parameter_audit" in contract["required_launch_gates"]
+    assert "stage1_readout_context_uses_qwen_v_merge" in contract["required_launch_gates"]
     assert bundle["plan_identity"]["sha256"]
     assert status["runner_status"] == "trainer_loop_not_ported"
+    assert status["trainer_runtime_contract_status"] == "not_ported"
     assert status["will_launch_training"] is False
     assert (execution_dir / "clean_training_execution_bundle.txt").exists()
 
@@ -768,9 +775,16 @@ def test_stage2_training_executor_prepare_execution_cli(tmp_path, capsys) -> Non
     assert bundle["deepstack"]["enabled"] is False
     assert bundle["lora"]["rank"] == 64
     assert bundle["lora"]["target_modules"][:2] == ["q_proj", "k_proj"]
+    contract = bundle["trainer_runtime_contract"]
+    assert contract["stage"] == "stage2"
+    assert contract["launch_function"] == "launch_training"
+    assert "attach_lora_modules_from_plan" in contract["required_launch_gates"]
+    assert "apply_weighted_span_losses_from_plan" in contract["required_launch_gates"]
+    assert "trainable_parameters.json" in contract["required_runtime_artifacts"]
     assert bundle["safety"]["legacy_reference_allowed"] is False
     status = json.loads((execution_dir / "clean_training_execution_status.json").read_text())
     assert status["bundle_valid"] is True
+    assert status["trainer_runtime_contract_status"] == "not_ported"
     assert status["will_launch_training"] is False
 
 

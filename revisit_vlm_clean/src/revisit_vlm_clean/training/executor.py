@@ -221,6 +221,11 @@ def _build_execution_bundle(
             "status": "trainer_loop_not_ported",
             "blocking_items": list(native_status.get("blocking_items") or []),
         },
+        "trainer_runtime_contract": _trainer_runtime_contract(
+            expected_stage=expected_stage,
+            plan=plan,
+            native_status=native_status,
+        ),
         "clean_training_command": {
             "planned_entrypoint": clean_command.get("planned_entrypoint"),
             "final_clean_native": clean_command.get("final_clean_native"),
@@ -261,6 +266,9 @@ def _execution_status(bundle: dict[str, Any]) -> dict[str, Any]:
         "bundle_valid": True,
         "runner_status": executor.get("status"),
         "training_runtime_ported": bool(executor.get("trainer_loop_ported")),
+        "trainer_runtime_contract_status": (
+            (bundle.get("trainer_runtime_contract") or {}).get("status")
+        ),
         "will_launch_training": bool(safety.get("will_launch_training")),
         "legacy_reference_allowed": bool(safety.get("legacy_reference_allowed")),
         "blocking_items": list(executor.get("blocking_items") or []),
@@ -284,6 +292,7 @@ def _execution_bundle_text(bundle: dict[str, Any], status: dict[str, Any]) -> st
         ),
         f"runner_status: {status.get('runner_status')}",
         f"training_runtime_ported: {status.get('training_runtime_ported')}",
+        f"trainer_runtime_contract_status: {status.get('trainer_runtime_contract_status')}",
         f"will_launch_training: {status.get('will_launch_training')}",
         f"legacy_reference_allowed: {status.get('legacy_reference_allowed')}",
     ]
@@ -292,6 +301,67 @@ def _execution_bundle_text(bundle: dict[str, Any], status: dict[str, Any]) -> st
         lines.append("blocking_items:")
         lines.extend(f"- {item}" for item in blocking)
     return "\n".join(lines) + "\n"
+
+
+def _trainer_runtime_contract(
+    *,
+    expected_stage: TrainingStage,
+    plan: dict[str, Any],
+    native_status: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        "contract_schema_version": "clean_trainer_runtime_contract_v1",
+        "stage": str(expected_stage),
+        "entrypoint": f"revisit_vlm_clean.training.{expected_stage.value}_executor",
+        "launch_function": "launch_training",
+        "status": "not_ported",
+        "launch_permitted": False,
+        "global_batch_size": (plan.get("batch") or {}).get("global_batch_size"),
+        "required_launch_gates": _required_launch_gates(expected_stage),
+        "required_runtime_artifacts": [
+            "trainable_parameters.json",
+            "optimizer_groups.json",
+            "first_batch_identity.json",
+            "checkpoint_contract.json",
+        ],
+        "must_emit_before_first_optimizer_step": [
+            "git_and_plan_identity",
+            "dataset_file_hashes",
+            "trainable_parameter_names",
+            "frozen_parameter_summary",
+            "global_batch_math",
+        ],
+        "blocking_items": list(native_status.get("blocking_items") or []),
+    }
+
+
+def _required_launch_gates(stage: TrainingStage) -> list[str]:
+    common = [
+        "load_model_and_processor",
+        "ensure_protocol_token_rows",
+        "set_training_use_cache_false",
+        "build_dataset_loader_from_plan_identity",
+        "construct_optimizer_and_scheduler_from_plan",
+        "emit_trainable_parameter_audit",
+        "save_checkpoint_with_clean_contract",
+    ]
+    if stage == TrainingStage.STAGE1:
+        return [
+            *common,
+            "build_tgvf_module_from_stage1_plan",
+            "stage1_readout_context_uses_qwen_v_merge",
+            "stage1_position_ids_use_real_qwen3_mrope",
+            "stage1_matrix_ce_and_manifold_losses_match_plan",
+        ]
+    return [
+        *common,
+        "load_stage1_checkpoint_tgvf_and_protocol_rows",
+        "attach_lora_modules_from_plan",
+        "use_fast_batched_stage2_path",
+        "apply_weighted_span_losses_from_plan",
+        "apply_original_image_mask_scope_from_plan",
+        "apply_deepstack_training_scope_when_enabled",
+    ]
 
 
 def _write_json(path: Path, payload: dict[str, Any]) -> None:
