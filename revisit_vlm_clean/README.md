@@ -93,9 +93,10 @@ Diagnostic manifests are for runner validation only, not benchmark reporting.
 - `tgvf_stage2_qwen3`: deprecated alias for `tgvf_stage2_qwen3_legacy`;
   outputs record both names.
 - `tgvf_stage2_qwen3_native`: final clean-native backend name. It now owns a
-  native engine boundary and records checkpoint/eval identity without using the
-  legacy evaluator; model capture/append execution is still to be ported and
-  currently returns structured row errors.
+  native engine and does not use the legacy evaluator class. Force/free/
+  softforce control flow, lazy checkpoint/model loading, D construction, visual
+  D append, and post-TGVF continuation are ported into the clean tree. Heavy
+  GPU smoke validation is still required before using it for benchmark claims.
 
 ## Clean-Native Exit Criteria
 

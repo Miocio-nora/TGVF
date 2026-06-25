@@ -17,7 +17,6 @@ from .schema import EvalMode, EvalSummary, RunConfig
 from .scoring import score_output_rows
 from .stage2_native import (
     NativeStage2Engine,
-    NativeStage2ExecutionNotPortedError,
     NativeStage2RunResult,
 )
 from .stage2_runtime import Stage2RuntimeConfig
@@ -440,16 +439,6 @@ class TGVFStage2Qwen3NativeBackend(CleanRunnerBackend):
             return _native_stage2_result_to_model_run_result(
                 self._engine.run(sample, rendered, config),
                 started=started,
-            )
-        except NativeStage2ExecutionNotPortedError as exc:
-            return ModelRunResult(
-                raw_output="",
-                wall_time_sec=time.perf_counter() - started,
-                error=f"{type(exc).__name__}: {exc}",
-                debug={
-                    "native_stage2": self._engine.identity(),
-                    "native_stage2_execution_ported": False,
-                },
             )
         except Exception as exc:
             return ModelRunResult(

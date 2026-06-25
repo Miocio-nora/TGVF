@@ -771,10 +771,54 @@ Validation:
   `PYTHONPATH=revisit_vlm_clean/src pytest -q revisit_vlm_clean/tests`
   -> 71 tests.
 
+## Phase 26: Stage2 Native Force/Free Control Flow
+
+Implemented after Phase 25.
+
+- expanded `NativeStage2Engine` from identity-only into the owner of the native
+  Stage2 execution path;
+- added clean `NativeStage2Sample` conversion from benchmark samples/rendered
+  prompts, keeping choices in the already-rendered prompt and avoiding duplicate
+  choice text;
+- ported the native force/free/softforce control flow into the clean tree:
+  - force mode captures a forced focus action, builds D, appends visual D, and
+    continues naturally after TGVF;
+  - free/softforce mode captures the router output, decides whether focus was
+    triggered, and either returns direct output or runs the same post-D path;
+  - post-D execution selects KV append or full-sequence prefill from the clean
+    `ForwardMode`;
+- added lazy heavy runtime loading:
+  - checkpoint protocol validation;
+  - Qwen3-VL + processor loading;
+  - protocol-token setup;
+  - LoRA load validation;
+  - frozen foveal module construction from checkpoint config;
+- ported visual-D append and full-sequence prefill logic into the clean engine,
+  reusing lower-level Qwen3/TGVF primitives but not the historical
+  `Stage2ProtocolEvaluator` class;
+- runner errors now report native runtime failures as row errors with native
+  identity debug metadata.
+
+This phase does not launch a GPU smoke benchmark and therefore does not prove
+the native backend is benchmark-ready. It proves the control-flow ownership has
+moved into the clean project.
+
+Validation:
+
+- targeted runner/backend tests passed:
+  `PYTHONPATH=revisit_vlm_clean/src pytest -q revisit_vlm_clean/tests/test_runner_backend.py -q`
+  -> 9 tests;
+- targeted ruff passed for runner, native Stage2 engine, and runner backend
+  tests;
+- full clean test suite passed:
+  `PYTHONPATH=revisit_vlm_clean/src pytest -q revisit_vlm_clean/tests`
+  -> 74 tests.
+
 ## Later Phases
 
 1. Port teacher trajectory generation into `tgvf_generate_data`.
 2. Replace training launch plans with clean-native training execution.
-3. Port native Stage2 capture/append execution behind `tgvf_stage2_qwen3_native`.
+3. Run native Stage2 GPU smoke validation and compare against the legacy bridge
+   on a fixed diagnostic manifest before benchmark claims.
 4. Clean benchmark subset boundaries for CoreSmoke/CoreDev execution.
 5. Full DeepStack training/eval execution support.
