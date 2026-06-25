@@ -1,4 +1,5 @@
 from revisit_vlm_clean.cli.benchmark import main as benchmark_main
+from revisit_vlm_clean.cli.generate_data import main as generate_data_main
 from revisit_vlm_clean.cli.manifest import main as manifest_main
 from revisit_vlm_clean.cli.train_stage1 import main as stage1_main
 from revisit_vlm_clean.cli.train_stage2 import main as stage2_main
@@ -79,3 +80,82 @@ def test_training_default_clis(capsys) -> None:
     assert "matrix_ce" in capsys.readouterr().out
     assert stage2_main(["--print-defaults"]) == 0
     assert "through_answer" in capsys.readouterr().out
+
+
+def test_generate_data_dry_run_cli(tmp_path, capsys) -> None:
+    input_root = tmp_path / "inputs"
+    input_root.mkdir()
+    source = input_root / "stage2.train.jsonl"
+    source.write_text('{"id": 1}\n{"id": 2}\n', encoding="utf-8")
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text('{"manifest_hash": "toyhash"}\n', encoding="utf-8")
+
+    assert (
+        generate_data_main(
+            [
+                "--run-id",
+                "data_plan",
+                "--stage",
+                "stage2_protocol_c",
+                "--input-root",
+                str(input_root),
+                "--input-files",
+                "stage2.train.jsonl",
+                "--output-dir",
+                str(tmp_path / "out"),
+                "--source-manifest-path",
+                str(manifest),
+                "--source-manifest-hash",
+                "toyhash",
+                "--transform",
+                "choice_to_open_answer",
+                "--field-weight",
+                "focus_target=1.5",
+                "--mask-policy",
+                "scope=through_answer",
+                "--dry-run",
+            ]
+        )
+        == 0
+    )
+    captured = capsys.readouterr()
+    assert '"run_id": "data_plan"' in captured.out
+    assert '"stage": "stage2_protocol_c"' in captured.out
+    assert '"line_count": 2' in captured.out
+    assert '"focus_target": 1.5' in captured.out
+    assert '"scope": "through_answer"' in captured.out
+    assert '"generated_data_written": false' in captured.out
+
+
+def test_generate_data_write_plan_cli(tmp_path) -> None:
+    input_root = tmp_path / "inputs"
+    input_root.mkdir()
+    source = input_root / "stage1.train.jsonl"
+    source.write_text('{"id": "a"}\n', encoding="utf-8")
+    output_dir = tmp_path / "plan"
+
+    assert (
+        generate_data_main(
+            [
+                "--run-id",
+                "stage1_plan",
+                "--stage",
+                "stage1_protocol_c_focus",
+                "--input-root",
+                str(input_root),
+                "--input-files",
+                "stage1.train.jsonl",
+                "--output-dir",
+                str(output_dir),
+                "--write-plan",
+            ]
+        )
+        == 0
+    )
+
+    assert (output_dir / "data_generation_config.json").exists()
+    assert (output_dir / "data_generation_config.txt").exists()
+    assert (output_dir / "input_files.json").exists()
+    assert (output_dir / "data_generation_report.json").exists()
+    assert "identity_only: true" in (output_dir / "data_generation_config.txt").read_text()
+    assert "generated_data_written: false" in (output_dir / "data_generation_config.txt").read_text()

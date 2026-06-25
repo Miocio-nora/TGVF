@@ -512,10 +512,41 @@ Validation:
 - Stage1/Stage2 launchers must consume those clean generated datasets by
   explicit path/hash identity.
 
+## Phase 19: Data-Generation Identity Layer
+
+Implemented after Phase 18.
+
+- added `tgvf_generate_data` clean CLI;
+- added data-generation identity schema for:
+  - teacher trajectory generation;
+  - Stage1 Protocol-C focus data;
+  - Stage2 Protocol-C conversation data;
+  - split cleaning;
+  - choice-to-open-answer conversion;
+- the initial CLI supports `--dry-run` and `--write-plan` only;
+- plan files include:
+  - `data_generation_config.json`;
+  - `data_generation_config.txt`;
+  - `input_files.json`;
+  - `data_generation_report.json`;
+- input files are identified by existence, size, SHA-256, and line count;
+- protocol, transform, source manifest path/hash, source run id, split policy,
+  field weights, and mask policy are recorded before any heavy generator is
+  ported or launched;
+- this intentionally does not generate training JSONL yet.
+
+Validation:
+
+- CLI tests cover dry-run planning and written plan artifacts with temporary
+  JSONL inputs;
+- `PYTHONPATH=revisit_vlm_clean/src pytest -q revisit_vlm_clean/tests`
+  passed with 59 tests.
+
 ## Later Phases
 
-1. Clean data-generation pipeline for teacher, Stage1, and Stage2 JSONL.
-2. Stage1/Stage2 launchers wired to clean generated dataset identities.
-3. Native clean Stage2 runner replacing the legacy bridge.
-4. Clean benchmark subset boundaries for CoreSmoke/CoreDev execution.
-5. DeepStack training/eval support.
+1. Port teacher trajectory generation into `tgvf_generate_data`.
+2. Port Stage1/Stage2 JSONL builders into `tgvf_generate_data`.
+3. Stage1/Stage2 launchers wired to clean generated dataset identities.
+4. Native clean Stage2 runner replacing the legacy bridge.
+5. Clean benchmark subset boundaries for CoreSmoke/CoreDev execution.
+6. DeepStack training/eval support.

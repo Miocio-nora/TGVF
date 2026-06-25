@@ -27,6 +27,7 @@ later phases after each contract is validated.
 
 ```bash
 tgvf_build_manifest --list
+tgvf_generate_data --help
 tgvf_eval_benchmark --help
 tgvf_train_stage1 --print-defaults
 tgvf_train_stage2 --print-defaults
@@ -41,6 +42,11 @@ explicit manifest and ledger identity.
 Scoring is applied after all rows are produced. This is intentional: some
 official scorers, including OCRBench-v2, need batch-level prediction files
 rather than one isolated row at a time.
+
+The data-generation entrypoint currently supports identity-only planning:
+it records source files, hashes, protocol, transform, field weights, mask policy,
+and output intent without generating new training JSONL. This is the first
+clean-native layer before porting the heavy teacher/Stage1/Stage2 generators.
 
 ## Fixed Manifests
 
