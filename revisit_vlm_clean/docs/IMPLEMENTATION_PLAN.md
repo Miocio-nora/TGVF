@@ -1055,6 +1055,26 @@ Implemented after Phase 32.
 This phase does not complete DeepStack execution support. It removes a silent
 false-positive path and makes the remaining final-clean training gap explicit.
 
+## Phase 34: Row-Level Eval Identity Fields
+
+Implemented after Phase 33.
+
+- clean executed benchmark rows now include per-row identity fields that were
+  previously only available in run config or summary:
+  - `eval_family`;
+  - `tgvf_protocol`;
+  - `post_tgvf_continuation`;
+  - `post_tgvf_forward_mode`;
+  - `deepstack`;
+  - `parser_scorer`;
+  - `d_condition`;
+- this applies to dry-run and real backends through the shared row-construction
+  path;
+- tests assert these fields on a dry-run executed row.
+
+This closes part of the clean output-schema gap: row-level analysis no longer
+has to recover forward mode, parser/scorer, or DeepStack state from side files.
+
 ## Later Phases
 
 1. Replace training launch plans with clean-native training execution.

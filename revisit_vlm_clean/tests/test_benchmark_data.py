@@ -378,6 +378,17 @@ def test_benchmark_execute_dry_run_cli(tmp_path) -> None:
     assert row["score"] == 1.0
     assert row["scorer_name"] == "project_choice_exact_match"
     assert row["official_tool_used"] is False
+    assert row["eval_family"] == "project_native_external"
+    assert row["tgvf_protocol"] == "protocol_c_tool_observation"
+    assert row["post_tgvf_continuation"] == "natural_continue"
+    assert row["post_tgvf_forward_mode"] == "kv_cache"
+    assert row["deepstack"] == {
+        "d_features_enabled": False,
+        "enabled": False,
+        "original_image_scope": "off",
+    }
+    assert row["parser_scorer"]["scoring_backend"] == "auto"
+    assert row["d_condition"] is None
     summary = json.loads((output_dir / "summary.json").read_text())
     assert summary["accuracy"] == 1.0
     assert summary["runner_backend"]["backend"] == "dry_run"

@@ -538,6 +538,17 @@ def run_benchmark_rows(
                 "subset_id": config.subset_id,
                 "source_file": sample.source_file,
                 "method": config.mode.value,
+                "eval_family": config.eval_family.value,
+                "tgvf_protocol": config.tgvf_protocol,
+                "post_tgvf_continuation": config.post_tgvf_continuation.value,
+                "post_tgvf_forward_mode": config.post_tgvf_forward_mode.value,
+                "deepstack": config.deepstack.to_dict(),
+                "parser_scorer": config.parser_scorer.to_dict(),
+                "d_condition": (
+                    backend_config.stage2.d_condition
+                    if backend_config.stage2 is not None
+                    else None
+                ),
                 "runner_backend": backend_config.backend,
                 "resolved_runner_backend": resolved_backend,
                 "runner_backend_deprecated_alias": backend_config.backend == STAGE2_LEGACY_ALIAS,
