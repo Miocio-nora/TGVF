@@ -48,7 +48,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--focus-action-im-end",
         action=argparse.BooleanOptionalAction,
-        default=False,
+        default=True,
     )
     parser.add_argument(
         "--mask-original-image-after-tgvf",
@@ -59,9 +59,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--lr-scheduler",
         choices=("constant", "linear", "cosine"),
-        default="constant",
+        default="cosine",
     )
-    parser.add_argument("--warmup-steps", type=int, default=0)
+    parser.add_argument("--warmup-steps", type=int, default=100)
+    parser.add_argument("--min-lr-ratio", type=float, default=0.1)
     parser.add_argument("--loss-gen", type=float, default=1.0)
     parser.add_argument("--loss-visual-token-manifold", type=float, default=0.1)
     parser.add_argument("--loss-same-image-negative", type=float, default=1.0)
@@ -120,8 +121,12 @@ def _defaults() -> dict[str, object]:
         "max_image_resolution": DEFAULT_MAX_IMAGE_RESOLUTION,
         "batch": batch.to_dict(),
         "max_steps": DEFAULT_STAGE1_MAX_STEPS,
+        "focus_action_im_end": True,
         "same_image_negative": "matrix_ce",
         "visual_token_manifold_loss": 0.1,
+        "lr_scheduler": "cosine",
+        "warmup_steps": 100,
+        "min_lr_ratio": 0.1,
         "clean_launcher_actions": ["dry_run", "write_plan"],
     }
 
@@ -161,6 +166,7 @@ def _config_from_args(args: argparse.Namespace) -> Stage1LaunchConfig:
         learning_rate=args.learning_rate,
         lr_scheduler=args.lr_scheduler,
         warmup_steps=args.warmup_steps,
+        min_lr_ratio=args.min_lr_ratio,
         loss_gen=args.loss_gen,
         loss_visual_token_manifold=args.loss_visual_token_manifold,
         loss_same_image_negative=args.loss_same_image_negative,

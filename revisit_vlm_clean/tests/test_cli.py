@@ -185,9 +185,15 @@ def test_benchmark_write_empty_output_cli(tmp_path) -> None:
 
 def test_training_default_clis(capsys) -> None:
     assert stage1_main(["--print-defaults"]) == 0
-    assert "matrix_ce" in capsys.readouterr().out
+    stage1_defaults = capsys.readouterr().out
+    assert "matrix_ce" in stage1_defaults
+    assert '"focus_action_im_end": true' in stage1_defaults
+    assert '"lr_scheduler": "cosine"' in stage1_defaults
+    assert '"warmup_steps": 100' in stage1_defaults
     assert stage2_main(["--print-defaults"]) == 0
-    assert "through_answer" in capsys.readouterr().out
+    stage2_defaults = capsys.readouterr().out
+    assert "through_answer" in stage2_defaults
+    assert '"warmup_steps": 100' in stage2_defaults
 
 
 def test_stage1_training_write_plan_cli(tmp_path) -> None:
@@ -231,6 +237,10 @@ def test_stage1_training_write_plan_cli(tmp_path) -> None:
         "world_size": 4,
     }
     assert plan["training"]["token_row_mode"] == "row_only"
+    assert plan["training"]["focus_action_im_end"] is True
+    assert plan["optimizer"]["lr_scheduler"] == "cosine"
+    assert plan["optimizer"]["warmup_steps"] == 100
+    assert plan["optimizer"]["min_lr_ratio"] == 0.1
     assert plan["module_policy"]["trainable"] == [
         "tgvf_module",
         "protocol_c_token_rows_row_only",
@@ -257,6 +267,11 @@ def test_stage1_training_write_plan_cli(tmp_path) -> None:
     command = (output_dir / "legacy_reference_command.sh").read_text()
     assert command.startswith("# not executable:")
     assert "torchrun --nproc-per-node 4" in command
+    assert "--focus-action-im-end" in command
+    assert "--no-focus-action-im-end" not in command
+    assert "--lr-scheduler cosine" in command
+    assert "--warmup-steps 100" in command
+    assert "--min-lr-ratio 0.1" in command
     assert "--gradient-accumulation-steps 2" in command
     assert "--protocol-token-row-mode row_only" in command
 
@@ -381,6 +396,9 @@ def test_stage2_training_write_plan_cli(tmp_path) -> None:
     assert plan["batch"]["gradient_accumulation_steps"] == 8
     assert plan["mask_policy"]["mask_original_image_after_tgvf_scope"] == "through_answer"
     assert plan["loss"]["weighted_span_loss"]["focus_target"] == 1.5
+    assert plan["optimizer"]["lr_scheduler"] == "cosine"
+    assert plan["optimizer"]["warmup_steps"] == 100
+    assert plan["optimizer"]["min_lr_ratio"] == 0.1
     assert "qwen_lora_adapters" in plan["module_policy"]["trainable"]
     assert "qwen_visual_merger" in plan["module_policy"]["frozen"]
     assert plan["module_policy"]["visual_merger"]["trainable"] is False
@@ -408,6 +426,7 @@ def test_stage2_training_write_plan_cli(tmp_path) -> None:
     command = (output_dir / "legacy_reference_command.sh").read_text()
     assert command.startswith("# not executable:")
     assert "--mask-original-image-after-tgvf-scope through_answer" in command
+    assert "--warmup-steps 100" in command
     assert "--loss-focus-target 1.5" in command
 
 

@@ -1338,6 +1338,24 @@ Implemented after Phase 48.
 - the final training path remains the clean-native executor command/status
   surface. Full clean-native training execution is still a later phase.
 
+## Phase 50: Stage1/Stage2 Clean Launcher Default Alignment
+
+Implemented after Phase 49.
+
+- Stage1 clean launcher defaults now match the confirmed mainline:
+  - `focus_action_im_end=true`;
+  - `lr_scheduler=cosine`;
+  - `warmup_steps=100`;
+  - `min_lr_ratio=0.1`;
+- Stage1 legacy reference command text records those clean defaults instead of
+  inherited raw-script defaults;
+- Stage2 clean launcher now exposes and defaults `warmup_steps=100`, while still
+  recording `warmup_ratio=0.03` as an explicit secondary scheduler field;
+- Stage2 legacy reference command passes `--warmup-steps 100`, so the effective
+  warmup is not silently derived as `ceil(max_steps * warmup_ratio)`;
+- tests assert the default print surface, launch-plan optimizer identity, and
+  generated command text.
+
 ## Later Phases
 
 1. Replace training launch plans with clean-native training execution.

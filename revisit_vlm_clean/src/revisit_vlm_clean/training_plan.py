@@ -99,11 +99,12 @@ class Stage1LaunchConfig:
     token_row_mode: str = "row_only"
     capture_mode: str = "teacher_forced"
     fvt_position_mode: str = "native_source_grid"
-    focus_action_im_end: bool = False
+    focus_action_im_end: bool = True
     mask_original_image_after_tgvf: bool = True
     learning_rate: float = 1e-4
-    lr_scheduler: str = "constant"
-    warmup_steps: int = 0
+    lr_scheduler: str = "cosine"
+    warmup_steps: int = 100
+    min_lr_ratio: float = 0.1
     loss_gen: float = 1.0
     loss_visual_token_manifold: float = 0.1
     loss_same_image_negative: float = 1.0
@@ -141,6 +142,12 @@ class Stage1LaunchConfig:
             )
         if self.same_image_negative_mode not in {"matrix_ce", "cyclic_margin"}:
             raise ValueError("same_image_negative_mode must be matrix_ce or cyclic_margin")
+        if self.lr_scheduler not in {"constant", "linear", "cosine"}:
+            raise ValueError("lr_scheduler must be constant, linear, or cosine")
+        if int(self.warmup_steps) < 0:
+            raise ValueError("warmup_steps must be >= 0")
+        if not 0.0 <= float(self.min_lr_ratio) <= 1.0:
+            raise ValueError("min_lr_ratio must be in [0, 1]")
         self.batch.validate()
 
 
@@ -178,6 +185,7 @@ class Stage2LaunchConfig:
     lr_calibration: float = 1e-5
     lr_scheduler: str = "cosine"
     warmup_ratio: float = 0.03
+    warmup_steps: int | None = 100
     min_lr_ratio: float = 0.1
     loss_visual_token_manifold: float = 0.0
     weighted_span_loss: dict[str, float] = field(
@@ -214,6 +222,10 @@ class Stage2LaunchConfig:
             raise ValueError("mask_original_image_after_tgvf_prob must be in [0, 1]")
         if self.target_focus_ratio is not None and not 0.0 < float(self.target_focus_ratio) < 1.0:
             raise ValueError("target_focus_ratio must be between 0 and 1")
+        if self.lr_scheduler not in {"constant", "linear", "cosine"}:
+            raise ValueError("lr_scheduler must be constant, linear, or cosine")
+        if self.warmup_steps is not None and int(self.warmup_steps) < 0:
+            raise ValueError("warmup_steps must be >= 0")
         missing_weights = set(DEFAULT_STAGE2_SPAN_WEIGHTS) - set(self.weighted_span_loss)
         if missing_weights:
             raise ValueError(f"weighted_span_loss missing keys: {sorted(missing_weights)}")
@@ -321,6 +333,7 @@ def build_stage1_launch_plan(
             "learning_rate": config.learning_rate,
             "lr_scheduler": config.lr_scheduler,
             "warmup_steps": config.warmup_steps,
+            "min_lr_ratio": config.min_lr_ratio,
         },
         "wandb": {
             "project": config.wandb_project,
@@ -418,6 +431,7 @@ def build_stage2_launch_plan(
             "lr_calibration": config.lr_calibration,
             "lr_scheduler": config.lr_scheduler,
             "warmup_ratio": config.warmup_ratio,
+            "warmup_steps": config.warmup_steps,
             "min_lr_ratio": config.min_lr_ratio,
         },
         "wandb": {
@@ -683,6 +697,8 @@ def _stage1_legacy_command(config: Stage1LaunchConfig) -> list[str]:
         config.lr_scheduler,
         "--warmup-steps",
         str(config.warmup_steps),
+        "--min-lr-ratio",
+        str(config.min_lr_ratio),
         "--loss-gen",
         str(config.loss_gen),
         "--loss-visual-token-manifold",
@@ -761,11 +777,11 @@ def _stage2_legacy_command(config: Stage2LaunchConfig) -> list[str]:
         config.lr_scheduler,
         "--warmup-ratio",
         str(config.warmup_ratio),
-        "--min-lr-ratio",
-        str(config.min_lr_ratio),
         "--loss-visual-token-manifold",
         str(config.loss_visual_token_manifold),
     ]
+    _append_optional(command, "--warmup-steps", config.warmup_steps)
+    command.extend(["--min-lr-ratio", str(config.min_lr_ratio)])
     _append_optional(command, "--processor-id", config.processor_id)
     _append_optional(command, "--val-file", config.val_file)
     _append_optional(command, "--target-focus-ratio", config.target_focus_ratio)

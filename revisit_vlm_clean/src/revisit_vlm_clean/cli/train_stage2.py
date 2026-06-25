@@ -88,6 +88,7 @@ def build_parser() -> argparse.ArgumentParser:
         default="cosine",
     )
     parser.add_argument("--warmup-ratio", type=float, default=0.03)
+    parser.add_argument("--warmup-steps", type=int, default=100)
     parser.add_argument("--min-lr-ratio", type=float, default=0.1)
     parser.add_argument("--loss-visual-token-manifold", type=float, default=0.0)
     parser.add_argument(
@@ -175,6 +176,10 @@ def _defaults() -> dict[str, object]:
         "deepstack_enabled": False,
         "deepstack_supported": True,
         "weighted_span_loss": dict(DEFAULT_STAGE2_SPAN_WEIGHTS),
+        "lr_scheduler": "cosine",
+        "warmup_steps": 100,
+        "warmup_ratio": 0.03,
+        "min_lr_ratio": 0.1,
         "clean_launcher_actions": ["dry_run", "write_plan"],
     }
 
@@ -245,6 +250,7 @@ def _config_from_args(args: argparse.Namespace) -> Stage2LaunchConfig:
         lr_calibration=args.lr_calibration,
         lr_scheduler=args.lr_scheduler,
         warmup_ratio=args.warmup_ratio,
+        warmup_steps=args.warmup_steps,
         min_lr_ratio=args.min_lr_ratio,
         loss_visual_token_manifold=args.loss_visual_token_manifold,
         weighted_span_loss=weighted_span_loss,
