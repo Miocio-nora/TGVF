@@ -79,8 +79,8 @@ state, a clean-native executor status, and a separate temporary legacy
 reference command. They also write `clean_prepare_execution_command.sh`, which
 runs the clean executor handoff and produces execution-bundle artifacts without
 starting training. `clean_training_command.sh` is executable only for currently
-supported single-process clean launches; multi-process/DDP, Stage2 in-training
-validation, and DeepStack training launches remain blocked.
+supported single-process clean launches; multi-process/DDP and DeepStack
+training launches remain blocked.
 
 The planned clean training modules are importable:
 
@@ -186,9 +186,11 @@ With explicit `--launch-training`, the executor prepares the clean execution
 bundle and runs the clean single-process trainer loop. It writes
 `single_process_training_runtime.json`, `clean_training_launch_result.json`,
 `clean_training_launch_status.json`, and `checkpoint_step_N.pt` checkpoints
-according to the plan cadence. This path is clean-native and does not call the
-historical training scripts, but it currently rejects `world_size>1`, Stage2
-plans with `val_file`, and Stage2 DeepStack-enabled training plans.
+according to the plan cadence. Stage2 plans with `val_file` also run
+no-backward in-training validation at `eval_every` and final `max_steps`,
+recorded in `validation_records`. This path is clean-native and does not call
+the historical training scripts, but it currently rejects `world_size>1` and
+Stage2 DeepStack-enabled training plans.
 
 ## Fixed Manifests
 

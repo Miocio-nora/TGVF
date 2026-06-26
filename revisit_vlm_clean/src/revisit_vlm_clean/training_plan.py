@@ -434,7 +434,6 @@ def build_stage2_launch_plan(
         TrainingStage.STAGE2,
         world_size=config.batch.world_size,
         deepstack_enabled=config.deepstack.enabled,
-        val_file_present=config.val_file is not None,
     )
     return {
         "training_plan_schema_version": TRAINING_PLAN_SCHEMA_VERSION,
@@ -703,15 +702,12 @@ def _clean_native_training_status(
     *,
     world_size: int,
     deepstack_enabled: bool = False,
-    val_file_present: bool = False,
 ) -> dict[str, Any]:
     blockers = []
     runtime = "single_process"
     if world_size != 1:
         runtime = "distributed_not_ported"
         blockers.append("DDP/multi-process clean training is not ported yet")
-    if stage == TrainingStage.STAGE2 and val_file_present:
-        blockers.append("in-training Stage2 validation is not ported yet")
     if stage == TrainingStage.STAGE2 and deepstack_enabled:
         blockers.append(
             "DeepStack original-image injection/masking is specified but not implemented "

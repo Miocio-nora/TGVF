@@ -163,14 +163,15 @@ before training/eval cleanup can proceed.
   `will_launch_training` and `launch_permitted` must remain `false`.
 - `clean_prepare_execution_command.sh` is the runnable clean handoff command;
   `clean_training_command.sh` is executable only for supported single-process
-  clean launches. Plans that require DDP/multi-process execution, in-training
-  validation, or DeepStack training injection must keep the command
-  non-executable and record the blocking reason.
+  clean launches. Plans that require DDP/multi-process execution or DeepStack
+  training injection must keep the command non-executable and record the
+  blocking reason.
 - Explicit clean launch may write `single_process_training_runtime.json`,
   `clean_training_launch_result.json`, `clean_training_launch_status.json`, and
   `checkpoint_step_N.pt` checkpoints. This is currently a single-process
-  runtime only; DDP/multi-process training and in-training validation remain
-  unresolved.
+  runtime only. Stage2 `val_file` runs no-backward validation at the planned
+  `eval_every` cadence and records `validation_records`; DDP/multi-process
+  training remains unresolved.
 - Loss defaults:
   - generation/readout LM loss: `1.0`;
   - visual token manifold: `0.1`;
@@ -318,14 +319,15 @@ before training/eval cleanup can proceed.
   `will_launch_training` and `launch_permitted` must remain `false`.
 - `clean_prepare_execution_command.sh` is the runnable clean handoff command;
   `clean_training_command.sh` is executable only for supported single-process
-  clean launches. Plans that require DDP/multi-process execution, in-training
-  validation, or DeepStack training injection must keep the command
-  non-executable and record the blocking reason.
+  clean launches. Plans that require DDP/multi-process execution or DeepStack
+  training injection must keep the command non-executable and record the
+  blocking reason.
 - Explicit clean launch may write `single_process_training_runtime.json`,
   `clean_training_launch_result.json`, `clean_training_launch_status.json`, and
   `checkpoint_step_N.pt` checkpoints. This is currently a single-process
-  runtime only; DDP/multi-process training and in-training validation remain
-  unresolved.
+  runtime only. Stage2 `val_file` runs no-backward validation at the planned
+  `eval_every` cadence and records `validation_records`; DDP/multi-process
+  training remains unresolved.
 - Focus/no-focus sampling:
   - `target_focus_ratio=0.8`.
 - Batch/default run scale:

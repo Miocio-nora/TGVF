@@ -1967,22 +1967,24 @@ Implemented after Phase 74.
 - `clean_training_command.sh` is executable only when the plan is currently
   launchable by the clean executor:
   - `world_size=1`;
-  - no Stage2 `val_file`;
   - Stage2 DeepStack training disabled;
-- plans that require DDP/multi-process training, in-training Stage2 validation,
-  or Stage2 DeepStack training remain valid for prepare/audit but their
+- Stage2 `val_file` is supported in the single-process launch path:
+  - validation runs with no backward pass;
+  - validation follows `eval_every` plus final `max_steps` cadence;
+  - validation output is recorded in `validation_records`;
+- plans that require DDP/multi-process training or Stage2 DeepStack training
+  remain valid for prepare/audit but their
   `clean_training_command.sh` is non-executable and records the blocking
   reason;
-- this phase does not port DDP, distributed sampler/state, in-training
-  validation, or DeepStack original-image injection/masking during training.
+- this phase does not port DDP, distributed sampler/state, or DeepStack
+  original-image injection/masking during training.
 
 ## Later Phases
 
 1. Port DDP/multi-process clean training execution.
-2. Port Stage2 in-training validation cadence.
-3. Port DeepStack original-image injection/masking into clean training and eval
+2. Port DeepStack original-image injection/masking into clean training and eval
    execution.
-4. Keep data generation first-class:
+3. Keep data generation first-class:
    - deterministic Stage1/Stage2 transforms stay in `tgvf_generate_data` and
      are preserved rather than rewritten in the current execution cleanup;
    - heavy teacher trajectory generation is ported only when regeneration is

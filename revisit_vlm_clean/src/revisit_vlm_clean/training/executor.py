@@ -383,7 +383,7 @@ def prepare_training_execution(
         "stage": str(expected_stage),
         "run_id": plan.get("run_id"),
         "will_launch_training": False,
-        "training_runtime_ported": False,
+        "training_runtime_ported": status["training_runtime_ported"],
         "dataset_runtime_identity": dataset_runtime["paths"]["dataset_runtime_identity"],
         "first_batch_identity": dataset_runtime["paths"]["first_batch_identity"],
         "checkpoint_contract": checkpoint_contract["path"],
@@ -2108,12 +2108,6 @@ def _validate_single_process_launch_contract(
             "DDP/multi-process training is not ported yet"
         )
     if expected_stage == TrainingStage.STAGE2:
-        dataset = bundle.get("dataset") or {}
-        if dataset.get("val_file") is not None:
-            raise ValueError(
-                "clean single-process launch does not yet support in-training "
-                "Stage2 validation; omit val_file or use audit-only mode"
-            )
         deepstack = bundle.get("deepstack") or {}
         if bool(deepstack.get("enabled")):
             raise ValueError(
@@ -2152,11 +2146,15 @@ def _write_single_process_training_runtime(
     checkpoint_steps = {
         int(step) for step in (cadence_runtime["payload"].get("checkpoint_save_steps") or [])
     }
+    eval_steps = {
+        int(step) for step in (cadence_runtime["payload"].get("eval_steps") or [])
+    }
     if max_steps not in checkpoint_steps:
         raise ValueError("single-process training requires final checkpoint cadence")
     max_grad_norm = _max_grad_norm_from_bundle(bundle, optimizer_runtime)
     step_records = []
     checkpoint_records = []
+    validation_records = []
     total_micro_steps = 0
     optimizer.zero_grad(set_to_none=True)
     for global_step in range(1, max_steps + 1):
@@ -2230,6 +2228,16 @@ def _write_single_process_training_runtime(
                     micro_step=total_micro_steps,
                 )
             )
+        if global_step in eval_steps:
+            validation_records.append(
+                _run_single_process_validation_step(
+                    global_step=global_step,
+                    bundle=bundle,
+                    artifacts=artifacts,
+                    loaded_modules=loaded_modules,
+                    expected_stage=expected_stage,
+                )
+            )
 
     payload = {
         "schema_version": "clean_single_process_training_runtime_v1",
@@ -2239,18 +2247,20 @@ def _write_single_process_training_runtime(
         "training_run_launched": True,
         "single_process": True,
         "ddp_enabled": False,
-        "in_training_validation_enabled": False,
+        "in_training_validation_enabled": bool(eval_steps),
         "world_size": 1,
         "max_steps": max_steps,
         "gradient_accumulation_steps": accumulation_steps,
         "optimizer_steps_completed": len(step_records),
         "micro_steps_completed": total_micro_steps,
         "checkpoint_save_steps": sorted(checkpoint_steps),
+        "validation_steps": sorted(eval_steps),
+        "validation_records": validation_records,
         "checkpoint_records": checkpoint_records,
         "step_records": step_records,
         "notes": [
             "clean executor ran the single-process trainer loop",
-            "DDP/multi-process training and in-training validation are not part of this runtime",
+            "DDP/multi-process training is not part of this runtime",
         ],
     }
     path = execution_dir / "single_process_training_runtime.json"
@@ -2324,6 +2334,93 @@ def _save_clean_training_checkpoint(
     }
 
 
+def _run_single_process_validation_step(
+    *,
+    global_step: int,
+    bundle: dict[str, Any],
+    artifacts: dict[str, dict[str, Any]],
+    loaded_modules: dict[str, Any],
+    expected_stage: TrainingStage,
+) -> dict[str, Any]:
+    if expected_stage != TrainingStage.STAGE2:
+        raise ValueError("in-training validation is currently defined for Stage2 only")
+    validation_bundle = _stage2_validation_bundle(bundle)
+    modules = dict(loaded_modules.get("modules") or {})
+    previous_training_states = _set_module_training_mode(modules, training=False)
+    try:
+        import torch
+    except Exception as exc:
+        raise RuntimeError("single-process validation requires torch") from exc
+    try:
+        with torch.no_grad():
+            result = _run_training_step_probe_for_stage(
+                bundle=validation_bundle,
+                artifacts=artifacts,
+                loaded_modules=loaded_modules,
+                expected_stage=expected_stage,
+            )
+    finally:
+        _restore_module_training_mode(modules, previous_training_states)
+    debug = dict(result.get("debug") or {})
+    return {
+        "global_step": int(global_step),
+        "dataset_path": (
+            ((validation_bundle.get("dataset") or {}).get("train_file") or {}).get("path")
+        ),
+        "loss_total": result.get("loss_total"),
+        "loss_focus": result.get("loss_focus"),
+        "loss_no_focus": result.get("loss_no_focus"),
+        "loss_visual_token_manifold": result.get("loss_visual_token_manifold"),
+        "sample_count": result.get("sample_count"),
+        "focus_count": debug.get("focus_count"),
+        "no_focus_count": debug.get("no_focus_count"),
+        "forward_completed": bool(result.get("forward_completed")),
+        "backward_called": False,
+        "optimizer_step_called": False,
+    }
+
+
+def _stage2_validation_bundle(bundle: dict[str, Any]) -> dict[str, Any]:
+    dataset = dict(bundle.get("dataset") or {})
+    val_file = dataset.get("val_file")
+    if not isinstance(val_file, Mapping):
+        raise ValueError("Stage2 validation requires dataset.val_file identity")
+    if not val_file.get("path"):
+        raise ValueError("Stage2 validation requires dataset.val_file.path")
+    validation_bundle = dict(bundle)
+    validation_dataset = dict(dataset)
+    validation_dataset["train_file"] = dict(val_file)
+    validation_bundle["dataset"] = validation_dataset
+    return validation_bundle
+
+
+def _set_module_training_mode(
+    modules: dict[str, Any],
+    *,
+    training: bool,
+) -> dict[str, bool]:
+    previous: dict[str, bool] = {}
+    for name, module in modules.items():
+        if hasattr(module, "training"):
+            previous[name] = bool(module.training)
+        if training and hasattr(module, "train"):
+            module.train()
+        elif not training and hasattr(module, "eval"):
+            module.eval()
+    return previous
+
+
+def _restore_module_training_mode(
+    modules: dict[str, Any],
+    previous: dict[str, bool],
+) -> None:
+    for name, was_training in previous.items():
+        module = modules.get(name)
+        if module is None or not hasattr(module, "train"):
+            continue
+        module.train(was_training)
+
+
 def _clean_training_launch_result(
     *,
     bundle_path: Path,
@@ -2335,6 +2432,9 @@ def _clean_training_launch_result(
     expected_stage: TrainingStage,
 ) -> dict[str, Any]:
     runtime_payload = training_runtime["payload"]
+    unsupported_runtime_features = ["ddp_multi_process_training"]
+    if expected_stage == TrainingStage.STAGE2:
+        unsupported_runtime_features.append("stage2_deepstack_training")
     return {
         "schema_version": "clean_training_launch_result_v1",
         "stage": str(expected_stage),
@@ -2352,11 +2452,13 @@ def _clean_training_launch_result(
         "single_process_training_runtime": training_runtime["path"],
         "optimizer_steps_completed": runtime_payload.get("optimizer_steps_completed"),
         "micro_steps_completed": runtime_payload.get("micro_steps_completed"),
+        "in_training_validation_enabled": runtime_payload.get(
+            "in_training_validation_enabled"
+        ),
+        "validation_steps": list(runtime_payload.get("validation_steps") or []),
+        "validation_record_count": len(runtime_payload.get("validation_records") or []),
         "checkpoint_records": list(runtime_payload.get("checkpoint_records") or []),
-        "unsupported_runtime_features": [
-            "ddp_multi_process_training",
-            "in_training_validation",
-        ],
+        "unsupported_runtime_features": unsupported_runtime_features,
     }
 
 
@@ -2371,6 +2473,8 @@ def _clean_training_launch_status(result: dict[str, Any]) -> dict[str, Any]:
         "training_runtime_ported": result.get("training_runtime_ported"),
         "single_process": result.get("single_process"),
         "ddp_enabled": result.get("ddp_enabled"),
+        "in_training_validation_enabled": result.get("in_training_validation_enabled"),
+        "validation_record_count": result.get("validation_record_count"),
         "optimizer_steps_completed": result.get("optimizer_steps_completed"),
         "micro_steps_completed": result.get("micro_steps_completed"),
         "checkpoint_count": len(checkpoint_records),

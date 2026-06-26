@@ -919,9 +919,6 @@ def test_stage2_training_write_plan_cli(tmp_path) -> None:
     assert "DDP/multi-process clean training is not ported yet" in (
         plan["clean_native_training"]["blocking_items"]
     )
-    assert "in-training Stage2 validation is not ported yet" in (
-        plan["clean_native_training"]["blocking_items"]
-    )
     assert plan["clean_prepare_execution_command"]["executable"] is True
     assert plan["clean_prepare_execution_command"]["status"] == "prepare_execution_supported"
     assert plan["clean_prepare_execution_command"]["will_launch_training"] is False
@@ -1069,7 +1066,7 @@ def test_stage2_training_executor_prepare_execution_cli(tmp_path, capsys) -> Non
         == 0
     )
     payload = capsys.readouterr().out
-    assert '"training_runtime_ported": false' in payload
+    assert '"training_runtime_ported": true' in payload
     assert '"runtime_audit"' in payload
     execution_dir = output_dir / "clean_training_execution"
     bundle = json.loads((execution_dir / "clean_training_execution_bundle.json").read_text())
@@ -1107,7 +1104,7 @@ def test_stage2_training_executor_prepare_execution_cli(tmp_path, capsys) -> Non
     assert bundle["safety"]["legacy_reference_allowed"] is False
     status = json.loads((execution_dir / "clean_training_execution_status.json").read_text())
     assert status["bundle_valid"] is True
-    assert status["trainer_runtime_contract_status"] == "not_ported"
+    assert status["trainer_runtime_contract_status"] == "single_process_launch_supported"
     assert status["checkpoint_contract_status"] == "validated"
     assert status["optimizer_groups_status"] == "validated"
     assert status["will_launch_training"] is False
@@ -1144,9 +1141,15 @@ def test_stage2_training_executor_runtime_audit_can_write_actual_parameter_audit
     import torch
 
     train_file = tmp_path / "stage2.train.jsonl"
+    val_file = tmp_path / "stage2.val.jsonl"
     checkpoint = tmp_path / "stage1.pt"
     train_file.write_text(
         '{"image": "/tmp/image.jpg", "question": "q", "answer": "a", '
+        '"need_focus": true, "evidence_state": "need_local_visual_evidence"}\n',
+        encoding="utf-8",
+    )
+    val_file.write_text(
+        '{"image": "/tmp/image-val.jpg", "question": "vq", "answer": "va", '
         '"need_focus": true, "evidence_state": "need_local_visual_evidence"}\n',
         encoding="utf-8",
     )
@@ -1886,9 +1889,15 @@ def test_stage2_training_executor_can_launch_single_process_training_loop(
     import torch
 
     train_file = tmp_path / "stage2.train.jsonl"
+    val_file = tmp_path / "stage2.val.jsonl"
     checkpoint = tmp_path / "stage1.pt"
     train_file.write_text(
         '{"image": "/tmp/image.jpg", "question": "q", "answer": "a", '
+        '"need_focus": true, "evidence_state": "need_local_visual_evidence"}\n',
+        encoding="utf-8",
+    )
+    val_file.write_text(
+        '{"image": "/tmp/image-val.jpg", "question": "vq", "answer": "va", '
         '"need_focus": true, "evidence_state": "need_local_visual_evidence"}\n',
         encoding="utf-8",
     )
@@ -1898,7 +1907,8 @@ def test_stage2_training_executor_can_launch_single_process_training_loop(
     qwen.bias.requires_grad_(False)
     tgvf = torch.nn.Sequential(torch.nn.Linear(2, 1))
     loader_calls = 0
-    step_calls = 0
+    train_step_calls = 0
+    validation_step_calls = 0
 
     def fake_loader(bundle, *, expected_stage):
         nonlocal loader_calls
@@ -1911,9 +1921,14 @@ def test_stage2_training_executor_can_launch_single_process_training_loop(
         }
 
     def fake_step_probe(*, bundle, artifacts, loaded_modules):
-        nonlocal step_calls
-        step_calls += 1
+        nonlocal train_step_calls, validation_step_calls
         assert bundle["stage"] == "stage2"
+        step_train_path = ((bundle["dataset"] or {}).get("train_file") or {}).get("path")
+        if step_train_path == str(val_file):
+            validation_step_calls += 1
+        else:
+            train_step_calls += 1
+            assert step_train_path == str(train_file)
         modules = loaded_modules["modules"]
         parameters = [
             parameter
@@ -1953,6 +1968,8 @@ def test_stage2_training_executor_can_launch_single_process_training_loop(
                 "stage2_single_process_launch",
                 "--train-file",
                 str(train_file),
+                "--val-file",
+                str(val_file),
                 "--stage1-checkpoint",
                 str(checkpoint),
                 "--output-dir",
@@ -1964,6 +1981,8 @@ def test_stage2_training_executor_can_launch_single_process_training_loop(
                 "--max-steps",
                 "2",
                 "--save-every",
+                "1",
+                "--eval-every",
                 "1",
                 "--write-plan",
             ]
@@ -1978,6 +1997,7 @@ def test_stage2_training_executor_can_launch_single_process_training_loop(
     )
     assert plan["clean_training_command"]["executable"] is True
     assert plan["clean_training_command"]["will_launch_training"] is True
+    assert plan["dataset"]["val_file"]["line_count"] == 1
     clean_command_path = output_dir / "clean_training_command.sh"
     assert clean_command_path.stat().st_mode & 0o111
     clean_command = clean_command_path.read_text()
@@ -2006,20 +2026,32 @@ def test_stage2_training_executor_can_launch_single_process_training_loop(
     )
     runtime = json.loads((execution_dir / "single_process_training_runtime.json").read_text())
     assert loader_calls == 1
-    assert step_calls == 4
+    assert train_step_calls == 4
+    assert validation_step_calls == 2
     assert launch_result["status"] == "clean_single_process_training_completed"
     assert launch_result["training_runtime_ported"] is True
     assert launch_result["optimizer_steps_completed"] == 2
+    assert launch_result["in_training_validation_enabled"] is True
+    assert launch_result["validation_steps"] == [1, 2]
+    assert launch_result["validation_record_count"] == 2
     assert runtime["optimizer_steps_completed"] == 2
     assert runtime["micro_steps_completed"] == 4
     assert runtime["checkpoint_save_steps"] == [1, 2]
+    assert runtime["in_training_validation_enabled"] is True
+    assert runtime["validation_steps"] == [1, 2]
+    assert len(runtime["validation_records"]) == 2
+    assert runtime["validation_records"][0]["dataset_path"] == str(val_file)
+    assert runtime["validation_records"][0]["backward_called"] is False
+    assert runtime["validation_records"][0]["optimizer_step_called"] is False
     assert len(runtime["checkpoint_records"]) == 2
     assert (execution_dir / "checkpoint_step_1.pt").exists()
     assert (execution_dir / "checkpoint_step_2.pt").exists()
     assert launch_status["final_checkpoint"] == str(execution_dir / "checkpoint_step_2.pt")
+    assert launch_status["in_training_validation_enabled"] is True
+    assert launch_status["validation_record_count"] == 2
     assert launch_status["unsupported_runtime_features"] == [
         "ddp_multi_process_training",
-        "in_training_validation",
+        "stage2_deepstack_training",
     ]
 
 
