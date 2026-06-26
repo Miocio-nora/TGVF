@@ -2286,6 +2286,23 @@ Implemented after Phase 91.
 - this phase does not change row ordering, scoring, summary aggregation, or
   source-manifest identity.
 
+## Phase 93: Benchmark Shard Nested Row Identity Gate
+
+Implemented after Phase 92.
+
+- deterministic shard merge now validates the row-level nested identity blocks
+  that are used in benchmark tables and mechanism analysis:
+  - `trigger_policy`;
+  - `continuation_metadata`;
+  - `deepstack_execution`;
+- only identity fields are checked. Runtime result fields such as token counts,
+  wall time, trigger decisions, append success, FVT path, and DeepStack caution
+  remain per-row observations and are not forced to fixed values;
+- this catches stale or manually edited row metadata even when the top-level row
+  fields still match the shard `run_config.json`;
+- this phase does not change model execution, scoring, row ordering, or summary
+  metric computation.
+
 ## Later Phases
 
 1. Port DeepStack original-image injection/masking into clean training and eval

@@ -839,6 +839,30 @@ def test_merge_benchmark_shards_rejects_row_identity_mismatch(tmp_path) -> None:
         )
 
 
+def test_merge_benchmark_shards_rejects_nested_row_identity_mismatch(tmp_path) -> None:
+    shard_dirs = _write_two_toy_shards(tmp_path)
+    rows_path = shard_dirs[1] / "rows.jsonl"
+    rows = [json.loads(line) for line in rows_path.read_text().splitlines()]
+    rows[0]["continuation_metadata"]["post_tgvf_forward_mode"] = "no_kv_full_sequence"
+    rows_path.write_text("\n".join(json.dumps(row, sort_keys=True) for row in rows) + "\n")
+
+    with pytest.raises(ValueError, match=r"field=continuation_metadata\.post_tgvf_forward_mode"):
+        merge_main(
+            [
+                "--output-dir",
+                str(tmp_path / "merged_bad_nested_row_identity"),
+                "--run-id",
+                "merged_bad_nested_row_identity",
+                "--expected-num-shards",
+                "2",
+                "--expected-source-manifest-hash",
+                "twohash",
+                str(shard_dirs[0]),
+                str(shard_dirs[1]),
+            ]
+        )
+
+
 def test_benchmark_execute_dry_run_auto_uses_blink_official_choice(tmp_path) -> None:
     manifest = {
         "manifest_id": "blink_toy",

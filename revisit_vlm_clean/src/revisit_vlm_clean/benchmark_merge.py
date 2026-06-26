@@ -267,6 +267,88 @@ def _validate_row_identity_against_shard_config(
                 f"shard={config.shard_index} sample_id={row.get('sample_id')} "
                 f"field={field} expected={expected_value!r} current={current!r}"
             )
+    _validate_nested_row_identity(
+        row,
+        config=config,
+        execution_backend=execution_backend,
+    )
+
+
+def _validate_nested_row_identity(
+    row: dict[str, Any],
+    *,
+    config: RunConfig,
+    execution_backend: dict[str, Any],
+) -> None:
+    stage2 = execution_backend.get("stage2") if isinstance(execution_backend, dict) else None
+    expected_blocks = {
+        "trigger_policy": _expected_trigger_policy(config),
+        "continuation_metadata": {
+            "schema_version": "clean_benchmark_continuation_metadata_v1",
+            "post_tgvf_continuation": config.post_tgvf_continuation.value,
+            "post_tgvf_forward_mode": config.post_tgvf_forward_mode.value,
+            "stage2_append_forward_mode": (
+                stage2.get("append_forward_mode") if isinstance(stage2, dict) else None
+            ),
+            "runner_backend": execution_backend.get("backend"),
+            "resolved_runner_backend": execution_backend.get("resolved_backend"),
+        },
+        "deepstack_execution": {
+            "schema_version": "clean_deepstack_execution_row_v1",
+            "requested": config.deepstack.to_dict(),
+            "requested_enabled": bool(config.deepstack.enabled),
+            "requested_scope": str(config.deepstack.original_image_scope),
+            "execution_supported_for_requested_state": not bool(config.deepstack.enabled),
+            "backend": execution_backend.get("backend"),
+            "resolved_backend": execution_backend.get("resolved_backend"),
+            "notes": (
+                ["DeepStack was requested but clean Stage2 execution rejects it before rows"]
+                if config.deepstack.enabled
+                else []
+            ),
+        },
+    }
+    for block_name, expected_fields in expected_blocks.items():
+        block = row.get(block_name)
+        if not isinstance(block, dict):
+            raise ValueError(
+                "row identity block is missing or invalid: "
+                f"shard={config.shard_index} sample_id={row.get('sample_id')} "
+                f"field={block_name}"
+            )
+        for field, expected_value in expected_fields.items():
+            current = block.get(field)
+            if not _json_equal(current, expected_value):
+                raise ValueError(
+                    "row identity does not match shard run config: "
+                    f"shard={config.shard_index} sample_id={row.get('sample_id')} "
+                    f"field={block_name}.{field} expected={expected_value!r} "
+                    f"current={current!r}"
+                )
+
+
+def _expected_trigger_policy(config: RunConfig) -> dict[str, Any]:
+    mode = config.mode.value
+    if mode == "original":
+        policy = "none_original"
+    elif mode == "tgvf_force":
+        policy = "forced_focus_prefix"
+    elif mode == "tgvf_softforce":
+        policy = "softforce_prompted_router"
+    else:
+        policy = "free_router"
+    return {
+        "schema_version": "clean_benchmark_trigger_policy_v1",
+        "policy": policy,
+        "mode": mode,
+        "requires_focus": mode == "tgvf_force",
+        "allows_no_focus": mode in {
+            "original",
+            "tgvf_free",
+            "tgvf_softforce",
+        },
+        "softforce_prompt_text": config.softforce_prompt_text,
+    }
 
 
 def _validate_shard_run_config_identity(shards: list[dict[str, Any]]) -> None:
