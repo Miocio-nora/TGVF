@@ -508,6 +508,16 @@ def test_benchmark_execute_dry_run_cli(tmp_path) -> None:
         summary["parser_scorer"]["model_output_parser"]
         == "revisit_vlm_clean.scoring.parse_and_score:v3_external"
     )
+    breakdowns = summary["result_breakdowns"]
+    assert breakdowns["schema_version"] == "clean_benchmark_result_breakdowns_v1"
+    assert breakdowns["by_benchmark"]["vstar_bench"]["accuracy"] == 1.0
+    assert breakdowns["by_population_id"]["vstar_test_questions_191"]["n_rows"] == 1
+    assert breakdowns["by_method"]["original"]["n_scored"] == 1
+    assert breakdowns["by_d_condition"]["none"]["n_rows"] == 1
+    assert breakdowns["choice_counts"]["prediction_counts"] == {"B": 1}
+    assert breakdowns["choice_counts"]["gold_counts"] == {"B": 1}
+    assert breakdowns["official_scoring"]["scorer_names"] == {"project_choice_exact_match": 1}
+    assert breakdowns["official_scoring"]["official_tool_used_rows"] == 0
     benchmark_sources = json.loads((output_dir / "benchmark_sources.json").read_text())
     assert benchmark_sources["schema_version"] == "clean_benchmark_source_manifest_v1"
     assert benchmark_sources["manifest_hash"] == "toyhash"
@@ -660,6 +670,11 @@ def test_merge_benchmark_shards_restores_source_manifest_order(tmp_path) -> None
     assert summary["merge_metadata"]["merge_order"] == "source_manifest_order_modulo"
     assert summary["benchmark_source_manifest"]["source_manifest_hash"] == "twohash"
     assert summary["benchmark_source_manifest"]["sample_count"] == 2
+    breakdowns = summary["result_breakdowns"]
+    assert breakdowns["by_benchmark"]["vstar_bench"]["n_rows"] == 2
+    assert breakdowns["by_method"]["original"]["accuracy"] == 1.0
+    assert breakdowns["choice_counts"]["prediction_counts"] == {"A": 1, "B": 1}
+    assert breakdowns["choice_counts"]["gold_counts"] == {"A": 1, "B": 1}
     sample_manifest = json.loads((merged / "sample_manifest.json").read_text())
     assert sample_manifest["manifest_hash"] == "twohash"
     assert sample_manifest["merged_from_shards"]["merged_row_count"] == 2

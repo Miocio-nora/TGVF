@@ -6,6 +6,7 @@ import base64
 import io
 import json
 import time
+from collections import Counter
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -713,6 +714,39 @@ def summarize_deepstack_execution(rows: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def summarize_result_breakdowns(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    choice_rows = [row for row in rows if row.get("choices")]
+    return {
+        "schema_version": "clean_benchmark_result_breakdowns_v1",
+        "n_rows": len(rows),
+        "by_benchmark": _grouped_metric_summary(rows, "benchmark"),
+        "by_population_id": _grouped_metric_summary(rows, "population_id"),
+        "by_method": _grouped_metric_summary(rows, "method"),
+        "by_d_condition": _grouped_metric_summary(rows, "d_condition"),
+        "choice_counts": {
+            "choice_row_count": len(choice_rows),
+            "prediction_counts": _count_values(
+                row.get("parsed_answer") for row in choice_rows if row.get("parsed_answer")
+            ),
+            "gold_counts": _count_values(
+                row.get("gold_answer") for row in choice_rows if row.get("gold_answer")
+            ),
+        },
+        "official_scoring": {
+            "official_tool_used_rows": sum(bool(row.get("official_tool_used")) for row in rows),
+            "official_compatible_rows": sum(bool(row.get("official_compatible")) for row in rows),
+            "scorer_names": _count_values(row.get("scorer_name") for row in rows),
+            "official_tool_paths": sorted(
+                {
+                    str(row.get("official_tool_path"))
+                    for row in rows
+                    if row.get("official_tool_path")
+                }
+            ),
+        },
+    }
+
+
 def _row_deepstack_execution(
     *,
     config: RunConfig,
@@ -837,6 +871,54 @@ def _mean(values: Iterable[float]) -> float | None:
 def _mean_bool(values: Iterable[bool]) -> float | None:
     values = list(values)
     return None if not values else sum(1.0 for item in values if item) / len(values)
+
+
+def _grouped_metric_summary(rows: list[dict[str, Any]], key: str) -> dict[str, dict[str, Any]]:
+    groups: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        groups.setdefault(_summary_key(row.get(key)), []).append(row)
+    return {
+        group_key: _metric_summary(group_rows)
+        for group_key, group_rows in sorted(groups.items())
+    }
+
+
+def _metric_summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    scored = [float(row["score"]) for row in rows if row.get("score") is not None]
+    parse_values = [bool(row.get("answer_parse_success")) for row in rows]
+    malformed = [bool(row.get("malformed")) for row in rows]
+    trigger_values = [
+        bool(row.get("trigger_focus_decision"))
+        for row in rows
+        if row.get("trigger_focus_decision") is not None
+    ]
+    focus_values = [
+        bool(row.get("focus_valid")) for row in rows if row.get("focus_valid") is not None
+    ]
+    append_values = [
+        bool(row.get("append_success")) for row in rows if row.get("append_success") is not None
+    ]
+    return {
+        "n_rows": len(rows),
+        "n_scored": len(scored),
+        "accuracy": _mean(scored),
+        "answer_parse_rate": _mean_bool(parse_values),
+        "malformed_rate": _mean_bool(malformed),
+        "trigger_rate": _mean_bool(trigger_values) if trigger_values else None,
+        "focus_valid_rate": _mean_bool(focus_values) if focus_values else None,
+        "append_success_rate": _mean_bool(append_values) if append_values else None,
+    }
+
+
+def _summary_key(value: Any) -> str:
+    if value in (None, ""):
+        return "none"
+    return str(value)
+
+
+def _count_values(values: Iterable[Any]) -> dict[str, int]:
+    counts = Counter(_summary_key(value) for value in values if value not in (None, ""))
+    return dict(sorted(counts.items()))
 
 
 def _optional_bool(value: Any) -> bool | None:

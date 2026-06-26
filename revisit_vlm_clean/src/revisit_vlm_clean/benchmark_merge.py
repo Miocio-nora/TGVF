@@ -13,7 +13,7 @@ from .outputs import (
     BENCHMARK_SOURCES_FILENAME,
     benchmark_source_manifest_reference,
 )
-from .runner import summarize_deepstack_execution
+from .runner import summarize_deepstack_execution, summarize_result_breakdowns
 from .schema import EvalSummary, RunConfig, _to_jsonable
 
 
@@ -252,6 +252,7 @@ def _summarize_rows(
     ).to_dict()
     summary["merged_shards"] = True
     summary["deepstack_execution"] = summarize_deepstack_execution(rows)
+    summary["result_breakdowns"] = summarize_result_breakdowns(rows)
     return summary
 
 

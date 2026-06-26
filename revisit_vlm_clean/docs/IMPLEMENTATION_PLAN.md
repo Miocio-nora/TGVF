@@ -2071,6 +2071,24 @@ Implemented after Phase 78.
 - this phase does not change parser/scorer behavior, model execution, or sample
   selection semantics.
 
+## Phase 80: Benchmark Summary Breakdowns
+
+Implemented after Phase 79.
+
+- executed benchmark outputs and merged shard outputs now include
+  `result_breakdowns` in `summary.json`;
+- `result_breakdowns` records:
+  - metrics by benchmark;
+  - metrics by population id;
+  - metrics by method/mode;
+  - metrics by D condition;
+  - prediction and gold counts for choice rows;
+  - official-scorer status counts and scorer-name counts;
+- the same helper is used by normal execution and shard merge, so merged tables
+  keep the same summary contract as single-shard outputs;
+- this phase does not change row scoring, parser behavior, sample selection, or
+  model execution.
+
 ## Later Phases
 
 1. Port DeepStack original-image injection/masking into clean training and eval
