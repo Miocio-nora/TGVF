@@ -2155,6 +2155,21 @@ Implemented after Phase 83.
 - this phase does not change row scoring, parser behavior, sample selection, or
   model execution.
 
+## Phase 85: Run Config Execution Backend Identity
+
+Implemented after Phase 84.
+
+- executed benchmark `run_config.json` now records `execution_backend`, including
+  runner backend, resolved backend, dtype, device, device map, attention
+  implementation, trust-remote-code flag, alias status, and Stage2 runtime
+  identity when present;
+- merged benchmark `run_config.json` now records a merged execution-backend
+  summary with source shard backend hashes/counts and runner backend counts;
+- `run_config.txt` mirrors `execution_backend` for readability, but
+  `run_config.json` remains canonical;
+- this phase does not change row scoring, parser behavior, sample selection, or
+  model execution.
+
 ## Later Phases
 
 1. Port DeepStack original-image injection/masking into clean training and eval

@@ -65,6 +65,7 @@ def merge_benchmark_shards(
         shard_index=0,
         num_shards=num_shards,
         benchmark_source_manifest=benchmark_source_manifest_reference(source_manifest),
+        execution_backend=_merged_execution_backend(shard_payloads, rows),
     )
     metadata = _merge_metadata(shard_payloads, len(rows), source_manifest_hash)
     manifest = _merged_manifest(
@@ -443,4 +444,33 @@ def _merged_runner_backend_summary(rows: list[dict[str, Any]]) -> dict[str, Any]
             bool(row.get("runner_backend_deprecated_alias")) for row in rows
         ),
         "alias_targets": alias_targets,
+    }
+
+
+def _merged_execution_backend(
+    shards: list[dict[str, Any]],
+    rows: list[dict[str, Any]],
+) -> dict[str, Any]:
+    encoded_backends: dict[str, Any] = {}
+    missing_shards = []
+    for shard in shards:
+        config: RunConfig = shard["config"]
+        backend = config.execution_backend
+        if backend is None:
+            missing_shards.append(int(config.shard_index))
+            continue
+        encoded = json.dumps(_to_jsonable(backend), sort_keys=True, separators=(",", ":"))
+        encoded_backends.setdefault(encoded, backend)
+    return {
+        "schema_version": "clean_merged_execution_backend_v1",
+        "shard_count": len(shards),
+        "source_execution_backend_count": len(encoded_backends),
+        "source_execution_backend_hashes": sorted(
+            hashlib.sha256(encoded.encode()).hexdigest() for encoded in encoded_backends
+        ),
+        "source_execution_backends": [
+            encoded_backends[key] for key in sorted(encoded_backends)
+        ],
+        "missing_source_execution_backend_shards": missing_shards,
+        "runner_backend": _merged_runner_backend_summary(rows),
     }

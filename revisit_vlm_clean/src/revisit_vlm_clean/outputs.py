@@ -251,6 +251,7 @@ def write_executed_benchmark_output(
     runtime_config = replace(
         config,
         benchmark_source_manifest=benchmark_source_manifest_reference(source_manifest),
+        execution_backend=backend_config.to_dict(),
     )
 
     _write_json(run_config_path, runtime_config)
@@ -634,6 +635,7 @@ def _write_run_config_text(
         f"parser_scorer: {json.dumps(config.parser_scorer.to_dict(), sort_keys=True)}",
         "benchmark_source_manifest: "
         f"{json.dumps(config.benchmark_source_manifest, sort_keys=True)}",
+        f"execution_backend: {json.dumps(config.execution_backend, sort_keys=True)}",
         f"dirty_worktree: {config.dirty_worktree}",
         f"git_commit: {config.git_commit}",
     ]

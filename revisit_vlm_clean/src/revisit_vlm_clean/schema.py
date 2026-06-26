@@ -125,6 +125,7 @@ class RunConfig:
     deepstack: DeepStackState = DeepStackState()
     parser_scorer: ParserScorerIdentity = ParserScorerIdentity()
     benchmark_source_manifest: dict[str, Any] | None = None
+    execution_backend: dict[str, Any] | None = None
     git_commit: str | None = None
     dirty_worktree: bool | None = None
 

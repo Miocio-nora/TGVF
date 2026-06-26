@@ -437,6 +437,10 @@ def test_benchmark_execute_dry_run_cli(tmp_path) -> None:
     assert run_config["benchmark_source_manifest"]["source_file_count"] == 1
     assert run_config["benchmark_source_manifest"]["sample_count"] == 1
     assert run_config["benchmark_source_manifest"]["all_files_exist"] is True
+    assert run_config["execution_backend"]["backend"] == "dry_run"
+    assert run_config["execution_backend"]["resolved_backend"] == "dry_run"
+    assert run_config["execution_backend"]["device"] == "auto"
+    assert run_config["execution_backend"]["device_map"] == "auto"
     assert (
         run_config["parser_scorer"]["model_output_parser"]
         == "revisit_vlm_clean.scoring.parse_and_score:v3_external"
@@ -762,6 +766,11 @@ def test_merge_benchmark_shards_restores_source_manifest_order(tmp_path) -> None
     assert run_config.manifest_hash == "twohash"
     assert run_config.num_shards == 2
     assert run_config.shard_index == 0
+    assert run_config.execution_backend["schema_version"] == "clean_merged_execution_backend_v1"
+    assert run_config.execution_backend["shard_count"] == 2
+    assert run_config.execution_backend["source_execution_backend_count"] == 1
+    assert run_config.execution_backend["missing_source_execution_backend_shards"] == []
+    assert run_config.execution_backend["runner_backend"]["backend_counts"] == {"dry_run": 2}
     assert run_config.benchmark_source_manifest["source_manifest_hash"] == "twohash"
     assert run_config.benchmark_source_manifest["sample_count"] == 2
     merge_metadata = json.loads((merged / "merge_metadata.json").read_text())

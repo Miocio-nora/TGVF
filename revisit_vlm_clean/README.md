@@ -244,7 +244,8 @@ Diagnostic manifests are for runner validation only, not benchmark reporting.
 - `dry_run`: validates rows, parser, scorer, source identity, manifest
   verification, comparability flags, row contract fields, and summary
   breakdowns without loading a model. Shard merge preserves the same parser,
-  DeepStack, continuation, and backend identity fields in merged summaries.
+  DeepStack, continuation, and backend identity fields in merged summaries and
+  canonical `run_config.json`.
 - `qwen3_original`: runs `mode=original` only. Use a small
   `--max-answer-tokens` for smoke checks.
 - `tgvf_stage2_qwen3_legacy`: diagnostic bridge to the historical Stage2
