@@ -615,6 +615,7 @@ def run_benchmark_rows(
                 "choices": list(sample.choices),
                 "gold_answer": sample.gold_answer,
                 "raw_output": result.raw_output,
+                "final_output": _final_output(result),
                 "parsed_answer": "",
                 "score": None,
                 "answer_parse_success": False,
@@ -623,10 +624,18 @@ def run_benchmark_rows(
                 "official_tool_path": None,
                 "official_compatible": False,
                 "malformed": bool(result.error),
+                "trigger_policy": _trigger_policy(config),
                 "trigger_focus_decision": result.triggered,
                 "focus_valid": result.focus_valid,
                 "focus_target": result.focus_target,
                 "append_success": result.append_success,
+                "d_shape": _d_shape(result.debug),
+                "continuation_metadata": _continuation_metadata(
+                    result=result,
+                    config=config,
+                    backend_config=backend_config,
+                    resolved_backend=resolved_backend,
+                ),
                 "output_tokens": result.output_tokens,
                 "wall_time_sec": result.wall_time_sec,
                 "metadata": sample.metadata,
@@ -744,6 +753,82 @@ def summarize_result_breakdowns(rows: list[dict[str, Any]]) -> dict[str, Any]:
                 }
             ),
         },
+    }
+
+
+def _final_output(result: ModelRunResult) -> str:
+    return str(result.debug.get("final_raw_output") or result.raw_output or "")
+
+
+def _trigger_policy(config: RunConfig) -> dict[str, Any]:
+    if config.mode == EvalMode.ORIGINAL:
+        policy = "none_original"
+    elif config.mode == EvalMode.TGVF_FORCE:
+        policy = "forced_focus_prefix"
+    elif config.mode == EvalMode.TGVF_SOFTFORCE:
+        policy = "softforce_prompted_router"
+    else:
+        policy = "free_router"
+    return {
+        "schema_version": "clean_benchmark_trigger_policy_v1",
+        "policy": policy,
+        "mode": config.mode.value,
+        "requires_focus": config.mode == EvalMode.TGVF_FORCE,
+        "allows_no_focus": config.mode in {
+            EvalMode.ORIGINAL,
+            EvalMode.TGVF_FREE,
+            EvalMode.TGVF_SOFTFORCE,
+        },
+        "softforce_prompt_text": config.softforce_prompt_text,
+    }
+
+
+def _d_shape(debug: dict[str, Any]) -> list[int] | None:
+    value = debug.get("D_shape")
+    if value is None:
+        value = debug.get("fvt_shape")
+    if value is None:
+        return None
+    if isinstance(value, int):
+        return [int(value)]
+    try:
+        return [int(item) for item in value]
+    except Exception:
+        return None
+
+
+def _continuation_metadata(
+    *,
+    result: ModelRunResult,
+    config: RunConfig,
+    backend_config: BackendConfig,
+    resolved_backend: str,
+) -> dict[str, Any]:
+    stage2 = backend_config.stage2
+    return {
+        "schema_version": "clean_benchmark_continuation_metadata_v1",
+        "post_tgvf_continuation": config.post_tgvf_continuation.value,
+        "post_tgvf_forward_mode": config.post_tgvf_forward_mode.value,
+        "stage2_append_forward_mode": (
+            stage2.append_forward_mode.value if stage2 is not None else None
+        ),
+        "runner_backend": backend_config.backend,
+        "resolved_runner_backend": resolved_backend,
+        "output_tokens": result.output_tokens,
+        "wall_time_sec": result.wall_time_sec,
+        "triggered": result.triggered,
+        "append_success": result.append_success,
+        "continuation_not_im_end": _optional_bool(
+            result.debug.get("continuation_not_im_end")
+        ),
+        "second_full_forward_used": _optional_bool(
+            result.debug.get("second_full_forward_used")
+        ),
+        "final_output_source": (
+            "post_tgvf_continuation"
+            if result.triggered and result.append_success
+            else "direct_or_capture_output"
+        ),
     }
 
 

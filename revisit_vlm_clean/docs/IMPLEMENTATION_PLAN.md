@@ -2119,6 +2119,22 @@ Implemented after Phase 81.
 - this phase does not change row scoring, parser behavior, sample selection, or
   model execution.
 
+## Phase 83: Benchmark Row Contract Fields
+
+Implemented after Phase 82.
+
+- clean benchmark rows now explicitly include `final_output`,
+  `trigger_policy`, `d_shape`, and `continuation_metadata`;
+- `trigger_policy` records original/free/force/softforce routing semantics in a
+  structured field instead of requiring downstream code to infer from mode;
+- `continuation_metadata` records continuation mode, forward mode, Stage2 append
+  forward mode when present, backend identity, token/time metadata, append
+  status, and full-sequence continuation flags when available;
+- `d_shape` is normalized from clean/native or legacy debug metadata when D/FVT
+  was appended, and is `null` for direct/no-D rows;
+- this phase does not change row scoring, parser behavior, sample selection, or
+  model execution.
+
 ## Later Phases
 
 1. Port DeepStack original-image injection/masking into clean training and eval

@@ -448,6 +448,7 @@ def test_benchmark_execute_dry_run_cli(tmp_path) -> None:
     assert "started_at:" in (output_dir / "run_config.txt").read_text()
     row = json.loads(rows[0])
     assert row["raw_output"] == "B"
+    assert row["final_output"] == "B"
     assert row["score"] == 1.0
     assert row["scorer_name"] == "project_choice_exact_match"
     assert row["official_tool_used"] is False
@@ -490,6 +491,22 @@ def test_benchmark_execute_dry_run_cli(tmp_path) -> None:
         == "revisit_vlm_clean.scoring.extract_choice_strict"
     )
     assert row["d_condition"] is None
+    assert row["trigger_policy"] == {
+        "allows_no_focus": True,
+        "mode": "original",
+        "policy": "none_original",
+        "requires_focus": False,
+        "schema_version": "clean_benchmark_trigger_policy_v1",
+        "softforce_prompt_text": "",
+    }
+    assert row["d_shape"] is None
+    assert row["continuation_metadata"]["schema_version"] == (
+        "clean_benchmark_continuation_metadata_v1"
+    )
+    assert row["continuation_metadata"]["post_tgvf_continuation"] == "natural_continue"
+    assert row["continuation_metadata"]["post_tgvf_forward_mode"] == "kv_cache"
+    assert row["continuation_metadata"]["final_output_source"] == "direct_or_capture_output"
+    assert row["continuation_metadata"]["append_success"] is None
     summary = json.loads((output_dir / "summary.json").read_text())
     assert summary["accuracy"] == 1.0
     assert summary["runner_backend"]["backend"] == "dry_run"
