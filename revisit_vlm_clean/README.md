@@ -97,6 +97,7 @@ tgvf_train_stage2_executor --plan /path/to/training_plan.json --prepare-executio
 tgvf_train_stage2_executor --plan /path/to/training_plan.json --prepare-execution --audit-runtime --audit-training-step
 tgvf_train_stage2_executor --plan /path/to/training_plan.json --prepare-execution --audit-runtime --audit-optimizer-step
 tgvf_train_stage2_executor --plan /path/to/training_plan.json --prepare-execution --audit-runtime --audit-trainer-loop
+tgvf_train_stage2_executor --plan /path/to/training_plan.json --prepare-execution --audit-runtime --audit-checkpoint-publish
 ```
 
 Without `--preflight-only`, `--prepare-execution`, or `--audit-runtime`, these
@@ -152,6 +153,13 @@ the planned `gradient_accumulation_steps`. It proves micro-step backward
 accumulation plus one optimizer/scheduler step from the clean training-step
 loss. This is loop-order evidence only: it still does not enter the full epoch
 loop, publish checkpoints, or set `will_launch_training=true`.
+With explicit `--audit-checkpoint-publish`, runtime audit also writes
+`training_checkpoint_publish_runtime.json` and a local
+`training_checkpoint_publish_probe_step_1.pt` after the bounded trainer-loop
+probe. The checkpoint uses historical clean step semantics: Stage1 records
+`global_step=optimizer_step=1`; Stage2 records `global_step=1` and
+`micro_step=gradient_accumulation_steps`. This proves post-loop checkpoint
+publish/load wiring only; it still does not launch the full training run.
 
 ## Fixed Manifests
 

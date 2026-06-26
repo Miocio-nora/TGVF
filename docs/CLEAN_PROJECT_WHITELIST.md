@@ -138,6 +138,12 @@ before training/eval cleanup can proceed.
   `gradient_accumulation_steps`. It may validate micro-step backward
   accumulation and one optimizer/scheduler step, but it still must not enter the
   full epoch loop, publish checkpoints, or set `will_launch_training=true`.
+- Explicit checkpoint-publish audit may write
+  `training_checkpoint_publish_runtime.json` plus a local
+  `training_checkpoint_publish_probe_step_1.pt` after the bounded trainer-loop
+  probe. It may validate post-loop checkpoint keys, state parity, optimizer and
+  scheduler reload, and historical step counters, but it still must not launch
+  the full training run.
 - `clean_prepare_execution_command.sh` is the runnable clean handoff command;
   `clean_training_command.sh` stays non-executable until the trainer loop is
   ported.
@@ -263,6 +269,12 @@ before training/eval cleanup can proceed.
   `gradient_accumulation_steps`. It may validate micro-step backward
   accumulation and one optimizer/scheduler step, but it still must not enter the
   full epoch loop, publish checkpoints, or set `will_launch_training=true`.
+- Explicit checkpoint-publish audit may write
+  `training_checkpoint_publish_runtime.json` plus a local
+  `training_checkpoint_publish_probe_step_1.pt` after the bounded trainer-loop
+  probe. It may validate post-loop checkpoint keys, state parity, optimizer and
+  scheduler reload, and historical step counters, but it still must not launch
+  the full training run.
 - `clean_prepare_execution_command.sh` is the runnable clean handoff command;
   `clean_training_command.sh` stays non-executable until the trainer loop is
   ported.

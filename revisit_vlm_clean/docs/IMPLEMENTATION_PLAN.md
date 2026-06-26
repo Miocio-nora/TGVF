@@ -1825,6 +1825,41 @@ Implemented after Phase 69.
   checkpoints, enable `clean_training_command.sh`, or implement DeepStack
   training execution. `will_launch_training` remains `false`.
 
+## Phase 71: Post-Loop Checkpoint Publish Runtime Audit Gate
+
+Implemented after Phase 70.
+
+- Stage1/Stage2 executors now support explicit `--audit-checkpoint-publish`
+  together with `--audit-runtime`;
+- `--audit-checkpoint-publish` implies:
+  - actual model-parameter audit;
+  - actual optimizer/scheduler construction;
+  - actual training-step forward probe;
+  - bounded gradient-accumulation trainer-loop probe;
+- the audit writes:
+  - `training_checkpoint_publish_runtime.json`;
+  - local probe file `training_checkpoint_publish_probe_step_1.pt`;
+- the checkpoint publish probe is saved after the bounded trainer-loop update,
+  then reloaded and validated for:
+  - required Stage1/Stage2 checkpoint keys;
+  - TGVF and Qwen-LoRA state-dict key/shape parity;
+  - optimizer and scheduler state reload;
+  - historical step counters:
+    - Stage1: `global_step=1`, `optimizer_step=1`;
+    - Stage2: `global_step=1`,
+      `micro_step=gradient_accumulation_steps`;
+  - Protocol-C token rows when Stage1 requires them;
+- runtime launch gates now mark
+  `publish_training_checkpoint_after_trainer_loop` as `identity_validated`
+  only when the post-loop checkpoint publish probe is saved, loaded, state
+  checked, and step checked without entering the full training run;
+- a passing checkpoint-publish audit also satisfies
+  `save_checkpoint_with_clean_contract`, because it is stronger than the static
+  checkpoint save/load audit;
+- this phase still does not enable `clean_training_command.sh`, run the full
+  max-step training loop, implement resume, or implement DeepStack training
+  execution. `will_launch_training` remains `false`.
+
 ## Later Phases
 
 1. Replace training launch plans with clean-native training execution.
