@@ -4007,3 +4007,119 @@ entry, update this file immediately.
     Stage2 run.
   - The next valid experiment should rerun Stage1 after this sampler fix before
     evaluating manifold-weight or Stage2 changes.
+
+### EXP-20260626-195348-clean-qwen3-stage1-samplerfix-4gpu
+
+- Status: RUNNING.
+- Question:
+  - After fixing the clean Stage1 same-image sampler duplicate-fill bug, does
+    Stage1 matrix CE escape the previous `ln(2)` floor while holding the
+    previous formal Stage1 configuration fixed?
+- Baseline / invalid parent:
+  - `EXP-20260626-155246-clean-qwen3-stage12-deepstack-mask075-4gpu`.
+  - Its completed Stage1 checkpoint is diagnostic-only because
+    `loss_same_image_negative=0.69140625` matched the duplicate-positive
+    `ln(2)` failure mode.
+- Intended diff:
+  - Code only: use commit `ed323848446deb8e858e3b3ae4770632cdc52ebd`,
+    which includes `CODE-20260626-clean-stage1-same-image-sampler-fix`.
+  - Keep model, data, seed, max resolution, batch, optimizer, loss weights,
+    token row mode, position mode, and Stage1 mask behavior fixed.
+- Code / worktree:
+  - Branch: `clean/tgvf-clean-project-20260625`.
+  - Commit: `ed323848446deb8e858e3b3ae4770632cdc52ebd`.
+  - Plan dirty worktree: `False`.
+  - Untracked local paths remain ignored for this run: `logs/`, `third_party/`.
+- Plan:
+  - `outputs/clean_training/qwen3_stage12_deepstack_mask075_samplerfix_4gpu_20260626_195348/stage1_micro4/training_plan.json`.
+  - Plan sha256:
+    `8858c4379dceacd7ead423381100165a5659cde0ad8bf6f36786a8d7b66c9d18`.
+- Data:
+  - Train file:
+    `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend/splits/tgvf_v4_teacher_stage1_protocol_c_focus.train.jsonl`.
+  - Rows: `39998`.
+  - sha256:
+    `c94a38b824b6603e555eed5ef3584c19cc903b76995d49c67ace36b18268443c`.
+  - Runtime summary: all rows are focus rows; answer formats are
+    `32203` multiple-choice and `7795` open.
+- Model / processor:
+  - Model: `Qwen/Qwen3-VL-8B-Thinking`.
+  - Processor: model default / checkpoint config not applicable for Stage1
+    from base model.
+  - dtype: `bfloat16`.
+  - Attention implementation: `sdpa`.
+- Stage1 settings:
+  - Protocol: `protocol_c_tool_observation`.
+  - Variant: `tgvf_v2_bidirectional`.
+  - Max image resolution: `512`.
+  - Token row mode: `row_only`.
+  - Capture mode: `teacher_forced`.
+  - FVT position mode: `native_source_grid`.
+  - Focus action im_end: `True`.
+  - Mask original image after TGVF: `True`.
+  - Readout context:
+    - D append path: `native_qwen_visual_span`.
+    - Original image placeholders: `replace_with_qwen_v_merge`.
+    - Position ids: `real_qwen3_mrope_full_trajectory`.
+    - Original image key blocking:
+      `weak_strict_original_image_key_blocking_after_tgvf_append`.
+  - Note: Stage1 clean planner has no DeepStack training toggle; DeepStack is a
+    Stage2/eval first-class variable in the current clean interface.
+- Training:
+  - GPUs: `0,1,2,3`.
+  - world size: `4`.
+  - micro batch: `4`.
+  - gradient accumulation: `2`.
+  - global batch: `32`.
+  - max steps: `2000`.
+  - save every: `2000`.
+  - seed: `20260525`.
+  - optimizer: AdamW, learning rate `1e-4`, cosine schedule, warmup `100`,
+    min LR ratio `0.1`, max grad norm `1.0`.
+  - Loss weights:
+    - `loss_gen=1.0`.
+    - `loss_visual_token_manifold=0.1`.
+    - `loss_same_image_negative=1.0`.
+    - same-image negative mode: `matrix_ce`.
+- W&B:
+  - Project: `tgvf-clean-qwen3-deepstack`.
+  - Mode: `online`.
+- Preflight:
+  - `stage1_executor --preflight-only`: passed; no blocking items.
+  - `stage1_executor --prepare-execution`: passed; runner status
+    `ready_for_explicit_distributed_launch`.
+  - First materialized batch identity has `32` rows and `32` unique row keys.
+- Command:
+  - `CUDA_VISIBLE_DEVICES=0,1,2,3 PYTHONPATH=revisit_vlm_clean/src:src torchrun --nproc-per-node 4 -m revisit_vlm_clean.training.stage1_executor --plan outputs/clean_training/qwen3_stage12_deepstack_mask075_samplerfix_4gpu_20260626_195348/stage1_micro4/training_plan.json --launch-training`.
+- Output:
+  - `outputs/clean_training/qwen3_stage12_deepstack_mask075_samplerfix_4gpu_20260626_195348/stage1_micro4`.
+- Launch:
+  - Planned at 2026-06-26T19:54:43+09:00.
+  - Started at 2026-06-26T19:55:27+09:00.
+  - tmux: `clean_stage1_samplerfix_20260626_195348`.
+  - Log:
+    `logs/clean_training/clean_stage1_samplerfix_20260626_195348.log`.
+  - W&B:
+    `https://wandb.ai/mio_nora/tgvf-clean-qwen3-deepstack/runs/w77m0gy0`.
+- Startup verification:
+  - tmux session is alive.
+  - GPUs `0,1,2,3` are allocated by the run.
+  - `training_progress.jsonl` is being written.
+  - W&B is online and syncing.
+  - Training reached at least `step=2/2000`.
+  - Early component losses:
+    - step 1:
+      `loss_total=3.614259123802185`,
+      `loss_gen=2.0546875`,
+      `loss_same_image_negative=1.3203125`,
+      `loss_visual_token_manifold=2.392590880393982`,
+      `grad_norm=5.625`.
+    - step 2:
+      `loss_total=3.957866668701172`,
+      `loss_gen=2.328125`,
+      `loss_same_image_negative=1.40234375`,
+      `loss_visual_token_manifold=2.273978590965271`,
+      `grad_norm=8.6875`.
+  - Immediate interpretation:
+    - The same-image loss is no longer pinned near `ln(2)` at startup, so the
+      duplicate-fill lower-bound failure mode is not currently present.
