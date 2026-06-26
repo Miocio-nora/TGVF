@@ -270,6 +270,13 @@ def _summarize_rows(
     summary["merged_shards"] = True
     summary["deepstack_execution"] = summarize_deepstack_execution(rows)
     summary["result_breakdowns"] = summarize_result_breakdowns(rows)
+    summary["parser_scorer"] = _single_json_field(rows, "parser_scorer")
+    summary["deepstack"] = _single_json_field(rows, "deepstack")
+    summary["post_tgvf_forward_mode"] = _single_scalar_field(rows, "post_tgvf_forward_mode")
+    summary["post_tgvf_continuation"] = _single_scalar_field(rows, "post_tgvf_continuation")
+    summary["eval_family"] = _single_scalar_field(rows, "eval_family")
+    summary["tgvf_protocol"] = _single_scalar_field(rows, "tgvf_protocol")
+    summary["runner_backend"] = _merged_runner_backend_summary(rows)
     return summary
 
 
@@ -395,3 +402,45 @@ def _write_json(path: Path, payload: Any) -> None:
 def _stable_json_hash(value: Any) -> str:
     encoded = json.dumps(_to_jsonable(value), sort_keys=True, separators=(",", ":")).encode()
     return hashlib.sha256(encoded).hexdigest()
+
+
+def _single_json_field(rows: list[dict[str, Any]], key: str) -> Any:
+    values = {}
+    for row in rows:
+        value = row.get(key)
+        encoded = json.dumps(_to_jsonable(value), sort_keys=True, separators=(",", ":"))
+        values.setdefault(encoded, value)
+    if len(values) != 1:
+        raise ValueError(f"merged rows disagree on {key}: {sorted(values)}")
+    return next(iter(values.values()))
+
+
+def _single_scalar_field(rows: list[dict[str, Any]], key: str) -> Any:
+    values = sorted({row.get(key) for row in rows})
+    if len(values) != 1:
+        raise ValueError(f"merged rows disagree on {key}: {values}")
+    return values[0]
+
+
+def _merged_runner_backend_summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    backend_counts = Counter(str(row.get("runner_backend") or "none") for row in rows)
+    resolved_counts = Counter(str(row.get("resolved_runner_backend") or "none") for row in rows)
+    alias_targets = sorted(
+        {
+            str(row.get("runner_backend_alias_target"))
+            for row in rows
+            if row.get("runner_backend_alias_target")
+        }
+    )
+    return {
+        "schema_version": "clean_merged_runner_backend_summary_v1",
+        "backend_counts": dict(sorted(backend_counts.items())),
+        "resolved_backend_counts": dict(sorted(resolved_counts.items())),
+        "stage2_generic_alias_rows": sum(
+            bool(row.get("runner_backend_stage2_generic_alias")) for row in rows
+        ),
+        "deprecated_alias_rows": sum(
+            bool(row.get("runner_backend_deprecated_alias")) for row in rows
+        ),
+        "alias_targets": alias_targets,
+    }

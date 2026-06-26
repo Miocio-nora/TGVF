@@ -712,6 +712,27 @@ def test_merge_benchmark_shards_restores_source_manifest_order(tmp_path) -> None
     assert summary["merge_metadata"]["merge_order"] == "source_manifest_order_modulo"
     assert summary["benchmark_source_manifest"]["source_manifest_hash"] == "twohash"
     assert summary["benchmark_source_manifest"]["sample_count"] == 2
+    assert (
+        summary["parser_scorer"]["model_output_parser"]
+        == "revisit_vlm_clean.scoring.parse_and_score:v3_external"
+    )
+    assert summary["deepstack"] == {
+        "d_features_enabled": False,
+        "enabled": False,
+        "original_image_scope": "off",
+    }
+    assert summary["post_tgvf_forward_mode"] == "kv_cache"
+    assert summary["post_tgvf_continuation"] == "natural_continue"
+    assert summary["eval_family"] == "project_native_external"
+    assert summary["tgvf_protocol"] == "protocol_c_tool_observation"
+    assert summary["runner_backend"] == {
+        "alias_targets": [],
+        "backend_counts": {"dry_run": 2},
+        "deprecated_alias_rows": 0,
+        "resolved_backend_counts": {"dry_run": 2},
+        "schema_version": "clean_merged_runner_backend_summary_v1",
+        "stage2_generic_alias_rows": 0,
+    }
     verification = summary["manifest_verification"]
     assert verification["schema_version"] == "clean_benchmark_manifest_verification_v1"
     assert verification["manifest_hash"] == "twohash"

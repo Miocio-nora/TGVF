@@ -2135,6 +2135,26 @@ Implemented after Phase 82.
 - this phase does not change row scoring, parser behavior, sample selection, or
   model execution.
 
+## Phase 84: Merged Summary Identity Parity
+
+Implemented after Phase 83.
+
+- merged shard `summary.json` now preserves the same core identity fields as
+  single-run executed summaries:
+  - parser/scorer identity;
+  - DeepStack state;
+  - post-TGVF forward mode;
+  - post-TGVF continuation mode;
+  - eval family;
+  - TGVF protocol;
+  - runner backend summary;
+- merge validates that rows agree on the single-valued identity fields instead
+  of silently emitting a mixed-identity merged table;
+- runner backend identity is summarized by backend/resolved-backend counts and
+  alias/deprecated-alias row counts;
+- this phase does not change row scoring, parser behavior, sample selection, or
+  model execution.
+
 ## Later Phases
 
 1. Port DeepStack original-image injection/masking into clean training and eval
