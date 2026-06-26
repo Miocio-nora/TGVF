@@ -2104,6 +2104,21 @@ Implemented after Phase 80.
 - this phase does not change row scoring, parser behavior, sample selection, or
   model execution.
 
+## Phase 82: Benchmark Comparability Flags
+
+Implemented after Phase 81.
+
+- executed benchmark outputs and merged shard outputs now include
+  `comparability` in `summary.json`;
+- `comparability` records clean-core population identity, subset/full/population
+  scope, expected-n matches where known, diagnostic-subset status, side-result
+  and invalid-for-baseline flags, merge status, and a stable comparison scope;
+- `side_result` and `invalid_for_baseline` default to `false` until ledger or
+  baseline-specific launch logic marks them otherwise, so the summary schema is
+  ready for comparable reruns without relying on prose;
+- this phase does not change row scoring, parser behavior, sample selection, or
+  model execution.
+
 ## Later Phases
 
 1. Port DeepStack original-image injection/masking into clean training and eval

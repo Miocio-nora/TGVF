@@ -242,7 +242,8 @@ Diagnostic manifests are for runner validation only, not benchmark reporting.
 ## Executable Backends
 
 - `dry_run`: validates rows, parser, scorer, source identity, manifest
-  verification, and summary breakdowns without loading a model.
+  verification, comparability flags, and summary breakdowns without loading a
+  model.
 - `qwen3_original`: runs `mode=original` only. Use a small
   `--max-answer-tokens` for smoke checks.
 - `tgvf_stage2_qwen3_legacy`: diagnostic bridge to the historical Stage2

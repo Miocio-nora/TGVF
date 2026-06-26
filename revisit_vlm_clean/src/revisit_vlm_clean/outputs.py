@@ -10,6 +10,7 @@ from typing import Any
 
 from .benchmark_data import BenchmarkSample
 from .manifest import SampleManifest, manifest_payload
+from .populations import CORE_FULL_N, CORE_POPULATIONS, SUBSETS
 from .rendering import RenderedBenchmarkInput
 from .runner import BackendConfig, summarize_deepstack_execution, summarize_result_breakdowns
 from .schema import EvalSummary, RunConfig, _to_jsonable
@@ -279,6 +280,13 @@ def write_executed_benchmark_output(
         rows=rows,
         source_manifest=source_manifest,
     )
+    summary_payload["comparability"] = build_comparability_flags_payload(
+        config=runtime_config,
+        manifest=manifest,
+        rows=rows,
+        comparable=summary.comparable,
+        comparability_note=summary.comparability_note,
+    )
     _write_json(summary_path, summary_payload)
 
     return {
@@ -427,6 +435,91 @@ def build_manifest_verification_payload(
     }
 
 
+def build_comparability_flags_payload(
+    *,
+    config: RunConfig,
+    manifest: dict[str, Any] | SampleManifest,
+    rows: list[dict[str, Any]],
+    comparable: bool,
+    comparability_note: str,
+    merge_metadata: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    manifest_info = _manifest_dict(manifest)
+    samples = list(manifest_info.get("samples") or [])
+    source_population_ids = _source_population_ids(manifest_info)
+    unknown_population_ids = sorted(
+        population_id
+        for population_id in source_population_ids
+        if population_id not in CORE_POPULATIONS
+    )
+    subset_id = config.subset_id or (
+        str(manifest_info.get("manifest_id"))
+        if manifest_info.get("manifest_id") in SUBSETS
+        else None
+    )
+    subset_spec = SUBSETS.get(str(subset_id)) if subset_id else None
+    population_id = config.population_id
+    population_spec = CORE_POPULATIONS.get(str(population_id)) if population_id else None
+    clean_core = bool(source_population_ids) and not unknown_population_ids
+    subset_expected_n = subset_spec.n if subset_spec is not None else None
+    population_expected_n = population_spec.n if population_spec is not None else None
+    sample_count = len(samples)
+    full_clean_core = clean_core and sample_count == CORE_FULL_N
+    diagnostic_subset = bool(subset_id and str(subset_id).startswith("diagnostic_"))
+    return {
+        "schema_version": "clean_benchmark_comparability_v1",
+        "comparable": bool(comparable),
+        "comparability_note": comparability_note,
+        "eval_family": str(config.eval_family),
+        "mode": str(config.mode),
+        "manifest_id": manifest_info.get("manifest_id"),
+        "manifest_hash": manifest_info.get("manifest_hash") or config.manifest_hash,
+        "source_manifest_hash": manifest_info.get("source_manifest_hash"),
+        "clean_core": clean_core,
+        "clean_core_population_ids": [
+            population_id
+            for population_id in source_population_ids
+            if population_id in CORE_POPULATIONS
+        ],
+        "non_core_population_ids": unknown_population_ids,
+        "subset_run": subset_id is not None,
+        "subset_id": subset_id,
+        "subset_short_name": subset_spec.short_name if subset_spec is not None else None,
+        "subset_expected_n": subset_expected_n,
+        "subset_expected_n_matches": (
+            sample_count == subset_expected_n if subset_expected_n is not None else None
+        ),
+        "diagnostic_subset": diagnostic_subset,
+        "population_run": population_id is not None,
+        "population_id": population_id,
+        "population_expected_n": population_expected_n,
+        "population_expected_n_matches": (
+            sample_count == population_expected_n if population_expected_n is not None else None
+        ),
+        "full_clean_core": full_clean_core,
+        "sample_count": sample_count,
+        "rows_count": len(rows),
+        "side_result": False,
+        "side_result_reason": None,
+        "invalid_for_baseline": False,
+        "invalid_baseline_id": None,
+        "invalid_reason": None,
+        "merged_from_shards": merge_metadata is not None,
+        "comparison_scope": _comparison_scope(
+            clean_core=clean_core,
+            full_clean_core=full_clean_core,
+            subset_id=subset_id,
+            diagnostic_subset=diagnostic_subset,
+            population_id=population_id,
+            population_expected_n_matches=(
+                sample_count == population_expected_n
+                if population_expected_n is not None
+                else None
+            ),
+        ),
+    }
+
+
 def _write_json(path: Path, payload: Any) -> None:
     path.write_text(json.dumps(_to_jsonable(payload), indent=2, sort_keys=True) + "\n")
 
@@ -447,6 +540,41 @@ def _sample_row_index(sample: dict[str, Any]) -> int | None:
         return int(metadata["row_index"])
     except (TypeError, ValueError):
         return None
+
+
+def _source_population_ids(manifest_info: dict[str, Any]) -> list[str]:
+    values = manifest_info.get("source_population_ids")
+    if isinstance(values, list) and values:
+        return sorted({str(value) for value in values if value not in (None, "")})
+    return sorted(
+        {
+            str(sample.get("population_id"))
+            for sample in manifest_info.get("samples", [])
+            if sample.get("population_id") not in (None, "")
+        }
+    )
+
+
+def _comparison_scope(
+    *,
+    clean_core: bool,
+    full_clean_core: bool,
+    subset_id: str | None,
+    diagnostic_subset: bool,
+    population_id: str | None,
+    population_expected_n_matches: bool | None,
+) -> str:
+    if diagnostic_subset:
+        return "diagnostic_subset"
+    if full_clean_core:
+        return "clean_core_full"
+    if subset_id:
+        return "clean_core_subset" if clean_core else "custom_subset"
+    if population_id and population_expected_n_matches:
+        return "clean_core_population_full" if clean_core else "custom_population_full"
+    if population_id:
+        return "clean_core_population_subset" if clean_core else "custom_population_subset"
+    return "custom_manifest"
 
 
 def _sha256_file(path: Path) -> str:

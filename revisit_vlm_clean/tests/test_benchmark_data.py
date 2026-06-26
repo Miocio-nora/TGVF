@@ -517,6 +517,18 @@ def test_benchmark_execute_dry_run_cli(tmp_path) -> None:
     assert verification["row_sample_id_order_matches_manifest"] is True
     assert verification["source_manifest_matches_sample_manifest"] is True
     assert verification["all_source_files_exist"] is True
+    comparability = summary["comparability"]
+    assert comparability["schema_version"] == "clean_benchmark_comparability_v1"
+    assert comparability["comparable"] is True
+    assert comparability["clean_core"] is True
+    assert comparability["clean_core_population_ids"] == ["vstar_test_questions_191"]
+    assert comparability["subset_run"] is False
+    assert comparability["population_run"] is True
+    assert comparability["population_expected_n"] == 191
+    assert comparability["population_expected_n_matches"] is False
+    assert comparability["side_result"] is False
+    assert comparability["invalid_for_baseline"] is False
+    assert comparability["comparison_scope"] == "clean_core_population_subset"
     breakdowns = summary["result_breakdowns"]
     assert breakdowns["schema_version"] == "clean_benchmark_result_breakdowns_v1"
     assert breakdowns["by_benchmark"]["vstar_bench"]["accuracy"] == 1.0
@@ -693,6 +705,12 @@ def test_merge_benchmark_shards_restores_source_manifest_order(tmp_path) -> None
     assert verification["source_manifest_matches_sample_manifest"] is True
     assert verification["merged_from_shards"] is True
     assert verification["merge_metadata"]["merge_order"] == "source_manifest_order_modulo"
+    comparability = summary["comparability"]
+    assert comparability["clean_core"] is True
+    assert comparability["population_run"] is True
+    assert comparability["population_expected_n_matches"] is False
+    assert comparability["merged_from_shards"] is True
+    assert comparability["comparison_scope"] == "clean_core_population_subset"
     breakdowns = summary["result_breakdowns"]
     assert breakdowns["by_benchmark"]["vstar_bench"]["n_rows"] == 2
     assert breakdowns["by_method"]["original"]["accuracy"] == 1.0

@@ -12,6 +12,7 @@ from typing import Any
 from .outputs import (
     BENCHMARK_SOURCES_FILENAME,
     benchmark_source_manifest_reference,
+    build_comparability_flags_payload,
     build_manifest_verification_payload,
 )
 from .runner import summarize_deepstack_execution, summarize_result_breakdowns
@@ -83,6 +84,14 @@ def merge_benchmark_shards(
         manifest=manifest,
         rows=rows,
         source_manifest=source_manifest,
+        merge_metadata=metadata,
+    )
+    summary["comparability"] = build_comparability_flags_payload(
+        config=merged_config,
+        manifest=manifest,
+        rows=rows,
+        comparable=bool(summary.get("comparable")),
+        comparability_note=str(summary.get("comparability_note") or ""),
         merge_metadata=metadata,
     )
 
