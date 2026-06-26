@@ -3674,7 +3674,7 @@ entry, update this file immediately.
   - Planned on branch `clean/tgvf-clean-project-20260625`.
   - Pre-ledger commit: `a5a12d3`.
   - Initial formal plan commit: `28f50dc`.
-  - Micro4 fallback ledger commit: TBD after this RUNNING entry is committed.
+  - Micro4 fallback ledger commit: `d435f86`.
   - Worktree expected clean except untracked `logs/` and `third_party/`.
 - Stage1 checkpoint:
   - None for launch; Stage1 starts from `Qwen/Qwen3-VL-8B-Thinking`.
@@ -3720,7 +3720,7 @@ entry, update this file immediately.
     `clean_stage1_qwen3_mask075_4gpu_m4_20260626_155809`.
 - Started:
   - Initial Stage1 micro8 launch: 2026-06-26T15:55:33+09:00.
-  - Stage1 micro4 fallback launch: TBD.
+  - Stage1 micro4 fallback launch: 2026-06-26T15:59:57+09:00.
 - Finished:
   - TBD.
 - Metrics:
@@ -3731,6 +3731,14 @@ entry, update this file immediately.
       language-model MLP forward. GPU memory was effectively full
       (`178.29 GiB` in use on a `178.36 GiB` card).
   - Stage1 micro4 fallback: RUNNING/TBD.
+    - Log:
+      `logs/clean_training/clean_stage1_qwen3_mask075_4gpu_m4_20260626_155809.log`.
+    - As of 2026-06-26T16:04:04+09:00, tmux session is alive and all four
+      worker processes are running on GPUs `0,1,2,3`.
+    - Observed memory is about `80-84 GiB` per GPU.
+    - GPU utilization is bursty rather than continuous, consistent with
+      first-batch/batch-prep and per-rank length imbalance under non-bucketed
+      Stage1 data.
 - Analysis:
   - The single-process smoke under-sampled long first-batch examples; real DDP
     `micro_batch_size=8` is not robust.
