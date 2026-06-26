@@ -514,6 +514,8 @@ def test_benchmark_execute_dry_run_cli(tmp_path) -> None:
     summary = json.loads((output_dir / "summary.json").read_text())
     assert summary["accuracy"] == 1.0
     assert summary["runner_backend"]["backend"] == "dry_run"
+    assert summary["runner_backend"]["final_clean_backend"] is True
+    assert summary["runner_backend"]["diagnostic_bridge"] is False
     assert summary["deepstack_execution"] == {
         "all_reported_fvt_append_uses_deepstack": None,
         "any_fvt_append_uses_deepstack": False,
@@ -737,6 +739,8 @@ def test_merge_benchmark_shards_restores_source_manifest_order(tmp_path) -> None
         "alias_targets": [],
         "backend_counts": {"dry_run": 2},
         "deprecated_alias_rows": 0,
+        "diagnostic_bridge_rows": 0,
+        "final_clean_backend_rows": 2,
         "resolved_backend_counts": {"dry_run": 2},
         "schema_version": "clean_merged_runner_backend_summary_v1",
         "stage2_generic_alias_rows": 0,
@@ -928,6 +932,8 @@ def test_benchmark_execute_dry_run_auto_uses_blink_official_choice(tmp_path) -> 
     assert rows[0]["benchmark"] == "blink"
     assert rows[0]["runner_backend"] == "dry_run"
     assert rows[0]["resolved_runner_backend"] == "dry_run"
+    assert rows[0]["runner_backend_final_clean"] is True
+    assert rows[0]["runner_backend_diagnostic_bridge"] is False
     assert rows[0]["runner_backend_deprecated_alias"] is False
     assert rows[0]["runner_backend_stage2_generic_alias"] is False
     assert rows[0]["runner_backend_alias_target"] is None

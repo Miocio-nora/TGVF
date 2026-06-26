@@ -2357,6 +2357,24 @@ Implemented after Phase 95.
 - this phase does not change the ValKit command argv, benchmark selection,
   scoring behavior, subprocess execution, or data generation.
 
+## Phase 97: Benchmark Backend Role Identity
+
+Implemented after Phase 96.
+
+- benchmark backend identity now records whether the selected backend is a
+  final clean backend or only a diagnostic bridge:
+  - `final_clean_backend`;
+  - `diagnostic_bridge`;
+  - `requires_internal_diagnostic_family`;
+- row outputs mirror the same role with `runner_backend_final_clean` and
+  `runner_backend_diagnostic_bridge`;
+- shard merge validates these row-level role fields against each shard
+  `run_config.json` and reports aggregate `final_clean_backend_rows` and
+  `diagnostic_bridge_rows` in merged runner-backend summaries;
+- this makes the historical Stage2 compatibility bridge auditable in output
+  artifacts without changing backend selection, model execution, scoring, or
+  benchmark sampling.
+
 ## Later Phases
 
 1. Port DeepStack original-image injection/masking into clean training and eval

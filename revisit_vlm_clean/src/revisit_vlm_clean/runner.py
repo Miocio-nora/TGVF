@@ -47,9 +47,15 @@ class BackendConfig:
 
     def to_dict(self) -> dict[str, Any]:
         resolved_backend = resolve_backend_name(self.backend)
+        role = backend_role_identity(self.backend)
         return {
             "backend": self.backend,
             "resolved_backend": resolved_backend,
+            "final_clean_backend": role["final_clean_backend"],
+            "diagnostic_bridge": role["diagnostic_bridge"],
+            "requires_internal_diagnostic_family": role[
+                "requires_internal_diagnostic_family"
+            ],
             "stage2_generic_alias": self.backend == STAGE2_GENERIC_BACKEND,
             "alias_target": resolved_backend if self.backend != resolved_backend else None,
             "deprecated_alias": False,
@@ -482,6 +488,16 @@ def resolve_backend_name(name: str) -> str:
     return name
 
 
+def backend_role_identity(name: str) -> dict[str, bool]:
+    resolved = resolve_backend_name(name)
+    diagnostic_bridge = resolved == STAGE2_LEGACY_BACKEND
+    return {
+        "final_clean_backend": not diagnostic_bridge,
+        "diagnostic_bridge": diagnostic_bridge,
+        "requires_internal_diagnostic_family": diagnostic_bridge,
+    }
+
+
 def make_backend(
     backend_config: BackendConfig,
     *,
@@ -576,6 +592,7 @@ def run_benchmark_rows(
     backend.prepare(config)
     rows = []
     resolved_backend = resolve_backend_name(backend_config.backend)
+    backend_role = backend_role_identity(backend_config.backend)
     for sample, rendered in zip(samples, rendered_inputs, strict=True):
         result = backend.run(sample, rendered, config)
         deepstack_execution = _row_deepstack_execution(
@@ -606,6 +623,8 @@ def run_benchmark_rows(
                 ),
                 "runner_backend": backend_config.backend,
                 "resolved_runner_backend": resolved_backend,
+                "runner_backend_final_clean": backend_role["final_clean_backend"],
+                "runner_backend_diagnostic_bridge": backend_role["diagnostic_bridge"],
                 "runner_backend_deprecated_alias": False,
                 "runner_backend_stage2_generic_alias": (
                     backend_config.backend == STAGE2_GENERIC_BACKEND

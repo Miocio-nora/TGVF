@@ -13,6 +13,7 @@ from revisit_vlm_clean.runner import (
     ModelRunResult,
     TGVFStage2Qwen3Backend,
     TGVFStage2Qwen3NativeBackend,
+    backend_role_identity,
     build_deepstack_execution_plan,
     make_backend,
     resolve_backend_name,
@@ -104,6 +105,24 @@ def test_stage2_legacy_backend_requires_internal_diagnostic_family(tmp_path) -> 
         )
 
 
+def test_stage2_backend_role_identity_marks_legacy_as_diagnostic_bridge() -> None:
+    assert backend_role_identity(STAGE2_GENERIC_BACKEND) == {
+        "final_clean_backend": True,
+        "diagnostic_bridge": False,
+        "requires_internal_diagnostic_family": False,
+    }
+    assert backend_role_identity(STAGE2_NATIVE_BACKEND) == {
+        "final_clean_backend": True,
+        "diagnostic_bridge": False,
+        "requires_internal_diagnostic_family": False,
+    }
+    assert backend_role_identity(STAGE2_LEGACY_BACKEND) == {
+        "final_clean_backend": False,
+        "diagnostic_bridge": True,
+        "requires_internal_diagnostic_family": True,
+    }
+
+
 def test_runner_does_not_top_level_import_legacy_stage2_adapter() -> None:
     source = inspect.getsource(runner_module)
     top_level_import_block = "\n".join(source.splitlines()[:40])
@@ -144,6 +163,8 @@ def test_stage2_generic_backend_resolves_to_clean_native(monkeypatch, tmp_path) 
     assert isinstance(backend, TGVFStage2Qwen3NativeBackend)
     assert backend_config.to_dict()["stage2_generic_alias"] is True
     assert backend_config.to_dict()["deprecated_alias"] is False
+    assert backend_config.to_dict()["final_clean_backend"] is True
+    assert backend_config.to_dict()["diagnostic_bridge"] is False
     assert backend_config.to_dict()["alias_target"] == STAGE2_NATIVE_BACKEND
     assert backend_config.to_dict()["resolved_backend"] == STAGE2_NATIVE_BACKEND
 

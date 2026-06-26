@@ -264,6 +264,8 @@ def _validate_row_identity_against_shard_config(
         "subset_id": config.subset_id,
         "runner_backend": execution_backend.get("backend"),
         "resolved_runner_backend": execution_backend.get("resolved_backend"),
+        "runner_backend_final_clean": execution_backend.get("final_clean_backend"),
+        "runner_backend_diagnostic_bridge": execution_backend.get("diagnostic_bridge"),
         "runner_backend_deprecated_alias": execution_backend.get("deprecated_alias"),
         "runner_backend_stage2_generic_alias": execution_backend.get("stage2_generic_alias"),
         "runner_backend_alias_target": execution_backend.get("alias_target"),
@@ -671,6 +673,12 @@ def _merged_runner_backend_summary(rows: list[dict[str, Any]]) -> dict[str, Any]
         "schema_version": "clean_merged_runner_backend_summary_v1",
         "backend_counts": dict(sorted(backend_counts.items())),
         "resolved_backend_counts": dict(sorted(resolved_counts.items())),
+        "final_clean_backend_rows": sum(
+            bool(row.get("runner_backend_final_clean")) for row in rows
+        ),
+        "diagnostic_bridge_rows": sum(
+            bool(row.get("runner_backend_diagnostic_bridge")) for row in rows
+        ),
         "stage2_generic_alias_rows": sum(
             bool(row.get("runner_backend_stage2_generic_alias")) for row in rows
         ),

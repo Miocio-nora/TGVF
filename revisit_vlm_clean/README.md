@@ -255,9 +255,10 @@ Diagnostic manifests are for runner validation only, not benchmark reporting.
 - `tgvf_stage2_qwen3_legacy`: diagnostic bridge to the historical Stage2
   evaluator for `tgvf_force`, `tgvf_free`, and `tgvf_softforce` on path-backed
   image samples. It is gated to `eval_family=internal_diagnostic` so it cannot
-  silently enter clean benchmark tables.
+  silently enter clean benchmark tables. Its backend identity records
+  `final_clean_backend=false` and `diagnostic_bridge=true`.
 - `tgvf_stage2_qwen3`: generic clean Stage2 backend name. It resolves to the
-  clean-native backend.
+  clean-native backend and records `final_clean_backend=true`.
 - `tgvf_stage2_qwen3_native`: explicit clean-native backend name. It now owns a
   native engine and does not use the legacy evaluator class. Force/free/
   softforce control flow, lazy checkpoint/model loading, D construction, visual
