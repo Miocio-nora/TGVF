@@ -16,7 +16,8 @@ later phases after each contract is validated.
   `revisit_vlm_clean.scoring.parse_and_score:v3_external`.
 - Main fast dev subset: `CoreDev-2511`.
 - DeepStack support: supported by schema, default disabled.
-- Benchmark root and scoring backend are recorded in `run_config.json` and
+- Benchmark root, benchmark source-file manifest, and scoring backend are
+  recorded in `run_config.json`, `benchmark_sources.json`, and
   `run_config.txt`.
 - `official` scoring currently supports official-compatible multiple-choice
   parsing/scoring for BLINK and HR-Bench-4K, plus official batch scorers for

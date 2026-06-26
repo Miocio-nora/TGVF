@@ -78,8 +78,9 @@ Implemented:
 
 Implemented:
 
-- benchmark CLI can write `run_config.json`, `rows.jsonl`, `summary.json`, and
-  `sample_manifest.json` without model inference for schema validation.
+- benchmark CLI can write `run_config.json`, `rows.jsonl`, `summary.json`,
+  `sample_manifest.json`, and `benchmark_sources.json` without model inference
+  for schema validation.
 
 ## Phase 5: Manifest-Backed Sample Materialization
 
@@ -2050,6 +2051,25 @@ Implemented after Phase 77.
 This phase does not implement actual Stage2 DeepStack feature injection or
 masking. It makes the unsupported state explicit, machine-readable, and
 preserved across plan, prepare, runtime audit, and launch.
+
+## Phase 79: Benchmark Source Manifest Artifact
+
+Implemented after Phase 78.
+
+- each clean benchmark output mode now writes `benchmark_sources.json`;
+- `benchmark_sources.json` records schema version, benchmark root,
+  manifest/source-manifest hashes, every source file used by the run, resolved
+  path, byte size, SHA-256, existence status, benchmark ids, population ids,
+  sample counts, and row-index evidence;
+- `run_config.json` and `summary.json` include a compact
+  `benchmark_source_manifest` reference with artifact path, sample/source-file
+  counts, all-files-exist status, manifest hashes, and a hash of the source-file
+  list;
+- shard merge now requires each shard's `benchmark_sources.json`, validates
+  source-file identity consistency, and writes a merged
+  `benchmark_sources.json`;
+- this phase does not change parser/scorer behavior, model execution, or sample
+  selection semantics.
 
 ## Later Phases
 

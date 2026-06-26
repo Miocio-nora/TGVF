@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from collections import Counter
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
+from .outputs import (
+    BENCHMARK_SOURCES_FILENAME,
+    benchmark_source_manifest_reference,
+)
 from .runner import summarize_deepstack_execution
 from .schema import EvalSummary, RunConfig, _to_jsonable
 
@@ -47,18 +52,24 @@ def merge_benchmark_shards(
 
     base_config = shard_payloads[0]["config"]
     merged_run_id = run_id or f"{base_config.run_id}_merged"
+    source_manifest = _merged_benchmark_source_manifest(
+        shard_payloads,
+        source_manifest_hash=source_manifest_hash,
+    )
     merged_config = replace(
         base_config,
         run_id=merged_run_id,
         manifest_hash=source_manifest_hash,
         shard_index=0,
         num_shards=num_shards,
+        benchmark_source_manifest=benchmark_source_manifest_reference(source_manifest),
     )
     summary = _summarize_rows(
         rows,
         run_id=merged_run_id,
         manifest_hash=source_manifest_hash,
     )
+    summary["benchmark_source_manifest"] = benchmark_source_manifest_reference(source_manifest)
     metadata = _merge_metadata(shard_payloads, len(rows), source_manifest_hash)
     summary["merge_metadata"] = metadata
     manifest = _merged_manifest(
@@ -74,6 +85,7 @@ def merge_benchmark_shards(
     run_config_path = out / "run_config.json"
     manifest_path = out / "sample_manifest.json"
     metadata_path = out / "merge_metadata.json"
+    sources_path = out / BENCHMARK_SOURCES_FILENAME
 
     with rows_path.open("w", encoding="utf-8") as handle:
         for row in rows:
@@ -82,6 +94,7 @@ def merge_benchmark_shards(
     _write_json(run_config_path, merged_config)
     _write_json(manifest_path, manifest)
     _write_json(metadata_path, metadata)
+    _write_json(sources_path, source_manifest)
 
     return {
         "output_dir": str(out),
@@ -90,6 +103,7 @@ def merge_benchmark_shards(
         "run_config": str(run_config_path),
         "sample_manifest": str(manifest_path),
         "merge_metadata": str(metadata_path),
+        "benchmark_sources": str(sources_path),
     }
 
 
@@ -98,12 +112,14 @@ def _read_shard(path: Path) -> dict[str, Any]:
     manifest_path = path / "sample_manifest.json"
     rows_path = path / "rows.jsonl"
     summary_path = path / "summary.json"
-    for required in (run_config_path, manifest_path, rows_path, summary_path):
+    sources_path = path / BENCHMARK_SOURCES_FILENAME
+    for required in (run_config_path, manifest_path, rows_path, summary_path, sources_path):
         if not required.exists():
             raise FileNotFoundError(f"missing shard artifact: {required}")
     config = RunConfig.from_json(run_config_path.read_text(encoding="utf-8"))
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    sources = json.loads(sources_path.read_text(encoding="utf-8"))
     rows = [
         json.loads(line)
         for line in rows_path.read_text(encoding="utf-8").splitlines()
@@ -114,6 +130,7 @@ def _read_shard(path: Path) -> dict[str, Any]:
         "config": config,
         "manifest": manifest,
         "summary": summary,
+        "benchmark_sources": sources,
         "rows": rows,
     }
 
@@ -132,6 +149,11 @@ def _validate_shard_set(shards: list[dict[str, Any]], *, num_shards: int) -> Non
             raise ValueError("all shard manifests must use the same num_shards")
         if int(manifest.get("shard_index", config.shard_index)) != int(config.shard_index):
             raise ValueError("shard manifest index does not match run config")
+        source_manifest = item["benchmark_sources"]
+        if source_manifest.get("schema_version") != "clean_benchmark_source_manifest_v1":
+            raise ValueError("shard benchmark_sources schema mismatch")
+        if int(source_manifest.get("sample_count", -1)) != len(item["rows"]):
+            raise ValueError("shard benchmark_sources sample_count does not match rows")
         samples = list(manifest.get("samples") or [])
         if len(samples) != len(item["rows"]):
             raise ValueError(
@@ -250,6 +272,81 @@ def _merged_manifest(
     }
 
 
+def _merged_benchmark_source_manifest(
+    shards: list[dict[str, Any]],
+    *,
+    source_manifest_hash: str,
+) -> dict[str, Any]:
+    first = shards[0]["benchmark_sources"]
+    benchmark_root = first.get("benchmark_root")
+    manifest_id = first.get("source_manifest_id") or first.get("manifest_id")
+    grouped: dict[str, dict[str, Any]] = {}
+    for shard in shards:
+        sources = shard["benchmark_sources"]
+        if sources.get("benchmark_root") != benchmark_root:
+            raise ValueError("all shard benchmark_sources must share one benchmark_root")
+        for item in sources.get("source_files") or []:
+            source_file = str(item.get("source_file") or "")
+            group = grouped.setdefault(
+                source_file,
+                {
+                    "template": item,
+                    "sample_count": 0,
+                    "row_indices": [],
+                    "benchmarks": set(),
+                    "population_ids": set(),
+                },
+            )
+            template = group["template"]
+            for key in ("path", "exists", "byte_size", "sha256"):
+                if template.get(key) != item.get(key):
+                    raise ValueError(f"source file identity mismatch for {source_file}: {key}")
+            group["sample_count"] += int(item.get("sample_count") or 0)
+            group["row_indices"].extend(int(value) for value in item.get("row_indices") or [])
+            group["benchmarks"].update(str(value) for value in item.get("benchmarks") or [])
+            group["population_ids"].update(str(value) for value in item.get("population_ids") or [])
+
+    source_files = []
+    for source_file, group in sorted(grouped.items()):
+        template = group["template"]
+        row_indices = sorted(group["row_indices"])
+        source_files.append(
+            {
+                "source_file": source_file,
+                "path": template.get("path"),
+                "exists": template.get("exists"),
+                "byte_size": template.get("byte_size"),
+                "sha256": template.get("sha256"),
+                "benchmarks": sorted(group["benchmarks"]),
+                "population_ids": sorted(group["population_ids"]),
+                "sample_count": group["sample_count"],
+                "row_index_count": len(row_indices),
+                "row_index_min": min(row_indices) if row_indices else None,
+                "row_index_max": max(row_indices) if row_indices else None,
+                "row_indices": row_indices,
+                "row_indices_sha256": _stable_json_hash(row_indices),
+            }
+        )
+
+    return {
+        "schema_version": "clean_benchmark_source_manifest_v1",
+        "benchmark_root": benchmark_root,
+        "manifest_id": manifest_id,
+        "manifest_hash": source_manifest_hash,
+        "source_manifest_id": manifest_id,
+        "source_manifest_hash": source_manifest_hash,
+        "source_file_count": len(source_files),
+        "sample_count": sum(int(item["sample_count"]) for item in source_files),
+        "all_files_exist": all(bool(item["exists"]) for item in source_files),
+        "source_files": source_files,
+        "merged_from_shards": _merge_metadata(
+            shards,
+            sum(int(item["sample_count"]) for item in source_files),
+            source_manifest_hash,
+        ),
+    }
+
+
 def _merge_metadata(
     shards: list[dict[str, Any]],
     merged_row_count: int,
@@ -275,3 +372,8 @@ def _mean_bool(values: list[bool]) -> float | None:
 
 def _write_json(path: Path, payload: Any) -> None:
     path.write_text(json.dumps(_to_jsonable(payload), indent=2, sort_keys=True) + "\n")
+
+
+def _stable_json_hash(value: Any) -> str:
+    encoded = json.dumps(_to_jsonable(value), sort_keys=True, separators=(",", ":")).encode()
+    return hashlib.sha256(encoded).hexdigest()

@@ -669,6 +669,7 @@ run_config.json
 rows.jsonl
 summary.json
 sample_manifest.json
+benchmark_sources.json
 logs/
 ```
 
@@ -678,8 +679,10 @@ For sharded runs:
 shards/shard_<index>/run_config.json
 shards/shard_<index>/rows.jsonl
 shards/shard_<index>/summary.json
+shards/shard_<index>/benchmark_sources.json
 merged/rows.jsonl
 merged/summary.json
+merged/benchmark_sources.json
 ```
 
 `run_config.json` required fields:
@@ -689,7 +692,7 @@ merged/summary.json
 - eval family: `internal_diagnostic`, `project_native_external`, or `valkit`;
 - mode: `original`, `tgvf_free`, `tgvf_force`, or `tgvf_softforce`;
 - benchmark population id, subset id if any, manifest path, manifest hash;
-- benchmark source-file manifest;
+- benchmark source-file manifest reference;
 - max image resolution, max action tokens, max answer tokens;
 - TGVF protocol, continuation mode, forward mode;
 - DeepStack enabled/state/scope;
@@ -729,6 +732,16 @@ merged/summary.json
   append actually used DeepStack visual features;
 - comparability flags, including whether the run is clean-core, subset,
   side-result, or invalid for a named baseline.
+
+`benchmark_sources.json` required fields:
+
+- schema version `clean_benchmark_source_manifest_v1`;
+- benchmark root;
+- manifest hash and source manifest hash for shards/merged runs;
+- every source file used by the run/shard/merge;
+- absolute resolved source path, byte size, SHA-256, and existence status;
+- benchmark ids, population ids, sample count, and row-index evidence per
+  source file.
 
 Text `run_config.txt` can be emitted for readability, but `run_config.json` is
 the canonical machine-readable identity.

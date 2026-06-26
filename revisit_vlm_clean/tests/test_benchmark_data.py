@@ -433,6 +433,10 @@ def test_benchmark_execute_dry_run_cli(tmp_path) -> None:
     run_config = json.loads((output_dir / "run_config.json").read_text())
     assert run_config["output_schema_version"] == "clean_benchmark_run_v1"
     assert run_config["started_at"].endswith("+00:00")
+    assert run_config["benchmark_source_manifest"]["artifact_path"] == "benchmark_sources.json"
+    assert run_config["benchmark_source_manifest"]["source_file_count"] == 1
+    assert run_config["benchmark_source_manifest"]["sample_count"] == 1
+    assert run_config["benchmark_source_manifest"]["all_files_exist"] is True
     assert (
         run_config["parser_scorer"]["model_output_parser"]
         == "revisit_vlm_clean.scoring.parse_and_score:v3_external"
@@ -504,6 +508,17 @@ def test_benchmark_execute_dry_run_cli(tmp_path) -> None:
         summary["parser_scorer"]["model_output_parser"]
         == "revisit_vlm_clean.scoring.parse_and_score:v3_external"
     )
+    benchmark_sources = json.loads((output_dir / "benchmark_sources.json").read_text())
+    assert benchmark_sources["schema_version"] == "clean_benchmark_source_manifest_v1"
+    assert benchmark_sources["manifest_hash"] == "toyhash"
+    assert benchmark_sources["source_file_count"] == 1
+    assert benchmark_sources["sample_count"] == 1
+    assert benchmark_sources["all_files_exist"] is True
+    source_file = benchmark_sources["source_files"][0]
+    assert source_file["source_file"] == "vstar_bench/snapshot/test_questions.jsonl"
+    assert source_file["sample_count"] == 1
+    assert source_file["row_indices"] == [0]
+    assert len(source_file["sha256"]) == 64
 
 
 def test_benchmark_execute_dry_run_shards_manifest_deterministically(tmp_path) -> None:
@@ -562,6 +577,12 @@ def test_benchmark_execute_dry_run_shards_manifest_deterministically(tmp_path) -
     assert run_config["manifest_hash"] == sample_manifest["manifest_hash"]
     assert run_config["num_shards"] == 2
     assert run_config["shard_index"] == 1
+    benchmark_sources = json.loads((output_dir / "benchmark_sources.json").read_text())
+    assert benchmark_sources["manifest_hash"] == sample_manifest["manifest_hash"]
+    assert benchmark_sources["source_manifest_hash"] == "twohash"
+    assert benchmark_sources["sample_count"] == 1
+    assert benchmark_sources["source_files"][0]["row_indices"] == [1]
+    assert run_config["benchmark_source_manifest"]["source_manifest_hash"] == "twohash"
 
 
 def test_merge_benchmark_shards_restores_source_manifest_order(tmp_path) -> None:
@@ -637,6 +658,8 @@ def test_merge_benchmark_shards_restores_source_manifest_order(tmp_path) -> None
     assert summary["deepstack_execution"]["any_fvt_append_uses_deepstack"] is False
     assert summary["merge_metadata"]["shard_indices"] == [0, 1]
     assert summary["merge_metadata"]["merge_order"] == "source_manifest_order_modulo"
+    assert summary["benchmark_source_manifest"]["source_manifest_hash"] == "twohash"
+    assert summary["benchmark_source_manifest"]["sample_count"] == 2
     sample_manifest = json.loads((merged / "sample_manifest.json").read_text())
     assert sample_manifest["manifest_hash"] == "twohash"
     assert sample_manifest["merged_from_shards"]["merged_row_count"] == 2
@@ -645,8 +668,15 @@ def test_merge_benchmark_shards_restores_source_manifest_order(tmp_path) -> None
     assert run_config.manifest_hash == "twohash"
     assert run_config.num_shards == 2
     assert run_config.shard_index == 0
+    assert run_config.benchmark_source_manifest["source_manifest_hash"] == "twohash"
+    assert run_config.benchmark_source_manifest["sample_count"] == 2
     merge_metadata = json.loads((merged / "merge_metadata.json").read_text())
     assert merge_metadata["source_manifest_hash"] == "twohash"
+    benchmark_sources = json.loads((merged / "benchmark_sources.json").read_text())
+    assert benchmark_sources["manifest_hash"] == "twohash"
+    assert benchmark_sources["source_manifest_hash"] == "twohash"
+    assert benchmark_sources["sample_count"] == 2
+    assert benchmark_sources["source_files"][0]["row_indices"] == [0, 1]
 
 
 def test_benchmark_execute_dry_run_auto_uses_blink_official_choice(tmp_path) -> None:
