@@ -4282,7 +4282,7 @@ entry, update this file immediately.
 
 ### EXP-20260627-000156-clean-qwen3-stage1-samplerfix-manifold001-4gpu
 
-- Status: RUNNING.
+- Status: COMPLETED.
 - Question:
   - Does restoring the historical Stage1 manifold weight
     `visual_token_manifold=0.01` recover the old same-image target specificity
@@ -4423,8 +4423,94 @@ entry, update this file immediately.
     - Raw manifold loss is in the historical `~2.5` range, but this run uses
       the historical `0.01` coefficient rather than the clean `0.1`
       coefficient.
-- Planned post-train diagnostic:
-  - Reuse the same Stage1 internal diagnostic surface:
-    `readout,query,distribution`, `200` readout samples, `50` query groups,
-    `200` distribution samples, max image resolution `512`, and the same
-    Stage1 focus test JSONL.
+- Training completion:
+  - Completed at 2026-06-27T01:58:38+09:00.
+  - Runtime: `6862.8s` (`1h54m23s`).
+  - Final checkpoint:
+    `outputs/clean_training/qwen3_stage12_samplerfix_manifold001_4gpu_20260627_000156/stage1_micro4/clean_training_execution/checkpoint_step_2000.pt`.
+  - Checkpoint sha256:
+    `d021f9e2a7e07b85db5f31a46209ae40c081cb13e0d9a5fe30c4ff58e5482928`.
+  - Final step losses:
+    - `loss_total=1.5070979595184326`.
+    - `loss_gen=1.4609375`.
+    - `loss_same_image_negative=0.0216217041015625`.
+    - raw `loss_visual_token_manifold=2.453878164291382`.
+    - weighted manifold contribution: `0.02453878164291382`.
+  - Final logged norm diagnostics:
+    - `norm_ratio_mean=5.008244037628174`.
+    - `d_norm_mean=102.59529113769531`.
+    - `v_merge_norm_mean=20.48528289794922`.
+- Internal diagnostics:
+  - Status: COMPLETED.
+  - Run id:
+    `clean_qwen3_stage1_manifold001_internal_diag_20260627_022927`.
+  - Purpose:
+    - Compare this `visual_token_manifold=0.01` checkpoint to the clean
+      sampler-fixed `0.1` run and old Qwen3 Protocol-C Stage1 baselines on the
+      same internal diagnostic surfaces.
+  - Fixed identity:
+    - Checkpoint:
+      `outputs/clean_training/qwen3_stage12_samplerfix_manifold001_4gpu_20260627_000156/stage1_micro4/clean_training_execution/checkpoint_step_2000.pt`.
+    - Eval JSONL:
+      `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend/splits/tgvf_v4_teacher_stage1_protocol_c_focus.test.jsonl`.
+    - Max image resolution: `512`.
+    - Tasks: `readout`, `query`, `distribution`.
+    - Sample caps: readout `200`, distribution `200`, query groups `50`.
+  - Command:
+    - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=revisit_vlm_clean/src:src python -m revisit_vlm_clean.cli.stage_diagnostics --run-id clean_qwen3_stage1_manifold001_internal_diag_20260627_022927 --stage stage1 --checkpoint outputs/clean_training/qwen3_stage12_samplerfix_manifold001_4gpu_20260627_000156/stage1_micro4/clean_training_execution/checkpoint_step_2000.pt --eval-jsonl data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend/splits/tgvf_v4_teacher_stage1_protocol_c_focus.test.jsonl --output-dir outputs/clean_training/qwen3_stage12_samplerfix_manifold001_4gpu_20260627_000156/stage1_micro4/internal_diagnostics_step2000 --max-image-resolution 512 --tasks all --readout-max-samples 200 --distribution-max-samples 200 --query-max-groups 50 --query-require-groups 0 --execute`.
+  - Output:
+    - `outputs/clean_training/qwen3_stage12_samplerfix_manifold001_4gpu_20260627_000156/stage1_micro4/internal_diagnostics_step2000`.
+  - Reports:
+    - `readout/readout_eval_report.json`.
+    - `query_sensitivity/query_sensitivity_report.json`.
+    - `fvt_distribution/fvt_distribution_report.json`.
+  - Results:
+    - Completed at 2026-06-27T02:39:32+09:00.
+    - Readout, `n=200`:
+      - `pct_correct_D_beats_target_only=0.9`.
+      - `pct_correct_D_beats_wrong_same=0.785`.
+      - `pct_correct_D_beats_wrong_diff=0.75`.
+      - `pct_correct_D_beats_random=0.99`.
+      - `mean_delta_correct_vs_target_only=0.423056640625`.
+      - `mean_delta_correct_vs_wrong_same=0.269921875`.
+    - Query sensitivity, `groups=46`, `items=200`:
+      - `retrieval_top1=0.425`.
+      - `retrieval_top2=0.61`.
+      - `mrr=0.6259999999999999`.
+      - `mean_diagonal_gap=-0.09201171875`.
+    - FVT distribution, `n=200`:
+      - `avg_manifold_loss=2.4048784774541856`.
+      - `norm_ratio_D_to_Vmerge=5.21002431395354`.
+      - `avg_norm_D=104.1043255996704`.
+      - `avg_norm_V_merge=20.683768496513366`.
+      - `finite_rate=1.0`.
+      - `collapse_warning=false`.
+  - Comparison:
+    - Clean samplerfix `0.1` baseline:
+      - `wrong_same=0.77`, `retrieval_top1=0.42`, `mrr=0.63125`,
+        `norm_ratio=2.401`.
+    - This clean samplerfix `0.01` replay:
+      - `wrong_same=0.785`, `retrieval_top1=0.425`, `mrr=0.626`,
+        `norm_ratio=5.210`.
+    - Old 20260617 row-only 4GPU reference:
+      - `wrong_same=0.945`, `retrieval_top1=0.535`,
+        `norm_ratio=5.174`.
+    - Old 20260620 full_mask 2GPU reference:
+      - `wrong_same=0.915`, `retrieval_top1=0.755`,
+        `norm_ratio=4.983`.
+  - Analysis:
+    - Restoring `visual_token_manifold=0.01` restored the D/V_merge scale to
+      the historical range (`norm_ratio ~= 5.2`), so the clean `0.1` run's
+      smaller norm was indeed caused by the stronger manifold coefficient.
+    - It did not restore the historical same-image target specificity:
+      `wrong_same` only moved `0.77 -> 0.785`, and query retrieval is
+      essentially unchanged (`0.42 -> 0.425`).
+    - Therefore the main clean-vs-old Stage1 gap is not explained by manifold
+      weight alone. The remaining difference must come from another training
+      semantic/code-path/config/data behavior, or from the internal diagnostic
+      path still not being perfectly comparable to the old reference.
+  - Conclusion:
+    - Treat this as a negative replay for the "just set manifold back to
+      `0.01`" hypothesis.
+    - Keep this checkpoint as a diagnostic artifact, but it is not yet a
+      strong Stage1 parent candidate versus the historical Stage1 references.
