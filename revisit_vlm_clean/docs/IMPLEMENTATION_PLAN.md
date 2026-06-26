@@ -888,8 +888,9 @@ Implemented after Phase 26.
 
 This is still a runtime smoke, not a benchmark result. It proves the
 clean-native forced post-D path can execute a real checkpoint on a real image.
-It does not yet validate free/softforce trigger behavior, no-KV full-sequence
-behavior, or equivalence/differences versus the legacy bridge.
+At the end of this phase, free/softforce trigger behavior, no-KV full-sequence
+behavior, and equivalence/differences versus the legacy bridge remained future
+checks. Later phases supersede this early smoke limitation.
 
 Validation:
 
@@ -1002,7 +1003,9 @@ Implemented after Phase 29.
 
 This phase validates clean-native Stage2 softforce against the legacy bridge on
 a small mixed manifest with both triggered and no-trigger rows. It is still not
-a benchmark claim; no-KV and clean benchmark subset boundaries remain pending.
+a benchmark claim. At the end of this phase, no-KV and clean benchmark subset
+boundaries remained pending; Phase 31 addresses the fixed-manifest no-KV
+diagnostic comparison.
 
 ## Phase 31: Stage2 Native No-KV Legacy Comparison
 
@@ -2321,6 +2324,20 @@ Implemented after Phase 93.
   files that were merged;
 - this phase does not change shard validation semantics, row ordering, scoring,
   or metric aggregation.
+
+## Phase 95: README Runtime Status Alignment
+
+Implemented after Phase 94.
+
+- README executable-backend status now reflects the current clean-native Stage2
+  diagnostic evidence:
+  - fixed VStar-8 parity with the legacy bridge has been recorded for both
+    `kv_cache` and `no_kv_full_sequence`;
+  - this remains diagnostic parity, not a benchmark-scale effect claim;
+- README benchmark merge description now records the current merge identity
+  gates and input shard artifact hashes;
+- this phase changes documentation only. It does not add runtime results, change
+  model execution, alter scoring, or change merge semantics.
 
 ## Later Phases
 

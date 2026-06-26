@@ -247,7 +247,9 @@ Diagnostic manifests are for runner validation only, not benchmark reporting.
   verification, comparability flags, row contract fields, and summary
   breakdowns without loading a model. Shard merge preserves the same parser,
   DeepStack, continuation, and backend identity fields in merged summaries and
-  canonical `run_config.json`.
+  canonical `run_config.json`. Merge also validates shard run-config identity,
+  row identity, nested row identity blocks, and records input shard artifact
+  hashes in `merge_metadata.json`.
 - `qwen3_original`: runs `mode=original` only. Use a small
   `--max-answer-tokens` for smoke checks.
 - `tgvf_stage2_qwen3_legacy`: diagnostic bridge to the historical Stage2
@@ -264,7 +266,9 @@ Diagnostic manifests are for runner validation only, not benchmark reporting.
   free/softforce no-trigger GPU smokes have passed. A trigger-positive
   softforce smoke also matches the legacy bridge on the same fixed sample. An
   8-row fixed VStar softforce manifest now matches the legacy bridge exactly at
-  row-output level. No-KV validation is still required before benchmark claims.
+  row-output level for both `kv_cache` and `no_kv_full_sequence` diagnostic
+  forward modes. These are diagnostic parity checks, not benchmark-scale effect
+  claims.
 
 ## Clean-Native Exit Criteria
 
