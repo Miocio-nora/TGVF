@@ -215,6 +215,14 @@ def test_deepstack_execution_plan_records_scope_semantics() -> None:
     assert through_answer["original_image_deepstack"]["block_after_tgvf_append"] is True
     assert through_answer["original_image_deepstack"]["restore_for_answer"] is False
     assert through_answer["d_deepstack_features"]["required_for_current_mainline"] is False
+    assert through_answer["scope_contract"]["surface"] == "benchmark_eval"
+    assert through_answer["scope_contract"]["backend"] == STAGE2_NATIVE_BACKEND
+    assert through_answer["scope_contract"]["original_image_deepstack"] == (
+        through_answer["original_image_deepstack"]
+    )
+    assert through_answer["scope_contract"]["original_image_deepstack"][
+        "block_query_end"
+    ] is None
 
     evidence_only_config = RunConfig(
         run_id="stage2_deepstack_evidence",
@@ -233,6 +241,9 @@ def test_deepstack_execution_plan_records_scope_semantics() -> None:
     )
     assert evidence_only["original_image_scope"] == "evidence_only"
     assert evidence_only["original_image_deepstack"]["restore_for_answer"] is True
+    assert evidence_only["scope_contract"]["original_image_deepstack"][
+        "block_query_end"
+    ] == "answer_start"
 
 
 def test_stage2_legacy_backend_rejects_unported_deepstack_execution(tmp_path) -> None:

@@ -2195,6 +2195,22 @@ Implemented after Phase 86.
 - this phase does not change the ValKit command argv, benchmark selection,
   scoring behavior, or subprocess execution semantics.
 
+## Phase 88: Shared DeepStack Scope Contract
+
+Implemented after Phase 87.
+
+- added a shared `clean_deepstack_scope_contract_v1` helper used by both clean
+  benchmark DeepStack execution plans and Stage2 training DeepStack plans;
+- `through_answer` and `evidence_only` now share one machine-readable mapping
+  for original-image DeepStack blocking, answer restoration, D feature policy,
+  and the v-merge-level FVT path;
+- Stage2 training preflight validates that `deepstack_training_plan` carries a
+  matching scope contract, so train/eval DeepStack semantics cannot silently
+  diverge;
+- this phase does not enable DeepStack injection yet. The remaining blocker is
+  the actual Qwen3 original-image DeepStack feature injection plus scope-mask
+  execution path.
+
 ## Later Phases
 
 1. Port DeepStack original-image injection/masking into clean training and eval

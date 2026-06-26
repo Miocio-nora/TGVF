@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from .data_generation import FileIdentity, file_identity
+from .deepstack import deepstack_scope_contract
 from .defaults import (
     DEFAULT_MAX_IMAGE_RESOLUTION,
     DEFAULT_MODEL_ID,
@@ -747,11 +748,6 @@ def _deepstack_training_plan(config: Stage2LaunchConfig) -> dict[str, Any]:
     state = config.deepstack
     scope = state.original_image_scope
     enabled = bool(state.enabled)
-    restore_for_answer = scope == DeepStackScope.EVIDENCE_ONLY
-    block_after_tgvf_append = scope in {
-        DeepStackScope.THROUGH_ANSWER,
-        DeepStackScope.EVIDENCE_ONLY,
-    }
     blocking_items = (
         [
             "native Qwen3 original-image DeepStack feature injection is not ported "
@@ -762,6 +758,12 @@ def _deepstack_training_plan(config: Stage2LaunchConfig) -> dict[str, Any]:
         if enabled
         else []
     )
+    scope_contract = deepstack_scope_contract(
+        state,
+        surface="stage2_training",
+        execution_supported=not blocking_items,
+        blocking_items=blocking_items,
+    )
     return {
         "schema_version": "clean_deepstack_training_plan_v1",
         "stage": "stage2",
@@ -770,22 +772,10 @@ def _deepstack_training_plan(config: Stage2LaunchConfig) -> dict[str, Any]:
         "execution_supported": not blocking_items,
         "default_enabled": False,
         "original_image_scope": str(scope),
-        "original_image_deepstack": {
-            "required_when_enabled": enabled,
-            "injection_source": "native_qwen3_original_image_deepstack_features",
-            "block_after_tgvf_append": block_after_tgvf_append,
-            "restore_for_answer": restore_for_answer,
-            "scope_mapping": {
-                "through_answer": "block original-image DeepStack from D/evidence through answer",
-                "evidence_only": (
-                    "block original-image DeepStack for D/evidence and restore for answer"
-                ),
-            },
-        },
-        "d_deepstack_features": {
-            "required_for_current_mainline": False,
-            "reason": "D remains a v-merge-level visual-token span",
-        },
+        "original_image_deepstack": scope_contract["original_image_deepstack"],
+        "d_deepstack_features": scope_contract["d_deepstack_features"],
+        "fvt_visual_token_path": scope_contract["fvt_visual_token_path"],
+        "scope_contract": scope_contract,
         "current_training_path": {
             "uses_manual_inputs_embeds": True,
             "qwen3_deepstack_features_injected": False,

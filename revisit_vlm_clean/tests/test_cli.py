@@ -2811,6 +2811,14 @@ def test_stage2_deepstack_prepare_writes_training_plan_and_launch_guard(tmp_path
     assert deepstack_plan["original_image_deepstack"]["block_after_tgvf_append"] is True
     assert deepstack_plan["original_image_deepstack"]["restore_for_answer"] is False
     assert deepstack_plan["d_deepstack_features"]["required_for_current_mainline"] is False
+    assert deepstack_plan["fvt_visual_token_path"] == "v_merge_level_visual_tokens"
+    assert deepstack_plan["scope_contract"]["surface"] == "stage2_training"
+    assert deepstack_plan["scope_contract"]["original_image_deepstack"] == (
+        deepstack_plan["original_image_deepstack"]
+    )
+    assert deepstack_plan["scope_contract"]["original_image_deepstack"][
+        "block_query_end"
+    ] is None
     assert bundle["runtime_artifacts"]["deepstack_training_plan"] == str(
         execution_dir / "deepstack_training_plan.json"
     )

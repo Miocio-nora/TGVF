@@ -13,8 +13,9 @@ from pathlib import Path
 from typing import Any
 
 from .benchmark_data import BenchmarkSample
+from .deepstack import deepstack_scope_contract
 from .rendering import RenderedBenchmarkInput
-from .schema import DeepStackScope, EvalFamily, EvalMode, EvalSummary, RunConfig
+from .schema import EvalFamily, EvalMode, EvalSummary, RunConfig
 from .scoring import score_output_rows
 from .stage2_native import (
     NativeStage2Engine,
@@ -531,33 +532,29 @@ def _reject_unported_deepstack_execution(config: RunConfig, *, backend: str) -> 
 
 def build_deepstack_execution_plan(config: RunConfig, *, backend: str) -> dict[str, Any]:
     state = config.deepstack
-    scope = state.original_image_scope
-    restore_for_answer = scope == DeepStackScope.EVIDENCE_ONLY
-    block_through_answer = scope == DeepStackScope.THROUGH_ANSWER
+    blockers = [
+        "native Qwen3 DeepStack feature injection for original image is not ported",
+        "post-D DeepStack masking/restoration by scope is not ported",
+        "equivalence with no-DeepStack native Stage2 path is not proven",
+    ]
+    scope_contract = deepstack_scope_contract(
+        state,
+        surface="benchmark_eval",
+        backend=backend,
+        execution_supported=False,
+        blocking_items=blockers,
+    )
     return {
         "backend": backend,
         "enabled": bool(state.enabled),
         "execution_supported": False,
         "status": "not_ported",
-        "original_image_scope": scope.value,
-        "original_image_deepstack": {
-            "injection_source": "native_qwen3_original_image_deepstack_features",
-            "block_after_tgvf_append": True,
-            "block_scope": "through_answer" if block_through_answer else "evidence_only",
-            "restore_for_answer": restore_for_answer,
-            "must_follow_attention_mask_scope": True,
-        },
-        "d_deepstack_features": {
-            "enabled": bool(state.d_features_enabled),
-            "clean_default": False,
-            "required_for_current_mainline": False,
-        },
-        "fvt_visual_token_path": "v_merge_level_visual_tokens",
-        "blocking_items": [
-            "native Qwen3 DeepStack feature injection for original image is not ported",
-            "post-D DeepStack masking/restoration by scope is not ported",
-            "equivalence with no-DeepStack native Stage2 path is not proven",
-        ],
+        "original_image_scope": str(state.original_image_scope),
+        "original_image_deepstack": scope_contract["original_image_deepstack"],
+        "d_deepstack_features": scope_contract["d_deepstack_features"],
+        "fvt_visual_token_path": scope_contract["fvt_visual_token_path"],
+        "scope_contract": scope_contract,
+        "blocking_items": blockers,
     }
 
 

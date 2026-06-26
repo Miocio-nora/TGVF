@@ -17,6 +17,7 @@ from typing import Any
 
 from revisit_vlm_clean.cli.common import exit_not_implemented, print_json
 from revisit_vlm_clean.data_generation import file_identity
+from revisit_vlm_clean.deepstack import DEEPSTACK_SCOPE_CONTRACT_SCHEMA_VERSION
 from revisit_vlm_clean.schema import _to_jsonable
 from revisit_vlm_clean.training_plan import TRAINING_PLAN_SCHEMA_VERSION, TrainingStage
 
@@ -5312,6 +5313,24 @@ def _validate_stage2_deepstack_training_plan(plan: dict[str, Any]) -> None:
         raise ValueError("Stage2 deepstack_training_plan enabled mismatch")
     if deepstack_plan.get("gate_name") != "apply_deepstack_training_scope_when_enabled":
         raise ValueError("Stage2 deepstack_training_plan gate mismatch")
+    scope_contract = deepstack_plan.get("scope_contract") or {}
+    if scope_contract.get("schema_version") != DEEPSTACK_SCOPE_CONTRACT_SCHEMA_VERSION:
+        raise ValueError("Stage2 deepstack_training_plan scope_contract schema mismatch")
+    if scope_contract.get("surface") != "stage2_training":
+        raise ValueError("Stage2 deepstack_training_plan scope_contract surface mismatch")
+    if bool(scope_contract.get("enabled")) != enabled:
+        raise ValueError("Stage2 deepstack_training_plan scope_contract enabled mismatch")
+    if scope_contract.get("original_image_scope") != deepstack_plan.get(
+        "original_image_scope"
+    ):
+        raise ValueError("Stage2 deepstack_training_plan scope_contract scope mismatch")
+    if (
+        scope_contract.get("original_image_deepstack")
+        != deepstack_plan.get("original_image_deepstack")
+    ):
+        raise ValueError(
+            "Stage2 deepstack_training_plan original-image scope contract mismatch"
+        )
     blocking_items = list(deepstack_plan.get("blocking_items") or [])
     if enabled:
         scope = deepstack.get("original_image_scope")
