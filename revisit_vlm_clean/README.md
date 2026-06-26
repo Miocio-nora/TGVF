@@ -1,11 +1,13 @@
 # Revisit VLM Clean
 
-Clean TGVF project skeleton.
+Clean TGVF project.
 
 This tree is intentionally separate from the historical implementation in the
-repository root. The first implementation slice defines interfaces, schemas,
-CLI entrypoints, and tests only. Heavy training/evaluation behavior is ported in
-later phases after each contract is validated.
+repository root. It is now the main clean entrypoint surface for deterministic
+data transforms, Stage1/Stage2 training plans and executors, clean benchmark
+evaluation, ValKit handoff/execution, and shard merge. Historical root code may
+still be read as a reference or used behind an explicitly labeled diagnostic
+bridge, but historical project cleanup is outside this clean-project goal.
 
 ## Defaults
 
@@ -42,13 +44,16 @@ tgvf_train_stage1_executor --help
 tgvf_train_stage2_executor --help
 ```
 
-The benchmark entrypoint can now validate identity, build/materialize fixed
-manifests, render model input rows for smoke checks, and execute the dry-run or
-original-Qwen backend. It can also execute the diagnostic Qwen3 Stage2 TGVF
-bridge backend for path-backed samples; full benchmark claims still require
-explicit manifest and ledger identity. This entrypoint is for
-`project_native_external` and `internal_diagnostic` eval families only; ValKit
-must use a separate runner surface.
+The benchmark entrypoint can validate identity, build/materialize fixed
+manifests, render model input rows for smoke checks, execute dry-run and
+original-Qwen backends, and execute the clean-native Qwen3 Stage2 backend for
+TGVF free/force/softforce runs. The generic `tgvf_stage2_qwen3` backend name
+resolves to `tgvf_stage2_qwen3_native`. The historical Stage2 bridge remains
+available only as an explicitly diagnostic backend for path-backed parity
+checks; it must not silently enter clean benchmark tables. Full benchmark
+claims still require explicit manifest and ledger identity. This entrypoint is
+for `project_native_external` and `internal_diagnostic` eval families only;
+ValKit must use a separate runner surface.
 
 The ValKit entrypoint is separate:
 

@@ -2554,6 +2554,26 @@ Implemented after Phase 103.
 - status artifacts and text summaries now expose `execute_permitted` so the
   handoff directory can be interpreted without relying on prose.
 
+## Phase 105: Current Clean Entrypoint Status
+
+Implemented after Phase 104.
+
+- README no longer describes `revisit_vlm_clean/` as only a skeleton or as
+  limited to dry-run/original benchmark execution;
+- README now records the current clean project role:
+  - deterministic data transforms;
+  - Stage1/Stage2 training plans and executors;
+  - clean benchmark evaluation;
+  - ValKit handoff/execution;
+  - shard merge;
+- benchmark documentation now states that `tgvf_stage2_qwen3` resolves to the
+  clean-native Qwen3 Stage2 backend, while the historical Stage2 bridge is
+  diagnostic-only;
+- package metadata now describes the clean tree as runtime surfaces and
+  contracts rather than a skeleton;
+- this phase changes documentation/package metadata only. It does not alter
+  training, evaluation, parser, scorer, or benchmark runtime behavior.
+
 ## Later Phases
 
 1. Keep data generation first-class:

@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "revisit-vlm-clean"
 version = "0.1.0"
-description = "Clean TGVF project skeleton and contracts."
+description = "Clean TGVF project entrypoints, contracts, and runtime surfaces."
 requires-python = ">=3.10"
 dependencies = []
 
