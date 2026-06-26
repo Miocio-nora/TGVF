@@ -3485,3 +3485,84 @@ entry, update this file immediately.
   - No; diagnostic larger path-backed launch smoke only.
 - Follow-up:
   - If stable, either port another official scorer wrapper or run clean CoreSmoke path-backed slices with explicit benchmark constraints.
+
+### EXP-20260626-153326-clean-qwen3-deepstack-mask075-micro-smoke
+
+- Status: PLANNED.
+- Question:
+  - What Stage1/Stage2 per-GPU micro-batch settings are feasible for the clean
+    Qwen3 mainline before launching the new Stage1 -> Stage2 training run?
+- Baseline anchor:
+  - New clean training smoke. Uses clean project entrypoints and current branch
+    state, not a benchmark-quality comparison.
+- Intended diff:
+  - Smoke only: run bounded clean optimizer-step probes instead of full
+    2000/1200-step training.
+  - Stage2 planned mainline uses `mask_original_image_after_tgvf_prob=0.75`
+    and enabled DeepStack with `through_answer` scope.
+  - Stage2 memory probe uses the 20260619 Stage1 checkpoint as a structural
+    stand-in; final Stage2 training must bind the new Stage1 checkpoint from
+    this training chain.
+- Allowed changed variables:
+  - `micro_batch_size` and corresponding `gradient_accumulation_steps`.
+  - Probe output directories.
+- Not allowed to change:
+  - Model family: Qwen3-VL-8B-Thinking.
+  - Protocol: `protocol_c_tool_observation`.
+  - Max image resolution: 512.
+  - Stage1 global batch: 32.
+  - Stage2 global batch: 128.
+  - Stage2 mask scope: `through_answer`.
+  - Stage2 mask probability: 0.75.
+  - Stage2 DeepStack enabled/scope: enabled, `through_answer`.
+- Code commit / worktree:
+  - Planned on branch `clean/tgvf-clean-project-20260625`.
+  - Planned commit before launch: `a4bafd3`.
+  - Worktree dirty only from this PLANNED ledger entry before commit.
+- Stage1 checkpoint:
+  - None for Stage1 smoke; Stage1 starts from base model.
+- Stage1 processor:
+  - Default processor for `Qwen/Qwen3-VL-8B-Thinking`.
+- Stage2 checkpoint/output:
+  - Stage2 smoke structural Stage1 checkpoint:
+    `outputs/tgvf_v3_protocol_c_stage1_8b/protocol_c_toolobs_stage1_v4data_clean_imend_bidirectional_2gpu_bs4_accum4_gbs32_2000step_20260619_014148/train/checkpoint_step_2000.pt`.
+  - Stage2 smoke structural Stage1 processor:
+    `outputs/tgvf_v3_protocol_c_stage1_8b/protocol_c_toolobs_stage1_v4data_clean_imend_bidirectional_2gpu_bs4_accum4_gbs32_2000step_20260619_014148/train/processor_step_2000`.
+- Train data:
+  - Stage1:
+    `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend/splits/tgvf_v4_teacher_stage1_protocol_c_focus.train.jsonl`.
+  - Stage2:
+    `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend_open_answer/splits/tgvf_v4_teacher_stage2_protocol_c.train.jsonl`.
+- Validation data:
+  - Stage1:
+    `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend/splits/tgvf_v4_teacher_stage1_protocol_c_focus.test.jsonl`.
+  - Stage2:
+    `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend_open_answer/splits/tgvf_v4_teacher_stage2_protocol_c.test.jsonl`.
+- Benchmark output:
+  - None. This is a training memory smoke only.
+- Script / command:
+  - Generate clean Stage1 plans under
+    `outputs/clean_training_smoke/qwen3_deepstack_mask075_micro_probe_20260626_153326/stage1_*`.
+  - Generate clean Stage2 plans under
+    `outputs/clean_training_smoke/qwen3_deepstack_mask075_micro_probe_20260626_153326/stage2_*`.
+  - Run `tgvf_train_stage*_executor --prepare-execution --audit-runtime --audit-optimizer-step`.
+- GPUs:
+  - Smoke GPU: `0` unless occupied at launch.
+  - Full training target remains unset pending smoke outcome.
+- tmux:
+  - None planned for direct bounded probes.
+- Started:
+  - TBD.
+- Finished:
+  - TBD.
+- Metrics:
+  - TBD.
+- Analysis:
+  - TBD.
+- Conclusion:
+  - TBD.
+- Comparable to baseline:
+  - No; memory/configuration smoke only.
+- Follow-up:
+  - Use the largest stable micro-batch recommendation to write the real
+    Stage1/Stage2 training plan and ledger entry.
