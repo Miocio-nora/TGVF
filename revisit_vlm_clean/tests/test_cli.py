@@ -67,14 +67,36 @@ def test_stage1_same_image_cursor_drops_incomplete_groups_without_duplicate_fill
     assert len({item["sample_index"] for item in trace}) == 4
 
 
+def test_stage1_same_image_cursor_uses_legacy_shuffle_not_ordered_tail_drop() -> None:
+    from types import SimpleNamespace
+
+    samples = [
+        SimpleNamespace(image_id="large", image="/tmp/large.jpg", question=f"large {idx}")
+        for idx in range(5)
+    ]
+    cursor = training_executor._SingleProcessSampleCursor(
+        samples=samples,
+        batch_size=4,
+        stage=training_executor.TrainingStage.STAGE1,
+        dataset_role="train",
+        dataset_path="unit.jsonl",
+        seed=0,
+    )
+
+    trace = cursor.next_batch()["sample_trace"]
+    assert cursor.summary()["mode"] == "same_image_legacy_shuffle"
+    assert len({item["sample_index"] for item in trace}) == 4
+    assert 4 in {item["sample_index"] for item in trace}
+
+
 def test_stage1_same_image_cursor_assigns_whole_image_groups_to_rank() -> None:
-    from hashlib import sha256
+    from hashlib import sha1
     from types import SimpleNamespace
 
     def image_id_for_rank(rank: int) -> str:
         for index in range(1000):
             image_id = f"rank_{rank}_image_{index}"
-            owner = int(sha256(image_id.encode("utf-8")).hexdigest(), 16) % 2
+            owner = int(sha1(image_id.encode("utf-8")).hexdigest(), 16) % 2
             if owner == rank:
                 return image_id
         raise AssertionError(f"could not find image_id for rank {rank}")

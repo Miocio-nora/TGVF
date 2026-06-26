@@ -4514,3 +4514,101 @@ entry, update this file immediately.
       `0.01`" hypothesis.
     - Keep this checkpoint as a diagnostic artifact, but it is not yet a
       strong Stage1 parent candidate versus the historical Stage1 references.
+
+### AUDIT-20260627-025608-clean-stage1-vs-legacy-sampler-semantics
+
+- Status: COMPLETED.
+- Question:
+  - Why does clean Stage1 with the same visible config as the old 20260617
+    row-only Stage1 fail to recover the old target-specific diagnostics?
+- Compared artifacts:
+  - Legacy strong reference:
+    `outputs/tgvf_v3_protocol_c_stage1_8b/protocol_c_toolobs_stage1_v4data_clean_rowonly_gpu0_3_focus_imend_bidirectional_4gpu_bs4_accum2_gbs32_2000step_20260617`.
+  - Clean replay:
+    `outputs/clean_training/qwen3_stage12_samplerfix_manifold001_4gpu_20260627_000156/stage1_micro4`.
+- Fixed/equivalent visible settings:
+  - Train file path:
+    `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend/splits/tgvf_v4_teacher_stage1_protocol_c_focus.train.jsonl`.
+  - Test file path:
+    `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend/splits/tgvf_v4_teacher_stage1_protocol_c_focus.test.jsonl`.
+  - Stage1 Protocol C tool-observation, `row_only`, `matrix_ce`,
+    `native_source_grid`, `teacher_forced`, `focus_action_im_end=true`,
+    `mask_original_image_after_tgvf=true`, `max_image_resolution=512`,
+    `world=4`, `micro=4`, `accum=2`, `global_batch=32`,
+    `max_steps=2000`, `visual_token_manifold=0.01`.
+- Confirmed implementation difference:
+  - Legacy `scripts/train_tgvf_v3_stage1.py::SameImageBatchSampler` used:
+    - image-group owner: `sha1(image_key) % world_size`;
+    - per-epoch `random.Random(seed + epoch)` shuffle of group ids;
+    - per-epoch shuffle of samples within each image group;
+    - incomplete tail chunks dropped after shuffle.
+  - Clean `_SingleProcessSampleCursor` used before this audit:
+    - image-group owner: `sha256(image_key) % world_size`;
+    - deterministic dataset-order group cycle;
+    - deterministic group offsets;
+    - for 5/6-item image groups, tail samples were never selected because the
+      cursor reset when `offset + batch_size > group_size`.
+- Coverage simulation over the actual Stage1 train JSONL with `world=4`,
+  `micro=4`, `accum=2`, and `2000` optimizer steps:
+  - Legacy `sha1 + shuffle`:
+    - total draws: `64000`.
+    - unique samples: `35312`.
+    - draw-count histogram: `{2: 28688, 1: 6624}`.
+    - open draws: `12120`; multiple-choice draws: `51880`.
+  - Clean pre-fix `sha256 + ordered`:
+    - total draws: `64000`.
+    - unique samples: `32836`.
+    - draw-count histogram: `{2: 31164, 1: 1672}`.
+    - open draws: `9786`; multiple-choice draws: `54214`.
+  - Clean with only `sha1` but still ordered:
+    - unique samples: `32836`.
+    - open draws: `9778`; multiple-choice draws: `54222`.
+  - Clean with legacy shuffle semantics:
+    - unique samples: `35338`.
+    - open draws: `12156`; multiple-choice draws: `51844`.
+  - Interpretation:
+    - The meaningful difference is shuffle/epoch semantics, not the hash
+      function itself.
+    - Group size distribution for eligible groups is `{4: 4972, 5: 3193,
+      6: 44}`. Ordered cycling permanently made `3281` tail samples
+      inaccessible, including `1747` open samples.
+    - The inaccessible tail samples are enriched for `ocr_text`, `counting`,
+      `spatial_relation`, and `state_action`, which are exactly the kind of
+      same-image target-specific distinctions Stage1 is supposed to learn.
+- Code fix:
+  - Updated `revisit_vlm_clean/src/revisit_vlm_clean/training/executor.py`
+    `_SingleProcessSampleCursor` to match legacy same-image sampler semantics:
+    `sha1(image_key)%world_size`, seeded per-epoch shuffle of groups, seeded
+    per-epoch shuffle inside groups, and complete-batch tail dropping after
+    shuffle.
+  - Added a regression test that a 5-item same-image group can emit the tail
+    item under legacy shuffle, instead of permanently repeating the first 4.
+  - Updated the rank-owner unit test from `sha256` to `sha1`.
+- Verification:
+  - `PYTHONPATH=revisit_vlm_clean/src:src pytest -q revisit_vlm_clean/tests/test_cli.py -k 'stage1_same_image_cursor'`
+    passed: `3 passed`.
+  - `python -m py_compile revisit_vlm_clean/src/revisit_vlm_clean/training/executor.py`
+    passed.
+  - Direct clean cursor simulation after the fix over the real train JSONL:
+    - total draws: `64000`.
+    - unique samples: `35312`.
+    - draw-count histogram: `{2: 28688, 1: 6624}`.
+    - rank0 summary mode: `same_image_legacy_shuffle`.
+- Remaining notes:
+  - This audit does not prove the sampler difference is the only clean-vs-old
+    gap. It proves one concrete, behaviorally significant difference and fixes
+    it.
+  - Other surface differences still recorded for later audit:
+    - legacy `model_id` was the local path
+      `/nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking`, while the clean
+      plan used `Qwen/Qwen3-VL-8B-Thinking`;
+    - legacy checkpoint cadence was `save_every=500`, while the clean replay
+      used `save_every=2000`.
+    - checkpoint cadence should not affect gradients, but model-id resolution
+      should be pinned to the local path in the next comparable run to remove
+      any residual ambiguity.
+- Conclusion:
+  - The current clean Stage1 replay was not equivalent to the old 20260617
+    Stage1 because its same-image sampler changed the effective training
+    distribution. A new clean Stage1 replay is required before judging
+    manifold, Stage2, or benchmark behavior against the old baseline.

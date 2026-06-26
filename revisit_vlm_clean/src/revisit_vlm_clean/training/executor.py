@@ -10,9 +10,10 @@ import argparse
 import json
 import math
 import os
+import random
 import time
 from collections.abc import Mapping
-from hashlib import sha256
+from hashlib import sha1, sha256
 from pathlib import Path
 from typing import Any
 
@@ -3228,12 +3229,14 @@ class _SingleProcessSampleCursor:
         target_focus_ratio: float | None = None,
         rank: int = 0,
         world_size: int = 1,
+        seed: int = 0,
     ) -> None:
         if not samples:
             raise ValueError(f"{stage.value} {dataset_role} cursor has no samples")
         self.original_sample_count = len(samples)
         self.rank = max(0, int(rank))
         self.world_size = max(1, int(world_size))
+        self.seed = int(seed)
         indexed_samples = list(enumerate(samples))
         if self.world_size > 1 and stage != TrainingStage.STAGE1:
             indexed_samples = [
@@ -3256,8 +3259,9 @@ class _SingleProcessSampleCursor:
             else None
         )
         self.cursor = 0
-        self.group_cursor = 0
-        self.group_offsets: dict[int, int] = {}
+        self.same_image_epoch = 0
+        self.same_image_epoch_batches: list[list[tuple[int, Any]]] = []
+        self.same_image_batch_cursor = 0
         self.same_image_groups = (
             self._same_image_groups() if stage == TrainingStage.STAGE1 else []
         )
@@ -3270,7 +3274,7 @@ class _SingleProcessSampleCursor:
         self.batch_index = 0
         self.focus_emitted = 0
         if self.same_image_groups:
-            self.mode = "same_image_group_cycle"
+            self.mode = "same_image_legacy_shuffle"
         elif self.focus_indices and self.no_focus_indices and self.target_focus_ratio is not None:
             self.mode = "target_focus_ratio_cycle"
         else:
@@ -3278,16 +3282,10 @@ class _SingleProcessSampleCursor:
 
     def next_batch(self) -> dict[str, Any]:
         if self.same_image_groups:
-            group_index = self.group_cursor % len(self.same_image_groups)
-            indexed_group = self.same_image_groups[group_index]
-            offset = self.group_offsets.get(group_index, 0)
-            if offset + self.batch_size > len(indexed_group):
-                offset = 0
-            selected = indexed_group[offset : offset + self.batch_size]
-            if len(selected) != self.batch_size:
-                raise RuntimeError("same-image Stage1 cursor produced an incomplete batch")
-            self.group_offsets[group_index] = offset + self.batch_size
-            self.group_cursor += 1
+            if self.same_image_batch_cursor >= len(self.same_image_epoch_batches):
+                self._refresh_same_image_epoch_batches()
+            selected = self.same_image_epoch_batches[self.same_image_batch_cursor]
+            self.same_image_batch_cursor += 1
         elif self.mode == "target_focus_ratio_cycle":
             selected = self._next_stage2_ratio_batch()
         else:
@@ -3321,7 +3319,14 @@ class _SingleProcessSampleCursor:
             "mode": self.mode,
             "same_image_group_count": len(self.same_image_groups),
             "same_image_drop_incomplete": self.stage == TrainingStage.STAGE1,
-            "same_image_group_owner": "sha256(image_key)%world_size"
+            "same_image_group_owner": "sha1(image_key)%world_size"
+            if self.stage == TrainingStage.STAGE1
+            else None,
+            "same_image_shuffle": "legacy_group_and_group_member_shuffle"
+            if self.stage == TrainingStage.STAGE1
+            else None,
+            "same_image_seed": self.seed if self.stage == TrainingStage.STAGE1 else None,
+            "same_image_epoch": self.same_image_epoch
             if self.stage == TrainingStage.STAGE1
             else None,
             "target_focus_ratio": self.target_focus_ratio,
@@ -3338,7 +3343,7 @@ class _SingleProcessSampleCursor:
         for index, sample in self.indexed_samples:
             key = str(getattr(sample, "image_id", None) or getattr(sample, "image", ""))
             if self.world_size > 1:
-                owner = int(sha256(key.encode("utf-8")).hexdigest(), 16) % self.world_size
+                owner = int(sha1(key.encode("utf-8")).hexdigest(), 16) % self.world_size
                 if owner != self.rank:
                     continue
             if key not in groups_by_key:
@@ -3347,6 +3352,24 @@ class _SingleProcessSampleCursor:
             groups_by_key[key].append((index, sample))
         min_size = self.batch_size if self.batch_size > 1 else 1
         return [groups_by_key[key] for key in order if len(groups_by_key[key]) >= min_size]
+
+    def _refresh_same_image_epoch_batches(self) -> None:
+        rng = random.Random(self.seed + self.same_image_epoch)
+        groups = [list(group) for group in self.same_image_groups]
+        rng.shuffle(groups)
+        batches: list[list[tuple[int, Any]]] = []
+        for group in groups:
+            rng.shuffle(group)
+            for start in range(0, len(group), self.batch_size):
+                batch = group[start : start + self.batch_size]
+                if len(batch) != self.batch_size:
+                    continue
+                batches.append(batch)
+        if not batches:
+            raise RuntimeError("same-image Stage1 cursor produced no complete batches")
+        self.same_image_epoch += 1
+        self.same_image_epoch_batches = batches
+        self.same_image_batch_cursor = 0
 
     def _stage2_focus_indices(self) -> list[int]:
         return [
@@ -3422,6 +3445,7 @@ def _build_single_process_sample_cursor(
         dataset_path=path,
         rank=rank,
         world_size=world_size,
+        seed=int((bundle.get("training") or {}).get("seed") or 0),
         target_focus_ratio=(
             (bundle.get("training") or {}).get("target_focus_ratio")
             if expected_stage == TrainingStage.STAGE2 and dataset_role == "train"
