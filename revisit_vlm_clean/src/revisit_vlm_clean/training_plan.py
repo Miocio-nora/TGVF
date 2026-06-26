@@ -333,6 +333,10 @@ def build_stage1_launch_plan(
     config.validate()
     train_identity = _required_file_identity(config.train_file, label="train_file")
     command = _stage1_legacy_command(config)
+    native_training = _clean_native_training_status(
+        TrainingStage.STAGE1,
+        world_size=config.batch.world_size,
+    )
     return {
         "training_plan_schema_version": TRAINING_PLAN_SCHEMA_VERSION,
         "stage": TrainingStage.STAGE1,
@@ -386,7 +390,7 @@ def build_stage1_launch_plan(
             "token_row_mode_whitelist": ["row_only"],
             "fvt_position_mode_whitelist": ["native_source_grid"],
         },
-        "clean_native_training": _clean_native_training_status(TrainingStage.STAGE1),
+        "clean_native_training": native_training,
         "clean_prepare_execution_command": _clean_prepare_execution_command_payload(
             TrainingStage.STAGE1,
             output_dir=config.output_dir,
@@ -395,6 +399,7 @@ def build_stage1_launch_plan(
             TrainingStage.STAGE1,
             world_size=config.batch.world_size,
             output_dir=config.output_dir,
+            native_status=native_training,
         ),
         "legacy_reference_command": _legacy_reference_command_payload(command),
     }
@@ -424,6 +429,12 @@ def build_stage2_launch_plan(
             executable=False,
             unavailable_reason="historical Stage2 script has no DeepStack training controls",
         )
+    )
+    native_training = _clean_native_training_status(
+        TrainingStage.STAGE2,
+        world_size=config.batch.world_size,
+        deepstack_enabled=config.deepstack.enabled,
+        val_file_present=config.val_file is not None,
     )
     return {
         "training_plan_schema_version": TRAINING_PLAN_SCHEMA_VERSION,
@@ -502,10 +513,7 @@ def build_stage2_launch_plan(
             "d_deepstack_features_default": False,
             "legacy_command_is_final": False,
         },
-        "clean_native_training": _clean_native_training_status(
-            TrainingStage.STAGE2,
-            deepstack_enabled=config.deepstack.enabled,
-        ),
+        "clean_native_training": native_training,
         "clean_prepare_execution_command": _clean_prepare_execution_command_payload(
             TrainingStage.STAGE2,
             output_dir=config.output_dir,
@@ -514,6 +522,7 @@ def build_stage2_launch_plan(
             TrainingStage.STAGE2,
             world_size=config.batch.world_size,
             output_dir=config.output_dir,
+            native_status=native_training,
         ),
         "legacy_reference_command": legacy_reference,
     }
@@ -556,6 +565,8 @@ def write_training_plan(output_dir: str | Path, plan: dict[str, Any]) -> dict[st
         _command_script_text(plan.get("clean_training_command") or {}),
         encoding="utf-8",
     )
+    if (plan.get("clean_training_command") or {}).get("executable"):
+        clean_command_path.chmod(0o755)
     command_path.write_text(
         _command_script_text(plan.get("legacy_reference_command") or {}),
         encoding="utf-8",
@@ -611,26 +622,41 @@ def _clean_training_command_payload(
     *,
     world_size: int,
     output_dir: str,
+    native_status: dict[str, Any],
 ) -> dict[str, Any]:
     entrypoint = f"revisit_vlm_clean.training.{stage.value}_executor"
-    command = [
-        "torchrun",
-        "--nproc-per-node",
-        str(world_size),
-        "-m",
-        entrypoint,
-        "--plan",
-        str(Path(output_dir) / "training_plan.json"),
-    ]
+    if world_size == 1:
+        command = [
+            "python",
+            "-m",
+            entrypoint,
+            "--plan",
+            str(Path(output_dir) / "training_plan.json"),
+            "--launch-training",
+        ]
+    else:
+        command = [
+            "torchrun",
+            "--nproc-per-node",
+            str(world_size),
+            "-m",
+            entrypoint,
+            "--plan",
+            str(Path(output_dir) / "training_plan.json"),
+            "--launch-training",
+        ]
+    executable = bool(native_status.get("executable"))
+    unavailable_reason = None if executable else "; ".join(
+        str(item) for item in native_status.get("blocking_items") or []
+    )
     return {
-        "executable": False,
-        "status": "clean_native_executor_not_ported",
+        "executable": executable,
+        "status": native_status.get("status"),
         "final_clean_native": True,
         "planned_entrypoint": entrypoint,
-        "unavailable_reason": (
-            "clean-native training executor is not implemented yet; "
-            "do not launch historical scripts as the clean mainline"
-        ),
+        "unavailable_reason": unavailable_reason,
+        "will_launch_training": executable,
+        "runtime": native_status.get("runtime"),
         "argv": command,
         "shell": shlex.join(command),
     }
@@ -675,26 +701,41 @@ def _command_script_text(command: dict[str, Any]) -> str:
 def _clean_native_training_status(
     stage: TrainingStage,
     *,
+    world_size: int,
     deepstack_enabled: bool = False,
+    val_file_present: bool = False,
 ) -> dict[str, Any]:
-    blockers = [
-        "native trainer loop has not been ported into revisit_vlm_clean",
-        "native checkpoint save/load parity with historical scripts is not yet proven",
-        "native trainable-parameter audit is not emitted by a clean executor",
-    ]
+    blockers = []
+    runtime = "single_process"
+    if world_size != 1:
+        runtime = "distributed_not_ported"
+        blockers.append("DDP/multi-process clean training is not ported yet")
+    if stage == TrainingStage.STAGE2 and val_file_present:
+        blockers.append("in-training Stage2 validation is not ported yet")
     if stage == TrainingStage.STAGE2 and deepstack_enabled:
         blockers.append(
             "DeepStack original-image injection/masking is specified but not implemented "
             "by a clean Stage2 executor"
         )
+    executable = not blockers
     return {
         "stage": str(stage),
-        "executable": False,
-        "status": "handoff_supported_trainer_loop_not_ported",
+        "executable": executable,
+        "status": (
+            "clean_native_single_process_launch_supported"
+            if executable
+            else "clean_native_launch_blocked"
+        ),
         "required_for_final_clean_project": True,
         "legacy_reference_is_final": False,
         "prepare_execution_supported": True,
-        "current_artifact": "auditable launch plan plus clean execution bundle handoff",
+        "launch_training_supported": executable,
+        "runtime": runtime,
+        "current_artifact": (
+            "clean single-process trainer loop"
+            if executable
+            else "auditable launch plan plus clean execution bundle handoff"
+        ),
         "blocking_items": blockers,
     }
 

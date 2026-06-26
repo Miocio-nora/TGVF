@@ -1933,20 +1933,56 @@ Implemented after Phase 73.
 - Stage2 default `deepstack.enabled=false` now satisfies
   `apply_deepstack_training_scope_when_enabled`; an explicitly enabled
   DeepStack plan must still wait for the actual training injection/masking path;
-- when every required gate is identity-validated and the only remaining blocker
-  is the deliberate missing native trainer loop, readiness reports
-  `status=launch_contract_ready_trainer_loop_disabled` and
-  `launch_permitted=false`;
+- when every required gate is identity-validated, readiness reports either
+  `status=launch_contract_ready_trainer_loop_disabled` for blocked runtimes or
+  `status=launch_contract_ready_explicit_launch_required` when the clean
+  single-process launch path is available;
 - this phase does not enter the full `max_steps` loop, enable
   `clean_training_command.sh`, or launch training. `will_launch_training`
   remains `false`.
 
+## Phase 75: Clean Single-Process Training Launch
+
+Implemented after Phase 74.
+
+- Stage1/Stage2 executors now support explicit `--launch-training`;
+- launch first runs the normal clean prepare-execution path, then starts the
+  clean single-process trainer loop from the execution bundle;
+- launch writes:
+  - `single_process_training_runtime.json`;
+  - `clean_training_launch_result.json`;
+  - `clean_training_launch_status.json`;
+  - `checkpoint_step_N.pt` checkpoints according to `save_every` and final
+    `max_steps`;
+- the launch loop reuses the clean executor primitives already covered by the
+  runtime audits:
+  - model/module loader;
+  - trainable/frozen parameter audit;
+  - optimizer/scheduler construction;
+  - training-step forward;
+  - gradient accumulation;
+  - gradient clipping;
+  - optimizer/scheduler step;
+  - clean checkpoint save/load validation;
+- `clean_training_command.sh` is executable only when the plan is currently
+  launchable by the clean executor:
+  - `world_size=1`;
+  - no Stage2 `val_file`;
+  - Stage2 DeepStack training disabled;
+- plans that require DDP/multi-process training, in-training Stage2 validation,
+  or Stage2 DeepStack training remain valid for prepare/audit but their
+  `clean_training_command.sh` is non-executable and records the blocking
+  reason;
+- this phase does not port DDP, distributed sampler/state, in-training
+  validation, or DeepStack original-image injection/masking during training.
+
 ## Later Phases
 
-1. Replace training launch plans with clean-native training execution.
-2. Port DeepStack original-image injection/masking into clean training and eval
+1. Port DDP/multi-process clean training execution.
+2. Port Stage2 in-training validation cadence.
+3. Port DeepStack original-image injection/masking into clean training and eval
    execution.
-3. Keep data generation first-class:
+4. Keep data generation first-class:
    - deterministic Stage1/Stage2 transforms stay in `tgvf_generate_data` and
      are preserved rather than rewritten in the current execution cleanup;
    - heavy teacher trajectory generation is ported only when regeneration is

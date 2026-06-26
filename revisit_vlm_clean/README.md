@@ -78,8 +78,9 @@ dataset/checkpoint hashes, batch math, mask policy, weighted losses, DeepStack
 state, a clean-native executor status, and a separate temporary legacy
 reference command. They also write `clean_prepare_execution_command.sh`, which
 runs the clean executor handoff and produces execution-bundle artifacts without
-starting training. `clean_training_command.sh` remains commented because the
-trainer loop itself is not ported yet.
+starting training. `clean_training_command.sh` is executable only for currently
+supported single-process clean launches; multi-process/DDP, Stage2 in-training
+validation, and DeepStack training launches remain blocked.
 
 The planned clean training modules are importable:
 
@@ -101,10 +102,12 @@ tgvf_train_stage2_executor --plan /path/to/training_plan.json --prepare-executio
 tgvf_train_stage2_executor --plan /path/to/training_plan.json --prepare-execution --audit-runtime --audit-checkpoint-resume
 tgvf_train_stage2_executor --plan /path/to/training_plan.json --prepare-execution --audit-runtime --audit-cadence
 tgvf_train_stage2_executor --plan /path/to/training_plan.json --prepare-execution --audit-runtime --audit-launch-readiness
+tgvf_train_stage2_executor --plan /path/to/training_plan.json --launch-training
 ```
 
-Without `--preflight-only`, `--prepare-execution`, or `--audit-runtime`, these
-executors fail fast instead of launching a partial or legacy training path.
+Without `--preflight-only`, `--prepare-execution`, `--audit-runtime`, or
+`--launch-training`, these executors fail fast instead of launching a partial or
+legacy training path.
 Preflight writes a JSON report next to the plan by default, or to
 `--preflight-report` when that path is provided.
 `--prepare-execution` writes executor-owned
@@ -112,9 +115,9 @@ Preflight writes a JSON report next to the plan by default, or to
 `dataset_runtime_identity.json`, `first_batch_identity.json`,
 `checkpoint_contract.json`, `optimizer_groups.json`, and a text summary without
 launching training. These artifacts are the clean handoff surface for the
-future trainer loop; they still record `will_launch_training=false` until that
-loop is ported. Stage2 prepare-execution loads and validates the Stage1
-checkpoint contract before the handoff is accepted.
+trainer loop; they still record `will_launch_training=false` because
+prepare-execution itself never starts training. Stage2 prepare-execution loads
+and validates the Stage1 checkpoint contract before the handoff is accepted.
 `--audit-runtime` validates the execution bundle plus runtime artifacts and
 writes `clean_training_runtime_audit.json`,
 `clean_training_runtime_audit_status.json`, and `trainable_parameters.json`.
@@ -179,6 +182,13 @@ launch gates, artifact statuses, expected non-launch blocker, unexpected
 blockers, and DeepStack state. It can report that the contract is ready for the
 future trainer loop, but it still records `launch_permitted=false` and
 `will_launch_training=false`.
+With explicit `--launch-training`, the executor prepares the clean execution
+bundle and runs the clean single-process trainer loop. It writes
+`single_process_training_runtime.json`, `clean_training_launch_result.json`,
+`clean_training_launch_status.json`, and `checkpoint_step_N.pt` checkpoints
+according to the plan cadence. This path is clean-native and does not call the
+historical training scripts, but it currently rejects `world_size>1`, Stage2
+plans with `val_file`, and Stage2 DeepStack-enabled training plans.
 
 ## Fixed Manifests
 

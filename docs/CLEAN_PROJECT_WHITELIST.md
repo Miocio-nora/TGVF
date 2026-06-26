@@ -158,12 +158,19 @@ before training/eval cleanup can proceed.
   It must summarize the existing runtime launch gates, checkpoint-resume probe,
   cadence probe, artifact statuses, and DeepStack state without introducing a
   parallel gate implementation. A clean contract may be marked ready for the
-  future trainer loop only when every required gate is identity-validated and
-  the only remaining blocker is the deliberate missing native trainer loop;
+  trainer loop only when every required gate is identity-validated and no
+  unsupported runtime feature remains;
   `will_launch_training` and `launch_permitted` must remain `false`.
 - `clean_prepare_execution_command.sh` is the runnable clean handoff command;
-  `clean_training_command.sh` stays non-executable until the trainer loop is
-  ported.
+  `clean_training_command.sh` is executable only for supported single-process
+  clean launches. Plans that require DDP/multi-process execution, in-training
+  validation, or DeepStack training injection must keep the command
+  non-executable and record the blocking reason.
+- Explicit clean launch may write `single_process_training_runtime.json`,
+  `clean_training_launch_result.json`, `clean_training_launch_status.json`, and
+  `checkpoint_step_N.pt` checkpoints. This is currently a single-process
+  runtime only; DDP/multi-process training and in-training validation remain
+  unresolved.
 - Loss defaults:
   - generation/readout LM loss: `1.0`;
   - visual token manifold: `0.1`;
@@ -306,12 +313,19 @@ before training/eval cleanup can proceed.
   It must summarize the existing runtime launch gates, checkpoint-resume probe,
   cadence probe, artifact statuses, and DeepStack state without introducing a
   parallel gate implementation. A clean contract may be marked ready for the
-  future trainer loop only when every required gate is identity-validated and
-  the only remaining blocker is the deliberate missing native trainer loop;
+  trainer loop only when every required gate is identity-validated and no
+  unsupported runtime feature remains;
   `will_launch_training` and `launch_permitted` must remain `false`.
 - `clean_prepare_execution_command.sh` is the runnable clean handoff command;
-  `clean_training_command.sh` stays non-executable until the trainer loop is
-  ported.
+  `clean_training_command.sh` is executable only for supported single-process
+  clean launches. Plans that require DDP/multi-process execution, in-training
+  validation, or DeepStack training injection must keep the command
+  non-executable and record the blocking reason.
+- Explicit clean launch may write `single_process_training_runtime.json`,
+  `clean_training_launch_result.json`, `clean_training_launch_status.json`, and
+  `checkpoint_step_N.pt` checkpoints. This is currently a single-process
+  runtime only; DDP/multi-process training and in-training validation remain
+  unresolved.
 - Focus/no-focus sampling:
   - `target_focus_ratio=0.8`.
 - Batch/default run scale:

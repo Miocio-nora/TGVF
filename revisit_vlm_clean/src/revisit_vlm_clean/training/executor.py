@@ -173,6 +173,23 @@ def build_parser(stage: TrainingStage) -> argparse.ArgumentParser:
             "training_launch_readiness.json. This still does not launch training."
         ),
     )
+    parser.add_argument(
+        "--launch-training",
+        action="store_true",
+        help=(
+            "Explicitly launch the clean single-process trainer loop from the "
+            "validated plan. Multi-process/DDP and in-training validation are "
+            "still blocked."
+        ),
+    )
+    parser.add_argument(
+        "--launch-report",
+        default=None,
+        help=(
+            "Path for the clean training launch result JSON. Defaults to "
+            "<execution-dir>/clean_training_launch_result.json."
+        ),
+    )
     return parser
 
 
@@ -196,6 +213,20 @@ def main_for_stage(stage: TrainingStage, argv: list[str] | None = None) -> int:
             execution_dir=args.execution_dir,
         )
         prepared["preflight_report"] = str(report_path)
+        if args.launch_training:
+            launched = launch_training(
+                bundle_path=prepared["execution_bundle"],
+                expected_stage=stage,
+                report_path=args.launch_report,
+            )
+            prepared["training_launch_result"] = launched["training_launch_result"]
+            prepared["training_launch_status"] = launched["training_launch_status"]
+            prepared["single_process_training_runtime"] = launched[
+                "single_process_training_runtime"
+            ]
+            prepared["final_checkpoint"] = launched.get("final_checkpoint")
+            print_json(prepared)
+            return 0
         if args.audit_runtime:
             audit = audit_training_runtime(
                 bundle_path=prepared["execution_bundle"],
@@ -239,6 +270,21 @@ def main_for_stage(stage: TrainingStage, argv: list[str] | None = None) -> int:
                     "training_launch_readiness"
                 ]
         print_json(prepared)
+        return 0
+    if args.launch_training:
+        prepared = prepare_training_execution(
+            plan_path,
+            plan,
+            expected_stage=stage,
+            execution_dir=args.execution_dir,
+        )
+        launched = launch_training(
+            bundle_path=prepared["execution_bundle"],
+            expected_stage=stage,
+            report_path=args.launch_report,
+        )
+        launched["preflight_report"] = str(report_path)
+        print_json(launched)
         return 0
     if args.audit_runtime:
         bundle_path = _execution_bundle_path(
@@ -579,6 +625,93 @@ def audit_training_runtime(
     return result
 
 
+def launch_training(
+    *,
+    bundle_path: str | Path,
+    expected_stage: TrainingStage,
+    report_path: str | Path | None = None,
+) -> dict[str, Any]:
+    bundle_file = Path(bundle_path)
+    if not bundle_file.exists():
+        raise FileNotFoundError(f"training execution bundle does not exist: {bundle_file}")
+    bundle = json.loads(bundle_file.read_text(encoding="utf-8"))
+    _validate_execution_bundle(bundle, expected_stage=expected_stage)
+    execution_dir = Path(str(bundle.get("execution_dir") or bundle_file.parent))
+    artifacts = _load_runtime_artifacts(bundle, expected_stage=expected_stage)
+    _validate_single_process_launch_contract(
+        bundle=bundle,
+        artifacts=artifacts,
+        expected_stage=expected_stage,
+    )
+    loaded_modules = _load_training_parameter_audit_modules(
+        bundle,
+        expected_stage=expected_stage,
+    )
+    trainable_parameters = _write_actual_trainable_parameters_audit(
+        execution_dir=execution_dir,
+        bundle=bundle,
+        expected_stage=expected_stage,
+        loaded_modules=loaded_modules,
+    )
+    optimizer_runtime = _write_actual_optimizer_scheduler_audit(
+        execution_dir=execution_dir,
+        bundle=bundle,
+        artifacts=artifacts,
+        loaded_modules=loaded_modules,
+        expected_stage=expected_stage,
+    )
+    cadence_runtime = _write_training_cadence_runtime_audit(
+        execution_dir=execution_dir,
+        bundle=bundle,
+        expected_stage=expected_stage,
+    )
+    training_runtime = _write_single_process_training_runtime(
+        execution_dir=execution_dir,
+        bundle=bundle,
+        artifacts=artifacts,
+        loaded_modules=loaded_modules,
+        optimizer_runtime=optimizer_runtime,
+        cadence_runtime=cadence_runtime,
+        expected_stage=expected_stage,
+    )
+    launch_result = _clean_training_launch_result(
+        bundle_path=bundle_file,
+        bundle=bundle,
+        trainable_parameters=trainable_parameters,
+        optimizer_runtime=optimizer_runtime,
+        cadence_runtime=cadence_runtime,
+        training_runtime=training_runtime,
+        expected_stage=expected_stage,
+    )
+    resolved_report_path = (
+        Path(report_path)
+        if report_path is not None
+        else execution_dir / "clean_training_launch_result.json"
+    )
+    _write_json(resolved_report_path, launch_result)
+    status_path = execution_dir / "clean_training_launch_status.json"
+    _write_json(status_path, _clean_training_launch_status(launch_result))
+    final_checkpoint = (
+        (training_runtime["payload"].get("checkpoint_records") or [{}])[-1].get("path")
+        if training_runtime["payload"].get("checkpoint_records")
+        else None
+    )
+    return {
+        "training_launch_result": str(resolved_report_path),
+        "training_launch_status": str(status_path),
+        "single_process_training_runtime": training_runtime["path"],
+        "trainable_parameters": trainable_parameters["path"],
+        "optimizer_runtime": optimizer_runtime["path"],
+        "training_cadence_runtime": cadence_runtime["path"],
+        "stage": str(expected_stage),
+        "run_id": bundle.get("run_id"),
+        "will_launch_training": True,
+        "training_runtime_ported": True,
+        "runner_status": launch_result["status"],
+        "final_checkpoint": final_checkpoint,
+    }
+
+
 def _load_training_plan(path: str | Path) -> tuple[Path, dict[str, Any]]:
     plan_path = Path(path)
     if not plan_path.exists():
@@ -603,7 +736,7 @@ def _preflight_report(
         "training_plan_schema_version": plan.get("training_plan_schema_version"),
         "clean_native_training_executable": bool(native_status.get("executable")),
         "clean_native_training_status": native_status.get("status"),
-        "training_runtime_ported": False,
+        "training_runtime_ported": bool(native_status.get("launch_training_supported")),
         "will_launch_training": False,
         "blocking_items": list(native_status.get("blocking_items") or []),
     }
@@ -653,6 +786,7 @@ def _build_execution_bundle(
     clean_command = dict(plan.get("clean_training_command") or {})
     legacy_reference = dict(plan.get("legacy_reference_command") or {})
     native_status = dict(plan.get("clean_native_training") or {})
+    launch_supported = bool(native_status.get("launch_training_supported"))
     bundle: dict[str, Any] = {
         "training_execution_bundle_schema_version": TRAINING_EXECUTION_BUNDLE_SCHEMA_VERSION,
         "stage": str(expected_stage),
@@ -677,9 +811,13 @@ def _build_execution_bundle(
             "entrypoint": f"revisit_vlm_clean.training.{expected_stage.value}_executor",
             "final_clean_native": True,
             "owns_execution_bundle": True,
-            "trainer_loop_ported": False,
+            "trainer_loop_ported": launch_supported,
             "will_launch_training": False,
-            "status": "trainer_loop_not_ported",
+            "status": (
+                "ready_for_explicit_single_process_launch"
+                if launch_supported
+                else "trainer_loop_not_ported"
+            ),
             "blocking_items": list(native_status.get("blocking_items") or []),
         },
         "trainer_runtime_contract": _trainer_runtime_contract(
@@ -702,7 +840,8 @@ def _build_execution_bundle(
             "will_launch_training": False,
             "legacy_reference_allowed": False,
             "legacy_reference_executable": bool(legacy_reference.get("executable")),
-            "requires_clean_trainer_loop_before_launch": True,
+            "requires_explicit_launch_training_flag": True,
+            "requires_clean_trainer_loop_before_launch": not launch_supported,
         },
     }
     if expected_stage == TrainingStage.STAGE1:
@@ -774,13 +913,17 @@ def _trainer_runtime_contract(
     plan: dict[str, Any],
     native_status: dict[str, Any],
 ) -> dict[str, Any]:
+    launch_supported = bool(native_status.get("launch_training_supported"))
     return {
         "contract_schema_version": "clean_trainer_runtime_contract_v1",
         "stage": str(expected_stage),
         "entrypoint": f"revisit_vlm_clean.training.{expected_stage.value}_executor",
         "launch_function": "launch_training",
-        "status": "not_ported",
-        "launch_permitted": False,
+        "status": (
+            "single_process_launch_supported" if launch_supported else "not_ported"
+        ),
+        "launch_permitted": launch_supported,
+        "runtime": native_status.get("runtime"),
         "global_batch_size": (plan.get("batch") or {}).get("global_batch_size"),
         "required_launch_gates": _required_launch_gates(expected_stage),
         "required_runtime_artifacts": [
@@ -1876,11 +2019,18 @@ def _write_training_launch_readiness_audit(
     contract_ready_for_trainer_loop = (
         all_required_gates_identity_validated and not unexpected_blockers
     )
-    status = (
-        "launch_contract_ready_trainer_loop_disabled"
-        if contract_ready_for_trainer_loop
-        else "blocked_before_launch"
+    training_runtime_ported = bool(
+        (bundle.get("clean_executor") or {}).get("trainer_loop_ported")
     )
+    if contract_ready_for_trainer_loop and training_runtime_ported:
+        status = "launch_contract_ready_explicit_launch_required"
+        launch_disabled_reason = "readiness_audit_does_not_launch_training"
+    elif contract_ready_for_trainer_loop:
+        status = "launch_contract_ready_trainer_loop_disabled"
+        launch_disabled_reason = "native_trainer_loop_not_enabled"
+    else:
+        status = "blocked_before_launch"
+        launch_disabled_reason = "launch_contract_not_ready"
     deepstack = dict(bundle.get("deepstack") or {})
     deepstack_gate_status = next(
         (
@@ -1896,13 +2046,9 @@ def _write_training_launch_readiness_audit(
         "run_id": bundle.get("run_id"),
         "status": status,
         "will_launch_training": False,
-        "training_runtime_ported": False,
+        "training_runtime_ported": training_runtime_ported,
         "launch_permitted": False,
-        "launch_disabled_reason": (
-            "native_trainer_loop_not_enabled"
-            if contract_ready_for_trainer_loop
-            else "launch_contract_not_ready"
-        ),
+        "launch_disabled_reason": launch_disabled_reason,
         "required_gates_total": int(gates.get("total") or len(gate_rows)),
         "identity_validated_gates_total": int(
             gates.get("identity_validated") or len(identity_validated_gates)
@@ -1946,6 +2092,293 @@ def _write_training_launch_readiness_audit(
     path = execution_dir / "training_launch_readiness.json"
     _write_json(path, payload)
     return {"path": str(path), "payload": payload}
+
+
+def _validate_single_process_launch_contract(
+    *,
+    bundle: dict[str, Any],
+    artifacts: dict[str, dict[str, Any]],
+    expected_stage: TrainingStage,
+) -> None:
+    batch = bundle.get("batch") or {}
+    world_size = int(batch.get("world_size") or 0)
+    if world_size != 1:
+        raise ValueError(
+            "clean single-process launch requires batch.world_size=1; "
+            "DDP/multi-process training is not ported yet"
+        )
+    if expected_stage == TrainingStage.STAGE2:
+        dataset = bundle.get("dataset") or {}
+        if dataset.get("val_file") is not None:
+            raise ValueError(
+                "clean single-process launch does not yet support in-training "
+                "Stage2 validation; omit val_file or use audit-only mode"
+            )
+        deepstack = bundle.get("deepstack") or {}
+        if bool(deepstack.get("enabled")):
+            raise ValueError(
+                "clean Stage2 launch does not yet support DeepStack training injection"
+            )
+    if artifacts["optimizer_groups"].get("status") != "validated":
+        raise ValueError("optimizer groups must be validated before launch")
+
+
+def _write_single_process_training_runtime(
+    *,
+    execution_dir: Path,
+    bundle: dict[str, Any],
+    artifacts: dict[str, dict[str, Any]],
+    loaded_modules: dict[str, Any],
+    optimizer_runtime: dict[str, Any],
+    cadence_runtime: dict[str, Any],
+    expected_stage: TrainingStage,
+) -> dict[str, Any]:
+    try:
+        import torch
+    except Exception as exc:
+        raise RuntimeError("single-process training launch requires torch") from exc
+
+    optimizer = optimizer_runtime.get("optimizer")
+    scheduler = optimizer_runtime.get("scheduler")
+    if optimizer is None or scheduler is None:
+        raise ValueError("single-process training requires optimizer and scheduler objects")
+    modules = dict(loaded_modules.get("modules") or {})
+    training = bundle.get("training") or {}
+    batch = bundle.get("batch") or {}
+    max_steps = int(training.get("max_steps") or 0)
+    if max_steps < 1:
+        raise ValueError("single-process training requires training.max_steps >= 1")
+    accumulation_steps = max(1, int(batch.get("gradient_accumulation_steps") or 1))
+    checkpoint_steps = {
+        int(step) for step in (cadence_runtime["payload"].get("checkpoint_save_steps") or [])
+    }
+    if max_steps not in checkpoint_steps:
+        raise ValueError("single-process training requires final checkpoint cadence")
+    max_grad_norm = _max_grad_norm_from_bundle(bundle, optimizer_runtime)
+    step_records = []
+    checkpoint_records = []
+    total_micro_steps = 0
+    optimizer.zero_grad(set_to_none=True)
+    for global_step in range(1, max_steps + 1):
+        micro_losses = []
+        optimizer.zero_grad(set_to_none=True)
+        for micro_index in range(accumulation_steps):
+            result = _run_training_step_probe_for_stage(
+                bundle=bundle,
+                artifacts=artifacts,
+                loaded_modules=loaded_modules,
+                expected_stage=expected_stage,
+            )
+            loss_tensor = result.get("loss_tensor")
+            if loss_tensor is None:
+                loss_tensor = result.get("_loss_total_tensor")
+            if loss_tensor is None or not hasattr(loss_tensor, "backward"):
+                raise ValueError("single-process training requires a differentiable loss")
+            if getattr(loss_tensor, "requires_grad", False) is not True:
+                raise ValueError("single-process training loss tensor must require gradients")
+            loss_value = _scalar_float(loss_tensor)
+            if loss_value is None or not math.isfinite(loss_value):
+                raise ValueError("single-process training requires finite losses")
+            scaled_loss = loss_tensor / float(accumulation_steps)
+            scaled_loss.backward()
+            total_micro_steps += 1
+            micro_losses.append(
+                {
+                    "micro_step": total_micro_steps,
+                    "micro_index": micro_index,
+                    "loss_total": loss_value,
+                    "scaled_loss_total": _scalar_float(scaled_loss),
+                    "sample_count": result.get("sample_count"),
+                }
+            )
+        grad_after_accumulation = _optimizer_grad_summary(optimizer)
+        clipped_grad_norm = None
+        if max_grad_norm is not None:
+            clipped_grad_norm = _scalar_float(
+                torch.nn.utils.clip_grad_norm_(
+                    _optimizer_parameters(optimizer),
+                    max_grad_norm,
+                )
+            )
+        grad_after_clip = _optimizer_grad_summary(optimizer)
+        optimizer.step()
+        scheduler.step()
+        scheduler_last_lr = list(scheduler.get_last_lr())
+        optimizer.zero_grad(set_to_none=True)
+        step_records.append(
+            {
+                "global_step": global_step,
+                "micro_steps": micro_losses,
+                "grad_after_accumulation": grad_after_accumulation,
+                "clipped_grad_norm": clipped_grad_norm,
+                "grad_after_clip": grad_after_clip,
+                "scheduler_last_lr": scheduler_last_lr,
+            }
+        )
+        if global_step in checkpoint_steps:
+            checkpoint_records.append(
+                _save_clean_training_checkpoint(
+                    execution_dir=execution_dir,
+                    bundle=bundle,
+                    loaded_modules=loaded_modules,
+                    modules=modules,
+                    optimizer=optimizer,
+                    scheduler=scheduler,
+                    expected_stage=expected_stage,
+                    global_step=global_step,
+                    optimizer_step=global_step,
+                    micro_step=total_micro_steps,
+                )
+            )
+
+    payload = {
+        "schema_version": "clean_single_process_training_runtime_v1",
+        "stage": bundle.get("stage"),
+        "run_id": bundle.get("run_id"),
+        "status": "clean_single_process_training_completed",
+        "training_run_launched": True,
+        "single_process": True,
+        "ddp_enabled": False,
+        "in_training_validation_enabled": False,
+        "world_size": 1,
+        "max_steps": max_steps,
+        "gradient_accumulation_steps": accumulation_steps,
+        "optimizer_steps_completed": len(step_records),
+        "micro_steps_completed": total_micro_steps,
+        "checkpoint_save_steps": sorted(checkpoint_steps),
+        "checkpoint_records": checkpoint_records,
+        "step_records": step_records,
+        "notes": [
+            "clean executor ran the single-process trainer loop",
+            "DDP/multi-process training and in-training validation are not part of this runtime",
+        ],
+    }
+    path = execution_dir / "single_process_training_runtime.json"
+    _write_json(path, payload)
+    return {"path": str(path), "payload": payload}
+
+
+def _save_clean_training_checkpoint(
+    *,
+    execution_dir: Path,
+    bundle: dict[str, Any],
+    loaded_modules: dict[str, Any],
+    modules: dict[str, Any],
+    optimizer: Any,
+    scheduler: Any,
+    expected_stage: TrainingStage,
+    global_step: int,
+    optimizer_step: int,
+    micro_step: int,
+) -> dict[str, Any]:
+    try:
+        import torch
+    except Exception as exc:
+        raise RuntimeError("clean checkpoint save requires torch") from exc
+
+    checkpoint_path = execution_dir / f"checkpoint_step_{global_step}.pt"
+    checkpoint = _checkpoint_probe_payload(
+        bundle=bundle,
+        loaded_modules=loaded_modules,
+        modules=modules,
+        optimizer=optimizer,
+        scheduler=scheduler,
+        expected_stage=expected_stage,
+        global_step=global_step,
+        optimizer_step=optimizer_step,
+        micro_step=micro_step,
+    )
+    torch.save(checkpoint, checkpoint_path)
+    loaded = _torch_load_checkpoint_probe(torch, checkpoint_path)
+    required_keys = _checkpoint_required_output_keys(expected_stage)
+    missing_keys = sorted(key for key in required_keys if key not in loaded)
+    state_checks = _checkpoint_state_checks(
+        checkpoint=checkpoint,
+        loaded=loaded,
+        expected_stage=expected_stage,
+    )
+    step_checks = _checkpoint_publish_step_checks(
+        loaded=loaded,
+        expected_stage=expected_stage,
+        global_step=global_step,
+        optimizer_step=optimizer_step,
+        micro_step=micro_step,
+    )
+    state_checks_ok = all(check.get("ok") is True for check in state_checks.values())
+    step_checks_ok = all(check.get("ok") is True for check in step_checks.values())
+    if missing_keys or not state_checks_ok or not step_checks_ok:
+        raise ValueError(
+            "clean checkpoint failed post-save validation: "
+            f"missing={missing_keys}, state_ok={state_checks_ok}, step_ok={step_checks_ok}"
+        )
+    return {
+        "path": str(checkpoint_path),
+        "identity": file_identity(checkpoint_path).to_dict(),
+        "global_step": loaded.get("global_step"),
+        "optimizer_step": loaded.get("optimizer_step"),
+        "micro_step": loaded.get("micro_step"),
+        "required_output_keys": required_keys,
+        "missing_required_keys": missing_keys,
+        "state_checks_ok": state_checks_ok,
+        "step_checks_ok": step_checks_ok,
+    }
+
+
+def _clean_training_launch_result(
+    *,
+    bundle_path: Path,
+    bundle: dict[str, Any],
+    trainable_parameters: dict[str, Any],
+    optimizer_runtime: dict[str, Any],
+    cadence_runtime: dict[str, Any],
+    training_runtime: dict[str, Any],
+    expected_stage: TrainingStage,
+) -> dict[str, Any]:
+    runtime_payload = training_runtime["payload"]
+    return {
+        "schema_version": "clean_training_launch_result_v1",
+        "stage": str(expected_stage),
+        "run_id": bundle.get("run_id"),
+        "status": "clean_single_process_training_completed",
+        "will_launch_training": True,
+        "training_runtime_ported": True,
+        "single_process": True,
+        "ddp_enabled": False,
+        "bundle_path": str(bundle_path),
+        "bundle_identity": file_identity(bundle_path).to_dict(),
+        "trainable_parameters": trainable_parameters["path"],
+        "optimizer_runtime": optimizer_runtime["path"],
+        "training_cadence_runtime": cadence_runtime["path"],
+        "single_process_training_runtime": training_runtime["path"],
+        "optimizer_steps_completed": runtime_payload.get("optimizer_steps_completed"),
+        "micro_steps_completed": runtime_payload.get("micro_steps_completed"),
+        "checkpoint_records": list(runtime_payload.get("checkpoint_records") or []),
+        "unsupported_runtime_features": [
+            "ddp_multi_process_training",
+            "in_training_validation",
+        ],
+    }
+
+
+def _clean_training_launch_status(result: dict[str, Any]) -> dict[str, Any]:
+    checkpoint_records = list(result.get("checkpoint_records") or [])
+    return {
+        "schema_version": "clean_training_launch_status_v1",
+        "stage": result.get("stage"),
+        "run_id": result.get("run_id"),
+        "status": result.get("status"),
+        "will_launch_training": result.get("will_launch_training"),
+        "training_runtime_ported": result.get("training_runtime_ported"),
+        "single_process": result.get("single_process"),
+        "ddp_enabled": result.get("ddp_enabled"),
+        "optimizer_steps_completed": result.get("optimizer_steps_completed"),
+        "micro_steps_completed": result.get("micro_steps_completed"),
+        "checkpoint_count": len(checkpoint_records),
+        "final_checkpoint": checkpoint_records[-1]["path"] if checkpoint_records else None,
+        "unsupported_runtime_features": list(
+            result.get("unsupported_runtime_features") or []
+        ),
+    }
 
 
 def _cadence_steps(*, max_steps: int, every: int) -> list[int]:
@@ -3065,7 +3498,14 @@ def _runtime_audit_report(
         training_checkpoint_resume_runtime,
         training_cadence_runtime,
     )
-    blocking_items = ["native trainer loop has not been ported into revisit_vlm_clean"]
+    trainer_loop_ported = bool(
+        (bundle.get("clean_executor") or {}).get("trainer_loop_ported")
+    )
+    blocking_items = (
+        []
+        if trainer_loop_ported
+        else ["native trainer loop has not been ported into revisit_vlm_clean"]
+    )
     if not trainable_parameters["payload"].get("actual_model_parameters_loaded"):
         blocking_items.append("actual trainable parameter audit requires loading the model")
     if not (
@@ -3132,13 +3572,14 @@ def _runtime_audit_report(
         blocking_items.append(
             f"{expected_stage.value} training cadence requires --audit-cadence"
         )
+    status = "ready_for_explicit_launch" if not blocking_items else "blocked_before_training_loop"
     return {
         "schema_version": "clean_training_runtime_audit_v1",
         "stage": str(expected_stage),
         "run_id": bundle.get("run_id"),
-        "status": "blocked_before_training_loop",
+        "status": status,
         "will_launch_training": False,
-        "training_runtime_ported": False,
+        "training_runtime_ported": trainer_loop_ported,
         "bundle_path": str(bundle_path),
         "bundle_identity": file_identity(bundle_path).to_dict(),
         "plan_identity": bundle.get("plan_identity"),
@@ -4076,11 +4517,25 @@ def _validate_prepare_command(command: dict[str, Any], *, stage: TrainingStage) 
 def _validate_clean_command(command: dict[str, Any], *, stage: TrainingStage) -> None:
     if command.get("final_clean_native") is not True:
         raise ValueError("clean_training_command must be marked final_clean_native=true")
-    if command.get("executable") is not False:
-        raise ValueError("clean_training_command must remain non-executable until ported")
     expected_entrypoint = f"revisit_vlm_clean.training.{stage.value}_executor"
     if command.get("planned_entrypoint") != expected_entrypoint:
         raise ValueError(
             "clean_training_command planned_entrypoint mismatch: "
             f"{command.get('planned_entrypoint')!r} != {expected_entrypoint!r}"
         )
+    argv = list(command.get("argv") or [])
+    if "--launch-training" not in argv:
+        raise ValueError("clean_training_command must include --launch-training")
+    executable = bool(command.get("executable"))
+    if executable:
+        if command.get("status") != "clean_native_single_process_launch_supported":
+            raise ValueError("executable clean_training_command status mismatch")
+        if command.get("will_launch_training") is not True:
+            raise ValueError("executable clean_training_command must launch training")
+        if command.get("runtime") != "single_process":
+            raise ValueError("executable clean_training_command must be single_process")
+    else:
+        if command.get("will_launch_training") is not False:
+            raise ValueError("blocked clean_training_command must not launch training")
+        if not command.get("unavailable_reason"):
+            raise ValueError("blocked clean_training_command must explain unavailable_reason")

@@ -417,9 +417,9 @@ def test_stage1_training_write_plan_cli(tmp_path) -> None:
     assert plan["clean_native_training"]["executable"] is False
     assert plan["clean_native_training"]["required_for_final_clean_project"] is True
     assert plan["clean_native_training"]["prepare_execution_supported"] is True
-    assert (
-        plan["clean_native_training"]["status"]
-        == "handoff_supported_trainer_loop_not_ported"
+    assert plan["clean_native_training"]["status"] == "clean_native_launch_blocked"
+    assert "DDP/multi-process clean training is not ported yet" in (
+        plan["clean_native_training"]["blocking_items"]
     )
     assert plan["clean_prepare_execution_command"]["final_clean_native"] is True
     assert plan["clean_prepare_execution_command"]["executable"] is True
@@ -427,6 +427,7 @@ def test_stage1_training_write_plan_cli(tmp_path) -> None:
     assert plan["clean_prepare_execution_command"]["will_launch_training"] is False
     assert plan["clean_training_command"]["final_clean_native"] is True
     assert plan["clean_training_command"]["executable"] is False
+    assert plan["clean_training_command"]["will_launch_training"] is False
     assert (
         plan["clean_training_command"]["planned_entrypoint"]
         == "revisit_vlm_clean.training.stage1_executor"
@@ -435,7 +436,7 @@ def test_stage1_training_write_plan_cli(tmp_path) -> None:
     assert plan["legacy_reference_command"]["executable"] is False
     assert "audit reference only" in plan["legacy_reference_command"]["unavailable_reason"]
     native_status = json.loads((output_dir / "clean_native_training_status.json").read_text())
-    assert native_status["status"] == "handoff_supported_trainer_loop_not_ported"
+    assert native_status["status"] == "clean_native_launch_blocked"
     prepare_command_path = output_dir / "clean_prepare_execution_command.sh"
     assert prepare_command_path.stat().st_mode & 0o111
     prepare_command = prepare_command_path.read_text()
@@ -445,6 +446,7 @@ def test_stage1_training_write_plan_cli(tmp_path) -> None:
     clean_command = (output_dir / "clean_training_command.sh").read_text()
     assert "not executable" in clean_command
     assert "revisit_vlm_clean.training.stage1_executor" in clean_command
+    assert "--launch-training" in clean_command
     command = (output_dir / "legacy_reference_command.sh").read_text()
     assert command.startswith("# not executable:")
     assert "torchrun --nproc-per-node 4" in command
@@ -547,14 +549,16 @@ def test_stage1_training_executor_prepare_execution_cli(tmp_path, capsys) -> Non
         "clean_training_execution_bundle_v1"
     )
     assert bundle["stage"] == "stage1"
-    assert bundle["clean_executor"]["status"] == "trainer_loop_not_ported"
+    assert bundle["clean_executor"]["status"] == "ready_for_explicit_single_process_launch"
     assert bundle["clean_executor"]["owns_execution_bundle"] is True
     assert bundle["safety"]["legacy_reference_allowed"] is False
+    assert bundle["safety"]["requires_explicit_launch_training_flag"] is True
     assert bundle["readout_context"]["position_ids"] == "real_qwen3_mrope_full_trajectory"
     contract = bundle["trainer_runtime_contract"]
     assert contract["contract_schema_version"] == "clean_trainer_runtime_contract_v1"
-    assert contract["status"] == "not_ported"
-    assert contract["launch_permitted"] is False
+    assert contract["status"] == "single_process_launch_supported"
+    assert contract["launch_permitted"] is True
+    assert contract["runtime"] == "single_process"
     assert "emit_trainable_parameter_audit" in contract["required_launch_gates"]
     assert "stage1_readout_context_uses_qwen_v_merge" in contract["required_launch_gates"]
     assert "dataset_runtime_identity.json" in contract["required_runtime_artifacts"]
@@ -574,8 +578,8 @@ def test_stage1_training_executor_prepare_execution_cli(tmp_path, capsys) -> Non
     assert optimizer_groups["groups"][0]["lr"] == 1e-4
     assert optimizer_groups["groups"][0]["weight_decay"] == 0.01
     assert bundle["plan_identity"]["sha256"]
-    assert status["runner_status"] == "trainer_loop_not_ported"
-    assert status["trainer_runtime_contract_status"] == "not_ported"
+    assert status["runner_status"] == "ready_for_explicit_single_process_launch"
+    assert status["trainer_runtime_contract_status"] == "single_process_launch_supported"
     assert status["will_launch_training"] is False
     assert (execution_dir / "clean_training_execution_bundle.txt").exists()
     runtime_audit = json.loads((execution_dir / "clean_training_runtime_audit.json").read_text())
@@ -911,15 +915,19 @@ def test_stage2_training_write_plan_cli(tmp_path) -> None:
     assert plan["clean_native_training"]["executable"] is False
     assert plan["clean_native_training"]["legacy_reference_is_final"] is False
     assert plan["clean_native_training"]["prepare_execution_supported"] is True
-    assert (
-        plan["clean_native_training"]["status"]
-        == "handoff_supported_trainer_loop_not_ported"
+    assert plan["clean_native_training"]["status"] == "clean_native_launch_blocked"
+    assert "DDP/multi-process clean training is not ported yet" in (
+        plan["clean_native_training"]["blocking_items"]
+    )
+    assert "in-training Stage2 validation is not ported yet" in (
+        plan["clean_native_training"]["blocking_items"]
     )
     assert plan["clean_prepare_execution_command"]["executable"] is True
     assert plan["clean_prepare_execution_command"]["status"] == "prepare_execution_supported"
     assert plan["clean_prepare_execution_command"]["will_launch_training"] is False
     assert plan["clean_training_command"]["final_clean_native"] is True
     assert plan["clean_training_command"]["executable"] is False
+    assert plan["clean_training_command"]["will_launch_training"] is False
     assert (
         plan["clean_training_command"]["planned_entrypoint"]
         == "revisit_vlm_clean.training.stage2_executor"
@@ -937,6 +945,7 @@ def test_stage2_training_write_plan_cli(tmp_path) -> None:
     clean_command = (output_dir / "clean_training_command.sh").read_text()
     assert "not executable" in clean_command
     assert "revisit_vlm_clean.training.stage2_executor" in clean_command
+    assert "--launch-training" in clean_command
     command = (output_dir / "legacy_reference_command.sh").read_text()
     assert command.startswith("# not executable:")
     assert "--mask-original-image-after-tgvf-scope through_answer" in command
@@ -1847,17 +1856,18 @@ def test_stage2_training_executor_runtime_audit_can_resume_published_checkpoint(
     assert gate_status["apply_deepstack_training_scope_when_enabled"] == (
         "identity_validated"
     )
-    assert launch_readiness["status"] == "launch_contract_ready_trainer_loop_disabled"
+    assert launch_readiness["status"] == "launch_contract_ready_explicit_launch_required"
     assert launch_readiness["all_required_gates_identity_validated"] is True
     assert launch_readiness["contract_ready_for_trainer_loop"] is True
     assert launch_readiness["launch_permitted"] is False
-    assert launch_readiness["launch_disabled_reason"] == "native_trainer_loop_not_enabled"
+    assert (
+        launch_readiness["launch_disabled_reason"]
+        == "readiness_audit_does_not_launch_training"
+    )
     assert launch_readiness["pending_gates"] == []
     assert launch_readiness["unknown_gates"] == []
     assert launch_readiness["unexpected_blockers"] == []
-    assert launch_readiness["remaining_blockers"] == [
-        "native trainer loop has not been ported into revisit_vlm_clean"
-    ]
+    assert launch_readiness["remaining_blockers"] == []
     assert launch_readiness["deepstack"]["enabled"] is False
     assert launch_readiness["deepstack"]["training_scope_gate_status"] == (
         "identity_validated"
@@ -1866,6 +1876,151 @@ def test_stage2_training_executor_runtime_audit_can_resume_published_checkpoint(
     assert runtime_status["training_launch_readiness_status"] == launch_readiness["status"]
     assert runtime_status["launch_contract_ready_for_trainer_loop"] is True
     assert runtime_status["launch_permitted"] is False
+
+
+def test_stage2_training_executor_can_launch_single_process_training_loop(
+    tmp_path,
+    monkeypatch,
+    capsys,
+) -> None:
+    import torch
+
+    train_file = tmp_path / "stage2.train.jsonl"
+    checkpoint = tmp_path / "stage1.pt"
+    train_file.write_text(
+        '{"image": "/tmp/image.jpg", "question": "q", "answer": "a", '
+        '"need_focus": true, "evidence_state": "need_local_visual_evidence"}\n',
+        encoding="utf-8",
+    )
+    _write_minimal_stage1_checkpoint(checkpoint)
+    output_dir = tmp_path / "stage2_plan"
+    qwen = torch.nn.Linear(2, 2)
+    qwen.bias.requires_grad_(False)
+    tgvf = torch.nn.Sequential(torch.nn.Linear(2, 1))
+    loader_calls = 0
+    step_calls = 0
+
+    def fake_loader(bundle, *, expected_stage):
+        nonlocal loader_calls
+        loader_calls += 1
+        assert expected_stage.value == "stage2"
+        assert bundle["stage"] == "stage2"
+        return {
+            "modules": {"qwen_lora": qwen, "tgvf": tgvf},
+            "loader": {"backend": "fake_single_process_launch_loader"},
+        }
+
+    def fake_step_probe(*, bundle, artifacts, loaded_modules):
+        nonlocal step_calls
+        step_calls += 1
+        assert bundle["stage"] == "stage2"
+        modules = loaded_modules["modules"]
+        parameters = [
+            parameter
+            for module in (modules["qwen_lora"], modules["tgvf"])
+            for parameter in module.parameters()
+            if parameter.requires_grad
+        ]
+        loss_tensor = torch.stack([parameter.square().sum() for parameter in parameters]).sum()
+        return {
+            "forward_completed": True,
+            "sample_count": 1,
+            "loss_total": float(loss_tensor.detach()),
+            "loss_tensor": loss_tensor,
+            "loss_focus": 1.0,
+            "loss_no_focus": 0.0,
+            "loss_visual_token_manifold": 0.0,
+            "mask_original_image_after_tgvf": True,
+            "debug": {
+                "fast_batched_stage2": True,
+                "focus_count": 1,
+                "no_focus_count": 0,
+                "focus_loss_token_weight": 3.5,
+                "no_focus_loss_token_weight": 0.0,
+                "mask_original_image_after_tgvf_prob": 1.0,
+                "mask_original_image_after_tgvf_scope": "through_answer",
+                "focus_sample_mask_active_rate": 1.0,
+                "no_focus_mask_active_rate": 0.0,
+            },
+        }
+
+    monkeypatch.setattr(training_executor, "_load_training_parameter_audit_modules", fake_loader)
+    monkeypatch.setattr(training_executor, "_run_stage2_training_step_probe", fake_step_probe)
+    assert (
+        stage2_main(
+            [
+                "--run-id",
+                "stage2_single_process_launch",
+                "--train-file",
+                str(train_file),
+                "--stage1-checkpoint",
+                str(checkpoint),
+                "--output-dir",
+                str(output_dir),
+                "--global-batch",
+                "2",
+                "--micro-batch-size",
+                "1",
+                "--max-steps",
+                "2",
+                "--save-every",
+                "1",
+                "--write-plan",
+            ]
+        )
+        == 0
+    )
+    plan = json.loads((output_dir / "training_plan.json").read_text())
+    assert plan["clean_native_training"]["executable"] is True
+    assert (
+        plan["clean_native_training"]["status"]
+        == "clean_native_single_process_launch_supported"
+    )
+    assert plan["clean_training_command"]["executable"] is True
+    assert plan["clean_training_command"]["will_launch_training"] is True
+    clean_command_path = output_dir / "clean_training_command.sh"
+    assert clean_command_path.stat().st_mode & 0o111
+    clean_command = clean_command_path.read_text()
+    assert clean_command.startswith("python -m revisit_vlm_clean.training.stage2_executor")
+    assert "--launch-training" in clean_command
+
+    assert (
+        stage2_executor_main(
+            [
+                "--plan",
+                str(output_dir / "training_plan.json"),
+                "--launch-training",
+            ]
+        )
+        == 0
+    )
+    payload = capsys.readouterr().out
+    assert '"training_launch_result"' in payload
+    assert '"will_launch_training": true' in payload
+    execution_dir = output_dir / "clean_training_execution"
+    launch_result = json.loads(
+        (execution_dir / "clean_training_launch_result.json").read_text()
+    )
+    launch_status = json.loads(
+        (execution_dir / "clean_training_launch_status.json").read_text()
+    )
+    runtime = json.loads((execution_dir / "single_process_training_runtime.json").read_text())
+    assert loader_calls == 1
+    assert step_calls == 4
+    assert launch_result["status"] == "clean_single_process_training_completed"
+    assert launch_result["training_runtime_ported"] is True
+    assert launch_result["optimizer_steps_completed"] == 2
+    assert runtime["optimizer_steps_completed"] == 2
+    assert runtime["micro_steps_completed"] == 4
+    assert runtime["checkpoint_save_steps"] == [1, 2]
+    assert len(runtime["checkpoint_records"]) == 2
+    assert (execution_dir / "checkpoint_step_1.pt").exists()
+    assert (execution_dir / "checkpoint_step_2.pt").exists()
+    assert launch_status["final_checkpoint"] == str(execution_dir / "checkpoint_step_2.pt")
+    assert launch_status["unsupported_runtime_features"] == [
+        "ddp_multi_process_training",
+        "in_training_validation",
+    ]
 
 
 def test_stage2_training_executor_runtime_audit_can_write_checkpoint_audit(
