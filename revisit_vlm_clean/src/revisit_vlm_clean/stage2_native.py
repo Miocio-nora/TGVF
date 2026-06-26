@@ -824,12 +824,7 @@ class NativeStage2Engine:
         prefill_attention = full_attention
         block_original_image_keys = False
         if self._deepstack_enabled():
-            if self._deepstack_scope() != DeepStackScope.THROUGH_ANSWER:
-                raise NotImplementedError(
-                    "clean-native Stage2 DeepStack runtime currently supports "
-                    "through_answer scope only; evidence_only requires segmented "
-                    "answer-boundary restoration"
-                )
+            scope = self._deepstack_scope()
             deepstack_features = self._original_image_deepstack_features(sample)
             deepstack_payload = build_qwen3_original_image_deepstack_payload(
                 sequence_length=int(full_input_ids.shape[-1]),
@@ -871,7 +866,10 @@ class NativeStage2Engine:
         if block_original_image_keys:
             model_kwargs["tgvf_block_original_image_keys"] = True
             model_kwargs["tgvf_original_image_token_indices"] = original_positions.detach().cpu()
-            model_kwargs["tgvf_deepstack_scope"] = self._deepstack_scope().value
+            model_kwargs["tgvf_deepstack_scope"] = scope.value
+            model_kwargs["tgvf_deepstack_restore_for_answer"] = (
+                scope == DeepStackScope.EVIDENCE_ONLY
+            )
         return self._append_result_cls()(
             past_key_values=outputs.past_key_values,
             attention_mask=full_attention,
@@ -911,6 +909,15 @@ class NativeStage2Engine:
                 "deepstack_scope": (
                     None if deepstack_payload is None else self._deepstack_scope().value
                 ),
+                "deepstack_answer_restore_policy": (
+                    None
+                    if deepstack_payload is None
+                    else (
+                        "restore_after_answer_boundary"
+                        if self._deepstack_scope() == DeepStackScope.EVIDENCE_ONLY
+                        else "blocked_through_answer"
+                    )
+                ),
                 "deepstack_prefill_attention_mask": (
                     None if deepstack_payload is None else "4d_original_image_key_block"
                 ),
@@ -948,6 +955,7 @@ class NativeStage2Engine:
         model_kwargs = dict(append_result.model_kwargs or {})
         next_position_ids = model_kwargs.get("tgvf_next_position_ids")
         original_indices = model_kwargs.get("tgvf_original_image_token_indices")
+        restore_for_answer = bool(model_kwargs.get("tgvf_deepstack_restore_for_answer"))
         if logits is None or attention_mask is None or input_ids is None:
             raise ValueError("DeepStack continuation requires logits, input_ids, and 2D attention")
         if next_position_ids is None or original_indices is None:
@@ -973,6 +981,11 @@ class NativeStage2Engine:
             if blocked_focus_start_ids:
                 logits[:, -1, blocked_focus_start_ids] = -torch.inf
             next_token = torch.argmax(logits[:, -1, :], dim=-1, keepdim=True)
+            restore_original_image_keys = restore_for_answer and _generated_answer_has_started(
+                tokenizer,
+                generated_ids,
+                protocol=self.stage2_config.protocol,
+            )
             token_id = int(next_token[0, 0].detach().cpu().item())
             generated_ids.append(token_id)
             input_ids = torch.cat([input_ids.to(device), next_token.to(device)], dim=-1)
@@ -989,15 +1002,19 @@ class NativeStage2Engine:
                 device=next_token.device,
                 dtype=torch.long,
             )
-            blocked_attention = build_single_query_original_image_key_block_attention_mask(
-                attention_mask_2d=attention_mask,
-                original_image_token_indices=original_indices,
-                dtype=param_dtype,
+            step_attention = (
+                attention_mask
+                if restore_original_image_keys
+                else build_single_query_original_image_key_block_attention_mask(
+                    attention_mask_2d=attention_mask,
+                    original_image_token_indices=original_indices,
+                    dtype=param_dtype,
+                )
             )
             outputs = self.model(
                 input_ids=next_token.to(device),
                 past_key_values=past_key_values,
-                attention_mask=blocked_attention,
+                attention_mask=step_attention,
                 position_ids=position_ids,
                 cache_position=cache_position,
                 use_cache=True,
@@ -1328,6 +1345,27 @@ def _parsed_evidence_text(text: str, protocol: str) -> str:
     if uses_evidence:
         return _extract_tag(text, "<|evidence_start|>", "<|evidence_end|>") or ""
     return _extract_tag(text, "<EVIDENCE>", "</EVIDENCE>") or ""
+
+
+def _generated_answer_has_started(
+    tokenizer: Any,
+    generated_ids: list[int],
+    *,
+    protocol: str,
+) -> bool:
+    if not generated_ids:
+        return False
+    text = tokenizer.decode(
+        generated_ids,
+        skip_special_tokens=False,
+        clean_up_tokenization_spaces=False,
+    )
+    uses_think, uses_evidence = _protocol_text_modes(protocol)
+    if uses_think:
+        return "</think>" in text
+    if uses_evidence:
+        return "<|evidence_end|>" in text
+    return "<ANSWER>" in text
 
 
 def _protocol_text_modes(protocol: str) -> tuple[bool, bool]:

@@ -1,4 +1,5 @@
 import inspect
+from types import SimpleNamespace
 
 import pytest
 import revisit_vlm_clean.runner as runner_module
@@ -79,6 +80,20 @@ def _deepstack_full_sequence_run_config() -> RunConfig:
         deepstack=DeepStackState(
             enabled=True,
             original_image_scope=DeepStackScope.THROUGH_ANSWER,
+        ),
+    )
+
+
+def _deepstack_full_sequence_evidence_run_config() -> RunConfig:
+    return RunConfig(
+        run_id="stage2_deepstack_full_sequence_evidence",
+        checkpoint_path="outputs/checkpoint.pt",
+        mode=EvalMode.TGVF_FORCE,
+        post_tgvf_forward_mode=ForwardMode.NO_KV_FULL_SEQUENCE,
+        subset_id="core_smoke_256_seed20260625",
+        deepstack=DeepStackState(
+            enabled=True,
+            original_image_scope=DeepStackScope.EVIDENCE_ONLY,
         ),
     )
 
@@ -261,6 +276,24 @@ def test_stage2_native_backend_accepts_supported_full_sequence_deepstack(tmp_pat
     backend.prepare(config)
 
 
+def test_stage2_native_backend_accepts_supported_full_sequence_evidence_only_deepstack(
+    tmp_path,
+) -> None:
+    config = _deepstack_full_sequence_evidence_run_config()
+    backend = make_backend(
+        BackendConfig(
+            backend=STAGE2_NATIVE_BACKEND,
+            stage2=_runtime(
+                tmp_path,
+                append_forward_mode=ForwardMode.NO_KV_FULL_SEQUENCE,
+            ),
+        ),
+        config=config,
+    )
+
+    backend.prepare(config)
+
+
 def test_deepstack_execution_plan_records_scope_semantics() -> None:
     disabled = build_deepstack_execution_plan(
         _run_config(),
@@ -324,6 +357,7 @@ def test_deepstack_execution_plan_records_scope_semantics() -> None:
     assert full_sequence["runtime_hooks"]["hooks"][
         "apply_post_tgvf_deepstack_scope_mask"
     ]["status"] == "ported"
+    assert full_sequence["scope_contract"]["runtime_hooks"] == full_sequence["runtime_hooks"]
 
     evidence_only_config = RunConfig(
         run_id="stage2_deepstack_evidence",
@@ -348,6 +382,21 @@ def test_deepstack_execution_plan_records_scope_semantics() -> None:
     assert evidence_only["scope_contract"]["original_image_deepstack"][
         "block_query_end"
     ] == "answer_start"
+
+    full_sequence_evidence = build_deepstack_execution_plan(
+        _deepstack_full_sequence_evidence_run_config(),
+        backend=STAGE2_NATIVE_BACKEND,
+    )
+    assert full_sequence_evidence["execution_supported"] is True
+    assert full_sequence_evidence["status"] == "supported_full_sequence_evidence_only"
+    assert full_sequence_evidence["supported_forward_mode"] == "no_kv_full_sequence"
+    assert full_sequence_evidence["runtime_hooks"]["all_required_hooks_implemented"] is True
+    assert full_sequence_evidence["runtime_hooks"]["hooks"][
+        "restore_deepstack_for_answer_when_scope_requires"
+    ]["status"] == "ported"
+    assert full_sequence_evidence["scope_contract"]["runtime_hooks"] == (
+        full_sequence_evidence["runtime_hooks"]
+    )
 
 
 def test_stage2_legacy_backend_rejects_unported_deepstack_execution(tmp_path) -> None:
@@ -443,6 +492,82 @@ def test_stage2_native_engine_free_flow_with_fake_runtime(tmp_path) -> None:
     assert result.triggered is True
     assert result.debug["block"] == "clean_native_free_end2end"
     assert engine.calls[:4] == ["ensure_loaded", "capture_free", "parse", "d_from_capture"]
+
+
+def test_stage2_native_deepstack_evidence_only_restores_attention_after_answer_boundary(
+    tmp_path,
+) -> None:
+    import torch
+
+    class FakeTokenizer:
+        eos_token_id = 3
+        text = {
+            1: "</think>",
+            2: "B",
+            3: "<|im_end|>",
+        }
+
+        def encode(self, text, add_special_tokens=False):
+            del text, add_special_tokens
+            return []
+
+        def decode(
+            self,
+            ids,
+            skip_special_tokens=False,
+            clean_up_tokenization_spaces=False,
+        ):
+            del skip_special_tokens, clean_up_tokenization_spaces
+            return "".join(self.text.get(int(item), "") for item in ids)
+
+    def logits_for(token_id: int) -> torch.Tensor:
+        logits = torch.full((1, 1, 8), -1000.0)
+        logits[0, 0, token_id] = 1000.0
+        return logits
+
+    class RecordingModel:
+        def __init__(self) -> None:
+            self.attention_dims = []
+            self.param = torch.nn.Parameter(torch.zeros((), dtype=torch.float32))
+            self.next_tokens = [2, 3, 3]
+
+        def parameters(self):
+            yield self.param
+
+        def __call__(self, **kwargs):
+            attention_mask = kwargs["attention_mask"]
+            self.attention_dims.append(int(attention_mask.ndim))
+            token_id = self.next_tokens.pop(0)
+            return SimpleNamespace(
+                past_key_values=kwargs.get("past_key_values"),
+                logits=logits_for(token_id),
+            )
+
+    runtime = _runtime(
+        tmp_path,
+        append_forward_mode=ForwardMode.NO_KV_FULL_SEQUENCE,
+    )
+    engine = NativeStage2Engine(stage2_config=runtime)
+    engine.model = RecordingModel()
+    engine.processor = SimpleNamespace(tokenizer=FakeTokenizer())
+    append_result = SimpleNamespace(
+        last_logits=logits_for(1),
+        past_key_values=object(),
+        attention_mask=torch.ones((1, 2), dtype=torch.long),
+        input_ids=torch.tensor([[10, 11]], dtype=torch.long),
+        model_kwargs={
+            "tgvf_next_position_ids": torch.zeros((3, 1, 1), dtype=torch.long),
+            "tgvf_original_image_token_indices": torch.tensor([0], dtype=torch.long),
+            "tgvf_deepstack_scope": "evidence_only",
+            "tgvf_deepstack_restore_for_answer": True,
+        },
+    )
+
+    continuation = engine._continue_generation_blocking_original_image_keys(append_result)
+
+    assert continuation.generated_ids == [1, 2, 3]
+    assert continuation.stop_reason == "eos_token"
+    assert engine.model.attention_dims == [4, 2, 2]
 
 
 def test_stage2_native_backend_reports_runtime_errors_as_row_error(monkeypatch, tmp_path) -> None:

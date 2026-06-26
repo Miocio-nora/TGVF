@@ -2049,7 +2049,8 @@ Implemented after Phase 76.
   gradient clipping, matching the legacy Stage2 manual averaging behavior while
   keeping checkpoint state dicts unwrapped;
 - Stage2 DeepStack training remains blocked until original-image DeepStack
-  injection/masking is ported.
+  injection/masking is ported. This historical blocker is superseded by
+  Phase 101.
 
 ## Phase 78: Structured DeepStack Training Contract
 
@@ -2450,8 +2451,8 @@ Implemented after Phase 99.
   - `post_tgvf_forward_mode=no_kv_full_sequence`;
   - `deepstack.original_image_scope=through_answer`;
 - legacy bridge execution, cache-continuation DeepStack execution, and
-  `evidence_only` answer-stage restoration still fail fast rather than claiming
-  unsupported behavior.
+  `evidence_only` answer-stage restoration still failed fast at this phase
+  rather than claiming unsupported behavior.
 
 ## Phase 101: DeepStack Stage2 Training Runtime Slice
 
@@ -2482,11 +2483,37 @@ Implemented after Phase 100.
   plans because it has no equivalent DeepStack controls. This is a diagnostic
   reference boundary, not a final clean-native path.
 
+## Phase 102: DeepStack Eval Evidence-Only Answer Restore
+
+Implemented after Phase 101.
+
+- clean-native Qwen3 Stage2 benchmark eval now supports enabled DeepStack for:
+  - backend `tgvf_stage2_qwen3_native`;
+  - `post_tgvf_forward_mode=no_kv_full_sequence`;
+  - `deepstack.original_image_scope=through_answer` or `evidence_only`;
+- `build_deepstack_execution_plan` now uses one hook contract for both the
+  top-level plan and nested scope contract, so supported eval DeepStack states
+  cannot report ported and blocked simultaneously;
+- `evidence_only` uses the same full-sequence prefill as `through_answer`:
+  native Qwen3 original-image DeepStack features are injected through
+  `visual_pos_masks` and `deepstack_visual_embeds`, and the prefill blocks
+  original-image keys over the post-TGVF append/evidence prefix;
+- continuation remains token-by-token. For `evidence_only`, each generated
+  token uses the blocked original-image key mask until the protocol-specific
+  answer boundary is complete:
+  - `</think>` for thinking/tool-observation protocols;
+  - `<|evidence_end|>` for evidence-tag protocols;
+  - `<ANSWER>` for legacy tags;
+- after that boundary, answer tokens use normal 2D attention, restoring access
+  to original-image DeepStack-injected keys;
+- D remains a v-merge-level visual-token span. D DeepStack-like features remain
+  disabled unless introduced as a named ablation;
+- legacy bridge DeepStack and cache-continuation DeepStack remain rejected
+  before rows. They are not final clean-native paths.
+
 ## Later Phases
 
-1. Decide whether eval `evidence_only` should be implemented as segmented
-   generation or kept training-only.
-2. Keep data generation first-class:
+1. Keep data generation first-class:
    - deterministic Stage1/Stage2 transforms stay in `tgvf_generate_data` and
      are preserved rather than rewritten in the current execution cleanup;
    - heavy teacher trajectory generation is ported only when regeneration is

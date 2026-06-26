@@ -17,7 +17,11 @@ from .outputs import (
     build_manifest_verification_payload,
     write_run_config_text,
 )
-from .runner import summarize_deepstack_execution, summarize_result_breakdowns
+from .runner import (
+    build_deepstack_execution_plan,
+    summarize_deepstack_execution,
+    summarize_result_breakdowns,
+)
 from .schema import EvalSummary, RunConfig, _to_jsonable
 
 SHARD_RUN_CONFIG_IDENTITY_FIELDS = (
@@ -297,6 +301,10 @@ def _validate_nested_row_identity(
     execution_backend: dict[str, Any],
 ) -> None:
     stage2 = execution_backend.get("stage2") if isinstance(execution_backend, dict) else None
+    resolved_backend = str(
+        execution_backend.get("resolved_backend") or execution_backend.get("backend") or ""
+    )
+    deepstack_plan = build_deepstack_execution_plan(config, backend=resolved_backend)
     expected_blocks = {
         "trigger_policy": _expected_trigger_policy(config),
         "continuation_metadata": {
@@ -314,12 +322,12 @@ def _validate_nested_row_identity(
             "requested": config.deepstack.to_dict(),
             "requested_enabled": bool(config.deepstack.enabled),
             "requested_scope": str(config.deepstack.original_image_scope),
-            "execution_supported_for_requested_state": not bool(config.deepstack.enabled),
+            "execution_supported_for_requested_state": deepstack_plan["execution_supported"],
             "backend": execution_backend.get("backend"),
             "resolved_backend": execution_backend.get("resolved_backend"),
             "notes": (
-                ["DeepStack was requested but clean Stage2 execution rejects it before rows"]
-                if config.deepstack.enabled
+                ["DeepStack was requested but this clean execution plan rejects it before rows"]
+                if config.deepstack.enabled and not deepstack_plan["execution_supported"]
                 else []
             ),
         },

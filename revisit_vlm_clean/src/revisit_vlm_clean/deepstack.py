@@ -170,6 +170,17 @@ def qwen3_deepstack_runtime_hook_names_for_full_sequence_through_answer() -> set
     }
 
 
+def qwen3_deepstack_runtime_hook_names_for_full_sequence_evidence_only() -> set[str]:
+    """Hooks implemented by the clean full-sequence evidence-only path."""
+
+    return {
+        "capture_original_image_deepstack_features",
+        "carry_original_image_deepstack_through_post_tgvf_append",
+        "apply_post_tgvf_deepstack_scope_mask",
+        "restore_deepstack_for_answer_when_scope_requires",
+    }
+
+
 def qwen3_deepstack_runtime_hook_names_for_stage2_training() -> set[str]:
     """Hooks implemented by the clean Stage2 full-sequence training path."""
 

@@ -16,6 +16,7 @@ from .benchmark_data import BenchmarkSample
 from .deepstack import (
     deepstack_runtime_hooks,
     deepstack_scope_contract,
+    qwen3_deepstack_runtime_hook_names_for_full_sequence_evidence_only,
     qwen3_deepstack_runtime_hook_names_for_full_sequence_through_answer,
 )
 from .rendering import RenderedBenchmarkInput
@@ -569,18 +570,18 @@ def build_deepstack_execution_plan(config: RunConfig, *, backend: str) -> dict[s
         backend=backend,
         execution_supported=execution_supported,
         blocking_items=blockers,
+        implemented_hooks=implemented_hooks,
     )
+    status = "disabled_noop"
+    if state.enabled and execution_supported:
+        status = f"supported_full_sequence_{state.original_image_scope}"
+    elif state.enabled:
+        status = "not_ported"
     return {
         "backend": backend,
         "enabled": bool(state.enabled),
         "execution_supported": execution_supported,
-        "status": (
-            "supported_full_sequence_through_answer"
-            if state.enabled and execution_supported
-            else "not_ported"
-            if state.enabled
-            else "disabled_noop"
-        ),
+        "status": status,
         "original_image_scope": str(state.original_image_scope),
         "supported_forward_mode": (
             config.post_tgvf_forward_mode.value if state.enabled and execution_supported else None
@@ -601,9 +602,11 @@ def _implemented_deepstack_hooks_for_eval(config: RunConfig, *, backend: str) ->
         return set()
     if config.post_tgvf_forward_mode != ForwardMode.NO_KV_FULL_SEQUENCE:
         return set()
-    if config.deepstack.original_image_scope != DeepStackScope.THROUGH_ANSWER:
-        return set()
-    return qwen3_deepstack_runtime_hook_names_for_full_sequence_through_answer()
+    if config.deepstack.original_image_scope == DeepStackScope.THROUGH_ANSWER:
+        return qwen3_deepstack_runtime_hook_names_for_full_sequence_through_answer()
+    if config.deepstack.original_image_scope == DeepStackScope.EVIDENCE_ONLY:
+        return qwen3_deepstack_runtime_hook_names_for_full_sequence_evidence_only()
+    return set()
 
 
 def run_benchmark_rows(
@@ -903,7 +906,7 @@ def _row_deepstack_execution(
         "fvt_append_uses_deepstack": _optional_bool(debug.get("uses_deepstack_for_fvt")),
         "deepstack_caution": debug.get("deepstack_caution"),
         "notes": (
-            ["DeepStack was requested but clean Stage2 execution rejects it before rows"]
+            ["DeepStack was requested but this clean execution plan rejects it before rows"]
             if requested_enabled and not execution_supported
             else []
         ),

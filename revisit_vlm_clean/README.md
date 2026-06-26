@@ -17,9 +17,9 @@ later phases after each contract is validated.
 - Main fast dev subset: `CoreDev-2511`.
 - DeepStack support: default disabled. Clean Qwen3 Stage2 training supports
   enabled original-image DeepStack injection/masking for `through_answer` and
-  `evidence_only` scopes. Benchmark eval supports the first clean-native Qwen3
-  slice for Stage2 full-sequence `through_answer`; eval `evidence_only` remains
-  blocked until segmented answer restoration is intentionally ported.
+  `evidence_only` scopes. Clean Qwen3 Stage2 benchmark eval supports
+  full-sequence DeepStack for both `through_answer` and `evidence_only`;
+  `evidence_only` restores original-image attention after the answer boundary.
 - Benchmark root, benchmark source-file manifest, and scoring backend are
   recorded in `run_config.json`, `benchmark_sources.json`, and
   `run_config.txt`.
@@ -232,12 +232,14 @@ by default.
 Benchmark DeepStack execution is narrower than the schema surface. The
 clean-native Qwen3 backend currently supports enabled DeepStack only for
 `post_tgvf_forward_mode=no_kv_full_sequence` with
-`deepstack.original_image_scope=through_answer`. That path captures native
-Qwen3 original-image DeepStack features, injects them through
+`deepstack.original_image_scope=through_answer` or `evidence_only`. That path
+captures native Qwen3 original-image DeepStack features, injects them through
 `visual_pos_masks` and `deepstack_visual_embeds`, and blocks original-image keys
-over the post-TGVF through-answer scope. Legacy bridge DeepStack,
-cache-continuation DeepStack, and eval `evidence_only` answer restoration still
-fail fast.
+over the requested post-TGVF scope. Under `through_answer`, original-image keys
+remain blocked through answer generation. Under `evidence_only`, continuation
+uses the blocked mask until the protocol-specific answer boundary is complete,
+then restores normal attention for answer tokens. Legacy bridge DeepStack and
+cache-continuation DeepStack still fail fast.
 
 ## Fixed Manifests
 
