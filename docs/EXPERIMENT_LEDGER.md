@@ -3488,7 +3488,7 @@ entry, update this file immediately.
 
 ### EXP-20260626-153326-clean-qwen3-deepstack-mask075-micro-smoke
 
-- Status: RUNNING.
+- Status: DONE.
 - Question:
   - What Stage1/Stage2 per-GPU micro-batch settings are feasible for the clean
     Qwen3 mainline before launching the new Stage1 -> Stage2 training run?
@@ -3520,8 +3520,9 @@ entry, update this file immediately.
   - Stage2 DeepStack enabled/scope: enabled, `through_answer`.
 - Code commit / worktree:
   - Planned on branch `clean/tgvf-clean-project-20260625`.
-  - Planned commit before launch: `a4bafd3`.
-  - Worktree dirty only from this PLANNED ledger entry before commit.
+  - Plan artifact commit: `bf0c9ca38b29afae1bf918fb8c328113e1a784a3`.
+  - RUNNING ledger commit: `d5ebe56`.
+  - Smoke outputs are untracked experiment artifacts under `outputs/`.
 - Stage1 checkpoint:
   - None for Stage1 smoke; Stage1 starts from base model.
 - Stage1 processor:
@@ -3557,15 +3558,75 @@ entry, update this file immediately.
 - Started:
   - 2026-06-26T15:43:54+09:00.
 - Finished:
-  - TBD.
+  - 2026-06-26T15:49:23+09:00.
 - Metrics:
-  - TBD.
+  - Stage1 `micro_batch_size=8`, `world_size=4`,
+    `gradient_accumulation_steps=1`, `global_batch_size=32`: PASS.
+    - Output:
+      `outputs/clean_training_smoke/qwen3_deepstack_mask075_micro_probe_20260626_153326/stage1_micro8`.
+    - Actual forward/backward/optimizer/scheduler step ran.
+    - `sample_count=3`.
+    - `loss_total=3.574305295944214`, finite.
+    - Stage1 matrix CE + visual-token manifold loss were active.
+    - Stage1 position ids and original-image key mask were applied.
+  - Stage2 `micro_batch_size=4`, `world_size=4`,
+    `gradient_accumulation_steps=8`, `global_batch_size=128`: PASS.
+    - Output:
+      `outputs/clean_training_smoke/qwen3_deepstack_mask075_micro_probe_20260626_153326/stage2_deepstack_micro4`.
+    - Actual forward/backward/optimizer/scheduler step ran.
+    - `sample_count=4`.
+    - `loss_total=4.03125`, finite.
+    - `deepstack_training_enabled=true`.
+    - `qwen3_deepstack_features_injected=true`.
+    - Observed focus mask active rate on this small batch: `1.0`.
+  - Stage2 `micro_batch_size=8`, `world_size=4`,
+    `gradient_accumulation_steps=4`, `global_batch_size=128`: PASS.
+    - Output:
+      `outputs/clean_training_smoke/qwen3_deepstack_mask075_micro_probe_20260626_153326/stage2_deepstack_micro8`.
+    - Actual forward/backward/optimizer/scheduler step ran.
+    - `sample_count=8`.
+    - `loss_total=4.03125`, finite.
+    - `deepstack_training_enabled=true`.
+    - `qwen3_deepstack_features_injected=true`.
+    - `mask_original_image_after_tgvf_prob=0.75`.
+    - `mask_original_image_after_tgvf_scope=through_answer`.
+    - Observed focus mask active rate on this small batch: `0.7142857142857143`.
+    - Gradient tensors with grad: `532`; nonfinite grad tensors: `0`.
+  - Stage2 `micro_batch_size=16`, `world_size=4`,
+    `gradient_accumulation_steps=2`, `global_batch_size=128`: FAILED/OOM.
+    - Output:
+      `outputs/clean_training_smoke/qwen3_deepstack_mask075_micro_probe_20260626_153326/stage2_deepstack_micro16`.
+    - Failure happened during Qwen3 language forward on the LoRA `o_proj`
+      path.
+    - GPU 0 had `178.36 GiB` total, process used about `178.27 GiB`, and a
+      further `196 MiB` allocation failed.
 - Analysis:
-  - TBD.
+  - Stage1 has reached the largest legal per-GPU micro batch for the chosen
+    4-GPU, `global_batch_size=32` identity: `4 * 8 * 1 = 32`.
+  - Stage2 `micro_batch_size=16` is too close to the 178 GiB card limit and is
+    not robust enough for full training, especially with variable image/token
+    lengths.
+  - Stage2 `micro_batch_size=8` keeps the intended global batch while cutting
+    accumulation from 8 to 4 compared with the conservative `micro=4` probe.
+  - DeepStack training support was exercised in the Stage2 probes:
+    original-image DeepStack was injected, and the plan/audit record
+    `through_answer` scope masking.
+  - Stage2 plan still has `loss.visual_token_manifold=0.0`; this smoke did not
+    change that policy. If the next official run should increase Stage2
+    manifold loss, set it explicitly in the formal training ledger entry.
 - Conclusion:
-  - TBD.
+  - Recommended full-training batch settings:
+    - Stage1: `world_size=4`, `micro_batch_size=8`,
+      `gradient_accumulation_steps=1`, `global_batch_size=32`.
+    - Stage2: `world_size=4`, `micro_batch_size=8`,
+      `gradient_accumulation_steps=4`, `global_batch_size=128`.
+  - Do not use Stage2 `micro_batch_size=16` for the formal run under current
+    DeepStack + mask-prob 0.75 settings.
 - Comparable to baseline:
   - No; memory/configuration smoke only.
 - Follow-up:
-  - Use the largest stable micro-batch recommendation to write the real
-    Stage1/Stage2 training plan and ledger entry.
+  - Write the formal Stage1 -> Stage2 training ledger entry using these batch
+    settings, W&B project `tgvf-clean-qwen3-deepstack`, and Stage2
+    `mask_original_image_after_tgvf_prob=0.75` + DeepStack `through_answer`.
+  - Before formal launch, decide whether Stage2
+    `loss_visual_token_manifold` should remain `0.0` or be explicitly raised.
