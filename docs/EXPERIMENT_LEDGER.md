@@ -3633,7 +3633,7 @@ entry, update this file immediately.
 
 ### EXP-20260626-155246-clean-qwen3-stage12-deepstack-mask075-4gpu
 
-- Status: PAUSED_FOR_CODE_FIX.
+- Status: RUNNING_RELAUNCH.
 - Question:
   - Train the clean Qwen3 Stage1 -> Stage2 mainline with the smoke-selected
     4-GPU batch settings, then use the resulting chain for later benchmark
@@ -3675,6 +3675,7 @@ entry, update this file immediately.
   - Pre-ledger commit: `a5a12d3`.
   - Initial formal plan commit: `28f50dc`.
   - Micro4 fallback ledger commit: `d435f86`.
+  - Progress/W&B logging patch commit: `527d57b`.
   - Worktree expected clean except untracked `logs/` and `third_party/`.
 - Stage1 checkpoint:
   - None for launch; Stage1 starts from `Qwen/Qwen3-VL-8B-Thinking`.
@@ -3708,6 +3709,10 @@ entry, update this file immediately.
     `PYTHONPATH=revisit_vlm_clean/src:src python -m revisit_vlm_clean.cli.train_stage1 --run-id clean_qwen3_stage1_4gpu_m4a2_20260626_155809 --train-file data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend/splits/tgvf_v4_teacher_stage1_protocol_c_focus.train.jsonl --output-dir outputs/clean_training/qwen3_stage12_deepstack_mask075_4gpu_20260626_155246/stage1_micro4 --max-image-resolution 512 --max-steps 2000 --save-every 2000 --world-size 4 --micro-batch-size 4 --global-batch 32 --wandb-project tgvf-clean-qwen3-deepstack --wandb-mode online --write-plan`.
   - Stage1 micro4 fallback launch command:
     `CUDA_VISIBLE_DEVICES=0,1,2,3 PYTHONPATH=revisit_vlm_clean/src:src torchrun --nproc-per-node 4 -m revisit_vlm_clean.training.stage1_executor --plan outputs/clean_training/qwen3_stage12_deepstack_mask075_4gpu_20260626_155246/stage1_micro4/training_plan.json --launch-training`.
+  - Stage1 micro4 relaunch plan command:
+    `PYTHONPATH=revisit_vlm_clean/src:src python -m revisit_vlm_clean.cli.train_stage1 --run-id clean_qwen3_stage1_4gpu_m4a2_wandb_20260626_170602 --train-file data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend/splits/tgvf_v4_teacher_stage1_protocol_c_focus.train.jsonl --output-dir outputs/clean_training/qwen3_stage12_deepstack_mask075_4gpu_20260626_170602/stage1_micro4 --max-image-resolution 512 --max-steps 2000 --save-every 2000 --world-size 4 --micro-batch-size 4 --global-batch 32 --wandb-project tgvf-clean-qwen3-deepstack --wandb-mode online --write-plan`.
+  - Stage1 micro4 relaunch command:
+    `CUDA_VISIBLE_DEVICES=0,1,2,3 PYTHONPATH=revisit_vlm_clean/src:src torchrun --nproc-per-node 4 -m revisit_vlm_clean.training.stage1_executor --plan outputs/clean_training/qwen3_stage12_deepstack_mask075_4gpu_20260626_170602/stage1_micro4/training_plan.json --launch-training`.
   - Stage2 plan/launch command:
     TBD after Stage1 checkpoint exists.
 - GPUs:
@@ -3718,9 +3723,12 @@ entry, update this file immediately.
     `clean_stage1_qwen3_mask075_4gpu_20260626_155246`.
   - Interrupted Stage1 fallback session:
     `clean_stage1_qwen3_mask075_4gpu_m4_20260626_155809`.
+  - Active Stage1 relaunch session:
+    `clean_stage1_qwen3_m4_wandb_20260626_170602`.
 - Started:
   - Initial Stage1 micro8 launch: 2026-06-26T15:55:33+09:00.
   - Stage1 micro4 fallback launch: 2026-06-26T15:59:57+09:00.
+  - Stage1 micro4 relaunch with progress/W&B patch: TBD.
 - Finished:
   - Paused/interrupted at 2026-06-26T16:53:33+09:00 before checkpoint
     completion, to patch missing clean-native progress/W&B logging.
@@ -3742,6 +3750,13 @@ entry, update this file immediately.
       Stage1 data.
     - This attempt did not produce a completed Stage1 checkpoint and must not
       be used as a Stage1 result.
+  - Stage1 micro4 relaunch with progress/W&B patch: STARTING.
+    - Output:
+      `outputs/clean_training/qwen3_stage12_deepstack_mask075_4gpu_20260626_170602/stage1_micro4`.
+    - Log:
+      `logs/clean_training/clean_stage1_qwen3_m4_wandb_20260626_170602.log`.
+    - Expected progress file:
+      `outputs/clean_training/qwen3_stage12_deepstack_mask075_4gpu_20260626_170602/stage1_micro4/clean_training_execution/training_progress.jsonl`.
 - Analysis:
   - The single-process smoke under-sampled long first-batch examples; real DDP
     `micro_batch_size=8` is not robust.
