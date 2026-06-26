@@ -4802,3 +4802,131 @@ entry, update this file immediately.
     semantics gap in clean distributed Stage1.
   - A fresh clean Stage1 run after this commit is required before comparing
     clean Stage1 diagnostics against 20260617/20260620 legacy references.
+
+### EXP-20260627-040717-clean-qwen3-stage1-legacyrepro-ddp-manifold001-4gpu
+
+- Status: RUNNING.
+- Question:
+  - After fixing clean Stage1 distributed training semantics to match legacy
+    DDP/no_sync behavior, can the clean project reproduce the old Qwen3
+    Protocol-C Stage1 diagnostics when `visual_token_manifold=0.01`?
+- Baseline:
+  - Old 20260617 row-only 4GPU Stage1:
+    `outputs/tgvf_v3_protocol_c_stage1_8b/protocol_c_toolobs_stage1_v4data_clean_rowonly_gpu0_3_focus_imend_bidirectional_4gpu_bs4_accum2_gbs32_2000step_20260617`.
+  - Key old internal diagnostics recorded earlier:
+    `pct_correct_D_beats_wrong_same=0.945`, `retrieval_top1=0.535`,
+    `norm_ratio_D_to_Vmerge=5.174`.
+  - Previous clean `visual_token_manifold=0.01` replay
+    `EXP-20260627-000156-clean-qwen3-stage1-samplerfix-manifold001-4gpu`
+    is not the comparison target because it was run before the DDP wrapper /
+    accumulation semantics fix.
+- Intended diff:
+  - Use current clean code after `AUDIT-20260627-clean-stage1-forward-training-ddp-semantics`.
+  - Keep the historical Stage1 manifold coefficient:
+    `loss_visual_token_manifold=0.01`.
+  - Hold fixed: data, local Qwen3 model/processor path, Protocol-C
+    tool-observation, row-only token rows, teacher-forced capture,
+    `native_source_grid`, old mask behavior, `matrix_ce`, seed, LR/scheduler,
+    max image resolution 512, and global batch 32.
+- Code / worktree:
+  - Branch: `clean/tgvf-clean-project-20260625`.
+  - Git commit: `fc0fbf661df0943fca7c4f21f49a6566da511636`.
+  - Dirty worktree: true, but dirty files are unrelated Stage3/RL work and are
+    not part of this Stage1 training path:
+    `docs/TGVF_STAGE3_RL_WORKLOG.md`,
+    `revisit_vlm_clean/src/revisit_vlm_clean/cli/generate_data.py`,
+    `revisit_vlm_clean/README_STAGE3_RL_DATA.md`,
+    `revisit_vlm_clean/src/revisit_vlm_clean/stage3_rl_data/`,
+    `revisit_vlm_clean/tests/test_stage3_rl_data.py`, plus untracked `logs/`
+    and `third_party/`.
+- Plan:
+  - `outputs/clean_training/qwen3_stage1_legacyrepro_ddp_manifold001_4gpu_20260627_040717/stage1_micro4/training_plan.json`.
+  - Plan sha256:
+    `90bd9caee7b210023a6160a843483f82ae3d257be87371d5f26e5b3d52d13498`.
+- Data:
+  - Train file:
+    `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend/splits/tgvf_v4_teacher_stage1_protocol_c_focus.train.jsonl`.
+  - Rows: `39998`.
+  - sha256:
+    `c94a38b824b6603e555eed5ef3584c19cc903b76995d49c67ace36b18268443c`.
+  - Sampler: `same_image_legacy_shuffle`;
+    group owner: `sha1(image_key)%world_size`;
+    drop incomplete same-image batches: true.
+- Model / processor:
+  - Model: `/nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking`.
+  - Processor: `/nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking`.
+  - dtype: `bfloat16`.
+  - Attention implementation: `sdpa`.
+- Stage1 settings:
+  - Protocol: `protocol_c_tool_observation`.
+  - Variant: `tgvf_v2_bidirectional`.
+  - Token row mode: `row_only`.
+  - Capture mode: `teacher_forced`.
+  - FVT position mode: `native_source_grid`.
+  - Focus action im_end: true.
+  - Mask original image after TGVF: true.
+  - Same-image negative mode: `matrix_ce`.
+  - DeepStack reencode compatibility: false.
+  - Visual merger: frozen.
+- Training:
+  - GPUs: `0,1,2,3`.
+  - world size: `4`.
+  - micro batch: `4`.
+  - gradient accumulation: `2`.
+  - global batch: `32`.
+  - max steps: `2000`.
+  - save every: `500`.
+  - seed: `20260525`.
+  - optimizer: AdamW, learning rate `1e-4`, cosine schedule, warmup `100`,
+    min LR ratio `0.1`, max grad norm `1.0`.
+  - Loss weights:
+    - `loss_gen=1.0`.
+    - `loss_same_image_negative=1.0`.
+    - `loss_visual_token_manifold=0.01`.
+- W&B:
+  - Project: `tgvf-clean-qwen3-deepstack`.
+  - Mode: `online`.
+- Preflight:
+  - `stage1_executor --preflight-only`: passed; no blocking items.
+  - `stage1_executor --prepare-execution`: passed; runner status
+    `ready_for_explicit_distributed_launch`.
+  - First materialized batch: requested global batch `32`, materialized batch
+    `32`, batch sha256
+    `eaec7f0c9a44edf04203051e3b5142ad152144c751adba0e26e90c8b33e638aa`.
+- Command:
+  - `CUDA_VISIBLE_DEVICES=0,1,2,3 PYTHONPATH=revisit_vlm_clean/src:src torchrun --nproc-per-node 4 -m revisit_vlm_clean.training.stage1_executor --plan outputs/clean_training/qwen3_stage1_legacyrepro_ddp_manifold001_4gpu_20260627_040717/stage1_micro4/training_plan.json --launch-training`.
+- Output:
+  - `outputs/clean_training/qwen3_stage1_legacyrepro_ddp_manifold001_4gpu_20260627_040717/stage1_micro4`.
+- Launch:
+  - Planned at 2026-06-27T04:09:23+09:00.
+  - Started at 2026-06-27T04:10:34+09:00.
+  - tmux: `clean_stage1_legacyrepro_20260627_040717`.
+  - Log:
+    `logs/clean_training/clean_stage1_legacyrepro_20260627_040717.log`.
+  - W&B:
+    `https://wandb.ai/mio_nora/tgvf-clean-qwen3-deepstack/runs/3djvsggm`.
+- Startup verification:
+  - tmux session is alive.
+  - GPUs `0,1,2,3` are allocated by the run.
+  - `training_progress.jsonl` is being written.
+  - W&B is online and syncing.
+  - Training reached at least `step=4/2000`.
+  - Runtime progress reports `ddp_enabled=true` and `world_size=4`.
+  - Trainable audit reports `28` tensors and `18,046,720` parameters:
+    protocol token rows plus `tgvf.module.*`; visual merger remains frozen.
+  - Debug field `qwen_frozen=false` is also present in the old 20260617 legacy
+    train log, so it is not treated as a new clean-run anomaly; optimizer /
+    trainable audit is the source of truth here.
+  - Early component losses:
+    - step 1:
+      `loss_total=3.4725849628448486`,
+      `loss_gen=2.15625`,
+      `loss_same_image_negative=1.28515625`,
+      raw `loss_visual_token_manifold=3.1178618669509888`,
+      `grad_norm=6.25`.
+    - step 4:
+      `loss_total=3.61555016040802`,
+      `loss_gen=2.234375`,
+      `loss_same_image_negative=1.3515625`,
+      raw `loss_visual_token_manifold=2.961265802383423`,
+      `grad_norm=5.875`.
