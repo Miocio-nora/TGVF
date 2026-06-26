@@ -1887,6 +1887,27 @@ Implemented after Phase 71.
   the resume probe, run the full max-step loop, or implement DeepStack training
   execution. `will_launch_training` remains `false`.
 
+## Phase 73: Trainer Save/Eval Cadence Runtime Audit Gate
+
+Implemented after Phase 72.
+
+- Stage1/Stage2 executors now support explicit `--audit-cadence` together with
+  `--audit-runtime`;
+- the audit writes `training_cadence_runtime.json` after resolving from the
+  clean plan:
+  - `max_steps`;
+  - checkpoint save cadence from `save_every`;
+  - final checkpoint save at `max_steps`;
+  - Stage2 eval cadence from `eval_every` only when a validation file is
+    present;
+  - final Stage2 eval at `max_steps` when eval is enabled;
+- runtime launch gates now mark `validate_training_cadence_from_plan` as
+  `identity_validated` only when checkpoint cadence ends at `max_steps` and,
+  when enabled, eval cadence also ends at `max_steps`;
+- this phase does not load the model, enter the training loop, write model
+  checkpoints, enable `clean_training_command.sh`, or implement DeepStack
+  training execution. `will_launch_training` remains `false`.
+
 ## Later Phases
 
 1. Replace training launch plans with clean-native training execution.

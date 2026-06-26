@@ -150,6 +150,10 @@ before training/eval cleanup can proceed.
   validate model-state parity, optimizer/scheduler restore, protocol-token rows
   when required, and step counters, but it still must not continue into the full
   training run.
+- Explicit cadence audit may write `training_cadence_runtime.json` after
+  resolving `max_steps`, checkpoint-save steps, and Stage2 eval steps from the
+  clean plan. It is static launch-contract evidence only and must not load the
+  model or launch training.
 - `clean_prepare_execution_command.sh` is the runnable clean handoff command;
   `clean_training_command.sh` stays non-executable until the trainer loop is
   ported.
@@ -287,6 +291,10 @@ before training/eval cleanup can proceed.
   validate model-state parity, optimizer/scheduler restore, protocol-token rows
   when required, and step counters, but it still must not continue into the full
   training run.
+- Explicit cadence audit may write `training_cadence_runtime.json` after
+  resolving `max_steps`, checkpoint-save steps, and Stage2 eval steps from the
+  clean plan. It is static launch-contract evidence only and must not load the
+  model or launch training.
 - `clean_prepare_execution_command.sh` is the runnable clean handoff command;
   `clean_training_command.sh` stays non-executable until the trainer loop is
   ported.

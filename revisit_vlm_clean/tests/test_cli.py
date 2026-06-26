@@ -638,6 +638,140 @@ def test_training_executor_rejects_executable_legacy_reference(tmp_path) -> None
         stage1_executor_main(["--plan", str(plan_path), "--preflight-only"])
 
 
+def test_stage1_training_executor_runtime_audit_can_write_cadence_probe(
+    tmp_path,
+    capsys,
+) -> None:
+    train_file = tmp_path / "stage1.train.jsonl"
+    train_file.write_text(
+        '{"image": "/tmp/image.jpg", "question": "q", "target": "mark"}\n',
+        encoding="utf-8",
+    )
+    output_dir = tmp_path / "stage1_plan"
+    assert (
+        stage1_main(
+            [
+                "--run-id",
+                "stage1_cadence_audit",
+                "--train-file",
+                str(train_file),
+                "--output-dir",
+                str(output_dir),
+                "--max-steps",
+                "5",
+                "--save-every",
+                "2",
+                "--write-plan",
+            ]
+        )
+        == 0
+    )
+
+    assert (
+        stage1_executor_main(
+            [
+                "--plan",
+                str(output_dir / "training_plan.json"),
+                "--prepare-execution",
+                "--audit-runtime",
+                "--audit-cadence",
+            ]
+        )
+        == 0
+    )
+    payload = capsys.readouterr().out
+    assert '"training_cadence_runtime"' in payload
+    execution_dir = output_dir / "clean_training_execution"
+    cadence = json.loads((execution_dir / "training_cadence_runtime.json").read_text())
+    runtime_audit = json.loads((execution_dir / "clean_training_runtime_audit.json").read_text())
+    assert cadence["status"] == "actual_training_cadence_audit"
+    assert cadence["actual_training_cadence_validated"] is True
+    assert cadence["training_run_launched"] is False
+    assert cadence["max_steps"] == 5
+    assert cadence["save_every"] == 2
+    assert cadence["checkpoint_save_steps"] == [2, 4, 5]
+    assert cadence["final_checkpoint_saved"] is True
+    assert cadence["eval_enabled"] is False
+    assert cadence["eval_disabled_reason"] == "stage_has_no_eval_cadence"
+    gate_status = {
+        gate["name"]: gate["status"] for gate in runtime_audit["launch_gates"]["gates"]
+    }
+    assert runtime_audit["launch_gates"]["training_cadence_runtime_status"] == (
+        "actual_training_cadence_audit"
+    )
+    assert gate_status["validate_training_cadence_from_plan"] == "identity_validated"
+
+
+def test_stage2_training_executor_runtime_audit_can_write_cadence_probe(
+    tmp_path,
+    capsys,
+) -> None:
+    train_file = tmp_path / "stage2.train.jsonl"
+    val_file = tmp_path / "stage2.val.jsonl"
+    checkpoint = tmp_path / "stage1.pt"
+    row = (
+        '{"image": "/tmp/image.jpg", "question": "q", "answer": "a", '
+        '"need_focus": true, "evidence_state": "need_local_visual_evidence"}\n'
+    )
+    train_file.write_text(row, encoding="utf-8")
+    val_file.write_text(row, encoding="utf-8")
+    _write_minimal_stage1_checkpoint(checkpoint)
+    output_dir = tmp_path / "stage2_plan"
+    assert (
+        stage2_main(
+            [
+                "--run-id",
+                "stage2_cadence_audit",
+                "--train-file",
+                str(train_file),
+                "--val-file",
+                str(val_file),
+                "--stage1-checkpoint",
+                str(checkpoint),
+                "--output-dir",
+                str(output_dir),
+                "--max-steps",
+                "5",
+                "--save-every",
+                "2",
+                "--eval-every",
+                "3",
+                "--write-plan",
+            ]
+        )
+        == 0
+    )
+
+    assert (
+        stage2_executor_main(
+            [
+                "--plan",
+                str(output_dir / "training_plan.json"),
+                "--prepare-execution",
+                "--audit-runtime",
+                "--audit-cadence",
+            ]
+        )
+        == 0
+    )
+    payload = capsys.readouterr().out
+    assert '"training_cadence_runtime"' in payload
+    execution_dir = output_dir / "clean_training_execution"
+    cadence = json.loads((execution_dir / "training_cadence_runtime.json").read_text())
+    runtime_audit = json.loads((execution_dir / "clean_training_runtime_audit.json").read_text())
+    assert cadence["status"] == "actual_training_cadence_audit"
+    assert cadence["max_steps"] == 5
+    assert cadence["checkpoint_save_steps"] == [2, 4, 5]
+    assert cadence["eval_enabled"] is True
+    assert cadence["eval_steps"] == [3, 5]
+    assert cadence["final_eval_scheduled"] is True
+    assert cadence["val_file_available"] is True
+    gate_status = {
+        gate["name"]: gate["status"] for gate in runtime_audit["launch_gates"]["gates"]
+    }
+    assert gate_status["validate_training_cadence_from_plan"] == "identity_validated"
+
+
 def test_training_executor_rejects_bad_prepare_command(tmp_path) -> None:
     train_file = tmp_path / "stage1.train.jsonl"
     train_file.write_text('{"image": "/tmp/image.jpg", "question": "q"}\n', encoding="utf-8")

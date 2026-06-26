@@ -99,6 +99,7 @@ tgvf_train_stage2_executor --plan /path/to/training_plan.json --prepare-executio
 tgvf_train_stage2_executor --plan /path/to/training_plan.json --prepare-execution --audit-runtime --audit-trainer-loop
 tgvf_train_stage2_executor --plan /path/to/training_plan.json --prepare-execution --audit-runtime --audit-checkpoint-publish
 tgvf_train_stage2_executor --plan /path/to/training_plan.json --prepare-execution --audit-runtime --audit-checkpoint-resume
+tgvf_train_stage2_executor --plan /path/to/training_plan.json --prepare-execution --audit-runtime --audit-cadence
 ```
 
 Without `--preflight-only`, `--prepare-execution`, or `--audit-runtime`, these
@@ -166,6 +167,10 @@ With explicit `--audit-checkpoint-resume`, runtime audit also writes
 model/optimizer/scheduler stack from the published checkpoint probe. This
 proves clean resume wiring and step-counter restoration only; it still does not
 continue into the full training run.
+With explicit `--audit-cadence`, runtime audit writes
+`training_cadence_runtime.json` after resolving `max_steps`, checkpoint-save
+steps, and Stage2 eval steps from the plan. This is static launch-contract
+evidence only and does not load the model.
 
 ## Fixed Manifests
 

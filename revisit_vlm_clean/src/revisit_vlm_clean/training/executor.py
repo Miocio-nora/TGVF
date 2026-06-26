@@ -154,6 +154,16 @@ def build_parser(stage: TrainingStage) -> argparse.ArgumentParser:
             "a full training run."
         ),
     )
+    parser.add_argument(
+        "--audit-cadence",
+        action="store_true",
+        help=(
+            "During --audit-runtime, validate max-step, checkpoint-save, and "
+            "evaluation cadence from the clean plan and write "
+            "training_cadence_runtime.json. This does not load the model or launch "
+            "training."
+        ),
+    )
     return parser
 
 
@@ -190,6 +200,7 @@ def main_for_stage(stage: TrainingStage, argv: list[str] | None = None) -> int:
                 audit_trainer_loop=args.audit_trainer_loop,
                 audit_checkpoint_publish=args.audit_checkpoint_publish,
                 audit_checkpoint_resume=args.audit_checkpoint_resume,
+                audit_cadence=args.audit_cadence,
             )
             prepared["runtime_audit"] = audit["runtime_audit"]
             prepared["trainable_parameters"] = audit["trainable_parameters"]
@@ -211,6 +222,8 @@ def main_for_stage(stage: TrainingStage, argv: list[str] | None = None) -> int:
                 prepared["training_checkpoint_resume_runtime"] = audit[
                     "training_checkpoint_resume_runtime"
                 ]
+            if audit.get("training_cadence_runtime"):
+                prepared["training_cadence_runtime"] = audit["training_cadence_runtime"]
         print_json(prepared)
         return 0
     if args.audit_runtime:
@@ -231,6 +244,7 @@ def main_for_stage(stage: TrainingStage, argv: list[str] | None = None) -> int:
             audit_trainer_loop=args.audit_trainer_loop,
             audit_checkpoint_publish=args.audit_checkpoint_publish,
             audit_checkpoint_resume=args.audit_checkpoint_resume,
+            audit_cadence=args.audit_cadence,
         )
         audit["preflight_report"] = str(report_path)
         print_json(audit)
@@ -330,6 +344,7 @@ def audit_training_runtime(
     audit_trainer_loop: bool = False,
     audit_checkpoint_publish: bool = False,
     audit_checkpoint_resume: bool = False,
+    audit_cadence: bool = False,
 ) -> dict[str, Any]:
     bundle_file = Path(bundle_path)
     if not bundle_file.exists():
@@ -465,6 +480,15 @@ def audit_training_runtime(
         if audit_checkpoint_resume
         else None
     )
+    training_cadence_runtime = (
+        _write_training_cadence_runtime_audit(
+            execution_dir=execution_dir,
+            bundle=bundle,
+            expected_stage=expected_stage,
+        )
+        if audit_cadence
+        else None
+    )
     audit = _runtime_audit_report(
         bundle_path=bundle_file,
         bundle=bundle,
@@ -477,6 +501,7 @@ def audit_training_runtime(
         trainer_loop_runtime=trainer_loop_runtime,
         training_checkpoint_publish_runtime=training_checkpoint_publish_runtime,
         training_checkpoint_resume_runtime=training_checkpoint_resume_runtime,
+        training_cadence_runtime=training_cadence_runtime,
         expected_stage=expected_stage,
     )
     resolved_report_path = (
@@ -516,6 +541,8 @@ def audit_training_runtime(
         ]
     if training_checkpoint_resume_runtime is not None:
         result["training_checkpoint_resume_runtime"] = training_checkpoint_resume_runtime["path"]
+    if training_cadence_runtime is not None:
+        result["training_cadence_runtime"] = training_cadence_runtime["path"]
     return result
 
 
@@ -747,6 +774,7 @@ def _required_launch_gates(stage: TrainingStage) -> list[str]:
         "ensure_protocol_token_rows",
         "set_training_use_cache_false",
         "build_dataset_loader_from_plan_identity",
+        "validate_training_cadence_from_plan",
         "construct_optimizer_and_scheduler_from_plan",
         "run_backward_optimizer_scheduler_step_from_plan",
         "run_gradient_accumulation_loop_from_plan",
@@ -1720,6 +1748,82 @@ def _write_training_checkpoint_resume_runtime_audit(
     path = execution_dir / "training_checkpoint_resume_runtime.json"
     _write_json(path, payload)
     return {"path": str(path), "payload": payload}
+
+
+def _write_training_cadence_runtime_audit(
+    *,
+    execution_dir: Path,
+    bundle: dict[str, Any],
+    expected_stage: TrainingStage,
+) -> dict[str, Any]:
+    training = bundle.get("training") or {}
+    dataset = bundle.get("dataset") or {}
+    max_steps = int(training.get("max_steps") or 0)
+    save_every = int(training.get("save_every") or 0)
+    if max_steps < 1:
+        raise ValueError("training cadence audit requires training.max_steps >= 1")
+    if save_every < 1:
+        raise ValueError("training cadence audit requires training.save_every >= 1")
+    checkpoint_steps = _cadence_steps(max_steps=max_steps, every=save_every)
+    val_file = dataset.get("val_file") or {}
+    val_file_available = bool(val_file.get("exists")) if isinstance(val_file, Mapping) else False
+    eval_every = training.get("eval_every")
+    eval_enabled = expected_stage == TrainingStage.STAGE2 and val_file_available
+    eval_steps: list[int] = []
+    if eval_enabled:
+        eval_every_int = int(eval_every or 0)
+        if eval_every_int < 1:
+            raise ValueError("Stage2 evaluation cadence requires training.eval_every >= 1")
+        eval_steps = _cadence_steps(max_steps=max_steps, every=eval_every_int)
+    payload = {
+        "schema_version": "clean_training_cadence_runtime_audit_v1",
+        "stage": bundle.get("stage"),
+        "run_id": bundle.get("run_id"),
+        "status": "actual_training_cadence_audit",
+        "actual_training_cadence_validated": True,
+        "training_run_launched": False,
+        "max_steps": max_steps,
+        "save_every": save_every,
+        "checkpoint_save_steps": checkpoint_steps,
+        "checkpoint_save_count": len(checkpoint_steps),
+        "final_checkpoint_saved": checkpoint_steps[-1] == max_steps,
+        "eval_every": eval_every,
+        "eval_enabled": eval_enabled,
+        "eval_disabled_reason": None if eval_enabled else _eval_disabled_reason(
+            expected_stage=expected_stage,
+            val_file_available=val_file_available,
+        ),
+        "eval_steps": eval_steps,
+        "eval_count": len(eval_steps),
+        "final_eval_scheduled": bool(eval_steps and eval_steps[-1] == max_steps),
+        "val_file_available": val_file_available,
+        "notes": [
+            "training cadence was resolved from the clean plan without launching training",
+            "checkpoint cadence follows step % save_every == 0 or step == max_steps",
+            "Stage2 eval cadence is enabled only when a validation file is present",
+        ],
+    }
+    path = execution_dir / "training_cadence_runtime.json"
+    _write_json(path, payload)
+    return {"path": str(path), "payload": payload}
+
+
+def _cadence_steps(*, max_steps: int, every: int) -> list[int]:
+    steps = set(range(every, max_steps + 1, every))
+    steps.add(max_steps)
+    return sorted(steps)
+
+
+def _eval_disabled_reason(
+    *,
+    expected_stage: TrainingStage,
+    val_file_available: bool,
+) -> str:
+    if expected_stage != TrainingStage.STAGE2:
+        return "stage_has_no_eval_cadence"
+    if not val_file_available:
+        return "missing_val_file"
+    return "not_disabled"
 
 
 def _load_checkpoint_model_states_for_resume(
@@ -2792,6 +2896,7 @@ def _runtime_audit_report(
     trainer_loop_runtime: dict[str, Any] | None,
     training_checkpoint_publish_runtime: dict[str, Any] | None,
     training_checkpoint_resume_runtime: dict[str, Any] | None,
+    training_cadence_runtime: dict[str, Any] | None,
     expected_stage: TrainingStage,
 ) -> dict[str, Any]:
     artifact_checks = _runtime_artifact_checks(
@@ -2805,6 +2910,7 @@ def _runtime_audit_report(
         trainer_loop_runtime,
         training_checkpoint_publish_runtime,
         training_checkpoint_resume_runtime,
+        training_cadence_runtime,
     )
     launch_gates = _launch_gate_audit(
         bundle,
@@ -2817,6 +2923,7 @@ def _runtime_audit_report(
         trainer_loop_runtime,
         training_checkpoint_publish_runtime,
         training_checkpoint_resume_runtime,
+        training_cadence_runtime,
     )
     blocking_items = ["native trainer loop has not been ported into revisit_vlm_clean"]
     if not trainable_parameters["payload"].get("actual_model_parameters_loaded"):
@@ -2881,6 +2988,10 @@ def _runtime_audit_report(
         blocking_items.append(
             f"{expected_stage.value} checkpoint resume requires --audit-checkpoint-resume"
         )
+    if not _training_cadence_runtime_validated(training_cadence_runtime):
+        blocking_items.append(
+            f"{expected_stage.value} training cadence requires --audit-cadence"
+        )
     return {
         "schema_version": "clean_training_runtime_audit_v1",
         "stage": str(expected_stage),
@@ -2908,6 +3019,7 @@ def _runtime_artifact_checks(
     trainer_loop_runtime: dict[str, Any] | None,
     training_checkpoint_publish_runtime: dict[str, Any] | None,
     training_checkpoint_resume_runtime: dict[str, Any] | None,
+    training_cadence_runtime: dict[str, Any] | None,
 ) -> list[dict[str, Any]]:
     artifact_paths = dict(bundle.get("runtime_artifacts") or {})
     artifact_paths["trainable_parameters"] = trainable_parameters["path"]
@@ -2929,6 +3041,8 @@ def _runtime_artifact_checks(
         artifact_paths["training_checkpoint_resume_runtime"] = (
             training_checkpoint_resume_runtime["path"]
         )
+    if training_cadence_runtime is not None:
+        artifact_paths["training_cadence_runtime"] = training_cadence_runtime["path"]
     checks = []
     for name, path_text in sorted(artifact_paths.items()):
         path = Path(str(path_text))
@@ -2956,6 +3070,8 @@ def _runtime_artifact_checks(
                 if training_checkpoint_resume_runtime
                 else {}
             )
+        elif name == "training_cadence_runtime":
+            payload = training_cadence_runtime["payload"] if training_cadence_runtime else {}
         else:
             payload = artifacts.get(name, {})
         checks.append(
@@ -2982,6 +3098,7 @@ def _launch_gate_audit(
     trainer_loop_runtime: dict[str, Any] | None,
     training_checkpoint_publish_runtime: dict[str, Any] | None,
     training_checkpoint_resume_runtime: dict[str, Any] | None,
+    training_cadence_runtime: dict[str, Any] | None,
 ) -> dict[str, Any]:
     required = list(
         (bundle.get("trainer_runtime_contract") or {}).get("required_launch_gates") or []
@@ -2995,6 +3112,8 @@ def _launch_gate_audit(
         and optimizer_runtime["payload"].get("actual_optimizer_constructed")
         and optimizer_runtime["payload"].get("actual_scheduler_constructed")
     )
+    if _training_cadence_runtime_validated(training_cadence_runtime):
+        satisfied.add("validate_training_cadence_from_plan")
     if actual_optimizer_constructed:
         satisfied.add("construct_optimizer_and_scheduler_from_plan")
     actual_checkpoint_validated = _checkpoint_contract_runtime_validated(
@@ -3077,6 +3196,7 @@ def _launch_gate_audit(
         "load_model_and_processor",
         "ensure_protocol_token_rows",
         "set_training_use_cache_false",
+        "validate_training_cadence_from_plan",
         "construct_optimizer_and_scheduler_from_plan",
         "run_backward_optimizer_scheduler_step_from_plan",
         "run_gradient_accumulation_loop_from_plan",
@@ -3146,6 +3266,11 @@ def _launch_gate_audit(
             if training_checkpoint_resume_runtime
             else "not_requested"
         ),
+        "training_cadence_runtime_status": (
+            training_cadence_runtime["payload"].get("status")
+            if training_cadence_runtime
+            else "not_requested"
+        ),
         "checkpoint_contract_status": artifacts["checkpoint_contract"].get("status"),
         "trainable_parameters_status": trainable_parameters["payload"].get("status"),
         "gates": gates,
@@ -3197,6 +3322,26 @@ def _checkpoint_resume_runtime_validated(runtime: dict[str, Any] | None) -> bool
     )
 
 
+def _training_cadence_runtime_validated(runtime: dict[str, Any] | None) -> bool:
+    if not runtime:
+        return False
+    payload = runtime["payload"]
+    max_steps = int(payload.get("max_steps") or 0)
+    checkpoint_steps = list(payload.get("checkpoint_save_steps") or [])
+    eval_steps = list(payload.get("eval_steps") or [])
+    return bool(
+        payload.get("actual_training_cadence_validated")
+        and not payload.get("training_run_launched")
+        and max_steps >= 1
+        and checkpoint_steps
+        and int(checkpoint_steps[-1]) == max_steps
+        and (
+            not payload.get("eval_enabled")
+            or (eval_steps and int(eval_steps[-1]) == max_steps)
+        )
+    )
+
+
 def _runtime_audit_status(audit: dict[str, Any]) -> dict[str, Any]:
     gates = audit.get("launch_gates") or {}
     return {
@@ -3216,6 +3361,7 @@ def _runtime_audit_status(audit: dict[str, Any]) -> dict[str, Any]:
         "training_checkpoint_resume_runtime_status": gates.get(
             "training_checkpoint_resume_runtime_status"
         ),
+        "training_cadence_runtime_status": gates.get("training_cadence_runtime_status"),
         "blocking_items": list(audit.get("blocking_items") or []),
     }
 
