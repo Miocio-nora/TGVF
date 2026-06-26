@@ -3843,7 +3843,7 @@ entry, update this file immediately.
 
 ### DIAG-20260626-clean-qwen3-stage1-internal-diagnostics
 
-- Status: PLANNED.
+- Status: DONE.
 - Question:
   - Does the clean Stage1 checkpoint pass the clean-native internal
     readout/query/distribution diagnostics before Stage2 launch?
@@ -3857,7 +3857,8 @@ entry, update this file immediately.
   - `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend/splits/tgvf_v4_teacher_stage1_protocol_c_focus.test.jsonl`.
   - Rows: `867`.
 - Code / worktree:
-  - Current HEAD: `578aa6c make clean stage diagnostics native`.
+  - Code used by dry-run: `578aa6c make clean stage diagnostics native`.
+  - Code used by execution plan: `d2658ef record clean stage1 diagnostics preflight`.
   - Worktree clean except untracked `logs/` and `third_party/`.
 - Diagnostic entrypoint:
   - `python -m revisit_vlm_clean.cli.stage_diagnostics`.
@@ -3890,3 +3891,65 @@ entry, update this file immediately.
     passed: `4 passed`.
   - Dry-run resolved `tasks=["readout","query","distribution"]` and expected
     report paths under the output directory above.
+- Runtime:
+  - tmux: `clean_stage1_internal_diag_20260626_1901`.
+  - Started: 2026-06-26T19:12:43+09:00.
+  - Completed: 2026-06-26T19:21:37+09:00.
+  - Elapsed: about 9 minutes on one GPU.
+  - Note: current clean diagnostics are single-process/single-device; the
+    `eval_workers` argument is not yet a multi-GPU shard runner.
+- Reports:
+  - Readout:
+    `outputs/clean_training/qwen3_stage12_deepstack_mask075_4gpu_20260626_172639/stage1_micro4/internal_diagnostics_step2000/readout/readout_eval_report.json`.
+  - Query:
+    `outputs/clean_training/qwen3_stage12_deepstack_mask075_4gpu_20260626_172639/stage1_micro4/internal_diagnostics_step2000/query_sensitivity/query_sensitivity_report.json`.
+  - Distribution:
+    `outputs/clean_training/qwen3_stage12_deepstack_mask075_4gpu_20260626_172639/stage1_micro4/internal_diagnostics_step2000/fvt_distribution/fvt_distribution_report.json`.
+- Metrics:
+  - Samples/items built: `200`.
+  - Readout:
+    - `mean_nll_correct_D=1.64203125`.
+    - `mean_nll_target_only=2.02021484375`.
+    - `mean_nll_random_D=2.33296875`.
+    - `mean_delta_correct_vs_target_only=0.37818359375`.
+    - `mean_delta_correct_vs_random=0.6909375`.
+    - `mean_delta_correct_vs_wrong_same=0.079609375`.
+    - `mean_delta_correct_vs_wrong_diff=0.1239013671875`.
+    - `pct_correct_D_beats_target_only=0.985`.
+    - `pct_correct_D_beats_random=1.0`.
+    - `pct_correct_D_beats_wrong_same=0.695`.
+    - `pct_correct_D_beats_wrong_diff=0.875`.
+  - Query sensitivity:
+    - `num_groups_evaluated=46`.
+    - `num_items_evaluated=200`.
+    - `retrieval_top1=0.315`.
+    - `retrieval_top2=0.55`.
+    - `mrr=0.5574999999999999`.
+    - `mean_diagonal_gap=-0.050205078125`.
+    - `median_diagonal_gap=-0.0234375`.
+  - FVT distribution:
+    - `finite_rate=1.0`.
+    - `manifold_active_rate=1.0`.
+    - `avg_manifold_loss=0.5868046700954437`.
+    - `median_manifold_loss=0.582190603017807`.
+    - `avg_norm_D=51.86518354415894`.
+    - `avg_norm_V_merge=20.683768496513366`.
+    - `norm_ratio_D_to_Vmerge=2.5958012759847082`.
+    - `collapse_near_identical_rate=0.0`.
+    - `collapse_warning=False`.
+- Analysis:
+  - Stage1 readout signal is strong: correct D lowers evidence NLL versus no D
+    on 98.5% of sampled items and versus random D on 100% of items.
+  - Correct D also beats wrong same-image D on 69.5% and wrong different-image D
+    on 87.5%, so D carries target-specific information, though same-image
+    target specificity is weaker than the no-D/random comparisons.
+  - Query retrieval is not yet strong (`top1=31.5%`, `mrr=0.5575`), matching the
+    weaker same-image contrast signal.
+  - FVT vectors are finite and non-collapsed, but D remains larger norm than
+    V_merge (`2.60x` average), which should stay visible in later Stage2
+    diagnostics.
+- Follow-up:
+  - Implement or test a multi-GPU sharded clean diagnostics runner; single-GPU
+    200-item diagnostics took about 9 minutes.
+  - Stage2 can proceed, but should bind this exact Stage1 checkpoint and keep
+    Stage2 diagnostics/readout checks enabled.
