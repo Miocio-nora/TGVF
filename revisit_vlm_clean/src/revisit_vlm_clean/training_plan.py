@@ -111,6 +111,15 @@ class Stage1LaunchConfig:
     dtype: str = "bfloat16"
     attn_implementation: str = "sdpa"
     variant: str = "tgvf_v2_bidirectional"
+    num_foveated_tokens: int | None = None
+    spatial_merge_size: int | str = "auto"
+    attn_dim: int | None = None
+    encoder_adapter_layers: tuple[int, ...] = (8, 16, 24)
+    encoder_adapter_type: str = "bidirectional"
+    encoder_adapter_gate_init: float = 0.0
+    encoder_adapter_share_weights: bool = False
+    encoder_adapter_layer_index_base: int = 0
+    encoder_reencode_deepstack_compatible: bool = False
     token_row_mode: str = "row_only"
     capture_mode: str = "teacher_forced"
     fvt_position_mode: str = "native_source_grid"
@@ -148,6 +157,18 @@ class Stage1LaunchConfig:
             raise ValueError("output_dir is required")
         if self.protocol not in SUPPORTED_PROTOCOLS:
             raise ValueError(f"unsupported protocol: {self.protocol}")
+        if self.num_foveated_tokens is not None and int(self.num_foveated_tokens) < 1:
+            raise ValueError("num_foveated_tokens must be positive when set")
+        if self.spatial_merge_size != "auto" and int(self.spatial_merge_size) < 1:
+            raise ValueError("spatial_merge_size must be 'auto' or a positive integer")
+        if self.attn_dim is not None and int(self.attn_dim) < 1:
+            raise ValueError("attn_dim must be positive when set")
+        if not self.encoder_adapter_layers:
+            raise ValueError("encoder_adapter_layers must be non-empty")
+        if self.encoder_adapter_type not in {"bidirectional", "bidirectional_film_aggressive"}:
+            raise ValueError("unsupported encoder_adapter_type")
+        if int(self.encoder_adapter_layer_index_base) not in {0, 1}:
+            raise ValueError("encoder_adapter_layer_index_base must be 0 or 1")
         if self.token_row_mode != "row_only":
             raise ValueError("clean Stage1 launcher currently keeps only token_row_mode='row_only'")
         if self.capture_mode != "teacher_forced":
@@ -362,8 +383,13 @@ def build_stage1_launch_plan(
             "attn_implementation": config.attn_implementation,
         },
         "protocol": config.protocol,
-        "dataset": {"train_file": train_identity.to_dict()},
+        "dataset": {
+            "train_file": train_identity.to_dict(),
+            "batch_sampling": "same_image",
+            "drop_incomplete_same_image_batches": True,
+        },
         "batch": config.batch.to_dict(),
+        "tgvf": _stage1_tgvf_config(config),
         "training": {
             "max_steps": config.max_steps,
             "save_every": config.save_every,
@@ -818,6 +844,26 @@ def _stage1_module_policy() -> dict[str, Any]:
             "use_cache": False,
             "print_trainable_parameter_names_before_launch": True,
         },
+    }
+
+
+def _stage1_tgvf_config(config: Stage1LaunchConfig) -> dict[str, Any]:
+    return {
+        "variant": config.variant,
+        "num_foveated_tokens": config.num_foveated_tokens,
+        "spatial_merge_size": config.spatial_merge_size,
+        "attn_dim": config.attn_dim,
+        "encoder_adapter_layers": [int(layer) for layer in config.encoder_adapter_layers],
+        "encoder_adapter_type": config.encoder_adapter_type,
+        "encoder_adapter_gate_init": config.encoder_adapter_gate_init,
+        "encoder_adapter_share_weights": config.encoder_adapter_share_weights,
+        "encoder_adapter_layer_index_base": config.encoder_adapter_layer_index_base,
+        "encoder_reencode_deepstack_compatible": (
+            config.encoder_reencode_deepstack_compatible
+        ),
+        "encoder_reencode": config.variant == "tgvf_encoder_bidir_8_16_24",
+        "preserve_llm_kv_cache": True,
+        "second_full_llm_forward": False,
     }
 
 

@@ -1753,7 +1753,11 @@ def _checkpoint_probe_payload(
     tgvf_module = modules.get("tgvf")
     if tgvf_module is None or not hasattr(tgvf_module, "state_dict"):
         raise ValueError("checkpoint audit requires a tgvf module with state_dict")
-    config = _checkpoint_runtime_config(bundle=bundle, expected_stage=expected_stage)
+    config = _checkpoint_runtime_config(
+        bundle=bundle,
+        loaded_modules=loaded_modules,
+        expected_stage=expected_stage,
+    )
     checkpoint: dict[str, Any] = {
         "tgvf_module": tgvf_module.state_dict(),
         "config": config,
@@ -1785,6 +1789,7 @@ def _checkpoint_probe_payload(
 def _checkpoint_runtime_config(
     *,
     bundle: dict[str, Any],
+    loaded_modules: dict[str, Any],
     expected_stage: TrainingStage,
 ) -> dict[str, Any]:
     model = bundle.get("model") or {}
@@ -1796,10 +1801,26 @@ def _checkpoint_runtime_config(
         "processor_id": model.get("processor_id"),
         "tgvf_protocol": bundle.get("protocol"),
         "training": training,
-        "tgvf": {
-            "variant": training.get("variant"),
-            "num_foveated_tokens": None,
-        },
+        "tgvf": _checkpoint_tgvf_config(bundle=bundle, loaded_modules=loaded_modules),
+    }
+
+
+def _checkpoint_tgvf_config(
+    *,
+    bundle: dict[str, Any],
+    loaded_modules: dict[str, Any],
+) -> dict[str, Any]:
+    loader = loaded_modules.get("loader") or {}
+    resolved = loader.get("resolved_tgvf_config")
+    if isinstance(resolved, Mapping) and resolved:
+        return dict(resolved)
+    planned = bundle.get("tgvf")
+    if isinstance(planned, Mapping) and planned:
+        return dict(planned)
+    training = bundle.get("training") or {}
+    return {
+        "variant": training.get("variant"),
+        "num_foveated_tokens": None,
     }
 
 
@@ -4675,12 +4696,26 @@ def _load_stage1_parameter_audit_modules(bundle: dict[str, Any]) -> dict[str, An
         device=device,
         max_image_resolution=training.get("max_image_resolution"),
     )
+    tgvf_cfg = _resolved_stage1_tgvf_config(bundle=bundle, dims=dims)
     tgvf = build_tgvf_module(
-        variant=str(training.get("variant") or "tgvf_v2_bidirectional"),
+        variant=str(tgvf_cfg.get("variant") or "tgvf_v2_bidirectional"),
         d_lm=dims["d_lm"],
         d_v=dims["d_v"],
-        num_foveated_tokens=None,
-        spatial_merge_size=dims["spatial_merge_size"],
+        num_foveated_tokens=tgvf_cfg.get("num_foveated_tokens"),
+        spatial_merge_size=int(tgvf_cfg.get("spatial_merge_size") or dims["spatial_merge_size"]),
+        attn_dim=tgvf_cfg.get("attn_dim"),
+        encoder_adapter_layers=tuple(tgvf_cfg.get("encoder_adapter_layers") or (8, 16, 24)),
+        encoder_adapter_gate_init=float(tgvf_cfg.get("encoder_adapter_gate_init", 0.0)),
+        encoder_adapter_type=str(tgvf_cfg.get("encoder_adapter_type") or "bidirectional"),
+        encoder_adapter_share_weights=bool(
+            tgvf_cfg.get("encoder_adapter_share_weights", False)
+        ),
+        encoder_adapter_layer_index_base=int(
+            tgvf_cfg.get("encoder_adapter_layer_index_base", 0)
+        ),
+        encoder_reencode_deepstack_compatible=bool(
+            tgvf_cfg.get("encoder_reencode_deepstack_compatible", False)
+        ),
     ).to(device=device, dtype=next(model.parameters()).dtype)
     return {
         "modules": {"qwen": model, "tgvf": tgvf},
@@ -4692,7 +4727,63 @@ def _load_stage1_parameter_audit_modules(bundle: dict[str, Any]) -> dict[str, An
             "protocol_token_info": token_info,
             "protocol_token_rows": token_row_info,
             "dims": dims,
+            "resolved_tgvf_config": tgvf_cfg,
         },
+    }
+
+
+def _resolved_stage1_tgvf_config(
+    *,
+    bundle: dict[str, Any],
+    dims: dict[str, Any],
+) -> dict[str, Any]:
+    training = bundle.get("training") or {}
+    planned = dict(bundle.get("tgvf") or {})
+    spatial_merge_size = planned.get("spatial_merge_size")
+    if spatial_merge_size in (None, "auto"):
+        spatial_merge_size = dims["spatial_merge_size"]
+    return {
+        "variant": str(
+            planned.get("variant")
+            or training.get("variant")
+            or "tgvf_v2_bidirectional"
+        ),
+        "num_foveated_tokens": planned.get("num_foveated_tokens"),
+        "spatial_merge_size": int(spatial_merge_size),
+        "attn_dim": planned.get("attn_dim"),
+        "encoder_adapter_layers": [
+            int(layer)
+            for layer in (planned.get("encoder_adapter_layers") or (8, 16, 24))
+        ],
+        "encoder_adapter_type": str(
+            planned.get("encoder_adapter_type") or "bidirectional"
+        ),
+        "encoder_adapter_gate_init": float(
+            planned.get("encoder_adapter_gate_init", 0.0)
+        ),
+        "encoder_adapter_share_weights": bool(
+            planned.get("encoder_adapter_share_weights", False)
+        ),
+        "encoder_adapter_layer_index_base": int(
+            planned.get("encoder_adapter_layer_index_base", 0)
+        ),
+        "encoder_reencode_deepstack_compatible": bool(
+            planned.get("encoder_reencode_deepstack_compatible", False)
+        ),
+        "encoder_reencode": bool(
+            planned.get("encoder_reencode")
+            if planned.get("encoder_reencode") is not None
+            else str(
+                planned.get("variant")
+                or training.get("variant")
+                or "tgvf_v2_bidirectional"
+            )
+            == "tgvf_encoder_bidir_8_16_24"
+        ),
+        "preserve_llm_kv_cache": bool(planned.get("preserve_llm_kv_cache", True)),
+        "second_full_llm_forward": bool(
+            planned.get("second_full_llm_forward", False)
+        ),
     }
 
 
@@ -4785,7 +4876,11 @@ def _load_stage2_parameter_audit_modules(bundle: dict[str, Any]) -> dict[str, An
         device=device,
         max_image_resolution=training.get("max_image_resolution"),
     )
-    tgvf_cfg = (stage1_checkpoint.get("config") or {}).get("tgvf") or {}
+    tgvf_cfg = _resolved_tgvf_config_from_checkpoint(
+        checkpoint=stage1_checkpoint,
+        training=training,
+        dims=dims,
+    )
     tgvf = build_tgvf_module(
         variant=str(tgvf_cfg.get("variant") or training.get("variant") or "tgvf_v2_bidirectional"),
         d_lm=dims["d_lm"],
@@ -4795,6 +4890,7 @@ def _load_stage2_parameter_audit_modules(bundle: dict[str, Any]) -> dict[str, An
         attn_dim=tgvf_cfg.get("attn_dim"),
         encoder_adapter_layers=tuple(tgvf_cfg.get("encoder_adapter_layers") or (8, 16, 24)),
         encoder_adapter_gate_init=float(tgvf_cfg.get("encoder_adapter_gate_init", 0.0)),
+        encoder_adapter_type=str(tgvf_cfg.get("encoder_adapter_type") or "bidirectional"),
         encoder_adapter_share_weights=bool(tgvf_cfg.get("encoder_adapter_share_weights", False)),
         encoder_adapter_layer_index_base=int(tgvf_cfg.get("encoder_adapter_layer_index_base", 0)),
         encoder_reencode_deepstack_compatible=bool(
@@ -4815,7 +4911,47 @@ def _load_stage2_parameter_audit_modules(bundle: dict[str, Any]) -> dict[str, An
             "dims": dims,
             "stage1_global_step": stage1_checkpoint.get("global_step"),
             "modules_to_save": modules_to_save,
+            "resolved_tgvf_config": tgvf_cfg,
         },
+    }
+
+
+def _resolved_tgvf_config_from_checkpoint(
+    *,
+    checkpoint: dict[str, Any],
+    training: dict[str, Any],
+    dims: dict[str, Any],
+) -> dict[str, Any]:
+    checkpoint_config = checkpoint.get("config") or {}
+    raw = dict(checkpoint_config.get("tgvf") or {})
+    variant = str(raw.get("variant") or training.get("variant") or "tgvf_v2_bidirectional")
+    spatial_merge_size = raw.get("spatial_merge_size")
+    if spatial_merge_size in (None, "auto"):
+        spatial_merge_size = dims["spatial_merge_size"]
+    return {
+        "variant": variant,
+        "num_foveated_tokens": raw.get("num_foveated_tokens"),
+        "spatial_merge_size": int(spatial_merge_size),
+        "attn_dim": raw.get("attn_dim"),
+        "encoder_adapter_layers": [
+            int(layer) for layer in (raw.get("encoder_adapter_layers") or (8, 16, 24))
+        ],
+        "encoder_adapter_type": str(raw.get("encoder_adapter_type") or "bidirectional"),
+        "encoder_adapter_gate_init": float(raw.get("encoder_adapter_gate_init", 0.0)),
+        "encoder_adapter_share_weights": bool(raw.get("encoder_adapter_share_weights", False)),
+        "encoder_adapter_layer_index_base": int(
+            raw.get("encoder_adapter_layer_index_base", 0)
+        ),
+        "encoder_reencode_deepstack_compatible": bool(
+            raw.get("encoder_reencode_deepstack_compatible", False)
+        ),
+        "encoder_reencode": bool(
+            raw.get("encoder_reencode")
+            if raw.get("encoder_reencode") is not None
+            else variant == "tgvf_encoder_bidir_8_16_24"
+        ),
+        "preserve_llm_kv_cache": bool(raw.get("preserve_llm_kv_cache", True)),
+        "second_full_llm_forward": bool(raw.get("second_full_llm_forward", False)),
     }
 
 
@@ -5897,6 +6033,7 @@ def _validate_training_plan(plan: dict[str, Any], *, expected_stage: TrainingSta
     _validate_batch(plan.get("batch") or {})
     _validate_dataset(plan.get("dataset") or {}, stage=stage)
     if stage == TrainingStage.STAGE1:
+        _validate_stage1_tgvf_config(plan.get("tgvf") or {})
         _validate_stage1_readout_context(plan.get("readout_context") or {})
     if stage == TrainingStage.STAGE2:
         _validate_stage2_deepstack_training_plan(plan)
@@ -5930,6 +6067,11 @@ def _validate_batch(batch: dict[str, Any]) -> None:
 
 def _validate_dataset(dataset: dict[str, Any], *, stage: TrainingStage) -> None:
     _validate_file_identity(dataset.get("train_file") or {}, label="train_file")
+    if stage == TrainingStage.STAGE1:
+        if dataset.get("batch_sampling") != "same_image":
+            raise ValueError("Stage1 dataset.batch_sampling must be same_image")
+        if dataset.get("drop_incomplete_same_image_batches") is not True:
+            raise ValueError("Stage1 must drop incomplete same-image batches")
     if stage == TrainingStage.STAGE2:
         _validate_file_identity(
             dataset.get("stage1_checkpoint") or {},
@@ -5950,6 +6092,23 @@ def _validate_file_identity(identity: dict[str, Any], *, label: str) -> None:
         raise ValueError(f"{label} identity must include sha256")
     if identity.get("size_bytes") is None:
         raise ValueError(f"{label} identity must include size_bytes")
+
+
+def _validate_stage1_tgvf_config(config: dict[str, Any]) -> None:
+    if not config.get("variant"):
+        raise ValueError("Stage1 tgvf.variant is required")
+    spatial_merge_size = config.get("spatial_merge_size")
+    if spatial_merge_size is None:
+        raise ValueError("Stage1 tgvf.spatial_merge_size is required")
+    if spatial_merge_size != "auto" and int(spatial_merge_size) < 1:
+        raise ValueError("Stage1 tgvf.spatial_merge_size must be auto or positive")
+    if config.get("encoder_adapter_layers") is None:
+        raise ValueError("Stage1 tgvf.encoder_adapter_layers is required")
+    if config.get("encoder_adapter_type") not in {
+        "bidirectional",
+        "bidirectional_film_aggressive",
+    }:
+        raise ValueError("Stage1 tgvf.encoder_adapter_type is invalid")
 
 
 def _validate_module_policy(policy: dict[str, Any], *, stage: TrainingStage) -> None:

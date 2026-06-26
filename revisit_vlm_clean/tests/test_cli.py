@@ -502,6 +502,8 @@ def test_training_default_clis(capsys) -> None:
     assert stage1_main(["--print-defaults"]) == 0
     stage1_defaults = capsys.readouterr().out
     assert "matrix_ce" in stage1_defaults
+    assert '"spatial_merge_size": "auto"' in stage1_defaults
+    assert '"encoder_adapter_layers": [' in stage1_defaults
     assert '"focus_action_im_end": true' in stage1_defaults
     assert '"lr_scheduler": "cosine"' in stage1_defaults
     assert '"warmup_steps": 100' in stage1_defaults
@@ -549,11 +551,28 @@ def test_stage1_training_write_plan_cli(tmp_path) -> None:
     assert plan["training_plan_schema_version"] == "clean_training_plan_v1"
     assert plan["stage"] == "stage1"
     assert plan["dataset"]["train_file"]["line_count"] == 1
+    assert plan["dataset"]["batch_sampling"] == "same_image"
+    assert plan["dataset"]["drop_incomplete_same_image_batches"] is True
     assert plan["batch"] == {
         "global_batch_size": 32,
         "gradient_accumulation_steps": 2,
         "micro_batch_size": 4,
         "world_size": 4,
+    }
+    assert plan["tgvf"] == {
+        "variant": "tgvf_v2_bidirectional",
+        "num_foveated_tokens": None,
+        "spatial_merge_size": "auto",
+        "attn_dim": None,
+        "encoder_adapter_layers": [8, 16, 24],
+        "encoder_adapter_type": "bidirectional",
+        "encoder_adapter_gate_init": 0.0,
+        "encoder_adapter_share_weights": False,
+        "encoder_adapter_layer_index_base": 0,
+        "encoder_reencode_deepstack_compatible": False,
+        "encoder_reencode": False,
+        "preserve_llm_kv_cache": True,
+        "second_full_llm_forward": False,
     }
     assert plan["training"]["token_row_mode"] == "row_only"
     assert plan["training"]["focus_action_im_end"] is True
@@ -2600,7 +2619,24 @@ def test_stage1_training_executor_runtime_audit_checkpoint_includes_protocol_row
         return {
             "modules": {"qwen": qwen, "tgvf": tgvf},
             "checkpoint_extras": {"protocol_c_token_rows": protocol_rows},
-            "loader": {"backend": "fake_stage1_checkpoint_audit_loader"},
+            "loader": {
+                "backend": "fake_stage1_checkpoint_audit_loader",
+                "resolved_tgvf_config": {
+                    "variant": "tgvf_v2_bidirectional",
+                    "num_foveated_tokens": None,
+                    "spatial_merge_size": 2,
+                    "attn_dim": None,
+                    "encoder_adapter_layers": [8, 16, 24],
+                    "encoder_adapter_type": "bidirectional",
+                    "encoder_adapter_gate_init": 0.0,
+                    "encoder_adapter_share_weights": False,
+                    "encoder_adapter_layer_index_base": 0,
+                    "encoder_reencode_deepstack_compatible": False,
+                    "encoder_reencode": False,
+                    "preserve_llm_kv_cache": True,
+                    "second_full_llm_forward": False,
+                },
+            },
         }
 
     monkeypatch.setattr(training_executor, "_load_training_parameter_audit_modules", fake_loader)
@@ -2643,6 +2679,14 @@ def test_stage1_training_executor_runtime_audit_checkpoint_includes_protocol_row
     assert checkpoint_runtime["protocol_c_token_rows"]["protocol"] == (
         "protocol_c_tool_observation"
     )
+    checkpoint = torch.load(
+        execution_dir / "checkpoint_runtime_probe.pt",
+        map_location="cpu",
+        weights_only=False,
+    )
+    assert checkpoint["config"]["tgvf"]["spatial_merge_size"] == 2
+    assert checkpoint["config"]["tgvf"]["encoder_adapter_layers"] == [8, 16, 24]
+    assert checkpoint["config"]["tgvf"]["preserve_llm_kv_cache"] is True
     gate_status = {
         gate["name"]: gate["status"] for gate in runtime_audit["launch_gates"]["gates"]
     }

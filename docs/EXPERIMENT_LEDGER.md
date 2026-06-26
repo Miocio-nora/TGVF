@@ -4665,3 +4665,72 @@ entry, update this file immediately.
     Stage1 training-step defaults, and `visual_token_manifold=0.01`.
   - Only after that run should Stage2 and benchmark conclusions be compared
     against 20260617/20260620 legacy references.
+
+### AUDIT-20260627-clean-stage1-tgvf-config-and-sampler-identity
+
+- Status: COMPLETED.
+- Question:
+  - Besides sampler semantics and Stage1 training-step defaults, does clean
+    Stage1 still omit identity fields that legacy Stage1 recorded and that
+    Stage2/diagnostics may later depend on?
+- Evidence inspected:
+  - Legacy reference:
+    `outputs/tgvf_v3_protocol_c_stage1_8b/protocol_c_toolobs_stage1_v4data_clean_rowonly_gpu0_3_focus_imend_bidirectional_4gpu_bs4_accum2_gbs32_2000step_20260617`.
+  - Legacy `train/config.json` recorded:
+    - `batch_sampling="same_image"`.
+    - `drop_incomplete_same_image_batches=true`.
+    - full `config.tgvf`, including `spatial_merge_size=2`,
+      `encoder_adapter_layers=[8,16,24]`, `encoder_adapter_type="bidirectional"`,
+      `preserve_llm_kv_cache=true`, and `second_full_llm_forward=false`.
+  - Clean checkpoint from the earlier replay recorded only:
+    - `config.tgvf={"variant":"tgvf_v2_bidirectional","num_foveated_tokens":null}`.
+- Confirmed interpretation:
+  - For the current `tgvf_v2_bidirectional` variant, the encoder-adapter
+    options are not used by `build_tgvf_module`, so this omission is unlikely
+    to directly explain the existing Stage1 diagnostic gap.
+  - It is still an identity/checkpoint-contract gap: Stage2 and diagnostics
+    reconstruct TGVF from Stage1 checkpoint config, so clean checkpoints
+    should carry the same complete TGVF identity as legacy checkpoints.
+  - Clean distributed training uses a native executor with manual gradient
+    averaging after backward rather than wrapping the TGVF module in PyTorch
+    DDP. This is expected to be mathematically equivalent for the current
+    trainable parameter groups, but it remains a recorded implementation
+    difference from the legacy script.
+- Code fix:
+  - Clean Stage1 `training_plan.json` now explicitly records:
+    - `dataset.batch_sampling="same_image"`.
+    - `dataset.drop_incomplete_same_image_batches=true`.
+    - full requested `tgvf` config with canonical clean defaults.
+  - Clean Stage1 executor preflight now validates those Stage1 sampler identity
+    fields and validates the presence of Stage1 `tgvf` identity fields.
+  - Stage1 runtime loader now resolves `spatial_merge_size="auto"` to the
+    actual Qwen visual merge size and stores `loader.resolved_tgvf_config`.
+  - Clean checkpoint config now writes resolved `config.tgvf` from the runtime
+    loader when available, falling back to plan `tgvf` only if needed.
+  - Stage2 runtime loader now also records the resolved TGVF config and passes
+    `encoder_adapter_type` explicitly when rebuilding from a Stage1 checkpoint.
+- Plancheck:
+  - Generated a no-launch clean Stage1 plan with legacy-comparable identity:
+    - model/processor:
+      `/nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking`.
+    - train file:
+      `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend/splits/tgvf_v4_teacher_stage1_protocol_c_focus.train.jsonl`.
+    - `world=4`, `micro=4`, `accum=2`, `global=32`.
+    - `max_steps=2000`, `save_every=500`.
+    - `visual_token_manifold=0.01`.
+    - `batch_sampling=same_image`, `drop_incomplete_same_image_batches=true`.
+    - requested `tgvf.spatial_merge_size="auto"`, to be resolved to actual
+      `2` at runtime/checkpoint save.
+- Verification:
+  - `PYTHONPATH=revisit_vlm_clean/src:src pytest -q revisit_vlm_clean/tests/test_cli.py`
+    passed: `49 passed`.
+  - `python -m py_compile revisit_vlm_clean/src/revisit_vlm_clean/cli/train_stage1.py revisit_vlm_clean/src/revisit_vlm_clean/training_plan.py revisit_vlm_clean/src/revisit_vlm_clean/training/executor.py revisit_vlm_clean/tests/test_cli.py`
+    passed.
+  - `git diff --check -- revisit_vlm_clean/src/revisit_vlm_clean/cli/train_stage1.py revisit_vlm_clean/src/revisit_vlm_clean/training_plan.py revisit_vlm_clean/src/revisit_vlm_clean/training/executor.py revisit_vlm_clean/tests/test_cli.py`
+    passed.
+- Conclusion:
+  - This fixes another concrete clean-vs-legacy identity gap. It does not
+    validate any previously generated clean Stage1 result as comparable.
+  - The next valid comparison still requires a fresh clean Stage1 run from
+    code after this audit, then internal diagnostics on the resulting
+    checkpoint.
