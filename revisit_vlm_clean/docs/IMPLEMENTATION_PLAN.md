@@ -2170,6 +2170,18 @@ Implemented after Phase 84.
 - this phase does not change row scoring, parser behavior, sample selection, or
   model execution.
 
+## Phase 86: Clean Training Launch Result Identity
+
+Implemented after Phase 85.
+
+- clean training launch results now record plan identity, git/worktree identity,
+  dataset train/validation identity, first-batch digest, input checkpoint
+  contract, final checkpoint identity, and runtime artifact file identities;
+- clean training launch status mirrors the compact identity fields needed to
+  identify a produced checkpoint without opening the full launch result;
+- this phase does not change training data order, losses, optimizer behavior,
+  checkpoint contents, validation cadence, or model execution.
+
 ## Later Phases
 
 1. Port DeepStack original-image injection/masking into clean training and eval

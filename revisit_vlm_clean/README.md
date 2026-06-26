@@ -84,7 +84,8 @@ supported clean launches. `world_size=1` uses `python -m ... --launch-training`;
 `world_size>1` uses `torchrun --nproc-per-node <world_size>`. Stage2 DeepStack
 training launches remain blocked until original-image DeepStack
 injection/masking is ported, but the blocker is recorded as a structured
-`deepstack_training_plan`.
+`deepstack_training_plan`. Clean launch result and status artifacts record plan,
+dataset, runtime artifact, input checkpoint, and published checkpoint identities.
 
 The planned clean training modules are importable:
 

@@ -747,6 +747,7 @@ def launch_training(
         launch_result = _clean_training_launch_result(
             bundle_path=bundle_file,
             bundle=bundle,
+            artifacts=artifacts,
             trainable_parameters=trainable_parameters,
             optimizer_runtime=optimizer_runtime,
             cadence_runtime=cadence_runtime,
@@ -2967,6 +2968,7 @@ def _clean_training_launch_result(
     *,
     bundle_path: Path,
     bundle: dict[str, Any],
+    artifacts: dict[str, dict[str, Any]],
     trainable_parameters: dict[str, Any],
     optimizer_runtime: dict[str, Any],
     cadence_runtime: dict[str, Any],
@@ -2975,6 +2977,8 @@ def _clean_training_launch_result(
 ) -> dict[str, Any]:
     runtime_payload = training_runtime["payload"]
     ddp_enabled = bool(runtime_payload.get("ddp_enabled"))
+    checkpoint_records = list(runtime_payload.get("checkpoint_records") or [])
+    final_checkpoint = checkpoint_records[-1] if checkpoint_records else None
     unsupported_runtime_features: list[str] = []
     if expected_stage == TrainingStage.STAGE2:
         unsupported_runtime_features.append("stage2_deepstack_training")
@@ -2996,6 +3000,19 @@ def _clean_training_launch_result(
         "world_size": runtime_payload.get("world_size"),
         "bundle_path": str(bundle_path),
         "bundle_identity": file_identity(bundle_path).to_dict(),
+        "plan_path": bundle.get("plan_path"),
+        "plan_identity": bundle.get("plan_identity"),
+        "git_commit": bundle.get("git_commit"),
+        "dirty_worktree": bundle.get("dirty_worktree"),
+        "dataset_identity": _launch_dataset_identity(artifacts),
+        "input_checkpoint_contract": _launch_input_checkpoint_contract(artifacts),
+        "runtime_artifact_identities": _launch_runtime_artifact_identities(
+            bundle=bundle,
+            trainable_parameters=trainable_parameters,
+            optimizer_runtime=optimizer_runtime,
+            cadence_runtime=cadence_runtime,
+            training_runtime=training_runtime,
+        ),
         "trainable_parameters": trainable_parameters["path"],
         "optimizer_runtime": optimizer_runtime["path"],
         "training_cadence_runtime": cadence_runtime["path"],
@@ -3013,7 +3030,9 @@ def _clean_training_launch_result(
         ),
         "validation_steps": list(runtime_payload.get("validation_steps") or []),
         "validation_record_count": len(runtime_payload.get("validation_records") or []),
-        "checkpoint_records": list(runtime_payload.get("checkpoint_records") or []),
+        "checkpoint_records": checkpoint_records,
+        "final_checkpoint": (final_checkpoint or {}).get("path"),
+        "final_checkpoint_identity": (final_checkpoint or {}).get("identity"),
         "unsupported_runtime_features": unsupported_runtime_features,
     }
 
@@ -3027,6 +3046,10 @@ def _clean_training_launch_status(result: dict[str, Any]) -> dict[str, Any]:
         "status": result.get("status"),
         "will_launch_training": result.get("will_launch_training"),
         "training_runtime_ported": result.get("training_runtime_ported"),
+        "plan_identity": result.get("plan_identity"),
+        "bundle_identity": result.get("bundle_identity"),
+        "dataset_identity": result.get("dataset_identity"),
+        "input_checkpoint_contract": result.get("input_checkpoint_contract"),
         "single_process": result.get("single_process"),
         "ddp_enabled": result.get("ddp_enabled"),
         "rank": result.get("rank"),
@@ -3037,9 +3060,68 @@ def _clean_training_launch_status(result: dict[str, Any]) -> dict[str, Any]:
         "micro_steps_completed": result.get("micro_steps_completed"),
         "checkpoint_count": len(checkpoint_records),
         "final_checkpoint": checkpoint_records[-1]["path"] if checkpoint_records else None,
+        "final_checkpoint_identity": (
+            checkpoint_records[-1].get("identity") if checkpoint_records else None
+        ),
+        "runtime_artifact_identity_count": len(
+            result.get("runtime_artifact_identities") or {}
+        ),
         "unsupported_runtime_features": list(
             result.get("unsupported_runtime_features") or []
         ),
+    }
+
+
+def _launch_dataset_identity(artifacts: dict[str, dict[str, Any]]) -> dict[str, Any]:
+    dataset = artifacts.get("dataset_runtime_identity") or {}
+    first_batch = artifacts.get("first_batch_identity") or {}
+    return {
+        "train_file": dataset.get("train_file"),
+        "val_file": dataset.get("val_file"),
+        "global_batch_size": dataset.get("global_batch_size"),
+        "first_batch": {
+            "materialized_batch_size": first_batch.get("materialized_batch_size"),
+            "batch_sha256": first_batch.get("batch_sha256"),
+            "row_digests": list(first_batch.get("row_digests") or []),
+        },
+    }
+
+
+def _launch_input_checkpoint_contract(
+    artifacts: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
+    checkpoint = artifacts.get("checkpoint_contract") or {}
+    return {
+        "status": checkpoint.get("status"),
+        "input_checkpoint_required": checkpoint.get("input_checkpoint_required"),
+        "checkpoint_identity": checkpoint.get("checkpoint_identity"),
+        "global_step": checkpoint.get("global_step"),
+        "protocol_c_token_rows_required": checkpoint.get(
+            "protocol_c_token_rows_required"
+        ),
+    }
+
+
+def _launch_runtime_artifact_identities(
+    *,
+    bundle: dict[str, Any],
+    trainable_parameters: dict[str, Any],
+    optimizer_runtime: dict[str, Any],
+    cadence_runtime: dict[str, Any],
+    training_runtime: dict[str, Any],
+) -> dict[str, dict[str, Any]]:
+    artifact_paths = dict(bundle.get("runtime_artifacts") or {})
+    artifact_paths.update(
+        {
+            "trainable_parameters": trainable_parameters["path"],
+            "optimizer_runtime": optimizer_runtime["path"],
+            "training_cadence_runtime": cadence_runtime["path"],
+            "training_runtime": training_runtime["path"],
+        }
+    )
+    return {
+        name: file_identity(path).to_dict()
+        for name, path in sorted(artifact_paths.items())
     }
 
 

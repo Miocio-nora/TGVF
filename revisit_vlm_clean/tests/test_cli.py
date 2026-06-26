@@ -2078,6 +2078,7 @@ def test_stage2_training_executor_can_launch_single_process_training_loop(
     assert '"training_launch_result"' in payload
     assert '"will_launch_training": true' in payload
     execution_dir = output_dir / "clean_training_execution"
+    bundle = json.loads((execution_dir / "clean_training_execution_bundle.json").read_text())
     launch_result = json.loads(
         (execution_dir / "clean_training_launch_result.json").read_text()
     )
@@ -2094,6 +2095,15 @@ def test_stage2_training_executor_can_launch_single_process_training_loop(
     assert launch_result["in_training_validation_enabled"] is True
     assert launch_result["validation_steps"] == [1, 2]
     assert launch_result["validation_record_count"] == 2
+    assert launch_result["plan_identity"]["sha256"] == bundle["plan_identity"]["sha256"]
+    assert launch_result["bundle_identity"]["exists"] is True
+    assert launch_result["dataset_identity"]["train_file"]["line_count"] == 3
+    assert launch_result["dataset_identity"]["val_file"]["line_count"] == 2
+    assert launch_result["dataset_identity"]["first_batch"]["materialized_batch_size"] == 2
+    assert launch_result["input_checkpoint_contract"]["status"] == "validated"
+    assert launch_result["input_checkpoint_contract"]["checkpoint_identity"]["exists"] is True
+    assert launch_result["runtime_artifact_identities"]["training_runtime"]["exists"] is True
+    assert launch_result["runtime_artifact_identities"]["checkpoint_contract"]["exists"] is True
     assert runtime["optimizer_steps_completed"] == 2
     assert runtime["micro_steps_completed"] == 4
     assert runtime["checkpoint_save_steps"] == [1, 2]
@@ -2121,6 +2131,13 @@ def test_stage2_training_executor_can_launch_single_process_training_loop(
     assert (execution_dir / "checkpoint_step_1.pt").exists()
     assert (execution_dir / "checkpoint_step_2.pt").exists()
     assert launch_status["final_checkpoint"] == str(execution_dir / "checkpoint_step_2.pt")
+    assert launch_status["plan_identity"]["sha256"] == launch_result["plan_identity"]["sha256"]
+    assert launch_status["dataset_identity"]["train_file"]["line_count"] == 3
+    assert launch_status["input_checkpoint_contract"]["status"] == "validated"
+    assert launch_status["final_checkpoint_identity"]["sha256"] == (
+        launch_result["final_checkpoint_identity"]["sha256"]
+    )
+    assert launch_status["runtime_artifact_identity_count"] >= 8
     assert launch_status["in_training_validation_enabled"] is True
     assert launch_status["validation_record_count"] == 2
     assert launch_status["unsupported_runtime_features"] == ["stage2_deepstack_training"]
