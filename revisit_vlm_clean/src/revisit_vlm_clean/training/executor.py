@@ -17,7 +17,10 @@ from typing import Any
 
 from revisit_vlm_clean.cli.common import exit_not_implemented, print_json
 from revisit_vlm_clean.data_generation import file_identity
-from revisit_vlm_clean.deepstack import DEEPSTACK_SCOPE_CONTRACT_SCHEMA_VERSION
+from revisit_vlm_clean.deepstack import (
+    DEEPSTACK_RUNTIME_HOOKS_SCHEMA_VERSION,
+    DEEPSTACK_SCOPE_CONTRACT_SCHEMA_VERSION,
+)
 from revisit_vlm_clean.schema import _to_jsonable
 from revisit_vlm_clean.training_plan import TRAINING_PLAN_SCHEMA_VERSION, TrainingStage
 
@@ -5361,7 +5364,21 @@ def _validate_stage2_deepstack_training_plan(plan: dict[str, Any]) -> None:
         raise ValueError(
             "Stage2 deepstack_training_plan original-image scope contract mismatch"
         )
+    runtime_hooks = deepstack_plan.get("runtime_hooks") or {}
+    if runtime_hooks.get("schema_version") != DEEPSTACK_RUNTIME_HOOKS_SCHEMA_VERSION:
+        raise ValueError("Stage2 deepstack_training_plan runtime_hooks schema mismatch")
+    if runtime_hooks.get("surface") != "stage2_training":
+        raise ValueError("Stage2 deepstack_training_plan runtime_hooks surface mismatch")
+    if bool(runtime_hooks.get("enabled")) != enabled:
+        raise ValueError("Stage2 deepstack_training_plan runtime_hooks enabled mismatch")
+    if runtime_hooks.get("original_image_scope") != deepstack_plan.get(
+        "original_image_scope"
+    ):
+        raise ValueError("Stage2 deepstack_training_plan runtime_hooks scope mismatch")
     blocking_items = list(deepstack_plan.get("blocking_items") or [])
+    runtime_hook_blockers = list(runtime_hooks.get("blocking_items") or [])
+    if blocking_items != runtime_hook_blockers:
+        raise ValueError("Stage2 deepstack_training_plan runtime_hooks blocker mismatch")
     if enabled:
         scope = deepstack.get("original_image_scope")
         if deepstack_plan.get("original_image_scope") != scope:

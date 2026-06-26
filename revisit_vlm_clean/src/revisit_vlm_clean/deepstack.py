@@ -8,6 +8,7 @@ from typing import Any
 from .schema import DeepStackScope, DeepStackState
 
 DEEPSTACK_SCOPE_CONTRACT_SCHEMA_VERSION = "clean_deepstack_scope_contract_v1"
+DEEPSTACK_RUNTIME_HOOKS_SCHEMA_VERSION = "clean_deepstack_runtime_hooks_v1"
 DEEPSTACK_INJECTION_SOURCE = "native_qwen3_original_image_deepstack_features"
 DEEPSTACK_FVT_VISUAL_TOKEN_PATH = "v_merge_level_visual_tokens"
 
@@ -49,7 +50,86 @@ def deepstack_scope_contract(
             "required_for_current_mainline": False,
         },
         "fvt_visual_token_path": DEEPSTACK_FVT_VISUAL_TOKEN_PATH,
+        "runtime_hooks": deepstack_runtime_hooks(
+            deepstack,
+            surface=surface,
+            backend=backend,
+        ),
         "blocking_items": blockers,
+    }
+
+
+def deepstack_runtime_hooks(
+    state: DeepStackState | Mapping[str, Any],
+    *,
+    surface: str,
+    backend: str | None = None,
+    implemented_hooks: set[str] | frozenset[str] | tuple[str, ...] | list[str] | None = None,
+) -> dict[str, Any]:
+    """Return the hook-level implementation contract for DeepStack execution.
+
+    This is intentionally more concrete than the high-level scope contract. It
+    names the runtime hooks that must be ported before DeepStack can move from a
+    schema-supported blocked state into actual execution support.
+    """
+
+    deepstack = _coerce_deepstack_state(state)
+    policy = deepstack_scope_policy(deepstack.original_image_scope)
+    implemented = {str(item) for item in (implemented_hooks or ())}
+    specs = [
+        (
+            "capture_original_image_deepstack_features",
+            bool(deepstack.enabled),
+            "capture native Qwen3 original-image DeepStack features during image prefill",
+        ),
+        (
+            "carry_original_image_deepstack_through_post_tgvf_append",
+            bool(deepstack.enabled),
+            "carry original-image DeepStack features into the post-TGVF append forward",
+        ),
+        (
+            "apply_post_tgvf_deepstack_scope_mask",
+            bool(deepstack.enabled and policy["block_after_tgvf_append"]),
+            "mask original-image DeepStack features over the requested post-TGVF scope",
+        ),
+        (
+            "restore_deepstack_for_answer_when_scope_requires",
+            bool(deepstack.enabled and policy["restore_for_answer"]),
+            "restore original-image DeepStack features for answer tokens under evidence_only scope",
+        ),
+    ]
+    hooks = {}
+    for name, required, description in specs:
+        is_implemented = name in implemented
+        status = (
+            "ported"
+            if required and is_implemented
+            else "not_ported"
+            if required
+            else "not_required"
+        )
+        hooks[name] = {
+            "required": required,
+            "implemented": is_implemented,
+            "status": status,
+            "description": description,
+            "blocking_item": None if status != "not_ported" else f"{name}: {description}",
+        }
+    blocking_items = [
+        str(hook["blocking_item"])
+        for hook in hooks.values()
+        if hook.get("blocking_item")
+    ]
+    return {
+        "schema_version": DEEPSTACK_RUNTIME_HOOKS_SCHEMA_VERSION,
+        "surface": surface,
+        "backend": backend,
+        "enabled": bool(deepstack.enabled),
+        "original_image_scope": str(deepstack.original_image_scope),
+        "implemented_hooks": sorted(implemented),
+        "hooks": hooks,
+        "blocking_items": blocking_items,
+        "all_required_hooks_implemented": not blocking_items,
     }
 
 

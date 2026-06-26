@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from .benchmark_data import BenchmarkSample
-from .deepstack import deepstack_scope_contract
+from .deepstack import deepstack_runtime_hooks, deepstack_scope_contract
 from .rendering import RenderedBenchmarkInput
 from .schema import EvalFamily, EvalMode, EvalSummary, RunConfig
 from .scoring import score_output_rows
@@ -548,16 +548,13 @@ def _reject_unported_deepstack_execution(config: RunConfig, *, backend: str) -> 
 
 def build_deepstack_execution_plan(config: RunConfig, *, backend: str) -> dict[str, Any]:
     state = config.deepstack
-    execution_supported = not state.enabled
-    blockers = (
-        [
-            "native Qwen3 DeepStack feature injection for original image is not ported",
-            "post-D DeepStack masking/restoration by scope is not ported",
-            "equivalence with no-DeepStack native Stage2 path is not proven",
-        ]
-        if state.enabled
-        else []
+    runtime_hooks = deepstack_runtime_hooks(
+        state,
+        surface="benchmark_eval",
+        backend=backend,
     )
+    blockers = list(runtime_hooks.get("blocking_items") or [])
+    execution_supported = not blockers
     scope_contract = deepstack_scope_contract(
         state,
         surface="benchmark_eval",
@@ -574,6 +571,7 @@ def build_deepstack_execution_plan(config: RunConfig, *, backend: str) -> dict[s
         "original_image_deepstack": scope_contract["original_image_deepstack"],
         "d_deepstack_features": scope_contract["d_deepstack_features"],
         "fvt_visual_token_path": scope_contract["fvt_visual_token_path"],
+        "runtime_hooks": runtime_hooks,
         "scope_contract": scope_contract,
         "blocking_items": blockers,
     }

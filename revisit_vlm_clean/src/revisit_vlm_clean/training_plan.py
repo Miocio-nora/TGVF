@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from .data_generation import FileIdentity, file_identity
-from .deepstack import deepstack_scope_contract
+from .deepstack import deepstack_runtime_hooks, deepstack_scope_contract
 from .defaults import (
     DEFAULT_MAX_IMAGE_RESOLUTION,
     DEFAULT_MODEL_ID,
@@ -748,16 +748,11 @@ def _deepstack_training_plan(config: Stage2LaunchConfig) -> dict[str, Any]:
     state = config.deepstack
     scope = state.original_image_scope
     enabled = bool(state.enabled)
-    blocking_items = (
-        [
-            "native Qwen3 original-image DeepStack feature injection is not ported "
-            "into clean Stage2 training",
-            "post-D DeepStack masking/restoration by scope is not ported into "
-            "clean Stage2 training",
-        ]
-        if enabled
-        else []
+    runtime_hooks = deepstack_runtime_hooks(
+        state,
+        surface="stage2_training",
     )
+    blocking_items = list(runtime_hooks.get("blocking_items") or [])
     scope_contract = deepstack_scope_contract(
         state,
         surface="stage2_training",
@@ -776,6 +771,7 @@ def _deepstack_training_plan(config: Stage2LaunchConfig) -> dict[str, Any]:
         "d_deepstack_features": scope_contract["d_deepstack_features"],
         "fvt_visual_token_path": scope_contract["fvt_visual_token_path"],
         "scope_contract": scope_contract,
+        "runtime_hooks": runtime_hooks,
         "current_training_path": {
             "uses_manual_inputs_embeds": True,
             "qwen3_deepstack_features_injected": False,

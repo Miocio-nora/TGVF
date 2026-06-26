@@ -216,9 +216,9 @@ checkpoint/result writing on rank 0.
 
 Stage2 prepare-execution writes `deepstack_training_plan.json`. Disabled
 DeepStack is a validated no-op. Enabled DeepStack records the requested scope,
-the original-image DeepStack masking/restoration semantics, and the current
-unimplemented training blockers; D remains a v-merge-level visual-token span by
-default.
+the original-image DeepStack masking/restoration semantics, and hook-level
+blockers for capture, post-TGVF carry, scope masking, and answer restoration;
+D remains a v-merge-level visual-token span by default.
 
 ## Fixed Manifests
 

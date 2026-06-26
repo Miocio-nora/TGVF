@@ -2842,6 +2842,19 @@ def test_stage2_deepstack_prepare_writes_training_plan_and_launch_guard(tmp_path
     assert deepstack_plan["schema_version"] == "clean_deepstack_training_plan_v1"
     assert deepstack_plan["enabled"] is True
     assert deepstack_plan["execution_supported"] is False
+    assert deepstack_plan["runtime_hooks"]["all_required_hooks_implemented"] is False
+    assert deepstack_plan["runtime_hooks"]["hooks"][
+        "capture_original_image_deepstack_features"
+    ]["status"] == "not_ported"
+    assert deepstack_plan["runtime_hooks"]["hooks"][
+        "apply_post_tgvf_deepstack_scope_mask"
+    ]["required"] is True
+    assert deepstack_plan["runtime_hooks"]["hooks"][
+        "restore_deepstack_for_answer_when_scope_requires"
+    ]["required"] is False
+    assert deepstack_plan["blocking_items"] == deepstack_plan["runtime_hooks"][
+        "blocking_items"
+    ]
     assert deepstack_plan["original_image_deepstack"]["block_after_tgvf_append"] is True
     assert deepstack_plan["original_image_deepstack"]["restore_for_answer"] is False
     assert deepstack_plan["d_deepstack_features"]["required_for_current_mainline"] is False

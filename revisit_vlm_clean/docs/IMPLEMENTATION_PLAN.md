@@ -2396,6 +2396,26 @@ Implemented after Phase 97.
 - this phase does not change training data order, losses, optimizer behavior,
   checkpoint contents, DeepStack execution, or launch semantics.
 
+## Phase 99: DeepStack Runtime Hook Contract
+
+Implemented after Phase 98.
+
+- added shared `clean_deepstack_runtime_hooks_v1` metadata under the existing
+  DeepStack scope contract;
+- the hook contract breaks enabled DeepStack support into concrete runtime
+  pieces:
+  - `capture_original_image_deepstack_features`;
+  - `carry_original_image_deepstack_through_post_tgvf_append`;
+  - `apply_post_tgvf_deepstack_scope_mask`;
+  - `restore_deepstack_for_answer_when_scope_requires`;
+- benchmark DeepStack execution plans and Stage2 training plans now use the
+  same hook contract as their blocker source, so train/eval cannot silently
+  disagree about what remains unported;
+- Stage2 training preflight validates the hook contract schema, surface,
+  enabled state, scope, and blocker list before accepting a plan;
+- this phase does not enable DeepStack execution yet. It turns the remaining
+  blocker into a hook-level checklist for the next implementation slices.
+
 ## Later Phases
 
 1. Port DeepStack original-image injection/masking into clean training and eval
