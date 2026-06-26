@@ -3633,7 +3633,7 @@ entry, update this file immediately.
 
 ### EXP-20260626-155246-clean-qwen3-stage12-deepstack-mask075-4gpu
 
-- Status: RUNNING_RELAUNCH_AFTER_LEGACY_LOGGING_ALIGNMENT.
+- Status: STAGE1_COMPLETED_STAGE2_PENDING.
 - Question:
   - Train the clean Qwen3 Stage1 -> Stage2 mainline with the smoke-selected
     4-GPU batch settings, then use the resulting chain for later benchmark
@@ -3746,6 +3746,8 @@ entry, update this file immediately.
     because clean progress/W&B logging recorded only `loss_total` plus optimizer
     state and did not inherit the legacy Stage1/Stage2 component/debug metric
     surface.
+  - Stage1 micro4 legacy-logging relaunch completed at about
+    2026-06-26T19:01+09:00.
 - Metrics:
   - Initial Stage1 micro8 attempt: FAILED/OOM.
     - Log:
@@ -3805,6 +3807,17 @@ entry, update this file immediately.
         `attention_mask_mode=weak_strict_original_image_keys_4d`,
         `visual_token_manifold_active=True`, `source_visual_token_count=234`,
         and `answer_token_count=15`.
+  - Stage1 micro4 legacy-logging relaunch: COMPLETED.
+    - Final checkpoint:
+      `outputs/clean_training/qwen3_stage12_deepstack_mask075_4gpu_20260626_172639/stage1_micro4/clean_training_execution/checkpoint_step_2000.pt`.
+    - Final checkpoint sha256:
+      `1257d2fb21faa32937e5bc460b1ebcc250f27a7a64f4b3435210efd0dcba3d44`.
+    - Final checkpoint size: `108317021` bytes.
+    - Training status: `clean_distributed_training_completed`.
+    - Final observed Stage1 losses at step 2000:
+      `loss_total=2.0244152545928955`, `loss_gen=1.26953125`,
+      `loss_same_image_negative=0.69140625`,
+      `loss_visual_token_manifold=0.6347774565219879`.
 - Analysis:
   - The single-process smoke under-sampled long first-batch examples; real DDP
     `micro_batch_size=8` is not robust.
@@ -3819,13 +3832,61 @@ entry, update this file immediately.
     counts, mask-active rates, value-span match rate, protocol boundary stats,
     grad norm, learning rates, peak memory, and batch identity.
 - Conclusion:
-  - Stage1 must be relaunched from a fresh clean plan/output after the
-    legacy-aligned component/debug logging patch is committed.
+  - Stage1 completed successfully under the legacy-aligned clean logging patch.
+  - Stage2 remains pending and must bind the exact Stage1 checkpoint above.
 - Comparable to baseline:
   - No; this is the formal training chain, not a benchmark result.
 - Follow-up:
-  - Relaunch Stage1 with the same active batch identity:
-    `world_size=4`, `micro_batch_size=4`, `gradient_accumulation_steps=2`,
-    `global_batch_size=32`.
+  - Run clean Stage1 internal diagnostics on the final checkpoint before Stage2.
   - After Stage1 completes, bind its exact checkpoint/processor and launch
     Stage2 with the recorded DeepStack/mask/batch settings.
+
+### DIAG-20260626-clean-qwen3-stage1-internal-diagnostics
+
+- Status: PLANNED.
+- Question:
+  - Does the clean Stage1 checkpoint pass the clean-native internal
+    readout/query/distribution diagnostics before Stage2 launch?
+- Parent training entry:
+  - `EXP-20260626-155246-clean-qwen3-stage12-deepstack-mask075-4gpu`.
+- Checkpoint:
+  - `outputs/clean_training/qwen3_stage12_deepstack_mask075_4gpu_20260626_172639/stage1_micro4/clean_training_execution/checkpoint_step_2000.pt`.
+  - sha256:
+    `1257d2fb21faa32937e5bc460b1ebcc250f27a7a64f4b3435210efd0dcba3d44`.
+- Eval data:
+  - `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend/splits/tgvf_v4_teacher_stage1_protocol_c_focus.test.jsonl`.
+  - Rows: `867`.
+- Code / worktree:
+  - Current HEAD: `578aa6c make clean stage diagnostics native`.
+  - Worktree clean except untracked `logs/` and `third_party/`.
+- Diagnostic entrypoint:
+  - `python -m revisit_vlm_clean.cli.stage_diagnostics`.
+  - Backend: `clean_native_stage_diagnostics`.
+  - Eval family: `internal_diagnostic`.
+  - Legacy bridge: `False`.
+- Settings:
+  - Stage: `stage1`.
+  - Protocol: `protocol_c_tool_observation`.
+  - Model: `Qwen/Qwen3-VL-8B-Thinking`.
+  - Processor: checkpoint config / base processor when missing.
+  - Max image resolution: `512`.
+  - Position mode: `native_source_grid`.
+  - Focus action im_end: `True`.
+  - Tasks: `readout,query,distribution`.
+  - D conditions:
+    `correct_D`, `no_D`, `random_D`, `wrong_same_image_D`,
+    `wrong_diff_image_D`.
+  - Readout max samples: `200`.
+  - Query max groups: `50`.
+  - Query min targets per image: `3`.
+  - Distribution max samples: `200`.
+  - Device: `cuda:0`.
+- Output:
+  - `outputs/clean_training/qwen3_stage12_deepstack_mask075_4gpu_20260626_172639/stage1_micro4/internal_diagnostics_step2000`.
+- Command:
+  - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=revisit_vlm_clean/src:src python -m revisit_vlm_clean.cli.stage_diagnostics --run-id clean_qwen3_stage1_internal_diag_20260626_1901 --stage stage1 --checkpoint outputs/clean_training/qwen3_stage12_deepstack_mask075_4gpu_20260626_172639/stage1_micro4/clean_training_execution/checkpoint_step_2000.pt --eval-jsonl data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend/splits/tgvf_v4_teacher_stage1_protocol_c_focus.test.jsonl --output-dir outputs/clean_training/qwen3_stage12_deepstack_mask075_4gpu_20260626_172639/stage1_micro4/internal_diagnostics_step2000 --max-image-resolution 512 --tasks all --readout-max-samples 200 --distribution-max-samples 200 --query-max-groups 50 --query-require-groups 0 --execute`.
+- Verification before launch:
+  - `PYTHONPATH=revisit_vlm_clean/src:src pytest -q revisit_vlm_clean/tests/test_stage_diagnostics.py`
+    passed: `4 passed`.
+  - Dry-run resolved `tasks=["readout","query","distribution"]` and expected
+    report paths under the output directory above.
