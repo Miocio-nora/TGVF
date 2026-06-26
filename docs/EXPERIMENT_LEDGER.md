@@ -3488,7 +3488,7 @@ entry, update this file immediately.
 
 ### EXP-20260626-153326-clean-qwen3-deepstack-mask075-micro-smoke
 
-- Status: PLANNED.
+- Status: RUNNING.
 - Question:
   - What Stage1/Stage2 per-GPU micro-batch settings are feasible for the clean
     Qwen3 mainline before launching the new Stage1 -> Stage2 training run?
@@ -3506,6 +3506,9 @@ entry, update this file immediately.
 - Allowed changed variables:
   - `micro_batch_size` and corresponding `gradient_accumulation_steps`.
   - Probe output directories.
+  - Stage2 follow-up candidates may increase to `micro_batch_size=8` and
+    `micro_batch_size=16` while holding `global_batch_size=128` fixed, because
+    `micro_batch_size=4` is only a conservative starting point.
 - Not allowed to change:
   - Model family: Qwen3-VL-8B-Thinking.
   - Protocol: `protocol_c_tool_observation`.
@@ -3552,7 +3555,7 @@ entry, update this file immediately.
 - tmux:
   - None planned for direct bounded probes.
 - Started:
-  - TBD.
+  - 2026-06-26T15:43:54+09:00.
 - Finished:
   - TBD.
 - Metrics:
