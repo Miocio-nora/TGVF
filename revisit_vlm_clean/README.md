@@ -192,6 +192,13 @@ recorded in `validation_records`. This path is clean-native and does not call
 the historical training scripts, but it currently rejects `world_size>1` and
 Stage2 DeepStack-enabled training plans.
 
+Single-process launch uses deterministic train/validation sample cursors rather
+than repeatedly replaying the audit probe batch. Stage1 uses same-image groups
+when available for matrix-CE-compatible batches; Stage2 training honors
+`target_focus_ratio` when both focus and no-focus rows exist; validation cycles
+sequentially over the validation file. The runtime records
+`train_cursor`, `validation_cursor`, and per-micro-step `sample_trace` evidence.
+
 ## Fixed Manifests
 
 Committed benchmark manifests:

@@ -2152,6 +2152,20 @@ def _write_single_process_training_runtime(
     if max_steps not in checkpoint_steps:
         raise ValueError("single-process training requires final checkpoint cadence")
     max_grad_norm = _max_grad_norm_from_bundle(bundle, optimizer_runtime)
+    train_cursor = _build_single_process_sample_cursor(
+        bundle=bundle,
+        expected_stage=expected_stage,
+        dataset_role="train",
+    )
+    validation_cursor = (
+        _build_single_process_sample_cursor(
+            bundle=bundle,
+            expected_stage=expected_stage,
+            dataset_role="val",
+        )
+        if eval_steps
+        else None
+    )
     step_records = []
     checkpoint_records = []
     validation_records = []
@@ -2161,11 +2175,13 @@ def _write_single_process_training_runtime(
         micro_losses = []
         optimizer.zero_grad(set_to_none=True)
         for micro_index in range(accumulation_steps):
+            batch_record = train_cursor.next_batch()
             result = _run_training_step_probe_for_stage(
                 bundle=bundle,
                 artifacts=artifacts,
                 loaded_modules=loaded_modules,
                 expected_stage=expected_stage,
+                samples=batch_record["samples"],
             )
             loss_tensor = result.get("loss_tensor")
             if loss_tensor is None:
@@ -2187,6 +2203,7 @@ def _write_single_process_training_runtime(
                     "loss_total": loss_value,
                     "scaled_loss_total": _scalar_float(scaled_loss),
                     "sample_count": result.get("sample_count"),
+                    "sample_trace": batch_record["sample_trace"],
                 }
             )
         grad_after_accumulation = _optimizer_grad_summary(optimizer)
@@ -2235,6 +2252,7 @@ def _write_single_process_training_runtime(
                     bundle=bundle,
                     artifacts=artifacts,
                     loaded_modules=loaded_modules,
+                    validation_cursor=validation_cursor,
                     expected_stage=expected_stage,
                 )
             )
@@ -2256,6 +2274,8 @@ def _write_single_process_training_runtime(
         "checkpoint_save_steps": sorted(checkpoint_steps),
         "validation_steps": sorted(eval_steps),
         "validation_records": validation_records,
+        "train_cursor": train_cursor.summary(),
+        "validation_cursor": validation_cursor.summary() if validation_cursor else None,
         "checkpoint_records": checkpoint_records,
         "step_records": step_records,
         "notes": [
@@ -2334,17 +2354,221 @@ def _save_clean_training_checkpoint(
     }
 
 
+class _SingleProcessSampleCursor:
+    def __init__(
+        self,
+        *,
+        samples: list[Any],
+        batch_size: int,
+        stage: TrainingStage,
+        dataset_role: str,
+        dataset_path: str,
+        target_focus_ratio: float | None = None,
+    ) -> None:
+        if not samples:
+            raise ValueError(f"{stage.value} {dataset_role} cursor has no samples")
+        self.samples = list(samples)
+        self.batch_size = max(1, int(batch_size))
+        self.stage = stage
+        self.dataset_role = dataset_role
+        self.dataset_path = dataset_path
+        self.target_focus_ratio = (
+            max(0.0, min(1.0, float(target_focus_ratio)))
+            if target_focus_ratio is not None
+            else None
+        )
+        self.cursor = 0
+        self.group_cursor = 0
+        self.group_offsets: dict[int, int] = {}
+        self.same_image_groups = (
+            self._same_image_groups() if stage == TrainingStage.STAGE1 else []
+        )
+        self.focus_indices = self._stage2_focus_indices() if stage == TrainingStage.STAGE2 else []
+        self.no_focus_indices = (
+            self._stage2_no_focus_indices() if stage == TrainingStage.STAGE2 else []
+        )
+        self.focus_cursor = 0
+        self.no_focus_cursor = 0
+        self.batch_index = 0
+        self.focus_emitted = 0
+        if self.same_image_groups:
+            self.mode = "same_image_group_cycle"
+        elif self.focus_indices and self.no_focus_indices and self.target_focus_ratio is not None:
+            self.mode = "target_focus_ratio_cycle"
+        else:
+            self.mode = "sequential_cycle"
+
+    def next_batch(self) -> dict[str, Any]:
+        if self.same_image_groups:
+            group_index = self.group_cursor % len(self.same_image_groups)
+            indexed_group = self.same_image_groups[group_index]
+            offset = self.group_offsets.get(group_index, 0)
+            count = max(2, self.batch_size)
+            selected = [
+                indexed_group[(offset + item_index) % len(indexed_group)]
+                for item_index in range(count)
+            ]
+            self.group_offsets[group_index] = (offset + count) % len(indexed_group)
+            self.group_cursor += 1
+        elif self.mode == "target_focus_ratio_cycle":
+            selected = self._next_stage2_ratio_batch()
+        else:
+            selected = [
+                self._indexed_sample((self.cursor + item_index) % len(self.samples))
+                for item_index in range(self.batch_size)
+            ]
+            self.cursor = (self.cursor + self.batch_size) % len(self.samples)
+        return {
+            "samples": [sample for _, sample in selected],
+            "sample_trace": [
+                _sample_trace_entry(
+                    index=index,
+                    sample=sample,
+                    dataset_role=self.dataset_role,
+                )
+                for index, sample in selected
+            ],
+        }
+
+    def summary(self) -> dict[str, Any]:
+        return {
+            "stage": str(self.stage),
+            "dataset_role": self.dataset_role,
+            "dataset_path": self.dataset_path,
+            "sample_count": len(self.samples),
+            "batch_size": self.batch_size,
+            "mode": self.mode,
+            "same_image_group_count": len(self.same_image_groups),
+            "target_focus_ratio": self.target_focus_ratio,
+            "focus_sample_count": len(self.focus_indices),
+            "no_focus_sample_count": len(self.no_focus_indices),
+        }
+
+    def _indexed_sample(self, index: int) -> tuple[int, Any]:
+        return index, self.samples[index]
+
+    def _same_image_groups(self) -> list[list[tuple[int, Any]]]:
+        groups_by_key: dict[str, list[tuple[int, Any]]] = {}
+        order: list[str] = []
+        for index, sample in enumerate(self.samples):
+            key = str(getattr(sample, "image_id", None) or getattr(sample, "image", ""))
+            if key not in groups_by_key:
+                order.append(key)
+                groups_by_key[key] = []
+            groups_by_key[key].append((index, sample))
+        return [groups_by_key[key] for key in order if len(groups_by_key[key]) > 1]
+
+    def _stage2_focus_indices(self) -> list[int]:
+        return [
+            index
+            for index, sample in enumerate(self.samples)
+            if bool(getattr(sample, "need_focus", False))
+        ]
+
+    def _stage2_no_focus_indices(self) -> list[int]:
+        return [
+            index
+            for index, sample in enumerate(self.samples)
+            if not bool(getattr(sample, "need_focus", False))
+        ]
+
+    def _next_stage2_ratio_batch(self) -> list[tuple[int, Any]]:
+        self.batch_index += 1
+        desired_focus_total = round(
+            self.batch_index * self.batch_size * float(self.target_focus_ratio or 0.0)
+        )
+        focus_count = desired_focus_total - self.focus_emitted
+        focus_count = max(0, min(self.batch_size, focus_count))
+        no_focus_count = self.batch_size - focus_count
+        selected: list[tuple[int, Any]] = []
+        for _ in range(focus_count):
+            index = self.focus_indices[self.focus_cursor % len(self.focus_indices)]
+            selected.append(self._indexed_sample(index))
+            self.focus_cursor += 1
+            self.focus_emitted += 1
+        for _ in range(no_focus_count):
+            index = self.no_focus_indices[self.no_focus_cursor % len(self.no_focus_indices)]
+            selected.append(self._indexed_sample(index))
+            self.no_focus_cursor += 1
+        return selected
+
+
+def _build_single_process_sample_cursor(
+    *,
+    bundle: dict[str, Any],
+    expected_stage: TrainingStage,
+    dataset_role: str,
+) -> _SingleProcessSampleCursor:
+    dataset = bundle.get("dataset") or {}
+    if dataset_role == "train":
+        identity = dataset.get("train_file") or {}
+    elif dataset_role == "val":
+        identity = dataset.get("val_file") or {}
+    else:
+        raise ValueError(f"unknown dataset_role: {dataset_role}")
+    path = str((identity or {}).get("path") or "")
+    if not path:
+        raise ValueError(f"{expected_stage.value} {dataset_role} cursor requires a dataset path")
+    try:
+        if expected_stage == TrainingStage.STAGE1:
+            from revisit_vlm.tgvf_v3_stage1 import TGVFv3Stage1Dataset
+
+            dataset_obj = TGVFv3Stage1Dataset(path, focus_only=True)
+        else:
+            from revisit_vlm.tgvf_v3_stage2 import TGVFv3Stage2Dataset
+
+            dataset_obj = TGVFv3Stage2Dataset(path)
+    except Exception as exc:
+        raise RuntimeError(
+            f"{expected_stage.value} {dataset_role} cursor dataset load failed"
+        ) from exc
+    return _SingleProcessSampleCursor(
+        samples=list(dataset_obj.samples),
+        batch_size=int(((bundle.get("batch") or {}).get("micro_batch_size")) or 1),
+        stage=expected_stage,
+        dataset_role=dataset_role,
+        dataset_path=path,
+        target_focus_ratio=(
+            (bundle.get("training") or {}).get("target_focus_ratio")
+            if expected_stage == TrainingStage.STAGE2 and dataset_role == "train"
+            else None
+        ),
+    )
+
+
+def _sample_trace_entry(
+    *,
+    index: int,
+    sample: Any,
+    dataset_role: str,
+) -> dict[str, Any]:
+    image = getattr(sample, "image", None)
+    question = getattr(sample, "question", None)
+    return {
+        "dataset_role": dataset_role,
+        "sample_index": int(index),
+        "image_sha256": _text_sha256(image),
+        "question_sha256": _text_sha256(question),
+        "need_focus": getattr(sample, "need_focus", None),
+        "trajectory_type": getattr(sample, "trajectory_type", None),
+        "image_id": getattr(sample, "image_id", None),
+    }
+
+
 def _run_single_process_validation_step(
     *,
     global_step: int,
     bundle: dict[str, Any],
     artifacts: dict[str, dict[str, Any]],
     loaded_modules: dict[str, Any],
+    validation_cursor: _SingleProcessSampleCursor | None,
     expected_stage: TrainingStage,
 ) -> dict[str, Any]:
     if expected_stage != TrainingStage.STAGE2:
         raise ValueError("in-training validation is currently defined for Stage2 only")
-    validation_bundle = _stage2_validation_bundle(bundle)
+    if validation_cursor is None:
+        raise ValueError("in-training validation requires a validation cursor")
+    batch_record = validation_cursor.next_batch()
     modules = dict(loaded_modules.get("modules") or {})
     previous_training_states = _set_module_training_mode(modules, training=False)
     try:
@@ -2354,44 +2578,30 @@ def _run_single_process_validation_step(
     try:
         with torch.no_grad():
             result = _run_training_step_probe_for_stage(
-                bundle=validation_bundle,
+                bundle=bundle,
                 artifacts=artifacts,
                 loaded_modules=loaded_modules,
                 expected_stage=expected_stage,
+                samples=batch_record["samples"],
             )
     finally:
         _restore_module_training_mode(modules, previous_training_states)
     debug = dict(result.get("debug") or {})
     return {
         "global_step": int(global_step),
-        "dataset_path": (
-            ((validation_bundle.get("dataset") or {}).get("train_file") or {}).get("path")
-        ),
+        "dataset_path": validation_cursor.dataset_path,
         "loss_total": result.get("loss_total"),
         "loss_focus": result.get("loss_focus"),
         "loss_no_focus": result.get("loss_no_focus"),
         "loss_visual_token_manifold": result.get("loss_visual_token_manifold"),
         "sample_count": result.get("sample_count"),
+        "sample_trace": batch_record["sample_trace"],
         "focus_count": debug.get("focus_count"),
         "no_focus_count": debug.get("no_focus_count"),
         "forward_completed": bool(result.get("forward_completed")),
         "backward_called": False,
         "optimizer_step_called": False,
     }
-
-
-def _stage2_validation_bundle(bundle: dict[str, Any]) -> dict[str, Any]:
-    dataset = dict(bundle.get("dataset") or {})
-    val_file = dataset.get("val_file")
-    if not isinstance(val_file, Mapping):
-        raise ValueError("Stage2 validation requires dataset.val_file identity")
-    if not val_file.get("path"):
-        raise ValueError("Stage2 validation requires dataset.val_file.path")
-    validation_bundle = dict(bundle)
-    validation_dataset = dict(dataset)
-    validation_dataset["train_file"] = dict(val_file)
-    validation_bundle["dataset"] = validation_dataset
-    return validation_bundle
 
 
 def _set_module_training_mode(
@@ -2621,18 +2831,18 @@ def _run_training_step_probe_for_stage(
     artifacts: dict[str, dict[str, Any]],
     loaded_modules: dict[str, Any],
     expected_stage: TrainingStage,
+    samples: list[Any] | None = None,
 ) -> dict[str, Any]:
+    kwargs = {
+        "bundle": bundle,
+        "artifacts": artifacts,
+        "loaded_modules": loaded_modules,
+    }
+    if samples is not None:
+        kwargs["samples"] = samples
     if expected_stage == TrainingStage.STAGE1:
-        return _run_stage1_training_step_probe(
-            bundle=bundle,
-            artifacts=artifacts,
-            loaded_modules=loaded_modules,
-        )
-    return _run_stage2_training_step_probe(
-        bundle=bundle,
-        artifacts=artifacts,
-        loaded_modules=loaded_modules,
-    )
+        return _run_stage1_training_step_probe(**kwargs)
+    return _run_stage2_training_step_probe(**kwargs)
 
 
 def _max_grad_norm_from_bundle(
@@ -2782,6 +2992,7 @@ def _run_stage1_training_step_probe(
     bundle: dict[str, Any],
     artifacts: dict[str, dict[str, Any]],
     loaded_modules: dict[str, Any],
+    samples: list[Any] | None = None,
 ) -> dict[str, Any]:
     try:
         import torch
@@ -2800,14 +3011,18 @@ def _run_stage1_training_step_probe(
     foveal_module = modules.get("tgvf")
     if foveal_module is None:
         raise ValueError("Stage1 training-step audit requires tgvf module")
-    train_file = (((bundle.get("dataset") or {}).get("train_file") or {}).get("path"))
-    if not train_file:
-        raise ValueError("Stage1 training-step audit requires dataset.train_file.path")
-    dataset = TGVFv3Stage1Dataset(train_file, focus_only=True)
-    samples = _select_stage1_step_probe_samples(
-        dataset.samples,
-        requested_count=max(1, int(((bundle.get("batch") or {}).get("micro_batch_size")) or 1)),
-    )
+    if samples is None:
+        train_file = (((bundle.get("dataset") or {}).get("train_file") or {}).get("path"))
+        if not train_file:
+            raise ValueError("Stage1 training-step audit requires dataset.train_file.path")
+        dataset = TGVFv3Stage1Dataset(train_file, focus_only=True)
+        samples = _select_stage1_step_probe_samples(
+            dataset.samples,
+            requested_count=max(
+                1,
+                int(((bundle.get("batch") or {}).get("micro_batch_size")) or 1),
+            ),
+        )
     if not samples:
         raise ValueError("Stage1 training-step audit found no usable focus samples")
     loss = bundle.get("loss") or {}
@@ -2853,6 +3068,7 @@ def _run_stage2_training_step_probe(
     bundle: dict[str, Any],
     artifacts: dict[str, dict[str, Any]],
     loaded_modules: dict[str, Any],
+    samples: list[Any] | None = None,
 ) -> dict[str, Any]:
     try:
         import torch
@@ -2876,14 +3092,18 @@ def _run_stage2_training_step_probe(
     foveal_module = modules.get("tgvf")
     if foveal_module is None:
         raise ValueError("Stage2 training-step audit requires tgvf module")
-    train_file = (((bundle.get("dataset") or {}).get("train_file") or {}).get("path"))
-    if not train_file:
-        raise ValueError("Stage2 training-step audit requires dataset.train_file.path")
-    dataset = TGVFv3Stage2Dataset(train_file)
-    samples = _select_stage2_step_probe_samples(
-        dataset.samples,
-        requested_count=max(1, int(((bundle.get("batch") or {}).get("micro_batch_size")) or 1)),
-    )
+    if samples is None:
+        train_file = (((bundle.get("dataset") or {}).get("train_file") or {}).get("path"))
+        if not train_file:
+            raise ValueError("Stage2 training-step audit requires dataset.train_file.path")
+        dataset = TGVFv3Stage2Dataset(train_file)
+        samples = _select_stage2_step_probe_samples(
+            dataset.samples,
+            requested_count=max(
+                1,
+                int(((bundle.get("batch") or {}).get("micro_batch_size")) or 1),
+            ),
+        )
     if not samples:
         raise ValueError("Stage2 training-step audit found no usable samples")
     loss = bundle.get("loss") or {}

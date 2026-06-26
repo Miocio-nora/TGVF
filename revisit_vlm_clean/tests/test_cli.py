@@ -1892,13 +1892,23 @@ def test_stage2_training_executor_can_launch_single_process_training_loop(
     val_file = tmp_path / "stage2.val.jsonl"
     checkpoint = tmp_path / "stage1.pt"
     train_file.write_text(
-        '{"image": "/tmp/image.jpg", "question": "q", "answer": "a", '
-        '"need_focus": true, "evidence_state": "need_local_visual_evidence"}\n',
+        '{"image": "/tmp/image-0.jpg", "question": "q0", "answer": "a0", '
+        '"need_focus": true, "evidence_state": "need_local_visual_evidence", '
+        '"target": "t0", "evidence_description": "d0"}\n'
+        '{"image": "/tmp/image-1.jpg", "question": "q1", "answer": "a1", '
+        '"need_focus": true, "evidence_state": "need_local_visual_evidence", '
+        '"target": "t1", "evidence_description": "d1"}\n'
+        '{"image": "/tmp/image-2.jpg", "question": "q2", "answer": "a2", '
+        '"need_focus": false, "evidence_state": "sufficient_visual_evidence"}\n',
         encoding="utf-8",
     )
     val_file.write_text(
-        '{"image": "/tmp/image-val.jpg", "question": "vq", "answer": "va", '
-        '"need_focus": true, "evidence_state": "need_local_visual_evidence"}\n',
+        '{"image": "/tmp/image-val-0.jpg", "question": "vq0", "answer": "va0", '
+        '"need_focus": true, "evidence_state": "need_local_visual_evidence", '
+        '"target": "vt0", "evidence_description": "vd0"}\n'
+        '{"image": "/tmp/image-val-1.jpg", "question": "vq1", "answer": "va1", '
+        '"need_focus": true, "evidence_state": "need_local_visual_evidence", '
+        '"target": "vt1", "evidence_description": "vd1"}\n',
         encoding="utf-8",
     )
     _write_minimal_stage1_checkpoint(checkpoint)
@@ -1920,15 +1930,16 @@ def test_stage2_training_executor_can_launch_single_process_training_loop(
             "loader": {"backend": "fake_single_process_launch_loader"},
         }
 
-    def fake_step_probe(*, bundle, artifacts, loaded_modules):
+    def fake_step_probe(*, bundle, artifacts, loaded_modules, samples=None):
         nonlocal train_step_calls, validation_step_calls
         assert bundle["stage"] == "stage2"
-        step_train_path = ((bundle["dataset"] or {}).get("train_file") or {}).get("path")
-        if step_train_path == str(val_file):
+        assert samples
+        sample_questions = [sample.question for sample in samples]
+        if sample_questions[0].startswith("vq"):
             validation_step_calls += 1
         else:
             train_step_calls += 1
-            assert step_train_path == str(train_file)
+            assert sample_questions[0].startswith("q")
         modules = loaded_modules["modules"]
         parameters = [
             parameter
@@ -1997,7 +2008,7 @@ def test_stage2_training_executor_can_launch_single_process_training_loop(
     )
     assert plan["clean_training_command"]["executable"] is True
     assert plan["clean_training_command"]["will_launch_training"] is True
-    assert plan["dataset"]["val_file"]["line_count"] == 1
+    assert plan["dataset"]["val_file"]["line_count"] == 2
     clean_command_path = output_dir / "clean_training_command.sh"
     assert clean_command_path.stat().st_mode & 0o111
     clean_command = clean_command_path.read_text()
@@ -2041,6 +2052,20 @@ def test_stage2_training_executor_can_launch_single_process_training_loop(
     assert runtime["validation_steps"] == [1, 2]
     assert len(runtime["validation_records"]) == 2
     assert runtime["validation_records"][0]["dataset_path"] == str(val_file)
+    train_indices = [
+        micro_step["sample_trace"][0]["sample_index"]
+        for step in runtime["step_records"]
+        for micro_step in step["micro_steps"]
+    ]
+    assert train_indices == [0, 1, 2, 0]
+    validation_indices = [
+        record["sample_trace"][0]["sample_index"]
+        for record in runtime["validation_records"]
+    ]
+    assert validation_indices == [0, 1]
+    assert runtime["train_cursor"]["mode"] == "target_focus_ratio_cycle"
+    assert runtime["train_cursor"]["target_focus_ratio"] == 0.8
+    assert runtime["validation_cursor"]["mode"] == "sequential_cycle"
     assert runtime["validation_records"][0]["backward_called"] is False
     assert runtime["validation_records"][0]["optimizer_step_called"] is False
     assert len(runtime["checkpoint_records"]) == 2

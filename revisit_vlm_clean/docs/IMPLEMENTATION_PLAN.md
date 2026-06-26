@@ -1979,6 +1979,26 @@ Implemented after Phase 74.
 - this phase does not port DDP, distributed sampler/state, or DeepStack
   original-image injection/masking during training.
 
+## Phase 76: Clean Single-Process Dataset Cursor
+
+Implemented after Phase 75.
+
+- single-process launch now reads train and validation data through deterministic
+  cursors instead of repeatedly replaying the fixed audit probe samples;
+- Stage1 launch uses same-image groups when available so matrix-CE-compatible
+  batches can contain related examples;
+- Stage2 train launch uses a deterministic `target_focus_ratio` cursor when
+  both focus and no-focus rows exist, preserving the clean focus/no-focus
+  sampling contract in the real loop;
+- Stage2 in-training validation uses a separate sequential validation cursor,
+  so repeated validation steps advance through the validation file instead of
+  reusing the first row;
+- `single_process_training_runtime.json` now records `train_cursor`,
+  `validation_cursor`, and per-micro-step/per-validation `sample_trace`
+  evidence with sample indices and hashed image/question identities;
+- audit-only probes retain their fixed probe-batch behavior unless launch passes
+  explicit cursor samples.
+
 ## Later Phases
 
 1. Port DDP/multi-process clean training execution.

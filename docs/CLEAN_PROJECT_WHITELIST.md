@@ -172,6 +172,11 @@ before training/eval cleanup can proceed.
   runtime only. Stage2 `val_file` runs no-backward validation at the planned
   `eval_every` cadence and records `validation_records`; DDP/multi-process
   training remains unresolved.
+- Single-process launch must use deterministic sample cursors instead of
+  replaying the fixed audit probe batch. Stage1 may group same-image samples
+  for matrix CE; Stage2 train cursor follows `target_focus_ratio` when both
+  focus/no-focus rows exist; validation cursor cycles sequentially. Runtime
+  output must record cursor summaries and per-step `sample_trace` evidence.
 - Loss defaults:
   - generation/readout LM loss: `1.0`;
   - visual token manifold: `0.1`;
@@ -328,6 +333,11 @@ before training/eval cleanup can proceed.
   runtime only. Stage2 `val_file` runs no-backward validation at the planned
   `eval_every` cadence and records `validation_records`; DDP/multi-process
   training remains unresolved.
+- Single-process launch must use deterministic sample cursors instead of
+  replaying the fixed audit probe batch. Stage2 train cursor follows
+  `target_focus_ratio` when both focus/no-focus rows exist; validation cursor
+  cycles sequentially. Runtime output must record cursor summaries and per-step
+  `sample_trace` evidence.
 - Focus/no-focus sampling:
   - `target_focus_ratio=0.8`.
 - Batch/default run scale:
