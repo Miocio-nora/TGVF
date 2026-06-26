@@ -4010,7 +4010,7 @@ entry, update this file immediately.
 
 ### EXP-20260626-195348-clean-qwen3-stage1-samplerfix-4gpu
 
-- Status: RUNNING.
+- Status: DONE.
 - Question:
   - After fixing the clean Stage1 same-image sampler duplicate-fill bug, does
     Stage1 matrix CE escape the previous `ln(2)` floor while holding the
@@ -4123,3 +4123,159 @@ entry, update this file immediately.
   - Immediate interpretation:
     - The same-image loss is no longer pinned near `ln(2)` at startup, so the
       duplicate-fill lower-bound failure mode is not currently present.
+- Finished:
+  - Completed by 2026-06-26T21:51:48+09:00.
+  - tmux session exited normally.
+  - Training status: `clean_distributed_training_completed`.
+  - Final checkpoint:
+    `outputs/clean_training/qwen3_stage12_deepstack_mask075_samplerfix_4gpu_20260626_195348/stage1_micro4/clean_training_execution/checkpoint_step_2000.pt`.
+  - Final checkpoint sha256:
+    `3fed9ec56335df1381772024f5469edaad8062a32000d04c0eec2587da2a7be4`.
+  - Final checkpoint size: `108317021` bytes.
+  - Runtime wrote `2002` progress records and completed `2000` optimizer
+    steps / `4000` micro-steps.
+- Final observed Stage1 losses near step 2000:
+  - `loss_total=1.5284298658370972`.
+  - `loss_gen=1.421875`.
+  - `loss_same_image_negative=0.053466796875`.
+  - `loss_visual_token_manifold=0.5308806300163269`.
+  - `grad_norm=13.5`.
+- Completion analysis:
+  - The sampler fix resolved the hard matrix-CE floor: final
+    `loss_same_image_negative=0.0535`, versus the previous invalid clean
+    Stage1's `0.6914`.
+  - The checkpoint is the current candidate Stage1 parent for subsequent
+    Stage2, pending internal diagnostics below.
+
+### DIAG-20260626-clean-qwen3-stage1-samplerfix-internal-diagnostics
+
+- Status: DONE.
+- Question:
+  - Does the sampler-fixed clean Stage1 checkpoint pass the same internal
+    readout/query/distribution diagnostics used for the previous clean Stage1
+    checkpoint?
+- Parent training entry:
+  - `EXP-20260626-195348-clean-qwen3-stage1-samplerfix-4gpu`.
+- Checkpoint:
+  - `outputs/clean_training/qwen3_stage12_deepstack_mask075_samplerfix_4gpu_20260626_195348/stage1_micro4/clean_training_execution/checkpoint_step_2000.pt`.
+  - sha256:
+    `3fed9ec56335df1381772024f5469edaad8062a32000d04c0eec2587da2a7be4`.
+- Eval data:
+  - `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend/splits/tgvf_v4_teacher_stage1_protocol_c_focus.test.jsonl`.
+- Code / worktree:
+  - Git commit: `7cb7660d47aa6c4bb8207c9484c4b6412d5988a9`.
+  - Worktree is dirty from unrelated Stage3/RL data-generation changes
+    (`docs/TGVF_STAGE3_RL_WORKLOG.md`,
+    `revisit_vlm_clean/src/revisit_vlm_clean/cli/generate_data.py`,
+    and new Stage3/RL data files). These are recorded as dirty-worktree context
+    and are not the intended diagnostic variable.
+- Diagnostic entrypoint:
+  - `python -m revisit_vlm_clean.cli.stage_diagnostics`.
+  - Backend: `clean_native_stage_diagnostics`.
+  - Eval family: `internal_diagnostic`.
+  - Legacy bridge: `False`.
+- Settings:
+  - Stage: `stage1`.
+  - Protocol: `protocol_c_tool_observation`.
+  - Model: `Qwen/Qwen3-VL-8B-Thinking`.
+  - Processor: checkpoint config / base processor when missing.
+  - Max image resolution: `512`.
+  - Position mode: `native_source_grid`.
+  - Focus action im_end: `True`.
+  - Tasks: `readout,query,distribution`.
+  - D conditions:
+    `correct_D`, `no_D`, `random_D`, `wrong_same_image_D`,
+    `wrong_diff_image_D`.
+  - Readout max samples: `200`.
+  - Query max groups: `50`.
+  - Query min targets per image: `3`.
+  - Distribution max samples: `200`.
+  - Device: `cuda:0`.
+- Output:
+  - `outputs/clean_training/qwen3_stage12_deepstack_mask075_samplerfix_4gpu_20260626_195348/stage1_micro4/internal_diagnostics_step2000`.
+- Dry-run:
+  - Completed at 2026-06-26T23:27:02+09:00.
+  - Resolved tasks: `readout,query,distribution`.
+  - Expected reports:
+    - `readout/readout_eval_report.json`.
+    - `query_sensitivity/query_sensitivity_report.json`.
+    - `fvt_distribution/fvt_distribution_report.json`.
+- Command:
+  - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=revisit_vlm_clean/src:src python -m revisit_vlm_clean.cli.stage_diagnostics --run-id clean_qwen3_stage1_samplerfix_internal_diag_20260626_2200 --stage stage1 --checkpoint outputs/clean_training/qwen3_stage12_deepstack_mask075_samplerfix_4gpu_20260626_195348/stage1_micro4/clean_training_execution/checkpoint_step_2000.pt --eval-jsonl data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend/splits/tgvf_v4_teacher_stage1_protocol_c_focus.test.jsonl --output-dir outputs/clean_training/qwen3_stage12_deepstack_mask075_samplerfix_4gpu_20260626_195348/stage1_micro4/internal_diagnostics_step2000 --max-image-resolution 512 --tasks all --readout-max-samples 200 --distribution-max-samples 200 --query-max-groups 50 --query-require-groups 0 --execute`.
+- Runtime:
+  - tmux: `clean_stage1_samplerfix_diag_20260626_2327`.
+  - Log:
+    `logs/clean_training/clean_stage1_samplerfix_diag_20260626_2327.log`.
+  - Started: 2026-06-26T23:27:57+09:00.
+  - Completed: 2026-06-26T23:36:56+09:00.
+  - Elapsed: about 9 minutes on one GPU.
+- Reports:
+  - Readout:
+    `outputs/clean_training/qwen3_stage12_deepstack_mask075_samplerfix_4gpu_20260626_195348/stage1_micro4/internal_diagnostics_step2000/readout/readout_eval_report.json`.
+  - Query:
+    `outputs/clean_training/qwen3_stage12_deepstack_mask075_samplerfix_4gpu_20260626_195348/stage1_micro4/internal_diagnostics_step2000/query_sensitivity/query_sensitivity_report.json`.
+  - Distribution:
+    `outputs/clean_training/qwen3_stage12_deepstack_mask075_samplerfix_4gpu_20260626_195348/stage1_micro4/internal_diagnostics_step2000/fvt_distribution/fvt_distribution_report.json`.
+- Metrics:
+  - Samples/items built: `200`.
+  - Readout:
+    - `mean_nll_correct_D=1.656953125`.
+    - `mean_nll_target_only=2.02021484375`.
+    - `mean_nll_random_D=2.33296875`.
+    - `mean_delta_correct_vs_target_only=0.36326171875`.
+    - `mean_delta_correct_vs_random=0.676015625`.
+    - `mean_delta_correct_vs_wrong_same=0.12716796875`.
+    - `mean_delta_correct_vs_wrong_diff=0.1474609375`.
+    - `pct_correct_D_beats_target_only=0.975`.
+    - `pct_correct_D_beats_random=0.995`.
+    - `pct_correct_D_beats_wrong_same=0.77`.
+    - `pct_correct_D_beats_wrong_diff=0.875`.
+  - Query sensitivity:
+    - `num_groups_evaluated=46`.
+    - `num_items_evaluated=200`.
+    - `retrieval_top1=0.42`.
+    - `retrieval_top2=0.635`.
+    - `mrr=0.6312499999999998`.
+    - `mean_diagonal_gap=-0.02484375`.
+    - `median_diagonal_gap=-0.015625`.
+  - FVT distribution:
+    - `finite_rate=1.0`.
+    - `manifold_active_rate=1.0`.
+    - `avg_manifold_loss=0.4921232940256596`.
+    - `median_manifold_loss=0.48194436728954315`.
+    - `avg_norm_D=48.13942008972168`.
+    - `avg_norm_V_merge=20.683768496513366`.
+    - `norm_ratio_D_to_Vmerge=2.4010698315950645`.
+    - `collapse_near_identical_rate=0.0`.
+    - `collapse_warning=False`.
+- Comparison with previous sampler-bug Stage1 diagnostic:
+  - Stage1 training:
+    - `loss_same_image_negative`: `0.69140625` -> `0.053466796875`.
+  - Same-image readout specificity:
+    - `pct_correct_D_beats_wrong_same`: `0.695` -> `0.77`.
+    - `mean_delta_correct_vs_wrong_same`: `0.079609375` -> `0.12716796875`.
+  - Query sensitivity:
+    - `retrieval_top1`: `0.315` -> `0.42`.
+    - `retrieval_top2`: `0.55` -> `0.635`.
+    - `mrr`: `0.5575` -> `0.63125`.
+    - `mean_diagonal_gap`: `-0.050205078125` -> `-0.02484375`.
+  - Distribution:
+    - `avg_manifold_loss`: `0.5868046700954437` ->
+      `0.4921232940256596`.
+    - `norm_ratio_D_to_Vmerge`: `2.5958012759847082` ->
+      `2.4010698315950645`.
+- Analysis:
+  - The sampler fix materially improves the Stage1 target-specific signal:
+    same-image discrimination and query retrieval both improved, which is the
+    diagnostic surface most directly harmed by duplicate positives in matrix CE.
+  - Broad readout versus target-only/random remains strong and comparable to
+    the previous run. It is slightly lower on percentage terms
+    (`target_only`: `0.985` -> `0.975`; `random`: `1.0` -> `0.995`), but the
+    important same-image/query metrics improved.
+  - D norm is still high relative to V_merge (`2.40x`), though better than the
+    previous `2.60x`. This keeps the manifold/norm-loss follow-up active; the
+    sampler bug was a real blocker but not the whole normalization story.
+- Conclusion:
+  - This checkpoint passes the current Stage1 internal diagnostic gate better
+    than the sampler-bug checkpoint and is the preferred Stage1 parent for the
+    next Stage2 run.
