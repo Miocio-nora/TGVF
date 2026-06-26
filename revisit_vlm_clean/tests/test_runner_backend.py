@@ -69,7 +69,25 @@ def _deepstack_run_config() -> RunConfig:
     )
 
 
-def _runtime(tmp_path) -> Stage2RuntimeConfig:
+def _deepstack_full_sequence_run_config() -> RunConfig:
+    return RunConfig(
+        run_id="stage2_deepstack_full_sequence",
+        checkpoint_path="outputs/checkpoint.pt",
+        mode=EvalMode.TGVF_FORCE,
+        post_tgvf_forward_mode=ForwardMode.NO_KV_FULL_SEQUENCE,
+        subset_id="core_smoke_256_seed20260625",
+        deepstack=DeepStackState(
+            enabled=True,
+            original_image_scope=DeepStackScope.THROUGH_ANSWER,
+        ),
+    )
+
+
+def _runtime(
+    tmp_path,
+    *,
+    append_forward_mode: ForwardMode = ForwardMode.KV_CACHE,
+) -> Stage2RuntimeConfig:
     ckpt = tmp_path / "ckpt.pt"
     jsonl = tmp_path / "eval.jsonl"
     ckpt.write_bytes(b"placeholder")
@@ -77,6 +95,7 @@ def _runtime(tmp_path) -> Stage2RuntimeConfig:
     return Stage2RuntimeConfig(
         stage2_checkpoint=str(ckpt),
         eval_jsonl=str(jsonl),
+        append_forward_mode=append_forward_mode,
     )
 
 
@@ -226,6 +245,22 @@ def test_stage2_native_backend_rejects_unported_deepstack_execution(tmp_path) ->
         backend.prepare(_deepstack_run_config())
 
 
+def test_stage2_native_backend_accepts_supported_full_sequence_deepstack(tmp_path) -> None:
+    config = _deepstack_full_sequence_run_config()
+    backend = make_backend(
+        BackendConfig(
+            backend=STAGE2_NATIVE_BACKEND,
+            stage2=_runtime(
+                tmp_path,
+                append_forward_mode=ForwardMode.NO_KV_FULL_SEQUENCE,
+            ),
+        ),
+        config=config,
+    )
+
+    backend.prepare(config)
+
+
 def test_deepstack_execution_plan_records_scope_semantics() -> None:
     disabled = build_deepstack_execution_plan(
         _run_config(),
@@ -274,6 +309,21 @@ def test_deepstack_execution_plan_records_scope_semantics() -> None:
     assert through_answer["scope_contract"]["original_image_deepstack"][
         "block_query_end"
     ] is None
+
+    full_sequence = build_deepstack_execution_plan(
+        _deepstack_full_sequence_run_config(),
+        backend=STAGE2_NATIVE_BACKEND,
+    )
+    assert full_sequence["execution_supported"] is True
+    assert full_sequence["status"] == "supported_full_sequence_through_answer"
+    assert full_sequence["supported_forward_mode"] == "no_kv_full_sequence"
+    assert full_sequence["runtime_hooks"]["all_required_hooks_implemented"] is True
+    assert full_sequence["runtime_hooks"]["hooks"][
+        "capture_original_image_deepstack_features"
+    ]["status"] == "ported"
+    assert full_sequence["runtime_hooks"]["hooks"][
+        "apply_post_tgvf_deepstack_scope_mask"
+    ]["status"] == "ported"
 
     evidence_only_config = RunConfig(
         run_id="stage2_deepstack_evidence",

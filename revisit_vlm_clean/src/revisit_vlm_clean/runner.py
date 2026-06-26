@@ -13,9 +13,13 @@ from pathlib import Path
 from typing import Any
 
 from .benchmark_data import BenchmarkSample
-from .deepstack import deepstack_runtime_hooks, deepstack_scope_contract
+from .deepstack import (
+    deepstack_runtime_hooks,
+    deepstack_scope_contract,
+    qwen3_deepstack_runtime_hook_names_for_full_sequence_through_answer,
+)
 from .rendering import RenderedBenchmarkInput
-from .schema import EvalFamily, EvalMode, EvalSummary, RunConfig
+from .schema import DeepStackScope, EvalFamily, EvalMode, EvalSummary, ForwardMode, RunConfig
 from .scoring import score_output_rows
 from .stage2_native import (
     NativeStage2Engine,
@@ -536,6 +540,8 @@ def _reject_unported_deepstack_execution(config: RunConfig, *, backend: str) -> 
     if not config.deepstack.enabled:
         return
     plan = build_deepstack_execution_plan(config, backend=backend)
+    if plan["execution_supported"]:
+        return
     raise NotImplementedError(
         "DeepStack execution is not implemented for clean Stage2 benchmark backends yet "
         f"(backend={backend}, scope={config.deepstack.original_image_scope}, "
@@ -548,10 +554,12 @@ def _reject_unported_deepstack_execution(config: RunConfig, *, backend: str) -> 
 
 def build_deepstack_execution_plan(config: RunConfig, *, backend: str) -> dict[str, Any]:
     state = config.deepstack
+    implemented_hooks = _implemented_deepstack_hooks_for_eval(config, backend=backend)
     runtime_hooks = deepstack_runtime_hooks(
         state,
         surface="benchmark_eval",
         backend=backend,
+        implemented_hooks=implemented_hooks,
     )
     blockers = list(runtime_hooks.get("blocking_items") or [])
     execution_supported = not blockers
@@ -566,8 +574,17 @@ def build_deepstack_execution_plan(config: RunConfig, *, backend: str) -> dict[s
         "backend": backend,
         "enabled": bool(state.enabled),
         "execution_supported": execution_supported,
-        "status": "not_ported" if state.enabled else "disabled_noop",
+        "status": (
+            "supported_full_sequence_through_answer"
+            if state.enabled and execution_supported
+            else "not_ported"
+            if state.enabled
+            else "disabled_noop"
+        ),
         "original_image_scope": str(state.original_image_scope),
+        "supported_forward_mode": (
+            config.post_tgvf_forward_mode.value if state.enabled and execution_supported else None
+        ),
         "original_image_deepstack": scope_contract["original_image_deepstack"],
         "d_deepstack_features": scope_contract["d_deepstack_features"],
         "fvt_visual_token_path": scope_contract["fvt_visual_token_path"],
@@ -575,6 +592,18 @@ def build_deepstack_execution_plan(config: RunConfig, *, backend: str) -> dict[s
         "scope_contract": scope_contract,
         "blocking_items": blockers,
     }
+
+
+def _implemented_deepstack_hooks_for_eval(config: RunConfig, *, backend: str) -> set[str]:
+    if not config.deepstack.enabled:
+        return set()
+    if backend != STAGE2_NATIVE_BACKEND:
+        return set()
+    if config.post_tgvf_forward_mode != ForwardMode.NO_KV_FULL_SEQUENCE:
+        return set()
+    if config.deepstack.original_image_scope != DeepStackScope.THROUGH_ANSWER:
+        return set()
+    return qwen3_deepstack_runtime_hook_names_for_full_sequence_through_answer()
 
 
 def run_benchmark_rows(
@@ -859,12 +888,14 @@ def _row_deepstack_execution(
     debug: dict[str, Any],
 ) -> dict[str, Any]:
     requested_enabled = bool(config.deepstack.enabled)
+    plan = build_deepstack_execution_plan(config, backend=resolved_backend)
+    execution_supported = bool(plan["execution_supported"])
     return {
         "schema_version": "clean_deepstack_execution_row_v1",
         "requested": config.deepstack.to_dict(),
         "requested_enabled": requested_enabled,
         "requested_scope": str(config.deepstack.original_image_scope),
-        "execution_supported_for_requested_state": not requested_enabled,
+        "execution_supported_for_requested_state": execution_supported,
         "backend": backend_config.backend,
         "resolved_backend": resolved_backend,
         "fvt_append_path": debug.get("mask_mode") or debug.get("fvt_append_path"),
@@ -873,7 +904,7 @@ def _row_deepstack_execution(
         "deepstack_caution": debug.get("deepstack_caution"),
         "notes": (
             ["DeepStack was requested but clean Stage2 execution rejects it before rows"]
-            if requested_enabled
+            if requested_enabled and not execution_supported
             else []
         ),
     }

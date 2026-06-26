@@ -9,12 +9,19 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
+from types import SimpleNamespace
 from typing import Any
 
 from .benchmark_data import BenchmarkSample
 from .data_generation import file_identity
+from .deepstack import (
+    build_original_image_key_block_attention_mask,
+    build_qwen3_original_image_deepstack_payload,
+    build_single_query_original_image_key_block_attention_mask,
+    capture_qwen3_original_image_deepstack_features,
+)
 from .rendering import RenderedBenchmarkInput
-from .schema import EvalMode, ForwardMode, RunConfig
+from .schema import DeepStackScope, EvalMode, ForwardMode, RunConfig
 from .stage2_runtime import Stage2RuntimeConfig, eval_jsonl_identity
 
 SUPPORTED_NATIVE_STAGE2_MODES = frozenset(
@@ -98,6 +105,7 @@ class NativeStage2Engine:
         self.foveal_module: Any | None = None
         self.device: Any | None = None
         self.vision_cache: dict[str, tuple[Any, Any, Any]] = {}
+        self.deepstack_cache: dict[str, list[Any]] = {}
 
     def prepare(self, config: RunConfig) -> None:
         self.stage2_config.validate()
@@ -812,18 +820,58 @@ class NativeStage2Engine:
         )
         if position_ids is None:
             raise ValueError("position id computation failed for full-sequence prefill")
-        outputs = self.model(
-            inputs_embeds=embeds,
-            attention_mask=full_attention,
-            position_ids=position_ids,
-            mm_token_type_ids=full_mm_token_type_ids,
-            use_cache=True,
-            return_dict=True,
-        )
+        deepstack_payload = None
+        prefill_attention = full_attention
+        block_original_image_keys = False
+        if self._deepstack_enabled():
+            if self._deepstack_scope() != DeepStackScope.THROUGH_ANSWER:
+                raise NotImplementedError(
+                    "clean-native Stage2 DeepStack runtime currently supports "
+                    "through_answer scope only; evidence_only requires segmented "
+                    "answer-boundary restoration"
+                )
+            deepstack_features = self._original_image_deepstack_features(sample)
+            deepstack_payload = build_qwen3_original_image_deepstack_payload(
+                sequence_length=int(full_input_ids.shape[-1]),
+                original_image_token_indices=original_positions,
+                deepstack_features=deepstack_features,
+                device=self.device,
+                dtype=embeds.dtype,
+            )
+            prefill_attention = build_original_image_key_block_attention_mask(
+                attention_mask_2d=full_attention,
+                original_image_token_indices=original_positions,
+                block_query_start=int(capture_input_ids.shape[-1]),
+                dtype=embeds.dtype,
+                block_query_end=None,
+            )
+            block_original_image_keys = True
+            outputs = self._forward_qwen3_language_with_deepstack(
+                inputs_embeds=embeds,
+                attention_mask=prefill_attention,
+                position_ids=position_ids,
+                past_key_values=None,
+                visual_pos_masks=deepstack_payload.visual_pos_masks,
+                deepstack_visual_embeds=deepstack_payload.deepstack_visual_embeds,
+                use_cache=True,
+            )
+        else:
+            outputs = self.model(
+                inputs_embeds=embeds,
+                attention_mask=full_attention,
+                position_ids=position_ids,
+                mm_token_type_ids=full_mm_token_type_ids,
+                use_cache=True,
+                return_dict=True,
+            )
         model_kwargs: dict[str, Any] = {}
         next_position_ids = _next_position_ids_after_prefill(position_ids)
         if next_position_ids is not None:
             model_kwargs["tgvf_next_position_ids"] = next_position_ids.detach().cpu()
+        if block_original_image_keys:
+            model_kwargs["tgvf_block_original_image_keys"] = True
+            model_kwargs["tgvf_original_image_token_indices"] = original_positions.detach().cpu()
+            model_kwargs["tgvf_deepstack_scope"] = self._deepstack_scope().value
         return self._append_result_cls()(
             past_key_values=outputs.past_key_values,
             attention_mask=full_attention,
@@ -838,7 +886,7 @@ class NativeStage2Engine:
             debug_metadata={
                 "fvt_append_path": "clean_native_full_sequence_prefill",
                 "tgvf_protocol": self.stage2_config.protocol,
-                "uses_deepstack_for_fvt": False,
+                "uses_deepstack_for_fvt": bool(deepstack_payload is not None),
                 "fvt_shape": list(d.shape),
                 "num_fvt_tokens": int(d.shape[0]),
                 "source_visual_token_count": int(source_geometry.source_visual_token_count),
@@ -849,10 +897,24 @@ class NativeStage2Engine:
                 "second_full_forward_used": True,
                 "past_key_values_preserved": False,
                 "deepstack_caution": (
-                    "clean-native full-sequence FVT append uses Qwen3 visual special "
-                    "tokens and real 3D positions, but does not provide native Qwen3 "
-                    "DeepStack visual features."
+                    None
+                    if deepstack_payload is not None
+                    else (
+                        "clean-native full-sequence FVT append uses Qwen3 visual special "
+                        "tokens and real 3D positions, but does not provide native Qwen3 "
+                        "DeepStack visual features."
+                    )
                 ),
+                "deepstack_payload": (
+                    None if deepstack_payload is None else deepstack_payload.to_debug_dict()
+                ),
+                "deepstack_scope": (
+                    None if deepstack_payload is None else self._deepstack_scope().value
+                ),
+                "deepstack_prefill_attention_mask": (
+                    None if deepstack_payload is None else "4d_original_image_key_block"
+                ),
+                "deepstack_original_image_key_block": bool(block_original_image_keys),
             },
         )
 
@@ -861,12 +923,103 @@ class NativeStage2Engine:
 
         if self.model is None or self.processor is None:
             raise RuntimeError("native Stage2 model is not loaded")
+        if bool((append_result.model_kwargs or {}).get("tgvf_block_original_image_keys")):
+            return self._continue_generation_blocking_original_image_keys(append_result)
         return continue_generation_qwen3(
             self.model,
             self.processor,
             append_result,
             max_new_tokens=self.stage2_config.max_answer_tokens,
             eos_token_id=self.processor.tokenizer.eos_token_id,
+        )
+
+    def _continue_generation_blocking_original_image_keys(self, append_result: Any) -> Any:
+        import torch
+
+        from revisit_vlm.qwen3_vl_tgvf import Qwen3Continuation
+
+        if self.model is None or self.processor is None:
+            raise RuntimeError("native Stage2 model is not loaded")
+        tokenizer = self.processor.tokenizer
+        logits = append_result.last_logits
+        past_key_values = append_result.past_key_values
+        attention_mask = append_result.attention_mask
+        input_ids = append_result.input_ids
+        model_kwargs = dict(append_result.model_kwargs or {})
+        next_position_ids = model_kwargs.get("tgvf_next_position_ids")
+        original_indices = model_kwargs.get("tgvf_original_image_token_indices")
+        if logits is None or attention_mask is None or input_ids is None:
+            raise ValueError("DeepStack continuation requires logits, input_ids, and 2D attention")
+        if next_position_ids is None or original_indices is None:
+            raise ValueError("DeepStack continuation is missing position or original-key metadata")
+        generated_ids: list[int] = []
+        stop_reason = "max_new_tokens"
+        eos_token_id = tokenizer.eos_token_id
+        device = logits.device
+        param_dtype = next(self.model.parameters()).dtype
+        blocked_focus_start_ids: list[int] = []
+        for marker in (
+            "<|focus_start|>",
+            "<|focus_end|>",
+            "<FOCUS>",
+            "</FOCUS>",
+            "<tool_call>",
+            "</tool_call>",
+        ):
+            ids = tokenizer.encode(marker, add_special_tokens=False)
+            if len(ids) == 1:
+                blocked_focus_start_ids.append(int(ids[0]))
+        for _ in range(self.stage2_config.max_answer_tokens):
+            if blocked_focus_start_ids:
+                logits[:, -1, blocked_focus_start_ids] = -torch.inf
+            next_token = torch.argmax(logits[:, -1, :], dim=-1, keepdim=True)
+            token_id = int(next_token[0, 0].detach().cpu().item())
+            generated_ids.append(token_id)
+            input_ids = torch.cat([input_ids.to(device), next_token.to(device)], dim=-1)
+            next_attention = torch.ones(
+                (attention_mask.shape[0], 1),
+                dtype=attention_mask.dtype,
+                device=attention_mask.device,
+            )
+            attention_mask = torch.cat([attention_mask.to(device), next_attention], dim=-1)
+            position_ids = next_position_ids.to(device=next_token.device) + (len(generated_ids) - 1)
+            cache_position = torch.arange(
+                attention_mask.shape[-1] - 1,
+                attention_mask.shape[-1],
+                device=next_token.device,
+                dtype=torch.long,
+            )
+            blocked_attention = build_single_query_original_image_key_block_attention_mask(
+                attention_mask_2d=attention_mask,
+                original_image_token_indices=original_indices,
+                dtype=param_dtype,
+            )
+            outputs = self.model(
+                input_ids=next_token.to(device),
+                past_key_values=past_key_values,
+                attention_mask=blocked_attention,
+                position_ids=position_ids,
+                cache_position=cache_position,
+                use_cache=True,
+                return_dict=True,
+            )
+            past_key_values = outputs.past_key_values
+            logits = outputs.logits
+            if eos_token_id is not None and token_id == eos_token_id:
+                stop_reason = "eos_token"
+                break
+        return Qwen3Continuation(
+            generated_ids=generated_ids,
+            generated_text=tokenizer.decode(
+                generated_ids,
+                skip_special_tokens=True,
+                clean_up_tokenization_spaces=False,
+            ),
+            past_key_values=past_key_values,
+            attention_mask=attention_mask,
+            input_ids=input_ids,
+            last_logits=logits,
+            stop_reason=stop_reason,
         )
 
     def _parse_action(self, text: str) -> Any:
@@ -896,6 +1049,81 @@ class NativeStage2Engine:
         from revisit_vlm.qwen3_vl_tgvf import Qwen3AppendResult
 
         return Qwen3AppendResult
+
+    def _deepstack_enabled(self) -> bool:
+        config = self._run_config
+        return bool(config is not None and config.deepstack.enabled)
+
+    def _deepstack_scope(self) -> DeepStackScope:
+        config = self._run_config
+        if config is None:
+            return DeepStackScope.OFF
+        return config.deepstack.original_image_scope
+
+    def _original_image_deepstack_features(self, sample: NativeStage2Sample) -> list[Any]:
+        from revisit_vlm.qwen3_vl_tgvf import build_direct_messages, build_qwen3_inputs
+
+        if self.utility_model is None or self.processor is None:
+            raise RuntimeError("native Stage2 utility model is not loaded")
+        config = self._run_config
+        if config is None:
+            raise RuntimeError("NativeStage2Engine.prepare must be called before DeepStack capture")
+        key = f"{sample.image}|{config.max_image_resolution}|deepstack"
+        if key not in self.deepstack_cache:
+            image = self._image(sample)
+            inputs = build_qwen3_inputs(
+                self.processor,
+                build_direct_messages(image, sample.prompt_question),
+            )
+            model_inputs = {
+                name: value.to(self.device) if hasattr(value, "to") else value
+                for name, value in dict(inputs).items()
+            }
+            self.deepstack_cache[key] = [
+                item.detach().cpu()
+                for item in capture_qwen3_original_image_deepstack_features(
+                    self.utility_model,
+                    model_inputs,
+                    detach=True,
+                )
+            ]
+        return self.deepstack_cache[key]
+
+    def _forward_qwen3_language_with_deepstack(
+        self,
+        *,
+        inputs_embeds: Any,
+        attention_mask: Any,
+        position_ids: Any,
+        past_key_values: Any,
+        visual_pos_masks: Any,
+        deepstack_visual_embeds: list[Any],
+        use_cache: bool,
+    ) -> Any:
+        if self.model is None:
+            raise RuntimeError("native Stage2 model is not loaded")
+        causal_lm = _unwrap_qwen3_causal_lm(self.model)
+        vl_model = getattr(causal_lm, "model", None)
+        language_model = getattr(vl_model, "language_model", None)
+        lm_head = getattr(causal_lm, "lm_head", None)
+        if language_model is None or lm_head is None:
+            raise RuntimeError("Qwen3 DeepStack runtime requires model.language_model and lm_head")
+        outputs = language_model(
+            input_ids=None,
+            inputs_embeds=inputs_embeds,
+            attention_mask=attention_mask,
+            position_ids=position_ids,
+            past_key_values=past_key_values,
+            use_cache=use_cache,
+            visual_pos_masks=visual_pos_masks,
+            deepstack_visual_embeds=deepstack_visual_embeds,
+        )
+        logits = lm_head(outputs.last_hidden_state)
+        return SimpleNamespace(
+            logits=logits,
+            past_key_values=outputs.past_key_values,
+            hidden_states=getattr(outputs, "hidden_states", None),
+        )
 
     def _base_debug(self, sample: NativeStage2Sample, *, block: str, method: str) -> dict[str, Any]:
         return {
@@ -1047,6 +1275,19 @@ def _resolve_runtime_device(torch: Any, requested: Any) -> Any:
     if requested_text == "auto":
         return torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     return torch.device(requested_text)
+
+
+def _unwrap_qwen3_causal_lm(model: Any) -> Any:
+    if hasattr(model, "get_base_model"):
+        try:
+            return model.get_base_model()
+        except Exception:
+            pass
+    base_model = getattr(model, "base_model", None)
+    nested = getattr(base_model, "model", None)
+    if nested is not None:
+        return nested
+    return model
 
 
 def _sample_uid(sample: NativeStage2Sample) -> str:

@@ -15,7 +15,10 @@ later phases after each contract is validated.
 - Main parser/scorer identity:
   `revisit_vlm_clean.scoring.parse_and_score:v3_external`.
 - Main fast dev subset: `CoreDev-2511`.
-- DeepStack support: supported by schema, default disabled.
+- DeepStack support: default disabled. Benchmark eval supports the first
+  clean-native Qwen3 slice for Stage2 full-sequence `through_answer`;
+  Stage2 training DeepStack and eval `evidence_only` remain blocked until their
+  runtime semantics are ported.
 - Benchmark root, benchmark source-file manifest, and scoring backend are
   recorded in `run_config.json`, `benchmark_sources.json`, and
   `run_config.txt`.
@@ -220,6 +223,16 @@ the original-image DeepStack masking/restoration semantics, and hook-level
 blockers for capture, post-TGVF carry, scope masking, and answer restoration;
 D remains a v-merge-level visual-token span by default.
 
+Benchmark DeepStack execution is narrower than the schema surface. The
+clean-native Qwen3 backend currently supports enabled DeepStack only for
+`post_tgvf_forward_mode=no_kv_full_sequence` with
+`deepstack.original_image_scope=through_answer`. That path captures native
+Qwen3 original-image DeepStack features, injects them through
+`visual_pos_masks` and `deepstack_visual_embeds`, and blocks original-image keys
+over the post-TGVF through-answer scope. Legacy bridge DeepStack,
+cache-continuation DeepStack, and eval `evidence_only` answer restoration still
+fail fast.
+
 ## Fixed Manifests
 
 Committed benchmark manifests:
@@ -272,8 +285,10 @@ Diagnostic manifests are for runner validation only, not benchmark reporting.
   softforce smoke also matches the legacy bridge on the same fixed sample. An
   8-row fixed VStar softforce manifest now matches the legacy bridge exactly at
   row-output level for both `kv_cache` and `no_kv_full_sequence` diagnostic
-  forward modes. These are diagnostic parity checks, not benchmark-scale effect
-  claims.
+  forward modes. It also owns the first DeepStack eval runtime slice:
+  full-sequence `through_answer` injects native original-image DeepStack
+  features and keeps D as v-merge-level visual tokens. These are diagnostic
+  parity/runtime checks, not benchmark-scale effect claims.
 
 ## Clean-Native Exit Criteria
 

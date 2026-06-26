@@ -29,6 +29,19 @@ Data generation is treated as clean-native, not as a legacy bridge.
 The active cleanup risk is training/eval execution identity, not deterministic
 data conversion.
 
+## Current Boundary: Historical Project Cleanup
+
+Historical project cleanup is not part of the active clean-project goal.
+
+- the root historical implementation may be read as a reference for behavior,
+  interfaces, and parity checks;
+- deleting, pruning, archiving, or normalizing historical scripts is out of
+  scope for this goal;
+- clean-native progress is measured by the `revisit_vlm_clean/` entrypoints,
+  contracts, tests, and auditable artifacts;
+- any future historical-project cleanup must be planned as a separate task with
+  its own whitelist and confirmation gate.
+
 ## Phase 1: Skeleton
 
 Completed in commit `20a598c`.
@@ -2416,11 +2429,39 @@ Implemented after Phase 98.
 - this phase does not enable DeepStack execution yet. It turns the remaining
   blocker into a hook-level checklist for the next implementation slices.
 
+## Phase 100: DeepStack Eval Runtime Slice
+
+Implemented after Phase 99.
+
+- added clean Qwen3 DeepStack runtime primitives:
+  - capture native original-image `deepstack_features` from
+    `get_image_features`;
+  - build `visual_pos_masks` over original-image tokens only;
+  - keep D as v-merge-level visual tokens, without D DeepStack-like features;
+  - build 4D original-image key-block masks for full-sequence prefill and
+    cached one-token continuation;
+- clean-native Stage2 full-sequence through-answer append can now inject
+  original-image DeepStack features into Qwen3's text model by calling the
+  native `language_model` surface with `visual_pos_masks` and
+  `deepstack_visual_embeds`;
+- the corresponding benchmark execution plan reports
+  `supported_full_sequence_through_answer` only for:
+  - backend `tgvf_stage2_qwen3_native`;
+  - `post_tgvf_forward_mode=no_kv_full_sequence`;
+  - `deepstack.original_image_scope=through_answer`;
+- legacy bridge execution, cache-continuation DeepStack execution, and
+  `evidence_only` answer-stage restoration still fail fast rather than claiming
+  unsupported behavior;
+- Stage2 training DeepStack remains blocked by the training plan until the
+  fast training path receives the same original-image DeepStack injection and
+  scope masking semantics.
+
 ## Later Phases
 
-1. Port DeepStack original-image injection/masking into clean training and eval
-   execution.
-2. Keep data generation first-class:
+1. Port DeepStack original-image injection/masking into clean Stage2 training.
+2. Decide whether eval `evidence_only` should be implemented as segmented
+   generation or kept training-only.
+3. Keep data generation first-class:
    - deterministic Stage1/Stage2 transforms stay in `tgvf_generate_data` and
      are preserved rather than rewritten in the current execution cleanup;
    - heavy teacher trajectory generation is ported only when regeneration is

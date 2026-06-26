@@ -1,16 +1,41 @@
-"""Shared DeepStack scope contracts for clean training and evaluation."""
+"""Shared DeepStack scope contracts and runtime helpers."""
 
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import dataclass, field
 from typing import Any
 
 from .schema import DeepStackScope, DeepStackState
 
 DEEPSTACK_SCOPE_CONTRACT_SCHEMA_VERSION = "clean_deepstack_scope_contract_v1"
 DEEPSTACK_RUNTIME_HOOKS_SCHEMA_VERSION = "clean_deepstack_runtime_hooks_v1"
+QWEN3_DEEPSTACK_PAYLOAD_SCHEMA_VERSION = "clean_qwen3_deepstack_payload_v1"
 DEEPSTACK_INJECTION_SOURCE = "native_qwen3_original_image_deepstack_features"
 DEEPSTACK_FVT_VISUAL_TOKEN_PATH = "v_merge_level_visual_tokens"
+
+
+@dataclass(frozen=True)
+class Qwen3OriginalImageDeepStackPayload:
+    """Payload passed directly to Qwen3VLTextModel for original-image DeepStack."""
+
+    visual_pos_masks: Any
+    deepstack_visual_embeds: list[Any]
+    original_image_token_indices: Any
+    sequence_length: int
+    feature_shapes: list[list[int]] = field(default_factory=list)
+    debug: dict[str, Any] = field(default_factory=dict)
+
+    def to_debug_dict(self) -> dict[str, Any]:
+        return {
+            "schema_version": QWEN3_DEEPSTACK_PAYLOAD_SCHEMA_VERSION,
+            "sequence_length": self.sequence_length,
+            "original_image_token_count": len(self.original_image_token_indices.view(-1)),
+            "visual_pos_masks_shape": list(self.visual_pos_masks.shape),
+            "deepstack_feature_count": len(self.deepstack_visual_embeds),
+            "deepstack_feature_shapes": self.feature_shapes,
+            **self.debug,
+        }
 
 
 def deepstack_scope_contract(
@@ -131,6 +156,174 @@ def deepstack_runtime_hooks(
         "blocking_items": blocking_items,
         "all_required_hooks_implemented": not blocking_items,
     }
+
+
+def qwen3_deepstack_runtime_hook_names_for_full_sequence_through_answer() -> set[str]:
+    """Hooks implemented by the clean full-sequence through-answer path."""
+
+    return {
+        "capture_original_image_deepstack_features",
+        "carry_original_image_deepstack_through_post_tgvf_append",
+        "apply_post_tgvf_deepstack_scope_mask",
+    }
+
+
+def extract_qwen3_deepstack_features(output: Any) -> list[Any]:
+    """Extract Qwen3 vision DeepStack feature tensors from a model output."""
+
+    features = getattr(output, "deepstack_features", None)
+    if features is None and isinstance(output, Mapping):
+        features = output.get("deepstack_features")
+    if features is None:
+        return []
+    return [item for item in features if hasattr(item, "shape")]
+
+
+def capture_qwen3_original_image_deepstack_features(
+    model: Any,
+    model_inputs: Mapping[str, Any],
+    *,
+    detach: bool = True,
+) -> list[Any]:
+    """Capture native Qwen3 original-image DeepStack features from image inputs."""
+
+    pixel_values = model_inputs.get("pixel_values")
+    image_grid_thw = model_inputs.get("image_grid_thw")
+    if pixel_values is None or image_grid_thw is None:
+        raise ValueError("Qwen3 DeepStack capture requires pixel_values and image_grid_thw")
+    if not hasattr(model, "get_image_features"):
+        raise ValueError("Qwen3 model does not expose get_image_features for DeepStack capture")
+    output = model.get_image_features(
+        pixel_values,
+        image_grid_thw=image_grid_thw,
+        output_hidden_states=True,
+        return_dict=True,
+    )
+    features = extract_qwen3_deepstack_features(output)
+    if not features:
+        raise ValueError("Qwen3 image feature output did not include deepstack_features")
+    if detach:
+        features = [item.detach() if hasattr(item, "detach") else item for item in features]
+    return features
+
+
+def build_qwen3_original_image_deepstack_payload(
+    *,
+    sequence_length: int,
+    original_image_token_indices: Any,
+    deepstack_features: list[Any] | tuple[Any, ...],
+    device: Any,
+    dtype: Any,
+) -> Qwen3OriginalImageDeepStackPayload:
+    """Build the text-model DeepStack payload for original image tokens only."""
+
+    import torch
+
+    seq_len = int(sequence_length)
+    if seq_len <= 0:
+        raise ValueError("sequence_length must be positive")
+    indices = original_image_token_indices.to(device=device, dtype=torch.long).view(-1)
+    if int(indices.numel()) == 0:
+        raise ValueError("original image token indices are required for DeepStack payload")
+    min_index = int(indices.min().detach().cpu().item())
+    max_index = int(indices.max().detach().cpu().item())
+    if min_index < 0 or max_index >= seq_len:
+        raise ValueError("original image token indices are outside the sequence")
+    if not deepstack_features:
+        raise ValueError("deepstack_features are required for DeepStack payload")
+
+    feature_count = int(indices.numel())
+    visual_pos_masks = torch.zeros((1, seq_len), dtype=torch.bool, device=device)
+    visual_pos_masks[0, indices] = True
+    prepared = []
+    feature_shapes = []
+    for feature in deepstack_features:
+        if not isinstance(feature, torch.Tensor):
+            raise TypeError("deepstack feature must be a torch.Tensor")
+        if feature.ndim != 2:
+            raise ValueError(f"deepstack feature must have shape [N, D], got {list(feature.shape)}")
+        if int(feature.shape[0]) != feature_count:
+            raise ValueError(
+                "deepstack feature token count mismatch: "
+                f"feature={int(feature.shape[0])} original={feature_count}"
+            )
+        feature_shapes.append([int(item) for item in feature.shape])
+        prepared.append(feature.to(device=device, dtype=dtype))
+
+    return Qwen3OriginalImageDeepStackPayload(
+        visual_pos_masks=visual_pos_masks,
+        deepstack_visual_embeds=prepared,
+        original_image_token_indices=indices,
+        sequence_length=seq_len,
+        feature_shapes=feature_shapes,
+        debug={
+            "injection_source": DEEPSTACK_INJECTION_SOURCE,
+            "d_deepstack_features_enabled": False,
+            "visual_pos_mask_policy": "original_image_tokens_only",
+        },
+    )
+
+
+def build_original_image_key_block_attention_mask(
+    *,
+    attention_mask_2d: Any,
+    original_image_token_indices: Any,
+    block_query_start: int,
+    dtype: Any,
+    block_query_end: int | None = None,
+) -> Any:
+    """Create a 4D causal mask that blocks original-image keys over a query span."""
+
+    import torch
+
+    if attention_mask_2d.ndim != 2:
+        raise ValueError("attention_mask_2d must have shape [batch, seq_len]")
+    batch, seq_len = int(attention_mask_2d.shape[0]), int(attention_mask_2d.shape[-1])
+    if batch != 1:
+        raise ValueError("clean DeepStack key-block mask currently supports batch size 1")
+    device = attention_mask_2d.device
+    min_value = torch.finfo(dtype).min
+    mask = torch.zeros((batch, 1, seq_len, seq_len), dtype=dtype, device=device)
+    future = torch.triu(torch.ones((seq_len, seq_len), dtype=torch.bool, device=device), diagonal=1)
+    mask = mask.masked_fill(future.view(1, 1, seq_len, seq_len), min_value)
+    key_padding = attention_mask_2d[:, None, None, :] == 0
+    mask = mask.masked_fill(key_padding, min_value)
+    original_indices = original_image_token_indices.to(device=device, dtype=torch.long).view(-1)
+    if int(original_indices.numel()) > 0:
+        query_range = torch.arange(seq_len, device=device)
+        query_mask = query_range >= int(block_query_start)
+        if block_query_end is not None:
+            query_mask = query_mask & (query_range < int(block_query_end))
+        query_indices = query_range[query_mask]
+        if int(query_indices.numel()) > 0:
+            mask[:, :, query_indices[:, None], original_indices[None, :]] = min_value
+    return mask
+
+
+def build_single_query_original_image_key_block_attention_mask(
+    *,
+    attention_mask_2d: Any,
+    original_image_token_indices: Any,
+    dtype: Any,
+) -> Any:
+    """Create a cached-generation 4D mask for one new query token."""
+
+    import torch
+
+    if attention_mask_2d.ndim != 2:
+        raise ValueError("attention_mask_2d must have shape [batch, key_len]")
+    batch, key_len = int(attention_mask_2d.shape[0]), int(attention_mask_2d.shape[-1])
+    if batch != 1:
+        raise ValueError("clean DeepStack cached mask currently supports batch size 1")
+    device = attention_mask_2d.device
+    min_value = torch.finfo(dtype).min
+    mask = torch.zeros((batch, 1, 1, key_len), dtype=dtype, device=device)
+    key_padding = attention_mask_2d[:, None, None, :] == 0
+    mask = mask.masked_fill(key_padding, min_value)
+    original_indices = original_image_token_indices.to(device=device, dtype=torch.long).view(-1)
+    if int(original_indices.numel()) > 0:
+        mask[:, :, :, original_indices] = min_value
+    return mask
 
 
 def deepstack_scope_policy(scope: DeepStackScope | str) -> dict[str, Any]:
