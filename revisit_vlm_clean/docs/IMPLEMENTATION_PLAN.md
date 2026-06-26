@@ -2222,6 +2222,21 @@ Implemented after Phase 87.
   the actual Qwen3 original-image DeepStack feature injection plus scope-mask
   execution path.
 
+## Phase 89: Disabled DeepStack No-Op Plan Semantics
+
+Implemented after Phase 88.
+
+- `build_deepstack_execution_plan(...)` now distinguishes the default disabled
+  DeepStack state from enabled-but-unimplemented DeepStack execution:
+  - disabled DeepStack records `execution_supported=true`,
+    `status=disabled_noop`, and no blockers;
+  - enabled DeepStack still records `execution_supported=false`,
+    `status=not_ported`, and the original-image injection/masking blockers;
+- this keeps benchmark/training DeepStack identity from treating the default
+  no-op state as an execution blocker;
+- this phase does not enable original-image DeepStack injection or D
+  DeepStack-like features.
+
 ## Later Phases
 
 1. Port DeepStack original-image injection/masking into clean training and eval

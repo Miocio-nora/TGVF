@@ -532,23 +532,28 @@ def _reject_unported_deepstack_execution(config: RunConfig, *, backend: str) -> 
 
 def build_deepstack_execution_plan(config: RunConfig, *, backend: str) -> dict[str, Any]:
     state = config.deepstack
-    blockers = [
-        "native Qwen3 DeepStack feature injection for original image is not ported",
-        "post-D DeepStack masking/restoration by scope is not ported",
-        "equivalence with no-DeepStack native Stage2 path is not proven",
-    ]
+    execution_supported = not state.enabled
+    blockers = (
+        [
+            "native Qwen3 DeepStack feature injection for original image is not ported",
+            "post-D DeepStack masking/restoration by scope is not ported",
+            "equivalence with no-DeepStack native Stage2 path is not proven",
+        ]
+        if state.enabled
+        else []
+    )
     scope_contract = deepstack_scope_contract(
         state,
         surface="benchmark_eval",
         backend=backend,
-        execution_supported=False,
+        execution_supported=execution_supported,
         blocking_items=blockers,
     )
     return {
         "backend": backend,
         "enabled": bool(state.enabled),
-        "execution_supported": False,
-        "status": "not_ported",
+        "execution_supported": execution_supported,
+        "status": "not_ported" if state.enabled else "disabled_noop",
         "original_image_scope": str(state.original_image_scope),
         "original_image_deepstack": scope_contract["original_image_deepstack"],
         "d_deepstack_features": scope_contract["d_deepstack_features"],

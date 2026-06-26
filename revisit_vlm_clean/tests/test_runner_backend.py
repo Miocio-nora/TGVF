@@ -206,6 +206,18 @@ def test_stage2_native_backend_rejects_unported_deepstack_execution(tmp_path) ->
 
 
 def test_deepstack_execution_plan_records_scope_semantics() -> None:
+    disabled = build_deepstack_execution_plan(
+        _run_config(),
+        backend=STAGE2_NATIVE_BACKEND,
+    )
+    assert disabled["enabled"] is False
+    assert disabled["execution_supported"] is True
+    assert disabled["status"] == "disabled_noop"
+    assert disabled["original_image_scope"] == "off"
+    assert disabled["blocking_items"] == []
+    assert disabled["scope_contract"]["execution_supported"] is True
+    assert disabled["scope_contract"]["blocking_items"] == []
+
     through_answer = build_deepstack_execution_plan(
         _deepstack_run_config(),
         backend=STAGE2_NATIVE_BACKEND,
