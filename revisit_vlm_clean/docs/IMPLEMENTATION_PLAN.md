@@ -71,8 +71,9 @@ Implemented:
 - shared strict choice parser;
 - open-answer extraction;
 - project exact-match scorer;
-- explicit `NotImplementedError` for official scorer execution until wrappers
-  are ported.
+- explicit scorer-backend separation. At this early phase, unsupported
+  `official` scorer execution failed fast until benchmark-specific wrappers
+  were ported in later phases.
 
 ## Phase 4: Output Schema Smoke
 
@@ -324,12 +325,12 @@ Implemented after the multi-row smoke.
   - `official_tool_used`;
   - `official_compatible`.
 
-Current limitation:
+Historical scorer state at the end of Phase 12:
 
-- `official` scoring is still intentionally not ported in the clean runner and
-  fails fast instead of silently falling back. The next scorer phase must compare
-  clean rows against historical `src/tgvf_eval/official_tools.py` behavior on
-  fixed rows before any benchmark table claims.
+- `official` scoring was intentionally unavailable in the clean runner and
+  failed fast instead of silently falling back. This early state was superseded
+  by Phases 13-18, which added official-compatible choice scoring and the
+  current batch official scorer wrappers.
 
 ## Phase 13: Official-Compatible Choice Scorer Parity
 
@@ -355,10 +356,10 @@ Validation:
 - runner-level dry backend test verifies that `benchmark=blink` under `auto`
   records `official_blink_exact_match`.
 
-Remaining scorer gap at the end of Phase 13:
+Historical scorer gap at the end of Phase 13, now superseded by Phases 16-18:
 
-- MMMU-Pro, OCRBench-v2, MathVista, and MathVerse official wrappers are still
-  not ported into the clean runner.
+- MMMU-Pro, OCRBench-v2, MathVista, and MathVerse official wrappers had not yet
+  been added to the clean runner.
 
 ## Phase 14: Larger Path-Backed Stage2 Smoke
 
@@ -516,6 +517,16 @@ Validation:
   reaches both official scorer paths;
 - `PYTHONPATH=revisit_vlm_clean/src pytest -q revisit_vlm_clean/tests`
   passed with 57 tests.
+
+Current scorer status after Phase 18:
+
+- row-level official-compatible scoring is ported for BLINK and HR-Bench-4K;
+- batch official scorers are ported for OCRBench-v2, MMMU-Pro, MathVista, and
+  MathVerse when their local `official_code` trees are present;
+- MathVista and MathVerse are intentionally limited to the disabled-LLM local
+  path;
+- unsupported explicit `official` scoring still fails fast rather than falling
+  back to project scoring.
 
 ## Clean-Native Exit Criteria
 
@@ -2219,4 +2230,7 @@ Implemented after Phase 87.
    - deterministic Stage1/Stage2 transforms stay in `tgvf_generate_data` and
      are preserved rather than rewritten in the current execution cleanup;
    - heavy teacher trajectory generation is ported only when regeneration is
-     needed, with source manifest/hash and prompt/schema identity recorded.
+     needed, with source manifest/hash and prompt/schema identity recorded;
+   - this boundary was re-confirmed on 2026-06-26: data generation is currently
+     considered clean enough, so pruning work should focus on training/eval
+     execution surfaces unless a concrete data-transform bug is found.
