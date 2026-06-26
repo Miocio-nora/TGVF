@@ -162,6 +162,55 @@ def test_stage1_clean_ddp_helpers_unwrap_tgvf_checkpoint_state(monkeypatch) -> N
     assert sorted(checkpoint["tgvf_module"]) == ["bias", "weight"]
 
 
+def test_stage1_clean_distributed_semantics_wraps_tgvf_before_training(monkeypatch) -> None:
+    import torch
+    import torch.nn.parallel
+
+    class FakeDDP(torch.nn.Module):
+        def __init__(
+            self,
+            module,
+            *,
+            device_ids=None,
+            output_device=None,
+            find_unused_parameters=False,
+        ):
+            super().__init__()
+            self.module = module
+            self.device_ids = device_ids
+            self.output_device = output_device
+            self.find_unused_parameters = find_unused_parameters
+
+    monkeypatch.setattr(torch.nn.parallel, "DistributedDataParallel", FakeDDP)
+    tgvf = torch.nn.Linear(2, 2)
+    tgvf.eval()
+    loaded_modules = {"modules": {"tgvf": tgvf}, "loader": {"backend": "unit"}}
+
+    training_executor._apply_legacy_distributed_training_semantics(
+        loaded_modules=loaded_modules,
+        expected_stage=training_executor.TrainingStage.STAGE1,
+        runtime_context={
+            "distributed": True,
+            "local_rank": 0,
+            "device": "cpu",
+        },
+    )
+
+    wrapped = loaded_modules["modules"]["tgvf"]
+    assert isinstance(wrapped, FakeDDP)
+    assert wrapped.module is tgvf
+    assert wrapped.device_ids is None
+    assert wrapped.output_device is None
+    assert wrapped.find_unused_parameters is False
+    assert tgvf.training is True
+    assert loaded_modules["loader"]["distributed_training"] == {
+        "stage1_tgvf_wrapped_with_ddp": True,
+        "ddp_broadcast_initial_parameters": True,
+        "gradient_sync": "legacy_ddp_tgvf_plus_manual_protocol_rows",
+        "gradient_accumulation": "ddp_no_sync_until_final_micro_step",
+    }
+
+
 def test_stage1_clean_ddp_helpers_skip_manual_tgvf_gradient_sync(monkeypatch) -> None:
     import torch
     from contextlib import contextmanager

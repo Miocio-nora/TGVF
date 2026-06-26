@@ -4791,8 +4791,12 @@ entry, update this file immediately.
     passed.
   - `PYTHONPATH=revisit_vlm_clean/src:src pytest -q revisit_vlm_clean/tests/test_cli.py -k 'stage1_clean_ddp_helpers or stage1_same_image_cursor'`
     passed: `5 passed, 46 deselected`.
+  - Added a direct fake-DDP unit check that
+    `_apply_legacy_distributed_training_semantics(...)` wraps Stage1 TGVF before
+    training and records the legacy distributed metadata without loading the
+    full Qwen model.
   - `PYTHONPATH=revisit_vlm_clean/src:src pytest -q revisit_vlm_clean/tests/test_cli.py`
-    passed: `51 passed, 2 warnings`.
+    passed: `52 passed, 2 warnings`.
 - Conclusion:
   - This fixes the most important currently confirmed forward/training
     semantics gap in clean distributed Stage1.
