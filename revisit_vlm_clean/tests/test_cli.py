@@ -154,10 +154,15 @@ def test_valkit_preflight_write_plan_cli(tmp_path) -> None:
     assert plan["eval_family"] == "valkit"
     assert plan["run"]["benchmarks"] == ["vstar", "blink"]
     assert plan["runner"]["executable"] is False
+    assert plan["runner"]["status"] == "clean_valkit_execute_config_missing"
+    assert plan["runner"]["execute_supported"] is True
+    assert plan["runner"]["execute_permitted"] is False
     assert plan["runner"]["legacy_shell_wrapper_allowed"] is False
     report = json.loads((output_dir / "valkit_preflight_report.json").read_text())
     assert report["plan_valid"] is True
     assert report["will_launch_valkit"] is False
+    assert report["execute_supported"] is True
+    assert report["execute_permitted"] is False
 
 
 def test_valkit_prepare_execution_cli(tmp_path) -> None:
@@ -198,7 +203,9 @@ def test_valkit_prepare_execution_cli(tmp_path) -> None:
     assert bundle["eval_family"] == "valkit"
     assert bundle["run"]["benchmarks"] == ["vstar", "blink"]
     assert bundle["runner"]["will_launch_valkit"] is False
-    assert bundle["runner"]["valkit_runtime_ported"] is False
+    assert bundle["runner"]["valkit_runtime_ported"] is True
+    assert bundle["runner"]["execute_supported"] is True
+    assert bundle["runner"]["execute_permitted"] is False
     assert bundle["runner"]["legacy_shell_wrapper_allowed"] is False
     plan_artifacts = bundle["runner"]["plan_artifact_identities"]
     assert plan_artifacts["valkit_plan"]["exists"] is True
@@ -206,9 +213,57 @@ def test_valkit_prepare_execution_cli(tmp_path) -> None:
     assert plan_artifacts["valkit_preflight_report"]["exists"] is True
     assert plan_artifacts["valkit_prepare_execution_command"]["exists"] is True
     status = json.loads((execution_dir / "valkit_execution_status.json").read_text())
-    assert status["runner_status"] == "handoff_supported_valkit_runner_not_ported"
+    assert status["runner_status"] == "clean_valkit_execute_config_missing"
     assert status["will_launch_valkit"] is False
+    assert status["valkit_runtime_ported"] is True
+    assert status["execute_supported"] is True
+    assert status["execute_permitted"] is False
     assert status["plan_artifact_identities"] == plan_artifacts
+
+
+def test_valkit_prepare_execution_ready_when_clean_run_py_is_configured(tmp_path) -> None:
+    checkpoint = tmp_path / "model.pt"
+    checkpoint.write_bytes(b"checkpoint\n")
+    valkit_root = tmp_path / "VLMEvalKit"
+    valkit_root.mkdir()
+    (valkit_root / "run.py").write_text("print('ready')\n", encoding="utf-8")
+    output_dir = tmp_path / "valkit_plan"
+
+    assert (
+        valkit_main(
+            [
+                "--run-id",
+                "valkit_prepare_ready",
+                "--checkpoint-path",
+                str(checkpoint),
+                "--output-dir",
+                str(output_dir),
+                "--benchmark",
+                "vstar",
+                "--valkit-root",
+                str(valkit_root),
+                "--valkit-model-name",
+                "clean_tgvf_qwen3",
+                "--prepare-execution",
+            ]
+        )
+        == 0
+    )
+
+    plan = json.loads((output_dir / "valkit_plan.json").read_text())
+    execution_dir = output_dir / "clean_valkit_execution"
+    bundle = json.loads((execution_dir / "valkit_execution_bundle.json").read_text())
+    status = json.loads((execution_dir / "valkit_execution_status.json").read_text())
+    assert plan["runner"]["status"] == "clean_valkit_ready_to_execute"
+    assert plan["runner"]["execute_permitted"] is True
+    assert bundle["runner"]["status"] == "clean_valkit_ready_to_execute"
+    assert bundle["runner"]["will_launch_valkit"] is False
+    assert bundle["runner"]["valkit_runtime_ported"] is True
+    assert bundle["runner"]["execute_supported"] is True
+    assert bundle["runner"]["execute_permitted"] is True
+    assert status["runner_status"] == "clean_valkit_ready_to_execute"
+    assert status["will_launch_valkit"] is False
+    assert status["execute_permitted"] is True
 
 
 def test_valkit_execute_cli_uses_clean_run_py_not_legacy_wrapper(tmp_path) -> None:
@@ -268,9 +323,12 @@ def test_valkit_execute_cli_uses_clean_run_py_not_legacy_wrapper(tmp_path) -> No
     assert bundle["runner"]["status"] == "clean_valkit_execution_completed"
     assert bundle["runner"]["will_launch_valkit"] is True
     assert bundle["runner"]["valkit_runtime_ported"] is True
+    assert bundle["runner"]["execute_supported"] is True
+    assert bundle["runner"]["execute_permitted"] is True
     assert bundle["runner"]["returncode"] == 0
     assert status["runner_status"] == "clean_valkit_execution_completed"
     assert status["will_launch_valkit"] is True
+    assert status["execute_permitted"] is True
     assert status["returncode"] == 0
     assert result["returncode"] == 0
     assert result["plan_sha256"] == bundle["plan_sha256"]

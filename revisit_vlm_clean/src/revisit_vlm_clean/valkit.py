@@ -24,8 +24,7 @@ VALKIT_EXECUTION_BUNDLE_SCHEMA_VERSION = "clean_valkit_execution_bundle_v1"
 
 class ValKitRunnerStatus(StrEnum):
     PREFLIGHT_ONLY = "preflight_only"
-    NOT_IMPLEMENTED = "not_implemented"
-    HANDOFF_SUPPORTED_RUNNER_NOT_PORTED = "handoff_supported_valkit_runner_not_ported"
+    EXECUTE_CONFIG_MISSING = "clean_valkit_execute_config_missing"
     READY_TO_EXECUTE = "clean_valkit_ready_to_execute"
     COMPLETED = "clean_valkit_execution_completed"
     FAILED = "clean_valkit_execution_failed"
@@ -95,7 +94,7 @@ def build_valkit_plan(config: ValKitRunConfig) -> dict[str, Any]:
     runner_status = (
         ValKitRunnerStatus.READY_TO_EXECUTE.value
         if runner_executable
-        else ValKitRunnerStatus.NOT_IMPLEMENTED.value
+        else ValKitRunnerStatus.EXECUTE_CONFIG_MISSING.value
     )
     return {
         "valkit_plan_schema_version": VALKIT_PLAN_SCHEMA_VERSION,
@@ -130,6 +129,7 @@ def build_valkit_plan(config: ValKitRunConfig) -> dict[str, Any]:
             "legacy_shell_wrapper_allowed": False,
             "prepare_execution_supported": True,
             "execute_supported": True,
+            "execute_permitted": runner_executable,
             "unavailable_reason": (
                 None
                 if runner_executable
@@ -152,6 +152,8 @@ def build_valkit_preflight_report(plan: dict[str, Any]) -> dict[str, Any]:
         "runner_executable": bool(runner.get("executable")),
         "runner_status": runner.get("status"),
         "will_launch_valkit": False,
+        "execute_supported": bool(runner.get("execute_supported")),
+        "execute_permitted": bool(runner.get("execute_permitted")),
         "benchmarks": list((plan.get("run") or {}).get("benchmarks") or []),
         "mode": (plan.get("run") or {}).get("mode"),
         "unavailable_reason": runner.get("unavailable_reason"),
@@ -192,7 +194,7 @@ def build_valkit_execution_bundle(
     runner_status = (
         ValKitRunnerStatus.READY_TO_EXECUTE.value
         if will_launch
-        else ValKitRunnerStatus.HANDOFF_SUPPORTED_RUNNER_NOT_PORTED.value
+        else runner.get("status")
     )
     return {
         "valkit_execution_bundle_schema_version": VALKIT_EXECUTION_BUNDLE_SCHEMA_VERSION,
@@ -210,7 +212,9 @@ def build_valkit_execution_bundle(
             "status": runner_status,
             "plan_runner_status": runner.get("status"),
             "will_launch_valkit": will_launch,
-            "valkit_runtime_ported": will_launch,
+            "valkit_runtime_ported": True,
+            "execute_supported": bool(runner.get("execute_supported")),
+            "execute_permitted": bool(runner.get("execute_permitted")),
             "legacy_shell_wrapper_allowed": False,
             "final_clean_surface": True,
             "unavailable_reason": runner.get("unavailable_reason"),
@@ -230,8 +234,11 @@ def build_valkit_execution_status(bundle: dict[str, Any]) -> dict[str, Any]:
         "run_id": bundle.get("run_id"),
         "plan_sha256": bundle.get("plan_sha256"),
         "runner_status": runner.get("status"),
+        "plan_runner_status": runner.get("plan_runner_status"),
         "will_launch_valkit": runner.get("will_launch_valkit"),
         "valkit_runtime_ported": runner.get("valkit_runtime_ported"),
+        "execute_supported": runner.get("execute_supported"),
+        "execute_permitted": runner.get("execute_permitted"),
         "legacy_shell_wrapper_allowed": runner.get("legacy_shell_wrapper_allowed"),
         "returncode": runner.get("returncode"),
         "benchmarks": list(run.get("benchmarks") or []),
@@ -581,6 +588,7 @@ def _valkit_plan_text(plan: dict[str, Any], report: dict[str, Any]) -> str:
         f"runner_executable: {runner.get('executable')}",
         f"runner_status: {runner.get('status')}",
         f"will_launch_valkit: {report.get('will_launch_valkit')}",
+        f"execute_permitted: {runner.get('execute_permitted')}",
     ]
     if runner.get("unavailable_reason"):
         lines.append(f"unavailable_reason: {runner['unavailable_reason']}")
@@ -600,6 +608,7 @@ def _valkit_execution_bundle_text(bundle: dict[str, Any], status: dict[str, Any]
         f"runner_status: {runner.get('status')}",
         f"will_launch_valkit: {status.get('will_launch_valkit')}",
         f"valkit_runtime_ported: {status.get('valkit_runtime_ported')}",
+        f"execute_permitted: {status.get('execute_permitted')}",
         f"returncode: {status.get('returncode')}",
         f"legacy_shell_wrapper_allowed: {runner.get('legacy_shell_wrapper_allowed')}",
     ]

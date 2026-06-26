@@ -1513,7 +1513,8 @@ Implemented after Phase 55.
   state;
 - the handoff still records `will_launch_valkit=false`,
   `valkit_runtime_ported=false`, and `legacy_shell_wrapper_allowed=false`.
-  Real ValKit execution is performed only by explicit `--execute`.
+  Real ValKit execution is performed only by explicit `--execute`. This
+  historical handoff status is superseded by Phase 104.
 
 ## Phase 63: Clean ValKit Runtime Execution
 
@@ -2532,6 +2533,26 @@ Implemented after Phase 102.
   batch identity, and Stage2 validation is supported when `val_file` exists;
 - invoking the executor without an explicit mode now reports that an execution
   mode is required, rather than saying clean-native training is unimplemented.
+
+## Phase 104: ValKit Prepare Contract Alignment
+
+Implemented after Phase 103.
+
+- ValKit prepare-execution no longer reports
+  `handoff_supported_valkit_runner_not_ported` or `valkit_runtime_ported=false`;
+- the clean ValKit runtime is now treated as ported whenever a plan reaches the
+  clean ValKit surface:
+  - `valkit_runtime_ported=true`;
+  - `execute_supported=true`;
+  - `legacy_shell_wrapper_allowed=false`;
+- plans without `--valkit-root` and `--valkit-model-name` report
+  `status=clean_valkit_execute_config_missing` and `execute_permitted=false`;
+- plans with a configured ValKit root containing `run.py` and a model key report
+  `status=clean_valkit_ready_to_execute` and `execute_permitted=true`;
+- explicit `--execute` remains the only path that launches ValKit. Prepare and
+  preflight still record `will_launch_valkit=false`;
+- status artifacts and text summaries now expose `execute_permitted` so the
+  handoff directory can be interpreted without relying on prose.
 
 ## Later Phases
 

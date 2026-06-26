@@ -62,7 +62,10 @@ It writes a clean ValKit plan/preflight report plus an optional
 prepare-execution bundle. With explicit `--execute`, it calls
 `<valkit-root>/run.py` directly and records the launch command, stdout, stderr,
 return code, execution status, and run/checkpoint/log identities. It refuses to
-call historical shell wrappers.
+call historical shell wrappers. Prepare/preflight never launch ValKit, but they
+record whether execution is configured: missing `--valkit-root` or
+`--valkit-model-name` reports `execute_permitted=false`; a configured root with
+`run.py` reports `execute_permitted=true`.
 
 Scoring is applied after all rows are produced. This is intentional: some
 official scorers, including OCRBench-v2, need batch-level prediction files
