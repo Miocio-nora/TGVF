@@ -508,6 +508,15 @@ def test_benchmark_execute_dry_run_cli(tmp_path) -> None:
         summary["parser_scorer"]["model_output_parser"]
         == "revisit_vlm_clean.scoring.parse_and_score:v3_external"
     )
+    verification = summary["manifest_verification"]
+    assert verification["schema_version"] == "clean_benchmark_manifest_verification_v1"
+    assert verification["manifest_hash"] == "toyhash"
+    assert verification["sample_manifest_sample_count"] == 1
+    assert verification["rows_count"] == 1
+    assert verification["row_count_matches_sample_manifest"] is True
+    assert verification["row_sample_id_order_matches_manifest"] is True
+    assert verification["source_manifest_matches_sample_manifest"] is True
+    assert verification["all_source_files_exist"] is True
     breakdowns = summary["result_breakdowns"]
     assert breakdowns["schema_version"] == "clean_benchmark_result_breakdowns_v1"
     assert breakdowns["by_benchmark"]["vstar_bench"]["accuracy"] == 1.0
@@ -593,6 +602,10 @@ def test_benchmark_execute_dry_run_shards_manifest_deterministically(tmp_path) -
     assert benchmark_sources["sample_count"] == 1
     assert benchmark_sources["source_files"][0]["row_indices"] == [1]
     assert run_config["benchmark_source_manifest"]["source_manifest_hash"] == "twohash"
+    summary = json.loads((output_dir / "summary.json").read_text())
+    assert summary["manifest_verification"]["source_manifest_hash"] == "twohash"
+    assert summary["manifest_verification"]["sample_manifest_sample_count"] == 1
+    assert summary["manifest_verification"]["row_sample_id_order_matches_manifest"] is True
 
 
 def test_merge_benchmark_shards_restores_source_manifest_order(tmp_path) -> None:
@@ -670,6 +683,16 @@ def test_merge_benchmark_shards_restores_source_manifest_order(tmp_path) -> None
     assert summary["merge_metadata"]["merge_order"] == "source_manifest_order_modulo"
     assert summary["benchmark_source_manifest"]["source_manifest_hash"] == "twohash"
     assert summary["benchmark_source_manifest"]["sample_count"] == 2
+    verification = summary["manifest_verification"]
+    assert verification["schema_version"] == "clean_benchmark_manifest_verification_v1"
+    assert verification["manifest_hash"] == "twohash"
+    assert verification["sample_manifest_sample_count"] == 2
+    assert verification["rows_count"] == 2
+    assert verification["row_count_matches_sample_manifest"] is True
+    assert verification["row_sample_id_order_matches_manifest"] is True
+    assert verification["source_manifest_matches_sample_manifest"] is True
+    assert verification["merged_from_shards"] is True
+    assert verification["merge_metadata"]["merge_order"] == "source_manifest_order_modulo"
     breakdowns = summary["result_breakdowns"]
     assert breakdowns["by_benchmark"]["vstar_bench"]["n_rows"] == 2
     assert breakdowns["by_method"]["original"]["accuracy"] == 1.0

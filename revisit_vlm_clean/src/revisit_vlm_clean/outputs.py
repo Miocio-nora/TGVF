@@ -273,6 +273,12 @@ def write_executed_benchmark_output(
     summary_payload["post_tgvf_continuation"] = str(config.post_tgvf_continuation)
     summary_payload["runner_backend"] = backend_config.to_dict()
     summary_payload["benchmark_source_manifest"] = runtime_config.benchmark_source_manifest
+    summary_payload["manifest_verification"] = build_manifest_verification_payload(
+        config=runtime_config,
+        manifest=manifest,
+        rows=rows,
+        source_manifest=source_manifest,
+    )
     _write_json(summary_path, summary_payload)
 
     return {
@@ -379,6 +385,45 @@ def benchmark_source_manifest_reference(
         "sample_count": payload.get("sample_count"),
         "all_files_exist": payload.get("all_files_exist"),
         "source_files_sha256": _sha256_json(payload.get("source_files") or []),
+    }
+
+
+def build_manifest_verification_payload(
+    *,
+    config: RunConfig,
+    manifest: dict[str, Any] | SampleManifest,
+    rows: list[dict[str, Any]],
+    source_manifest: dict[str, Any],
+    merge_metadata: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    manifest_info = _manifest_dict(manifest)
+    samples = list(manifest_info.get("samples") or [])
+    sample_ids = [str(sample.get("sample_id") or "") for sample in samples]
+    row_ids = [str(row.get("sample_id") or "") for row in rows]
+    row_id_set = set(row_ids)
+    sample_id_set = set(sample_ids)
+    source_sample_count = int(source_manifest.get("sample_count") or 0)
+    return {
+        "schema_version": "clean_benchmark_manifest_verification_v1",
+        "manifest_path": config.manifest_path,
+        "manifest_id": manifest_info.get("manifest_id"),
+        "manifest_hash": manifest_info.get("manifest_hash") or config.manifest_hash,
+        "source_manifest_id": manifest_info.get("source_manifest_id"),
+        "source_manifest_hash": manifest_info.get("source_manifest_hash"),
+        "sample_manifest_sample_count": len(samples),
+        "rows_count": len(rows),
+        "row_count_matches_sample_manifest": len(rows) == len(samples),
+        "row_sample_id_order_matches_manifest": row_ids == sample_ids,
+        "missing_row_sample_ids": sorted(sample_id_set - row_id_set),
+        "extra_row_sample_ids": sorted(row_id_set - sample_id_set),
+        "source_manifest_sample_count": source_sample_count,
+        "source_manifest_matches_sample_manifest": source_sample_count == len(samples),
+        "source_file_count": source_manifest.get("source_file_count"),
+        "all_source_files_exist": bool(source_manifest.get("all_files_exist")),
+        "num_shards": config.num_shards,
+        "shard_index": config.shard_index,
+        "merged_from_shards": merge_metadata is not None,
+        "merge_metadata": merge_metadata,
     }
 
 

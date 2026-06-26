@@ -12,6 +12,7 @@ from typing import Any
 from .outputs import (
     BENCHMARK_SOURCES_FILENAME,
     benchmark_source_manifest_reference,
+    build_manifest_verification_payload,
 )
 from .runner import summarize_deepstack_execution, summarize_result_breakdowns
 from .schema import EvalSummary, RunConfig, _to_jsonable
@@ -64,18 +65,25 @@ def merge_benchmark_shards(
         num_shards=num_shards,
         benchmark_source_manifest=benchmark_source_manifest_reference(source_manifest),
     )
+    metadata = _merge_metadata(shard_payloads, len(rows), source_manifest_hash)
+    manifest = _merged_manifest(
+        shard_payloads,
+        samples=samples,
+        source_manifest_hash=source_manifest_hash,
+    )
     summary = _summarize_rows(
         rows,
         run_id=merged_run_id,
         manifest_hash=source_manifest_hash,
     )
     summary["benchmark_source_manifest"] = benchmark_source_manifest_reference(source_manifest)
-    metadata = _merge_metadata(shard_payloads, len(rows), source_manifest_hash)
     summary["merge_metadata"] = metadata
-    manifest = _merged_manifest(
-        shard_payloads,
-        samples=samples,
-        source_manifest_hash=source_manifest_hash,
+    summary["manifest_verification"] = build_manifest_verification_payload(
+        config=merged_config,
+        manifest=manifest,
+        rows=rows,
+        source_manifest=source_manifest,
+        merge_metadata=metadata,
     )
 
     out = Path(output_dir)

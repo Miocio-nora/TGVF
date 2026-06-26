@@ -2089,6 +2089,21 @@ Implemented after Phase 79.
 - this phase does not change row scoring, parser behavior, sample selection, or
   model execution.
 
+## Phase 81: Benchmark Manifest Verification Summary
+
+Implemented after Phase 80.
+
+- executed benchmark outputs and merged shard outputs now include
+  `manifest_verification` in `summary.json`;
+- `manifest_verification` records manifest id/hash, source-manifest id/hash,
+  row count, sample-manifest count, row/sample id order match, missing/extra row
+  sample ids, source-manifest sample-count match, source-file existence status,
+  shard identity, and merge metadata when present;
+- normal execution and shard merge use the same helper, so merged summaries
+  prove row-count/order restoration rather than relying on side artifacts only;
+- this phase does not change row scoring, parser behavior, sample selection, or
+  model execution.
+
 ## Later Phases
 
 1. Port DeepStack original-image injection/masking into clean training and eval
