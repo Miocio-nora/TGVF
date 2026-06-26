@@ -3630,3 +3630,97 @@ entry, update this file immediately.
     `mask_original_image_after_tgvf_prob=0.75` + DeepStack `through_answer`.
   - Before formal launch, decide whether Stage2
     `loss_visual_token_manifold` should remain `0.0` or be explicitly raised.
+
+### EXP-20260626-155246-clean-qwen3-stage12-deepstack-mask075-4gpu
+
+- Status: PLANNED.
+- Question:
+  - Train the clean Qwen3 Stage1 -> Stage2 mainline with the smoke-selected
+    4-GPU batch settings, then use the resulting chain for later benchmark
+    evaluation.
+- Baseline anchor:
+  - Batch/memory smoke:
+    `EXP-20260626-153326-clean-qwen3-deepstack-mask075-micro-smoke`.
+- Intended diff:
+  - Full training run instead of bounded smoke probes.
+  - Stage1 runs first from the base Qwen3 model.
+  - Stage2 will be planned and launched only after Stage1 produces its real
+    checkpoint/processor, so the Stage2 checkpoint identity is file-backed.
+- Allowed changed variables:
+  - Full training duration/cadence instead of smoke `max_steps=2`.
+  - Output directories and W&B run identities.
+- Not allowed to change:
+  - Model family: Qwen3-VL-8B-Thinking.
+  - Protocol: `protocol_c_tool_observation`.
+  - Max image resolution: 512.
+  - Stage1 global batch: 32.
+  - Stage1 batch identity: `world_size=4`, `micro_batch_size=8`,
+    `gradient_accumulation_steps=1`.
+  - Stage2 global batch: 128.
+  - Stage2 batch identity: `world_size=4`, `micro_batch_size=8`,
+    `gradient_accumulation_steps=4`.
+  - Stage2 mask scope: `through_answer`.
+  - Stage2 mask probability: 0.75.
+  - Stage2 DeepStack enabled/scope: enabled, `through_answer`.
+  - Stage2 weighted span defaults:
+    `evidence_state=0.2`, `focus_target=1.5`, `evidence=1.0`,
+    `value_span=1.0`, `answer=1.0`, `no_focus_evidence_state=0.2`,
+    `no_focus_answer=1.0`.
+  - Stage2 visual-token manifold loss remains the clean default `0.0` for
+    this launch; changing it requires a separate named ablation.
+- Code commit / worktree:
+  - Planned on branch `clean/tgvf-clean-project-20260625`.
+  - Pre-ledger commit: `a5a12d3`.
+  - Formal plan commit: TBD after this PLANNED entry is committed.
+  - Worktree expected clean except untracked `logs/` and `third_party/`.
+- Stage1 checkpoint:
+  - None for launch; Stage1 starts from `Qwen/Qwen3-VL-8B-Thinking`.
+- Stage1 processor:
+  - Default processor for `Qwen/Qwen3-VL-8B-Thinking`.
+- Stage2 checkpoint/output:
+  - Stage2 will use the Stage1 checkpoint produced by this run.
+  - Exact Stage1 checkpoint/processor path: TBD after Stage1 completion.
+- Train data:
+  - Stage1:
+    `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend/splits/tgvf_v4_teacher_stage1_protocol_c_focus.train.jsonl`
+    (`39998` rows).
+  - Stage2:
+    `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend_open_answer/splits/tgvf_v4_teacher_stage2_protocol_c.train.jsonl`
+    (`46883` rows).
+- Validation data:
+  - Stage2:
+    `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend_open_answer/splits/tgvf_v4_teacher_stage2_protocol_c.test.jsonl`
+    (`1002` rows).
+- Benchmark output:
+  - None in this launch entry. Benchmarks require a separate eval ledger entry
+    after Stage2 completes.
+- Output root:
+  - `outputs/clean_training/qwen3_stage12_deepstack_mask075_4gpu_20260626_155246`.
+- Script / command:
+  - Stage1 plan command:
+    `PYTHONPATH=revisit_vlm_clean/src:src python -m revisit_vlm_clean.cli.train_stage1 --run-id clean_qwen3_stage1_4gpu_m8a1_20260626_155246 --train-file data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend/splits/tgvf_v4_teacher_stage1_protocol_c_focus.train.jsonl --output-dir outputs/clean_training/qwen3_stage12_deepstack_mask075_4gpu_20260626_155246/stage1 --max-image-resolution 512 --max-steps 2000 --save-every 2000 --world-size 4 --micro-batch-size 8 --global-batch 32 --wandb-project tgvf-clean-qwen3-deepstack --wandb-mode online --write-plan`.
+  - Stage1 launch command:
+    `CUDA_VISIBLE_DEVICES=0,1,2,3 PYTHONPATH=revisit_vlm_clean/src:src torchrun --nproc-per-node 4 -m revisit_vlm_clean.training.stage1_executor --plan outputs/clean_training/qwen3_stage12_deepstack_mask075_4gpu_20260626_155246/stage1/training_plan.json --launch-training`.
+  - Stage2 plan/launch command:
+    TBD after Stage1 checkpoint exists.
+- GPUs:
+  - Stage1 planned: GPUs `0,1,2,3`.
+  - Stage2 planned: GPUs `0,1,2,3`, after Stage1 finishes.
+- tmux:
+  - Planned Stage1 session:
+    `clean_stage1_qwen3_mask075_4gpu_20260626_155246`.
+- Started:
+  - TBD.
+- Finished:
+  - TBD.
+- Metrics:
+  - TBD.
+- Analysis:
+  - TBD.
+- Conclusion:
+  - TBD.
+- Comparable to baseline:
+  - No; this is the formal training chain, not a benchmark result.
+- Follow-up:
+  - After Stage1 completes, bind its exact checkpoint/processor and launch
+    Stage2 with the recorded DeepStack/mask/batch settings.
