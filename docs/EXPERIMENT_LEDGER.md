@@ -3728,7 +3728,8 @@ entry, update this file immediately.
 - Started:
   - Initial Stage1 micro8 launch: 2026-06-26T15:55:33+09:00.
   - Stage1 micro4 fallback launch: 2026-06-26T15:59:57+09:00.
-  - Stage1 micro4 relaunch with progress/W&B patch: TBD.
+  - Stage1 micro4 relaunch with progress/W&B patch:
+    2026-06-26T17:08:16+09:00.
 - Finished:
   - Paused/interrupted at 2026-06-26T16:53:33+09:00 before checkpoint
     completion, to patch missing clean-native progress/W&B logging.
@@ -3757,6 +3758,10 @@ entry, update this file immediately.
       `logs/clean_training/clean_stage1_qwen3_m4_wandb_20260626_170602.log`.
     - Expected progress file:
       `outputs/clean_training/qwen3_stage12_deepstack_mask075_4gpu_20260626_170602/stage1_micro4/clean_training_execution/training_progress.jsonl`.
+    - W&B:
+      `https://wandb.ai/mio_nora/tgvf-clean-qwen3-deepstack/runs/mohvyqge`.
+    - As of startup verification, progress logging reached `step=2/2000`
+      with finite losses and `wandb_enabled=True`.
 - Analysis:
   - The single-process smoke under-sampled long first-batch examples; real DDP
     `micro_batch_size=8` is not robust.
