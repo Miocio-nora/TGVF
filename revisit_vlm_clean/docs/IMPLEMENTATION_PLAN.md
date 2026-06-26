@@ -2303,6 +2303,25 @@ Implemented after Phase 92.
 - this phase does not change model execution, scoring, row ordering, or summary
   metric computation.
 
+## Phase 94: Merged Benchmark Shard Artifact Identity
+
+Implemented after Phase 93.
+
+- deterministic shard merge now requires each input shard to contain
+  `run_config.txt` in addition to the JSON artifacts;
+- `merge_metadata.json` records per-shard artifact identities for:
+  - `run_config.json`;
+  - `run_config.txt`;
+  - `rows.jsonl`;
+  - `summary.json`;
+  - `sample_manifest.json`;
+  - `benchmark_sources.json`;
+- each artifact identity includes path, existence, byte size, SHA-256, and line
+  count, so a merged benchmark result can be traced back to the exact shard
+  files that were merged;
+- this phase does not change shard validation semantics, row ordering, scoring,
+  or metric aggregation.
+
 ## Later Phases
 
 1. Port DeepStack original-image injection/masking into clean training and eval

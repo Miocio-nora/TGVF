@@ -9,6 +9,7 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
+from .data_generation import file_identity
 from .outputs import (
     BENCHMARK_SOURCES_FILENAME,
     benchmark_source_manifest_reference,
@@ -161,11 +162,20 @@ def merge_benchmark_shards(
 
 def _read_shard(path: Path) -> dict[str, Any]:
     run_config_path = path / "run_config.json"
+    run_config_txt_path = path / "run_config.txt"
     manifest_path = path / "sample_manifest.json"
     rows_path = path / "rows.jsonl"
     summary_path = path / "summary.json"
     sources_path = path / BENCHMARK_SOURCES_FILENAME
-    for required in (run_config_path, manifest_path, rows_path, summary_path, sources_path):
+    artifact_paths = {
+        "run_config": run_config_path,
+        "run_config_txt": run_config_txt_path,
+        "sample_manifest": manifest_path,
+        "rows": rows_path,
+        "summary": summary_path,
+        "benchmark_sources": sources_path,
+    }
+    for required in artifact_paths.values():
         if not required.exists():
             raise FileNotFoundError(f"missing shard artifact: {required}")
     config = RunConfig.from_json(run_config_path.read_text(encoding="utf-8"))
@@ -184,6 +194,10 @@ def _read_shard(path: Path) -> dict[str, Any]:
         "summary": summary,
         "benchmark_sources": sources,
         "rows": rows,
+        "artifact_identities": {
+            name: file_identity(artifact_path).to_dict()
+            for name, artifact_path in artifact_paths.items()
+        },
     }
 
 
@@ -596,6 +610,14 @@ def _merge_metadata(
         "source_manifest_hash": source_manifest_hash,
         "merged_row_count": merged_row_count,
         "shard_dirs": [str(item["path"]) for item in shards],
+        "shard_artifacts": [
+            {
+                "shard_index": int(item["config"].shard_index),
+                "path": str(item["path"]),
+                "artifacts": item["artifact_identities"],
+            }
+            for item in shards
+        ],
         "merge_order": "source_manifest_order_modulo",
     }
 

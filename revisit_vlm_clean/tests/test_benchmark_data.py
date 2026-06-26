@@ -784,6 +784,19 @@ def test_merge_benchmark_shards_restores_source_manifest_order(tmp_path) -> None
     assert '"backend_counts": {"dry_run": 2}' in run_config_txt
     merge_metadata = json.loads((merged / "merge_metadata.json").read_text())
     assert merge_metadata["source_manifest_hash"] == "twohash"
+    assert [item["shard_index"] for item in merge_metadata["shard_artifacts"]] == [0, 1]
+    first_artifacts = merge_metadata["shard_artifacts"][0]["artifacts"]
+    assert sorted(first_artifacts) == [
+        "benchmark_sources",
+        "rows",
+        "run_config",
+        "run_config_txt",
+        "sample_manifest",
+        "summary",
+    ]
+    assert first_artifacts["run_config_txt"]["exists"] is True
+    assert len(first_artifacts["run_config_txt"]["sha256"]) == 64
+    assert first_artifacts["rows"]["line_count"] == 1
     benchmark_sources = json.loads((merged / "benchmark_sources.json").read_text())
     assert benchmark_sources["manifest_hash"] == "twohash"
     assert benchmark_sources["source_manifest_hash"] == "twohash"
