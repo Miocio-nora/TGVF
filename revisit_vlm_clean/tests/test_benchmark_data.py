@@ -773,6 +773,11 @@ def test_merge_benchmark_shards_restores_source_manifest_order(tmp_path) -> None
     assert run_config.execution_backend["runner_backend"]["backend_counts"] == {"dry_run": 2}
     assert run_config.benchmark_source_manifest["source_manifest_hash"] == "twohash"
     assert run_config.benchmark_source_manifest["sample_count"] == 2
+    run_config_txt = (merged / "run_config.txt").read_text()
+    assert "run_id: merged_two_toy" in run_config_txt
+    assert "manifest_hash: twohash" in run_config_txt
+    assert "clean_merged_execution_backend_v1" in run_config_txt
+    assert '"backend_counts": {"dry_run": 2}' in run_config_txt
     merge_metadata = json.loads((merged / "merge_metadata.json").read_text())
     assert merge_metadata["source_manifest_hash"] == "twohash"
     benchmark_sources = json.loads((merged / "benchmark_sources.json").read_text())

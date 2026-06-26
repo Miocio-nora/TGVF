@@ -2237,6 +2237,20 @@ Implemented after Phase 88.
 - this phase does not enable original-image DeepStack injection or D
   DeepStack-like features.
 
+## Phase 90: Merged Benchmark Run Config Text Identity
+
+Implemented after Phase 89.
+
+- deterministic shard merge now writes `run_config.txt` beside the merged
+  `run_config.json`;
+- the text artifact includes the merged run id, manifest hash, source manifest
+  reference, parser/scorer identity, DeepStack state, and merged execution
+  backend summary;
+- merge outputs now return the `run_config_txt` path so callers can verify the
+  same launch-gate identity artifact shape used by executed benchmark runs;
+- this phase does not change shard validation, row ordering, scoring, or
+  summary metrics.
+
 ## Later Phases
 
 1. Port DeepStack original-image injection/masking into clean training and eval

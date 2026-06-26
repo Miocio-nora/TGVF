@@ -312,6 +312,21 @@ def write_benchmark_source_manifest(
     return payload
 
 
+def write_run_config_text(
+    path: str | Path,
+    *,
+    config: RunConfig,
+    manifest: dict[str, Any] | SampleManifest | None,
+    backend_config: BackendConfig | None = None,
+) -> None:
+    _write_run_config_text(
+        Path(path),
+        config=config,
+        manifest=manifest,
+        backend_config=backend_config,
+    )
+
+
 def build_benchmark_source_manifest_payload(
     *,
     config: RunConfig,

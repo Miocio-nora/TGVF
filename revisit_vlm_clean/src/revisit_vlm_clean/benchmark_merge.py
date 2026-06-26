@@ -14,6 +14,7 @@ from .outputs import (
     benchmark_source_manifest_reference,
     build_comparability_flags_payload,
     build_manifest_verification_payload,
+    write_run_config_text,
 )
 from .runner import summarize_deepstack_execution, summarize_result_breakdowns
 from .schema import EvalSummary, RunConfig, _to_jsonable
@@ -101,6 +102,7 @@ def merge_benchmark_shards(
     rows_path = out / "rows.jsonl"
     summary_path = out / "summary.json"
     run_config_path = out / "run_config.json"
+    run_config_txt_path = out / "run_config.txt"
     manifest_path = out / "sample_manifest.json"
     metadata_path = out / "merge_metadata.json"
     sources_path = out / BENCHMARK_SOURCES_FILENAME
@@ -110,6 +112,11 @@ def merge_benchmark_shards(
             handle.write(json.dumps(_to_jsonable(row), sort_keys=True) + "\n")
     _write_json(summary_path, summary)
     _write_json(run_config_path, merged_config)
+    write_run_config_text(
+        run_config_txt_path,
+        config=merged_config,
+        manifest=manifest,
+    )
     _write_json(manifest_path, manifest)
     _write_json(metadata_path, metadata)
     _write_json(sources_path, source_manifest)
@@ -119,6 +126,7 @@ def merge_benchmark_shards(
         "rows": str(rows_path),
         "summary": str(summary_path),
         "run_config": str(run_config_path),
+        "run_config_txt": str(run_config_txt_path),
         "sample_manifest": str(manifest_path),
         "merge_metadata": str(metadata_path),
         "benchmark_sources": str(sources_path),
