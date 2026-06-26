@@ -2511,6 +2511,28 @@ Implemented after Phase 101.
 - legacy bridge DeepStack and cache-continuation DeepStack remain rejected
   before rows. They are not final clean-native paths.
 
+## Phase 103: Launch Readiness Contract Alignment
+
+Implemented after Phase 102.
+
+- `training_launch_readiness.json` now distinguishes two facts that were
+  previously conflated:
+  - the readiness audit artifact never launches training and always records
+    `will_launch_training=false`;
+  - if every required launch gate is identity-validated and the clean trainer
+    loop is ported, the artifact records `launch_permitted=true`;
+- ready clean plans now report:
+  - `status=launch_contract_ready_explicit_launch_required`;
+  - `launch_permitted=true`;
+  - `launch_disabled_reason=null`;
+- blocked plans still report `launch_permitted=false` with a concrete disabled
+  reason;
+- the executor help text now describes the current clean launch surface:
+  single-process and torchrun-distributed launches are selected from the plan's
+  batch identity, and Stage2 validation is supported when `val_file` exists;
+- invoking the executor without an explicit mode now reports that an execution
+  mode is required, rather than saying clean-native training is unimplemented.
+
 ## Later Phases
 
 1. Keep data generation first-class:

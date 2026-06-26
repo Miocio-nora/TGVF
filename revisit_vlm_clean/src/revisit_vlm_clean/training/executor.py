@@ -181,9 +181,9 @@ def build_parser(stage: TrainingStage) -> argparse.ArgumentParser:
         "--launch-training",
         action="store_true",
         help=(
-            "Explicitly launch the clean single-process trainer loop from the "
-            "validated plan. Multi-process/DDP and in-training validation are "
-            "still blocked."
+            "Explicitly launch the clean trainer loop from the validated plan. "
+            "Single-process and torchrun-distributed clean launch paths are "
+            "selected from the plan batch identity."
         ),
     )
     parser.add_argument(
@@ -341,8 +341,8 @@ def main_for_stage(stage: TrainingStage, argv: list[str] | None = None) -> int:
     if args.preflight_only:
         return 0
     return exit_not_implemented(
-        "clean-native training execution is not implemented yet; "
-        "rerun with --preflight-only or --prepare-execution to validate without launching"
+        "explicit execution mode is required; rerun with --preflight-only, "
+        "--prepare-execution, --audit-runtime, or --launch-training"
     )
 
 
@@ -2220,12 +2220,15 @@ def _write_training_launch_readiness_audit(
     )
     if contract_ready_for_trainer_loop and training_runtime_ported:
         status = "launch_contract_ready_explicit_launch_required"
-        launch_disabled_reason = "readiness_audit_does_not_launch_training"
+        launch_permitted = True
+        launch_disabled_reason = None
     elif contract_ready_for_trainer_loop:
         status = "launch_contract_ready_trainer_loop_disabled"
+        launch_permitted = False
         launch_disabled_reason = "native_trainer_loop_not_enabled"
     else:
         status = "blocked_before_launch"
+        launch_permitted = False
         launch_disabled_reason = "launch_contract_not_ready"
     deepstack = dict(bundle.get("deepstack") or {})
     deepstack_gate_status = next(
@@ -2243,7 +2246,7 @@ def _write_training_launch_readiness_audit(
         "status": status,
         "will_launch_training": False,
         "training_runtime_ported": training_runtime_ported,
-        "launch_permitted": False,
+        "launch_permitted": launch_permitted,
         "launch_disabled_reason": launch_disabled_reason,
         "required_gates_total": int(gates.get("total") or len(gate_rows)),
         "identity_validated_gates_total": int(
@@ -2286,7 +2289,7 @@ def _write_training_launch_readiness_audit(
         "notes": [
             "readiness summarizes existing clean runtime audit gates",
             "this artifact never flips will_launch_training to true",
-            "full training launch remains disabled until the native trainer loop is ported",
+            "launch_permitted=true means an explicit --launch-training command is allowed",
         ],
     }
     path = execution_dir / "training_launch_readiness.json"

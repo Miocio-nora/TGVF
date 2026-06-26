@@ -531,6 +531,9 @@ def test_stage1_training_executor_preflight_cli(tmp_path, capsys) -> None:
     assert report["will_launch_training"] is False
     assert report["preflight_report"].endswith("stage1_training_preflight_report.json")
     assert stage1_executor_main(["--plan", str(output_dir / "training_plan.json")]) == 2
+    no_mode = capsys.readouterr()
+    assert "explicit execution mode is required" in no_mode.err
+    assert "clean-native training execution is not implemented yet" not in no_mode.err
 
 
 def test_stage1_distributed_launch_requires_torchrun_env(tmp_path, monkeypatch) -> None:
@@ -1954,11 +1957,9 @@ def test_stage2_training_executor_runtime_audit_can_resume_published_checkpoint(
     assert launch_readiness["status"] == "launch_contract_ready_explicit_launch_required"
     assert launch_readiness["all_required_gates_identity_validated"] is True
     assert launch_readiness["contract_ready_for_trainer_loop"] is True
-    assert launch_readiness["launch_permitted"] is False
-    assert (
-        launch_readiness["launch_disabled_reason"]
-        == "readiness_audit_does_not_launch_training"
-    )
+    assert launch_readiness["will_launch_training"] is False
+    assert launch_readiness["launch_permitted"] is True
+    assert launch_readiness["launch_disabled_reason"] is None
     assert launch_readiness["pending_gates"] == []
     assert launch_readiness["unknown_gates"] == []
     assert launch_readiness["unexpected_blockers"] == []
@@ -1970,7 +1971,7 @@ def test_stage2_training_executor_runtime_audit_can_resume_published_checkpoint(
     assert runtime_audit["launch_readiness"]["status"] == launch_readiness["status"]
     assert runtime_status["training_launch_readiness_status"] == launch_readiness["status"]
     assert runtime_status["launch_contract_ready_for_trainer_loop"] is True
-    assert runtime_status["launch_permitted"] is False
+    assert runtime_status["launch_permitted"] is True
 
 
 def test_stage2_training_executor_can_launch_single_process_training_loop(

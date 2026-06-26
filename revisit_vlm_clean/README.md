@@ -193,8 +193,9 @@ non-launch prerequisite probes, including checkpoint resume and cadence, then
 writes `training_launch_readiness.json`. It summarizes the existing runtime
 launch gates, artifact statuses, expected non-launch blocker, unexpected
 blockers, and DeepStack state. It can report that the contract is ready for the
-future trainer loop, but it still records `launch_permitted=false` and
-`will_launch_training=false`.
+explicit clean launch path. The readiness artifact itself still records
+`will_launch_training=false`, but `launch_permitted=true` means an explicit
+`--launch-training` command is allowed.
 With explicit `--launch-training`, the executor prepares the clean execution
 bundle and runs the clean trainer loop. Single-process launch writes
 `single_process_training_runtime.json`; distributed torchrun launch writes
