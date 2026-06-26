@@ -4279,3 +4279,152 @@ entry, update this file immediately.
   - This checkpoint passes the current Stage1 internal diagnostic gate better
     than the sampler-bug checkpoint and is the preferred Stage1 parent for the
     next Stage2 run.
+
+### EXP-20260627-000156-clean-qwen3-stage1-samplerfix-manifold001-4gpu
+
+- Status: RUNNING.
+- Question:
+  - Does restoring the historical Stage1 manifold weight
+    `visual_token_manifold=0.01` recover the old same-image target specificity
+    (`pct_correct_D_beats_wrong_same` around `0.9+`) while keeping the clean
+    same-image sampler fix?
+- Motivation:
+  - The sampler-fixed clean Stage1 with `visual_token_manifold=0.1` resolved
+    the matrix-CE duplicate-fill floor, but internal diagnostics remained weak:
+    `pct_correct_D_beats_wrong_same=0.77`, `retrieval_top1=0.42`, and
+    `norm_ratio_D_to_Vmerge=2.401`.
+  - Historical Qwen3 Protocol-C Stage1 runs with the same train/test split and
+    global batch used `visual_token_manifold=0.01` and achieved stronger
+    target-specific diagnostics:
+    - 20260617 row-only 4GPU:
+      `pct_correct_D_beats_wrong_same=0.945`,
+      `retrieval_top1=0.535`,
+      `norm_ratio_D_to_Vmerge=5.174`.
+    - 20260620 full_mask 2GPU:
+      `pct_correct_D_beats_wrong_same=0.915`,
+      `retrieval_top1=0.755`,
+      `norm_ratio_D_to_Vmerge=4.983`.
+  - Current hypothesis: raising the mean/std manifold term to `0.1` improved
+    scale but over-regularized the target-specific D signal. A weaker manifold
+    replay is needed before adding a separate explicit token-norm loss.
+- Baselines:
+  - Strong old same-split target-specific baseline:
+    `outputs/tgvf_v3_protocol_c_stage1_8b/protocol_c_toolobs_stage1_v4data_clean_rowonly_gpu0_3_focus_imend_bidirectional_4gpu_bs4_accum2_gbs32_2000step_20260617`.
+  - Current clean sampler-fixed `0.1` baseline:
+    `EXP-20260626-195348-clean-qwen3-stage1-samplerfix-4gpu` and
+    `DIAG-20260626-clean-qwen3-stage1-samplerfix-internal-diagnostics`.
+- Intended diff:
+  - Change only Stage1 loss weight:
+    `loss_visual_token_manifold: 0.1 -> 0.01`.
+  - Keep samplerfix code, data, model, seed, global batch, optimizer, mask,
+    Protocol C, row-only token rows, and max image resolution fixed.
+- Code / worktree:
+  - Branch: `clean/tgvf-clean-project-20260625`.
+  - Git commit: `da6def2d34ec35575009d83da7466a9587078e68`.
+  - Training code includes samplerfix from commit
+    `ed323848446deb8e858e3b3ae4770632cdc52ebd`.
+  - Plan dirty worktree: `True`.
+  - Dirty files are unrelated Stage3/RL work and are recorded as context:
+    `docs/TGVF_STAGE3_RL_WORKLOG.md`,
+    `revisit_vlm_clean/src/revisit_vlm_clean/cli/generate_data.py`,
+    `revisit_vlm_clean/README_STAGE3_RL_DATA.md`,
+    `revisit_vlm_clean/src/revisit_vlm_clean/stage3_rl_data/`,
+    `revisit_vlm_clean/tests/test_stage3_rl_data.py`,
+    plus untracked `logs/` and `third_party/`.
+  - Import check found no `generate_data` or `stage3_rl_data` imports from the
+    Stage1 training/diagnostics modules used by this run.
+- Plan:
+  - `outputs/clean_training/qwen3_stage12_samplerfix_manifold001_4gpu_20260627_000156/stage1_micro4/training_plan.json`.
+  - Plan sha256:
+    `ec70b83436320b5a3d2ac571ed934d13b4f984c4bb6fd097a0a3f07462c89c7a`.
+- Data:
+  - Train file:
+    `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend/splits/tgvf_v4_teacher_stage1_protocol_c_focus.train.jsonl`.
+  - Rows: `39998`.
+  - sha256:
+    `c94a38b824b6603e555eed5ef3584c19cc903b76995d49c67ace36b18268443c`.
+- Model / processor:
+  - Model: `Qwen/Qwen3-VL-8B-Thinking`.
+  - Processor: model default / checkpoint config not applicable for Stage1
+    from base model.
+  - dtype: `bfloat16`.
+  - Attention implementation: `sdpa`.
+- Stage1 settings:
+  - Protocol: `protocol_c_tool_observation`.
+  - Variant: `tgvf_v2_bidirectional`.
+  - Max image resolution: `512`.
+  - Token row mode: `row_only`.
+  - Capture mode: `teacher_forced`.
+  - FVT position mode: `native_source_grid`.
+  - Focus action im_end: `True`.
+  - Mask original image after TGVF: `True`.
+  - Same-image negative mode: `matrix_ce`.
+- Training:
+  - GPUs: `0,1,2,3`.
+  - world size: `4`.
+  - micro batch: `4`.
+  - gradient accumulation: `2`.
+  - global batch: `32`.
+  - max steps: `2000`.
+  - save every: `2000`.
+  - seed: `20260525`.
+  - optimizer: AdamW, learning rate `1e-4`, cosine schedule, warmup `100`,
+    min LR ratio `0.1`, max grad norm `1.0`.
+  - Loss weights:
+    - `loss_gen=1.0`.
+    - `loss_same_image_negative=1.0`.
+    - `loss_visual_token_manifold=0.01`.
+- W&B:
+  - Project: `tgvf-clean-qwen3-deepstack`.
+  - Mode: `online`.
+- Preflight:
+  - `stage1_executor --preflight-only`: passed; no blocking items.
+  - `stage1_executor --prepare-execution`: passed; runner status
+    `ready_for_explicit_distributed_launch`.
+  - First materialized batch identity has `32` rows and `32` unique row keys.
+- Command:
+  - `CUDA_VISIBLE_DEVICES=0,1,2,3 PYTHONPATH=revisit_vlm_clean/src:src torchrun --nproc-per-node 4 -m revisit_vlm_clean.training.stage1_executor --plan outputs/clean_training/qwen3_stage12_samplerfix_manifold001_4gpu_20260627_000156/stage1_micro4/training_plan.json --launch-training`.
+- Output:
+  - `outputs/clean_training/qwen3_stage12_samplerfix_manifold001_4gpu_20260627_000156/stage1_micro4`.
+- Launch:
+  - Planned at 2026-06-27T00:01:32+09:00.
+  - Started at 2026-06-27T00:03:44+09:00.
+  - tmux: `clean_stage1_manifold001_20260627_000156`.
+  - Log:
+    `logs/clean_training/clean_stage1_manifold001_20260627_000156.log`.
+  - W&B:
+    `https://wandb.ai/mio_nora/tgvf-clean-qwen3-deepstack/runs/eb1r1pcx`.
+- Startup verification:
+  - tmux session is alive.
+  - GPUs `0,1,2,3` are allocated by the run.
+  - `training_progress.jsonl` is being written.
+  - W&B is online and syncing.
+  - Training reached at least `step=3/2000`.
+  - Early component losses:
+    - step 1:
+      `loss_total=3.3852850198745728`,
+      `loss_gen=2.04296875`,
+      `loss_same_image_negative=1.31640625`,
+      `loss_visual_token_manifold=2.5910078287124634`,
+      `grad_norm=5.15625`.
+    - step 2:
+      `loss_total=3.677285313606262`,
+      `loss_gen=2.28125`,
+      `loss_same_image_negative=1.37109375`,
+      `loss_visual_token_manifold=2.4941558837890625`,
+      `grad_norm=5.1875`.
+    - step 3:
+      `loss_total=3.5562121868133545`,
+      `loss_gen=2.109375`,
+      `loss_same_image_negative=1.421875`,
+      `loss_visual_token_manifold=2.496214985847473`,
+      `grad_norm=5.3125`.
+  - Immediate interpretation:
+    - Raw manifold loss is in the historical `~2.5` range, but this run uses
+      the historical `0.01` coefficient rather than the clean `0.1`
+      coefficient.
+- Planned post-train diagnostic:
+  - Reuse the same Stage1 internal diagnostic surface:
+    `readout,query,distribution`, `200` readout samples, `50` query groups,
+    `200` distribution samples, max image resolution `512`, and the same
+    Stage1 focus test JSONL.
