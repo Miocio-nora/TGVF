@@ -15,7 +15,11 @@ from pathlib import Path
 from typing import Any
 
 from .data_generation import FileIdentity, file_identity
-from .deepstack import deepstack_runtime_hooks, deepstack_scope_contract
+from .deepstack import (
+    deepstack_runtime_hooks,
+    deepstack_scope_contract,
+    qwen3_deepstack_runtime_hook_names_for_stage2_training,
+)
 from .defaults import (
     DEFAULT_MAX_IMAGE_RESOLUTION,
     DEFAULT_MODEL_ID,
@@ -711,11 +715,6 @@ def _clean_native_training_status(
 ) -> dict[str, Any]:
     blockers = []
     runtime = "single_process" if world_size == 1 else "distributed_torchrun"
-    if stage == TrainingStage.STAGE2 and deepstack_enabled:
-        blockers.append(
-            "DeepStack original-image injection/masking is specified but not implemented "
-            "by a clean Stage2 executor"
-        )
     executable = not blockers
     status = (
         "clean_native_single_process_launch_supported"
@@ -748,9 +747,15 @@ def _deepstack_training_plan(config: Stage2LaunchConfig) -> dict[str, Any]:
     state = config.deepstack
     scope = state.original_image_scope
     enabled = bool(state.enabled)
+    implemented_hooks = (
+        qwen3_deepstack_runtime_hook_names_for_stage2_training()
+        if enabled
+        else set()
+    )
     runtime_hooks = deepstack_runtime_hooks(
         state,
         surface="stage2_training",
+        implemented_hooks=implemented_hooks,
     )
     blocking_items = list(runtime_hooks.get("blocking_items") or [])
     scope_contract = deepstack_scope_contract(
@@ -758,6 +763,7 @@ def _deepstack_training_plan(config: Stage2LaunchConfig) -> dict[str, Any]:
         surface="stage2_training",
         execution_supported=not blocking_items,
         blocking_items=blocking_items,
+        implemented_hooks=implemented_hooks,
     )
     return {
         "schema_version": "clean_deepstack_training_plan_v1",
@@ -774,8 +780,11 @@ def _deepstack_training_plan(config: Stage2LaunchConfig) -> dict[str, Any]:
         "runtime_hooks": runtime_hooks,
         "current_training_path": {
             "uses_manual_inputs_embeds": True,
-            "qwen3_deepstack_features_injected": False,
-            "post_d_deepstack_scope_mask_applied": False,
+            "qwen3_deepstack_features_injected": enabled,
+            "post_d_deepstack_scope_mask_applied": enabled,
+            "answer_stage_restore_supported": (
+                enabled and scope == DeepStackScope.EVIDENCE_ONLY
+            ),
         },
         "gate_name": "apply_deepstack_training_scope_when_enabled",
         "blocking_items": blocking_items,

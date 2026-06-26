@@ -15,10 +15,11 @@ later phases after each contract is validated.
 - Main parser/scorer identity:
   `revisit_vlm_clean.scoring.parse_and_score:v3_external`.
 - Main fast dev subset: `CoreDev-2511`.
-- DeepStack support: default disabled. Benchmark eval supports the first
-  clean-native Qwen3 slice for Stage2 full-sequence `through_answer`;
-  Stage2 training DeepStack and eval `evidence_only` remain blocked until their
-  runtime semantics are ported.
+- DeepStack support: default disabled. Clean Qwen3 Stage2 training supports
+  enabled original-image DeepStack injection/masking for `through_answer` and
+  `evidence_only` scopes. Benchmark eval supports the first clean-native Qwen3
+  slice for Stage2 full-sequence `through_answer`; eval `evidence_only` remains
+  blocked until segmented answer restoration is intentionally ported.
 - Benchmark root, benchmark source-file manifest, and scoring backend are
   recorded in `run_config.json`, `benchmark_sources.json`, and
   `run_config.txt`.
@@ -86,11 +87,10 @@ runs the clean executor handoff and produces execution-bundle artifacts without
 starting training. `clean_training_command.sh` is executable only for currently
 supported clean launches. `world_size=1` uses `python -m ... --launch-training`;
 `world_size>1` uses `torchrun --nproc-per-node <world_size>`. Stage2 DeepStack
-training launches remain blocked until original-image DeepStack
-injection/masking is ported, but the blocker is recorded as a structured
-`deepstack_training_plan`. Clean launch result and status artifacts record plan,
-plan-side artifact, dataset, runtime artifact, input checkpoint, and published
-checkpoint identities.
+training is supported only by the clean-native path: the historical reference
+command remains non-executable because it has no DeepStack controls. Clean
+launch result and status artifacts record plan, plan-side artifact, dataset,
+runtime artifact, input checkpoint, and published checkpoint identities.
 
 The planned clean training modules are importable:
 
@@ -203,9 +203,9 @@ bundle and runs the clean trainer loop. Single-process launch writes
 `checkpoint_step_N.pt` checkpoints according to the plan cadence. Stage2 plans
 with `val_file` also run rank-0 no-backward in-training validation at
 `eval_every` and final `max_steps`, recorded in `validation_records`. This path
-is clean-native and does not call the historical training scripts, but it still
-rejects Stage2 DeepStack-enabled training plans using the prepared
-`deepstack_training_plan.json` blocker evidence.
+is clean-native and does not call the historical training scripts. Stage2
+DeepStack-enabled training is allowed when the prepared
+`deepstack_training_plan.json` reports all required runtime hooks as ported.
 
 Single-process launch uses deterministic train/validation sample cursors rather
 than repeatedly replaying the audit probe batch. Stage1 uses same-image groups
@@ -220,8 +220,14 @@ checkpoint/result writing on rank 0.
 Stage2 prepare-execution writes `deepstack_training_plan.json`. Disabled
 DeepStack is a validated no-op. Enabled DeepStack records the requested scope,
 the original-image DeepStack masking/restoration semantics, and hook-level
-blockers for capture, post-TGVF carry, scope masking, and answer restoration;
-D remains a v-merge-level visual-token span by default.
+status for capture, post-TGVF carry, scope masking, and answer restoration. The
+clean Stage2 training path captures native Qwen3 original-image DeepStack
+features, carries them into the manual `inputs_embeds` focus forwards through
+`visual_pos_masks` and `deepstack_visual_embeds`, and applies the same
+post-TGVF scope as the original-image visual-key mask. Under `evidence_only`,
+original-image DeepStack is restored for answer tokens; under `through_answer`,
+it remains blocked through answer. D remains a v-merge-level visual-token span
+by default.
 
 Benchmark DeepStack execution is narrower than the schema surface. The
 clean-native Qwen3 backend currently supports enabled DeepStack only for

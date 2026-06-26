@@ -45,6 +45,7 @@ def deepstack_scope_contract(
     execution_supported: bool,
     blocking_items: list[str] | tuple[str, ...] | None = None,
     backend: str | None = None,
+    implemented_hooks: set[str] | frozenset[str] | tuple[str, ...] | list[str] | None = None,
 ) -> dict[str, Any]:
     """Return the single clean contract for DeepStack scope semantics.
 
@@ -79,6 +80,7 @@ def deepstack_scope_contract(
             deepstack,
             surface=surface,
             backend=backend,
+            implemented_hooks=implemented_hooks,
         ),
         "blocking_items": blockers,
     }
@@ -165,6 +167,17 @@ def qwen3_deepstack_runtime_hook_names_for_full_sequence_through_answer() -> set
         "capture_original_image_deepstack_features",
         "carry_original_image_deepstack_through_post_tgvf_append",
         "apply_post_tgvf_deepstack_scope_mask",
+    }
+
+
+def qwen3_deepstack_runtime_hook_names_for_stage2_training() -> set[str]:
+    """Hooks implemented by the clean Stage2 full-sequence training path."""
+
+    return {
+        "capture_original_image_deepstack_features",
+        "carry_original_image_deepstack_through_post_tgvf_append",
+        "apply_post_tgvf_deepstack_scope_mask",
+        "restore_deepstack_for_answer_when_scope_requires",
     }
 
 

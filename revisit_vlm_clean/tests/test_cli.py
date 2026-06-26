@@ -2187,7 +2187,7 @@ def test_stage2_training_executor_can_launch_single_process_training_loop(
     assert launch_status["runtime_artifact_identity_count"] >= 8
     assert launch_status["in_training_validation_enabled"] is True
     assert launch_status["validation_record_count"] == 2
-    assert launch_status["unsupported_runtime_features"] == ["stage2_deepstack_training"]
+    assert launch_status["unsupported_runtime_features"] == []
 
 
 def test_stage2_training_executor_runtime_audit_can_write_checkpoint_audit(
@@ -2785,19 +2785,26 @@ def test_stage2_deepstack_plan_disables_legacy_command(tmp_path, capsys) -> None
         == 0
     )
 
-    payload = capsys.readouterr().out
-    assert '"enabled": true' in payload
-    assert '"original_image_scope": "evidence_only"' in payload
-    assert '"deepstack_training_plan"' in payload
-    assert '"execution_supported": false' in payload
-    assert '"restore_for_answer": true' in payload
-    assert '"clean_native_training"' in payload
-    assert '"executable": false' in payload
-    assert "DeepStack original-image injection/masking" in payload
-    assert "historical Stage2 script has no DeepStack training controls" in payload
+    payload = json.loads(capsys.readouterr().out)
+    deepstack_plan = payload["deepstack_training_plan"]
+    assert deepstack_plan["enabled"] is True
+    assert deepstack_plan["original_image_scope"] == "evidence_only"
+    assert deepstack_plan["execution_supported"] is True
+    assert deepstack_plan["runtime_hooks"]["all_required_hooks_implemented"] is True
+    assert deepstack_plan["original_image_deepstack"]["restore_for_answer"] is True
+    assert deepstack_plan["current_training_path"]["qwen3_deepstack_features_injected"] is True
+    assert deepstack_plan["current_training_path"]["post_d_deepstack_scope_mask_applied"] is True
+    assert deepstack_plan["current_training_path"]["answer_stage_restore_supported"] is True
+    assert payload["clean_native_training"]["executable"] is True
+    assert payload["clean_native_training"]["launch_training_supported"] is True
+    assert payload["legacy_reference_command"]["executable"] is False
+    assert (
+        payload["legacy_reference_command"]["unavailable_reason"]
+        == "historical Stage2 script has no DeepStack training controls"
+    )
 
 
-def test_stage2_deepstack_prepare_writes_training_plan_and_launch_guard(tmp_path) -> None:
+def test_stage2_deepstack_prepare_writes_training_plan(tmp_path) -> None:
     train_file = tmp_path / "stage2.train.jsonl"
     checkpoint = tmp_path / "stage1.pt"
     train_file.write_text(
@@ -2841,20 +2848,28 @@ def test_stage2_deepstack_prepare_writes_training_plan_and_launch_guard(tmp_path
     bundle = json.loads((execution_dir / "clean_training_execution_bundle.json").read_text())
     assert deepstack_plan["schema_version"] == "clean_deepstack_training_plan_v1"
     assert deepstack_plan["enabled"] is True
-    assert deepstack_plan["execution_supported"] is False
-    assert deepstack_plan["runtime_hooks"]["all_required_hooks_implemented"] is False
+    assert deepstack_plan["execution_supported"] is True
+    assert deepstack_plan["runtime_hooks"]["all_required_hooks_implemented"] is True
     assert deepstack_plan["runtime_hooks"]["hooks"][
         "capture_original_image_deepstack_features"
-    ]["status"] == "not_ported"
+    ]["status"] == "ported"
+    assert deepstack_plan["runtime_hooks"]["hooks"][
+        "carry_original_image_deepstack_through_post_tgvf_append"
+    ]["status"] == "ported"
     assert deepstack_plan["runtime_hooks"]["hooks"][
         "apply_post_tgvf_deepstack_scope_mask"
     ]["required"] is True
     assert deepstack_plan["runtime_hooks"]["hooks"][
+        "apply_post_tgvf_deepstack_scope_mask"
+    ]["status"] == "ported"
+    assert deepstack_plan["runtime_hooks"]["hooks"][
         "restore_deepstack_for_answer_when_scope_requires"
     ]["required"] is False
-    assert deepstack_plan["blocking_items"] == deepstack_plan["runtime_hooks"][
-        "blocking_items"
-    ]
+    assert deepstack_plan["runtime_hooks"]["hooks"][
+        "restore_deepstack_for_answer_when_scope_requires"
+    ]["status"] == "not_required"
+    assert deepstack_plan["blocking_items"] == []
+    assert deepstack_plan["scope_contract"]["runtime_hooks"] == deepstack_plan["runtime_hooks"]
     assert deepstack_plan["original_image_deepstack"]["block_after_tgvf_append"] is True
     assert deepstack_plan["original_image_deepstack"]["restore_for_answer"] is False
     assert deepstack_plan["d_deepstack_features"]["required_for_current_mainline"] is False
@@ -2872,14 +2887,8 @@ def test_stage2_deepstack_prepare_writes_training_plan_and_launch_guard(tmp_path
     assert "deepstack_training_plan.json" in bundle["trainer_runtime_contract"][
         "required_runtime_artifacts"
     ]
-    with pytest.raises(ValueError, match="native Qwen3 original-image DeepStack"):
-        stage2_executor_main(
-            [
-                "--plan",
-                str(output_dir / "training_plan.json"),
-                "--launch-training",
-            ]
-        )
+    assert bundle["deepstack"]["enabled"] is True
+    assert bundle["deepstack_training_plan"]["execution_supported"] is True
 
 
 def test_generate_data_dry_run_cli(tmp_path, capsys) -> None:

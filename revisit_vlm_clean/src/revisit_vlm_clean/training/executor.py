@@ -3012,7 +3012,11 @@ def _clean_training_launch_result(
     checkpoint_records = list(runtime_payload.get("checkpoint_records") or [])
     final_checkpoint = checkpoint_records[-1] if checkpoint_records else None
     unsupported_runtime_features: list[str] = []
-    if expected_stage == TrainingStage.STAGE2:
+    deepstack_plan = artifacts.get("deepstack_training_plan") or {}
+    if (
+        expected_stage == TrainingStage.STAGE2
+        and not bool(deepstack_plan.get("execution_supported", True))
+    ):
         unsupported_runtime_features.append("stage2_deepstack_training")
     status = (
         "clean_distributed_training_completed"
@@ -3613,6 +3617,7 @@ def _run_stage2_training_step_probe(
             (bundle.get("mask_policy") or {}).get("mask_original_image_after_tgvf_scope")
         ),
         protocol=str(bundle.get("protocol")),
+        deepstack_enabled=bool((bundle.get("deepstack") or {}).get("enabled")),
     )
     return {
         "forward_completed": True,
@@ -5383,10 +5388,10 @@ def _validate_stage2_deepstack_training_plan(plan: dict[str, Any]) -> None:
         scope = deepstack.get("original_image_scope")
         if deepstack_plan.get("original_image_scope") != scope:
             raise ValueError("Stage2 deepstack_training_plan scope mismatch")
-        if deepstack_plan.get("execution_supported") is not False:
-            raise ValueError("enabled Stage2 DeepStack must remain execution-blocked")
-        if not blocking_items:
-            raise ValueError("enabled Stage2 DeepStack plan must record blocking items")
+        if deepstack_plan.get("execution_supported") is not True:
+            raise ValueError("enabled Stage2 DeepStack must be execution-supported")
+        if blocking_items:
+            raise ValueError("enabled Stage2 DeepStack plan must not record blocking items")
     else:
         if deepstack_plan.get("execution_supported") is not True:
             raise ValueError("disabled Stage2 DeepStack plan must be execution-supported")

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from types import SimpleNamespace
 from typing import Any
 
 import torch
@@ -25,6 +26,7 @@ from revisit_vlm.qwen3_vl_tgvf import (
     TGVFProtocol,
     _bracketed_visual_token_ids,
     _compute_qwen3_position_ids_for_sequence,
+    _deepstack_features,
     _encode_text,
     _extract_vision_tensors,
     build_direct_messages,
@@ -102,6 +104,7 @@ class _FocusPrepared:
     mask_mode: str
     fvt_shape: list[int]
     target_hidden_shape: list[int]
+    deepstack_feature_shapes: list[list[int]] | None = None
 
 
 @dataclass
@@ -131,6 +134,7 @@ def v3_stage2_batched_training_step(
     mask_original_image_after_tgvf_prob: float = 1.0,
     mask_original_image_after_tgvf_scope: str = ORIGINAL_IMAGE_MASK_SCOPE_EVIDENCE_ONLY,
     protocol: TGVFProtocol = "legacy_v3_tags",
+    deepstack_enabled: bool = False,
 ) -> TGVFv3Stage2StepOutput:
     protocol = normalize_tgvf_protocol(protocol)
     if position_mode != "native_source_grid":
@@ -174,6 +178,7 @@ def v3_stage2_batched_training_step(
             hidden_state_index=hidden_state_index,
             loss_weights=loss_weights,
             protocol=protocol,
+            deepstack_enabled=deepstack_enabled,
         )
         for item, action_ids, action_weights, target_span, target_hidden in focus_hidden:
             pre = item.model_inputs["_v_pre"].to(device)
@@ -212,6 +217,7 @@ def v3_stage2_batched_training_step(
                     mask_original_image_after_tgvf_prob=mask_original_image_after_tgvf_prob,
                     mask_original_image_after_tgvf_scope=mask_original_image_after_tgvf_scope,
                     protocol=protocol,
+                    deepstack_enabled=deepstack_enabled,
                 )
             )
 
@@ -231,6 +237,7 @@ def v3_stage2_batched_training_step(
                 mask_original_image_after_tgvf_prob=mask_original_image_after_tgvf_prob,
                 mask_original_image_after_tgvf_scope=mask_original_image_after_tgvf_scope,
                 protocol=protocol,
+                deepstack_enabled=deepstack_enabled,
             )
         )
 
@@ -254,14 +261,22 @@ def v3_stage2_batched_training_step(
     boundary_stat_logs: list[dict[str, float | int]] = []
 
     if focus_prepared:
-        focus_batch = _pad_focus_batch(focus_prepared, device=device)
-        outputs = qwen_forward_model(
+        focus_batch = _pad_focus_batch(
+            focus_prepared,
+            device=device,
+            deepstack_enabled=deepstack_enabled,
+        )
+        outputs = _qwen_manual_forward_with_optional_deepstack(
+            qwen_forward_model,
             inputs_embeds=focus_batch["inputs_embeds"],
             attention_mask=focus_batch["attention_mask"],
             position_ids=focus_batch["position_ids"],
             mm_token_type_ids=focus_batch["mm_token_type_ids"],
             use_cache=False,
+            output_hidden_states=False,
             return_dict=True,
+            visual_pos_masks=focus_batch.get("visual_pos_masks"),
+            deepstack_visual_embeds=focus_batch.get("deepstack_visual_embeds"),
         )
         loss_focus, focus_loss_tokens = _weighted_lm_loss(
             outputs.logits,
@@ -349,6 +364,7 @@ def v3_stage2_batched_training_step(
                 "masked_image_key_count": getattr(item, "masked_image_key_count", 0),
                 "fvt_shape": getattr(item, "fvt_shape", None),
                 "target_hidden_shape": getattr(item, "target_hidden_shape", None),
+                "deepstack_feature_shapes": getattr(item, "deepstack_feature_shapes", None),
                 "value_span_matched": bool(item.value_span_matched),
                 "tgvf_protocol": protocol,
             }
@@ -369,6 +385,15 @@ def v3_stage2_batched_training_step(
             "no_focus_mask_active_rate": 0.0,
             "mask_original_image_after_tgvf_prob": float(mask_original_image_after_tgvf_prob),
             "mask_original_image_after_tgvf_scope": str(mask_original_image_after_tgvf_scope),
+            "deepstack_training_enabled": bool(deepstack_enabled),
+            "qwen3_deepstack_features_injected": bool(
+                deepstack_enabled and focus_prepared
+            ),
+            "deepstack_original_image_scope": (
+                str(mask_original_image_after_tgvf_scope)
+                if deepstack_enabled
+                else "off"
+            ),
             "value_span_match_rate": (
                 sum(1.0 for matched in value_matches if matched) / max(len(value_matches), 1)
                 if value_matches
@@ -445,8 +470,13 @@ def _attach_batched_vision_features(
     v_pre, _v_merge = _extract_vision_tensors(image_output)
     if v_pre is None:
         raise RuntimeError("Qwen3 get_image_features did not return V_pre tensors")
+    deepstack_features = _deepstack_features(image_output)
     pre_splits = _split_visual_tensor(v_pre, [item.visual_pre_count for item in base_items])
     merge_splits = [_merge_pre_tokens_with_frozen_qwen(qwen_model, pre) for pre in pre_splits]
+    deepstack_splits_by_layer = [
+        _split_visual_tensor(feature, [item.visual_merge_count for item in base_items])
+        for feature in deepstack_features
+    ]
     for item, pre, merge in zip(base_items, pre_splits, merge_splits, strict=True):
         if int(merge.shape[0]) != item.visual_merge_count:
             raise RuntimeError(
@@ -455,6 +485,11 @@ def _attach_batched_vision_features(
             )
         item.model_inputs["_v_pre"] = pre.detach()
         item.model_inputs["_v_merge"] = merge.detach()
+    for item_index, item in enumerate(base_items):
+        item.model_inputs["_deepstack_visual_embeds"] = [
+            layer_splits[item_index].detach()
+            for layer_splits in deepstack_splits_by_layer
+        ]
 
 
 def _merge_pre_tokens_with_frozen_qwen(model: Any, pre_tokens: torch.Tensor) -> torch.Tensor:
@@ -480,6 +515,7 @@ def _batched_focus_first_forward(
     hidden_state_index: int,
     loss_weights: Stage2LossWeights,
     protocol: TGVFProtocol,
+    deepstack_enabled: bool,
 ) -> list[tuple[_BaseItem, torch.Tensor, torch.Tensor, tuple[int, int], torch.Tensor]]:
     action_ids_list = []
     action_weights_list = []
@@ -560,7 +596,14 @@ def _batched_focus_first_forward(
         pad_value=0,
         device=device,
     )
-    outputs = qwen_forward_model(
+    deepstack_kwargs = _batched_deepstack_inputs(
+        items=focus_items,
+        max_len=int(input_ids.shape[-1]),
+        device=device,
+        dtype=inputs_embeds.dtype,
+    ) if deepstack_enabled else {}
+    outputs = _qwen_manual_forward_with_optional_deepstack(
+        qwen_forward_model,
         inputs_embeds=inputs_embeds,
         attention_mask=attention_mask,
         position_ids=position_ids,
@@ -568,6 +611,7 @@ def _batched_focus_first_forward(
         use_cache=False,
         output_hidden_states=True,
         return_dict=True,
+        **deepstack_kwargs,
     )
     hidden = outputs.hidden_states[hidden_state_index]
     result = []
@@ -604,6 +648,7 @@ def _prepare_focus_final(
     mask_original_image_after_tgvf_prob: float,
     mask_original_image_after_tgvf_scope: str,
     protocol: TGVFProtocol,
+    deepstack_enabled: bool,
 ) -> _FocusPrepared:
     tokenizer = processor.tokenizer
     d = foveated_visual_tokens.to(device)
@@ -758,6 +803,9 @@ def _prepare_focus_final(
         mask_mode=mask_mode,
         fvt_shape=list(d.shape),
         target_hidden_shape=list(target_hidden_states.shape),
+        deepstack_feature_shapes=(
+            _deepstack_feature_shapes(item) if deepstack_enabled else None
+        ),
     )
 
 
@@ -776,6 +824,7 @@ def _prepare_multi_focus_final(
     mask_original_image_after_tgvf_prob: float,
     mask_original_image_after_tgvf_scope: str,
     protocol: TGVFProtocol,
+    deepstack_enabled: bool,
 ) -> _FocusPrepared:
     tokenizer = processor.tokenizer
     steps = _multi_focus_steps(item.sample)
@@ -829,6 +878,7 @@ def _prepare_multi_focus_final(
         mask_original_image_after_tgvf=False,
         block_query_start=None,
         hidden_state_index=hidden_state_index,
+        deepstack_enabled=deepstack_enabled,
     )
     base_len = int(item.input_ids.shape[-1])
     h1 = prefix1_out.hidden_states[hidden_state_index][0, base_len + action1_span[0] : base_len + action1_span[1]]
@@ -898,6 +948,7 @@ def _prepare_multi_focus_final(
         mask_original_image_after_tgvf=mask_active,
         block_query_start=action1_end,
         hidden_state_index=hidden_state_index,
+        deepstack_enabled=deepstack_enabled,
     )
     action2_offset = int(prefix2_before_action.shape[-1])
     h2 = prefix2_out.hidden_states[hidden_state_index][0, action2_offset + action2_span[0] : action2_offset + action2_span[1]]
@@ -1042,6 +1093,9 @@ def _prepare_multi_focus_final(
         mask_mode=mask_mode,
         fvt_shape=[list(d.shape) for d in d_list],
         target_hidden_shape=target_shapes,
+        deepstack_feature_shapes=(
+            _deepstack_feature_shapes(item) if deepstack_enabled else None
+        ),
     )
 
 
@@ -1320,6 +1374,7 @@ def _multi_forward(
     mask_original_image_after_tgvf: bool,
     block_query_start: int | None,
     hidden_state_index: int,
+    deepstack_enabled: bool,
 ) -> Any:
     del hidden_state_index
     attention_mask_2d = torch.ones_like(input_ids)
@@ -1344,7 +1399,14 @@ def _multi_forward(
         )
     else:
         attention_mask = attention_mask_2d
-    return qwen_forward_model(
+    deepstack_kwargs = _single_deepstack_inputs(
+        item=item,
+        sequence_length=int(input_ids.shape[-1]),
+        device=device,
+        dtype=inputs_embeds.dtype,
+    ) if deepstack_enabled else {}
+    return _qwen_manual_forward_with_optional_deepstack(
+        qwen_forward_model,
         inputs_embeds=inputs_embeds,
         attention_mask=attention_mask,
         position_ids=position_ids,
@@ -1352,7 +1414,135 @@ def _multi_forward(
         use_cache=False,
         output_hidden_states=True,
         return_dict=True,
+        **deepstack_kwargs,
     )
+
+
+def _qwen_manual_forward_with_optional_deepstack(
+    qwen_forward_model: Any,
+    *,
+    inputs_embeds: torch.Tensor,
+    attention_mask: torch.Tensor,
+    position_ids: torch.Tensor,
+    mm_token_type_ids: torch.Tensor,
+    use_cache: bool,
+    output_hidden_states: bool,
+    return_dict: bool,
+    visual_pos_masks: torch.Tensor | None = None,
+    deepstack_visual_embeds: list[torch.Tensor] | None = None,
+) -> Any:
+    if visual_pos_masks is None or deepstack_visual_embeds is None:
+        return qwen_forward_model(
+            inputs_embeds=inputs_embeds,
+            attention_mask=attention_mask,
+            position_ids=position_ids,
+            mm_token_type_ids=mm_token_type_ids,
+            use_cache=use_cache,
+            output_hidden_states=output_hidden_states,
+            return_dict=return_dict,
+        )
+    causal_lm = _unwrap_qwen3_causal_lm(qwen_forward_model)
+    vl_model = getattr(causal_lm, "model", None)
+    language_model = getattr(vl_model, "language_model", None)
+    lm_head = getattr(causal_lm, "lm_head", None)
+    if language_model is None or lm_head is None:
+        raise RuntimeError("Qwen3 DeepStack training requires model.language_model and lm_head")
+    outputs = language_model(
+        input_ids=None,
+        inputs_embeds=inputs_embeds,
+        attention_mask=attention_mask,
+        position_ids=position_ids,
+        past_key_values=None,
+        use_cache=use_cache,
+        output_hidden_states=output_hidden_states,
+        return_dict=return_dict,
+        visual_pos_masks=visual_pos_masks,
+        deepstack_visual_embeds=deepstack_visual_embeds,
+    )
+    return SimpleNamespace(
+        logits=lm_head(outputs.last_hidden_state),
+        hidden_states=getattr(outputs, "hidden_states", None),
+        past_key_values=getattr(outputs, "past_key_values", None),
+    )
+
+
+def _unwrap_qwen3_causal_lm(model: Any) -> Any:
+    if hasattr(model, "get_base_model"):
+        try:
+            return model.get_base_model()
+        except Exception:
+            pass
+    base_model = getattr(model, "base_model", None)
+    nested = getattr(base_model, "model", None)
+    if nested is not None:
+        return nested
+    return model
+
+
+def _single_deepstack_inputs(
+    *,
+    item: _BaseItem,
+    sequence_length: int,
+    device: torch.device | str,
+    dtype: torch.dtype,
+) -> dict[str, Any]:
+    return _batched_deepstack_inputs(
+        items=[item],
+        max_len=int(sequence_length),
+        device=device,
+        dtype=dtype,
+    )
+
+
+def _batched_deepstack_inputs(
+    *,
+    items: list[_BaseItem],
+    max_len: int,
+    device: torch.device | str,
+    dtype: torch.dtype,
+) -> dict[str, Any]:
+    if not items:
+        raise ValueError("DeepStack batch requires at least one item")
+    first_features = _item_deepstack_features(items[0])
+    if not first_features:
+        raise RuntimeError("Qwen3 image feature output did not include DeepStack features")
+    visual_pos_masks = []
+    per_layer: list[list[torch.Tensor]] = [[] for _ in first_features]
+    for item in items:
+        features = _item_deepstack_features(item)
+        if len(features) != len(first_features):
+            raise RuntimeError("DeepStack feature layer count mismatch across batch")
+        indices = item.image_token_indices.to(device=device, dtype=torch.long).view(-1)
+        mask = torch.zeros((1, int(max_len)), dtype=torch.bool, device=device)
+        if int(indices.numel()) == 0:
+            raise RuntimeError("DeepStack training requires original image token indices")
+        if int(indices.max().detach().cpu().item()) >= int(max_len):
+            raise RuntimeError("DeepStack original image token index exceeds padded sequence")
+        mask[0, indices] = True
+        visual_pos_masks.append(mask)
+        for layer_index, feature in enumerate(features):
+            if int(feature.shape[0]) != int(indices.numel()):
+                raise RuntimeError(
+                    "DeepStack feature token count mismatch: "
+                    f"feature={int(feature.shape[0])} original={int(indices.numel())}"
+                )
+            per_layer[layer_index].append(feature.to(device=device, dtype=dtype))
+    return {
+        "visual_pos_masks": torch.cat(visual_pos_masks, dim=0),
+        "deepstack_visual_embeds": [
+            torch.cat(layer_features, dim=0)
+            for layer_features in per_layer
+        ],
+    }
+
+
+def _item_deepstack_features(item: _BaseItem) -> list[torch.Tensor]:
+    features = item.model_inputs.get("_deepstack_visual_embeds") or []
+    return [feature for feature in features if isinstance(feature, torch.Tensor)]
+
+
+def _deepstack_feature_shapes(item: _BaseItem) -> list[list[int]]:
+    return [list(feature.shape) for feature in _item_deepstack_features(item)]
 
 
 def _repeat_image_grid(
@@ -1367,9 +1557,14 @@ def _repeat_image_grid(
     )
 
 
-def _pad_focus_batch(items: list[_FocusPrepared], *, device: torch.device | str) -> dict[str, torch.Tensor]:
+def _pad_focus_batch(
+    items: list[_FocusPrepared],
+    *,
+    device: torch.device | str,
+    deepstack_enabled: bool,
+) -> dict[str, Any]:
     max_len = max(int(item.final_input_ids.shape[-1]) for item in items)
-    return {
+    batch: dict[str, Any] = {
         "inputs_embeds": _pad_embeds([item.final_inputs_embeds for item in items], max_len=max_len, device=device),
         "labels": _pad_2d([item.final_labels for item in items], pad_value=IGNORE_INDEX, device=device),
         "loss_weights": _pad_2d_float([item.final_weights for item in items], pad_value=0.0, device=device),
@@ -1377,6 +1572,16 @@ def _pad_focus_batch(items: list[_FocusPrepared], *, device: torch.device | str)
         "position_ids": _pad_position_ids([item.final_position_ids for item in items], max_len=max_len, device=device),
         "mm_token_type_ids": _pad_2d([item.final_mm_token_type_ids for item in items], pad_value=0, device=device),
     }
+    if deepstack_enabled:
+        batch.update(
+            _batched_deepstack_inputs(
+                items=[item.item for item in items],
+                max_len=max_len,
+                device=device,
+                dtype=batch["inputs_embeds"].dtype,
+            )
+        )
+    return batch
 
 
 def _pad_native_batch(

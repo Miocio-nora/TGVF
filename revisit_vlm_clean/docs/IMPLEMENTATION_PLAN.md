@@ -2451,17 +2451,42 @@ Implemented after Phase 99.
   - `deepstack.original_image_scope=through_answer`;
 - legacy bridge execution, cache-continuation DeepStack execution, and
   `evidence_only` answer-stage restoration still fail fast rather than claiming
-  unsupported behavior;
-- Stage2 training DeepStack remains blocked by the training plan until the
-  fast training path receives the same original-image DeepStack injection and
-  scope masking semantics.
+  unsupported behavior.
+
+## Phase 101: DeepStack Stage2 Training Runtime Slice
+
+Implemented after Phase 100.
+
+- clean Stage2 training plans no longer block `deepstack.enabled=true` when the
+  requested scope is represented by the clean Qwen3 training runtime hooks;
+- `deepstack_scope_contract` and `deepstack_training_plan` now share the same
+  hook implementation evidence, so the top-level plan and nested scope contract
+  cannot disagree about whether capture/carry/mask/restore hooks are ported;
+- the clean Stage2 executor passes the plan's DeepStack state into the fast
+  Stage2 training step probe and launch path;
+- the Stage2 focus training runtime now:
+  - captures native Qwen3 original-image `deepstack_features` from the same
+    image feature pass used to attach visual embeddings;
+  - splits those features per sample and carries them through focus-first and
+    focus-final manual `inputs_embeds` forwards;
+  - calls the native Qwen3 `language_model` surface with `visual_pos_masks` and
+    `deepstack_visual_embeds` when DeepStack is enabled;
+  - applies original-image DeepStack only to original image token positions,
+    not to D/FVT tokens;
+  - relies on the existing post-TGVF attention-mask scope so `through_answer`
+    blocks original-image DeepStack through answer and `evidence_only` restores
+    it for answer tokens;
+- D remains a v-merge-level visual-token span. D DeepStack-like features remain
+  disabled unless introduced as a named ablation;
+- the historical Stage2 reference command remains non-executable for DeepStack
+  plans because it has no equivalent DeepStack controls. This is a diagnostic
+  reference boundary, not a final clean-native path.
 
 ## Later Phases
 
-1. Port DeepStack original-image injection/masking into clean Stage2 training.
-2. Decide whether eval `evidence_only` should be implemented as segmented
+1. Decide whether eval `evidence_only` should be implemented as segmented
    generation or kept training-only.
-3. Keep data generation first-class:
+2. Keep data generation first-class:
    - deterministic Stage1/Stage2 transforms stay in `tgvf_generate_data` and
      are preserved rather than rewritten in the current execution cleanup;
    - heavy teacher trajectory generation is ported only when regeneration is
