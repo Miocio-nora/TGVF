@@ -218,8 +218,55 @@ def _validate_shard_set(shards: list[dict[str, Any]], *, num_shards: int) -> Non
                     f"shard {config.shard_index} row/sample id mismatch: "
                     f"{row.get('sample_id')} != {sample.get('sample_id')}"
                 )
+            _validate_row_identity_against_shard_config(
+                row,
+                sample=sample,
+                config=config,
+            )
             if int(row.get("shard_index", config.shard_index)) != int(config.shard_index):
                 raise ValueError("row shard_index does not match run config")
+
+
+def _validate_row_identity_against_shard_config(
+    row: dict[str, Any],
+    *,
+    sample: dict[str, Any],
+    config: RunConfig,
+) -> None:
+    execution_backend = config.execution_backend or {}
+    expected = {
+        "benchmark": sample.get("benchmark"),
+        "population_id": sample.get("population_id"),
+        "source_file": sample.get("source_file"),
+        "num_shards": int(config.num_shards),
+        "shard_index": int(config.shard_index),
+        "method": config.mode.value,
+        "eval_family": config.eval_family.value,
+        "tgvf_protocol": config.tgvf_protocol,
+        "post_tgvf_continuation": config.post_tgvf_continuation.value,
+        "post_tgvf_forward_mode": config.post_tgvf_forward_mode.value,
+        "deepstack": config.deepstack.to_dict(),
+        "parser_scorer": config.parser_scorer.to_dict(),
+        "subset_id": config.subset_id,
+        "runner_backend": execution_backend.get("backend"),
+        "resolved_runner_backend": execution_backend.get("resolved_backend"),
+        "runner_backend_deprecated_alias": execution_backend.get("deprecated_alias"),
+        "runner_backend_stage2_generic_alias": execution_backend.get("stage2_generic_alias"),
+        "runner_backend_alias_target": execution_backend.get("alias_target"),
+        "d_condition": (
+            (execution_backend.get("stage2") or {}).get("d_condition")
+            if isinstance(execution_backend.get("stage2"), dict)
+            else None
+        ),
+    }
+    for field, expected_value in expected.items():
+        current = row.get(field)
+        if not _json_equal(current, expected_value):
+            raise ValueError(
+                "row identity does not match shard run config: "
+                f"shard={config.shard_index} sample_id={row.get('sample_id')} "
+                f"field={field} expected={expected_value!r} current={current!r}"
+            )
 
 
 def _validate_shard_run_config_identity(shards: list[dict[str, Any]]) -> None:
@@ -233,8 +280,7 @@ def _validate_shard_run_config_identity(shards: list[dict[str, Any]]) -> None:
         mismatched = [
             key
             for key in baseline
-            if json.dumps(baseline[key], sort_keys=True, separators=(",", ":"))
-            != json.dumps(current.get(key), sort_keys=True, separators=(",", ":"))
+            if not _json_equal(baseline[key], current.get(key))
         ]
         if mismatched:
             shard_index = int(config.shard_index)
@@ -262,6 +308,14 @@ def _semantic_execution_backend(value: Any) -> Any:
     cleaned.pop("device", None)
     cleaned.pop("device_map", None)
     return _to_jsonable(cleaned)
+
+
+def _json_equal(left: Any, right: Any) -> bool:
+    return json.dumps(_to_jsonable(left), sort_keys=True, separators=(",", ":")) == json.dumps(
+        _to_jsonable(right),
+        sort_keys=True,
+        separators=(",", ":"),
+    )
 
 
 def _source_manifest_hash(shards: list[dict[str, Any]]) -> str:

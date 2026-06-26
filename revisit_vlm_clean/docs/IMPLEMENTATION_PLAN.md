@@ -2269,6 +2269,23 @@ Implemented after Phase 90.
 - this phase does not change source-manifest order restoration, row scoring, or
   summary metric computation.
 
+## Phase 92: Benchmark Shard Row Identity Gate
+
+Implemented after Phase 91.
+
+- deterministic shard merge now validates every row against its shard
+  `run_config.json` and sample-manifest row before any merged table is written;
+- row fields must match the authoritative shard identity for benchmark,
+  population, source file, shard index, eval family, mode, protocol,
+  continuation, forward mode, parser/scorer, DeepStack, runner backend, and
+  Stage2 `d_condition`;
+- this prevents a manually edited or partially stale `rows.jsonl` from being
+  merged into a clean benchmark result whose `run_config.json` says something
+  different;
+- mismatch errors report the sample id and exact row field;
+- this phase does not change row ordering, scoring, summary aggregation, or
+  source-manifest identity.
+
 ## Later Phases
 
 1. Port DeepStack original-image injection/masking into clean training and eval
