@@ -641,7 +641,7 @@ def test_benchmark_execute_dry_run_shards_manifest_deterministically(tmp_path) -
     assert summary["manifest_verification"]["row_sample_id_order_matches_manifest"] is True
 
 
-def test_merge_benchmark_shards_restores_source_manifest_order(tmp_path) -> None:
+def _write_two_toy_shards(tmp_path):
     root = tmp_path / "benchmarks"
     _write_two_toy_vstar(root)
     manifest_path = _write_two_toy_manifest(tmp_path / "manifest.json")
@@ -679,7 +679,11 @@ def test_merge_benchmark_shards_restores_source_manifest_order(tmp_path) -> None
             )
             == 0
         )
+    return shard_dirs
 
+
+def test_merge_benchmark_shards_restores_source_manifest_order(tmp_path) -> None:
+    shard_dirs = _write_two_toy_shards(tmp_path)
     merged = tmp_path / "merged"
     assert (
         merge_main(
@@ -785,6 +789,30 @@ def test_merge_benchmark_shards_restores_source_manifest_order(tmp_path) -> None
     assert benchmark_sources["source_manifest_hash"] == "twohash"
     assert benchmark_sources["sample_count"] == 2
     assert benchmark_sources["source_files"][0]["row_indices"] == [0, 1]
+
+
+def test_merge_benchmark_shards_rejects_run_config_identity_mismatch(tmp_path) -> None:
+    shard_dirs = _write_two_toy_shards(tmp_path)
+    shard_config_path = shard_dirs[1] / "run_config.json"
+    shard_config = json.loads(shard_config_path.read_text())
+    shard_config["checkpoint_path"] = "outputs/different_checkpoint.pt"
+    shard_config_path.write_text(json.dumps(shard_config, indent=2, sort_keys=True) + "\n")
+
+    with pytest.raises(ValueError, match="field=checkpoint_path"):
+        merge_main(
+            [
+                "--output-dir",
+                str(tmp_path / "merged_bad_identity"),
+                "--run-id",
+                "merged_bad_identity",
+                "--expected-num-shards",
+                "2",
+                "--expected-source-manifest-hash",
+                "twohash",
+                str(shard_dirs[0]),
+                str(shard_dirs[1]),
+            ]
+        )
 
 
 def test_benchmark_execute_dry_run_auto_uses_blink_official_choice(tmp_path) -> None:

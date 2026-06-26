@@ -19,6 +19,31 @@ from .outputs import (
 from .runner import summarize_deepstack_execution, summarize_result_breakdowns
 from .schema import EvalSummary, RunConfig, _to_jsonable
 
+SHARD_RUN_CONFIG_IDENTITY_FIELDS = (
+    "output_schema_version",
+    "eval_family",
+    "mode",
+    "checkpoint_path",
+    "model_id",
+    "processor_id",
+    "population_id",
+    "subset_id",
+    "manifest_path",
+    "benchmark_root",
+    "max_image_resolution",
+    "max_action_tokens",
+    "max_answer_tokens",
+    "tgvf_protocol",
+    "post_tgvf_forward_mode",
+    "post_tgvf_continuation",
+    "prompt_suffix",
+    "softforce_prompt_text",
+    "deepstack",
+    "parser_scorer",
+    "git_commit",
+    "dirty_worktree",
+)
+
 
 def merge_benchmark_shards(
     shard_dirs: list[str | Path],
@@ -39,6 +64,7 @@ def merge_benchmark_shards(
             f"expected_num_shards={expected_num_shards} does not match shard config {num_shards}"
         )
     _validate_shard_set(shard_payloads, num_shards=num_shards)
+    _validate_shard_run_config_identity(shard_payloads)
     source_manifest_hash = _source_manifest_hash(shard_payloads)
     if (
         expected_source_manifest_hash is not None
@@ -194,6 +220,48 @@ def _validate_shard_set(shards: list[dict[str, Any]], *, num_shards: int) -> Non
                 )
             if int(row.get("shard_index", config.shard_index)) != int(config.shard_index):
                 raise ValueError("row shard_index does not match run config")
+
+
+def _validate_shard_run_config_identity(shards: list[dict[str, Any]]) -> None:
+    if not shards:
+        return
+    baseline = _run_config_merge_identity(shards[0]["config"])
+    baseline_index = int(shards[0]["config"].shard_index)
+    for item in shards[1:]:
+        config = item["config"]
+        current = _run_config_merge_identity(config)
+        mismatched = [
+            key
+            for key in baseline
+            if json.dumps(baseline[key], sort_keys=True, separators=(",", ":"))
+            != json.dumps(current.get(key), sort_keys=True, separators=(",", ":"))
+        ]
+        if mismatched:
+            shard_index = int(config.shard_index)
+            first_key = mismatched[0]
+            raise ValueError(
+                "shard run config identity mismatch: "
+                f"baseline_shard={baseline_index} shard={shard_index} field={first_key} "
+                f"baseline={baseline[first_key]!r} current={current.get(first_key)!r}"
+            )
+
+
+def _run_config_merge_identity(config: RunConfig) -> dict[str, Any]:
+    payload = {
+        field: _to_jsonable(getattr(config, field))
+        for field in SHARD_RUN_CONFIG_IDENTITY_FIELDS
+    }
+    payload["execution_backend"] = _semantic_execution_backend(config.execution_backend)
+    return payload
+
+
+def _semantic_execution_backend(value: Any) -> Any:
+    if not isinstance(value, dict):
+        return _to_jsonable(value)
+    cleaned = dict(value)
+    cleaned.pop("device", None)
+    cleaned.pop("device_map", None)
+    return _to_jsonable(cleaned)
 
 
 def _source_manifest_hash(shards: list[dict[str, Any]]) -> str:

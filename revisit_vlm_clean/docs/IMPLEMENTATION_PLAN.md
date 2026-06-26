@@ -2251,6 +2251,24 @@ Implemented after Phase 89.
 - this phase does not change shard validation, row ordering, scoring, or
   summary metrics.
 
+## Phase 91: Benchmark Shard Run-Config Identity Gate
+
+Implemented after Phase 90.
+
+- deterministic shard merge now validates semantic run-config identity across
+  all shards before rows are interleaved;
+- shard-specific fields such as `run_id`, `started_at`, `shard_index`, and each
+  shard manifest hash may differ, but benchmark semantics must match:
+  checkpoint, model/processor, eval family, mode, protocol, continuation,
+  forward mode, parser/scorer, DeepStack state, max resolution/token limits,
+  prompt suffixes, benchmark root, git state, and backend configuration;
+- backend `device` and `device_map` are ignored for this semantic comparison so
+  equivalent shards can run on different GPUs;
+- merge fails fast with the mismatched field name instead of producing a table
+  that silently mixes incompatible shard settings;
+- this phase does not change source-manifest order restoration, row scoring, or
+  summary metric computation.
+
 ## Later Phases
 
 1. Port DeepStack original-image injection/masking into clean training and eval
