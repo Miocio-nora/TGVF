@@ -42,6 +42,68 @@ def _write_minimal_stage1_checkpoint(
     )
 
 
+def test_stage1_same_image_cursor_drops_incomplete_groups_without_duplicate_fill() -> None:
+    from types import SimpleNamespace
+
+    samples = [
+        SimpleNamespace(image_id="small", image="/tmp/small.jpg", question=f"small {idx}")
+        for idx in range(2)
+    ] + [
+        SimpleNamespace(image_id="large", image="/tmp/large.jpg", question=f"large {idx}")
+        for idx in range(4)
+    ]
+    cursor = training_executor._SingleProcessSampleCursor(
+        samples=samples,
+        batch_size=4,
+        stage=training_executor.TrainingStage.STAGE1,
+        dataset_role="train",
+        dataset_path="unit.jsonl",
+    )
+
+    batch = cursor.next_batch()
+    trace = batch["sample_trace"]
+    assert cursor.summary()["same_image_group_count"] == 1
+    assert [item["image_id"] for item in trace] == ["large"] * 4
+    assert len({item["sample_index"] for item in trace}) == 4
+
+
+def test_stage1_same_image_cursor_assigns_whole_image_groups_to_rank() -> None:
+    from hashlib import sha256
+    from types import SimpleNamespace
+
+    def image_id_for_rank(rank: int) -> str:
+        for index in range(1000):
+            image_id = f"rank_{rank}_image_{index}"
+            owner = int(sha256(image_id.encode("utf-8")).hexdigest(), 16) % 2
+            if owner == rank:
+                return image_id
+        raise AssertionError(f"could not find image_id for rank {rank}")
+
+    rank0_image = image_id_for_rank(0)
+    rank1_image = image_id_for_rank(1)
+    samples = [
+        SimpleNamespace(image_id=rank0_image, image=f"/tmp/{rank0_image}.jpg", question=f"a {idx}")
+        for idx in range(4)
+    ] + [
+        SimpleNamespace(image_id=rank1_image, image=f"/tmp/{rank1_image}.jpg", question=f"b {idx}")
+        for idx in range(4)
+    ]
+
+    for rank, expected_image in ((0, rank0_image), (1, rank1_image)):
+        cursor = training_executor._SingleProcessSampleCursor(
+            samples=samples,
+            batch_size=4,
+            stage=training_executor.TrainingStage.STAGE1,
+            dataset_role="train",
+            dataset_path="unit.jsonl",
+            rank=rank,
+            world_size=2,
+        )
+        trace = cursor.next_batch()["sample_trace"]
+        assert [item["image_id"] for item in trace] == [expected_image] * 4
+        assert len({item["sample_index"] for item in trace}) == 4
+
+
 def test_manifest_list_cli(capsys) -> None:
     assert manifest_main(["--list"]) == 0
     captured = capsys.readouterr()

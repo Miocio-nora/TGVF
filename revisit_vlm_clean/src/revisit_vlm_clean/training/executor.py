@@ -3235,7 +3235,7 @@ class _SingleProcessSampleCursor:
         self.rank = max(0, int(rank))
         self.world_size = max(1, int(world_size))
         indexed_samples = list(enumerate(samples))
-        if self.world_size > 1:
+        if self.world_size > 1 and stage != TrainingStage.STAGE1:
             indexed_samples = [
                 item for position, item in enumerate(indexed_samples)
                 if position % self.world_size == self.rank
@@ -3281,12 +3281,12 @@ class _SingleProcessSampleCursor:
             group_index = self.group_cursor % len(self.same_image_groups)
             indexed_group = self.same_image_groups[group_index]
             offset = self.group_offsets.get(group_index, 0)
-            count = max(2, self.batch_size)
-            selected = [
-                indexed_group[(offset + item_index) % len(indexed_group)]
-                for item_index in range(count)
-            ]
-            self.group_offsets[group_index] = (offset + count) % len(indexed_group)
+            if offset + self.batch_size > len(indexed_group):
+                offset = 0
+            selected = indexed_group[offset : offset + self.batch_size]
+            if len(selected) != self.batch_size:
+                raise RuntimeError("same-image Stage1 cursor produced an incomplete batch")
+            self.group_offsets[group_index] = offset + self.batch_size
             self.group_cursor += 1
         elif self.mode == "target_focus_ratio_cycle":
             selected = self._next_stage2_ratio_batch()
@@ -3320,6 +3320,10 @@ class _SingleProcessSampleCursor:
             "world_size": self.world_size,
             "mode": self.mode,
             "same_image_group_count": len(self.same_image_groups),
+            "same_image_drop_incomplete": self.stage == TrainingStage.STAGE1,
+            "same_image_group_owner": "sha256(image_key)%world_size"
+            if self.stage == TrainingStage.STAGE1
+            else None,
             "target_focus_ratio": self.target_focus_ratio,
             "focus_sample_count": len(self.focus_indices),
             "no_focus_sample_count": len(self.no_focus_indices),
@@ -3333,11 +3337,16 @@ class _SingleProcessSampleCursor:
         order: list[str] = []
         for index, sample in self.indexed_samples:
             key = str(getattr(sample, "image_id", None) or getattr(sample, "image", ""))
+            if self.world_size > 1:
+                owner = int(sha256(key.encode("utf-8")).hexdigest(), 16) % self.world_size
+                if owner != self.rank:
+                    continue
             if key not in groups_by_key:
                 order.append(key)
                 groups_by_key[key] = []
             groups_by_key[key].append((index, sample))
-        return [groups_by_key[key] for key in order if len(groups_by_key[key]) > 1]
+        min_size = self.batch_size if self.batch_size > 1 else 1
+        return [groups_by_key[key] for key in order if len(groups_by_key[key]) >= min_size]
 
     def _stage2_focus_indices(self) -> list[int]:
         return [

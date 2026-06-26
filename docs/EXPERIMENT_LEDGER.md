@@ -3953,3 +3953,57 @@ entry, update this file immediately.
     200-item diagnostics took about 9 minutes.
   - Stage2 can proceed, but should bind this exact Stage1 checkpoint and keep
     Stage2 diagnostics/readout checks enabled.
+
+### CODE-20260626-clean-stage1-same-image-sampler-fix
+
+- Status: DONE.
+- Timestamp: 2026-06-26T19:48:10+09:00.
+- Question:
+  - Why did the clean Stage1 run keep `loss_same_image_negative` near
+    `ln(2)` even after 2000 steps, while legacy Stage1 runs reduced the same
+    loss far below that range?
+- Affected completed run:
+  - `EXP-20260626-155246-clean-qwen3-stage12-deepstack-mask075-4gpu`.
+  - Final checkpoint:
+    `outputs/clean_training/qwen3_stage12_deepstack_mask075_4gpu_20260626_172639/stage1_micro4/clean_training_execution/checkpoint_step_2000.pt`.
+  - Final observed clean Stage1 `loss_same_image_negative=0.69140625`.
+- Root cause:
+  - The clean Stage1 single-process sample cursor used modulo fill for
+    same-image batches. With `micro_batch_size=4`, an image group containing
+    only two samples could become `[A,B,A,B]`.
+  - Matrix CE then saw duplicate positive embeddings in different columns while
+    only one column was the label. This creates an artificial lower bound near
+    `ln(2)=0.693`, matching the observed clean Stage1 loss floor.
+  - Legacy Stage1 assigns whole image groups to DDP ranks and drops incomplete
+    same-image groups instead of duplicating samples within a batch.
+- Change:
+  - Clean Stage1 same-image grouping now keeps whole image groups together per
+    rank using `sha256(image_key) % world_size`.
+  - Incomplete same-image groups smaller than the Stage1 micro-batch are
+    dropped.
+  - Same-image batch construction no longer uses modulo duplicate fill; it
+    raises if a complete unique batch cannot be produced.
+  - Cursor summaries now record `same_image_drop_incomplete` and
+    `same_image_group_owner` for audit visibility.
+- Files:
+  - `revisit_vlm_clean/src/revisit_vlm_clean/training/executor.py`.
+  - `revisit_vlm_clean/tests/test_cli.py`.
+- Verification:
+  - `PYTHONPATH=revisit_vlm_clean/src:src python -m py_compile revisit_vlm_clean/src/revisit_vlm_clean/training/executor.py`.
+  - `PYTHONPATH=revisit_vlm_clean/src:src pytest -q revisit_vlm_clean/tests/test_cli.py::test_stage1_same_image_cursor_drops_incomplete_groups_without_duplicate_fill revisit_vlm_clean/tests/test_cli.py::test_stage1_same_image_cursor_assigns_whole_image_groups_to_rank revisit_vlm_clean/tests/test_cli.py::test_stage1_training_executor_preflight_cli revisit_vlm_clean/tests/test_cli.py::test_stage1_training_executor_prepare_execution_cli revisit_vlm_clean/tests/test_cli.py::test_stage1_training_executor_runtime_audit_can_write_training_step_probe`.
+  - Result: `5 passed in 2.33s`.
+  - Real Stage1 train grouping check for
+    `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend/splits/tgvf_v4_teacher_stage1_protocol_c_focus.train.jsonl`
+    under `world_size=4`, `micro_batch_size=4`:
+    - Rank 0: `2061` usable same-image groups, `2061` full micro-batches.
+    - Rank 1: `2062` usable same-image groups, `2062` full micro-batches.
+    - Rank 2: `2072` usable same-image groups, `2072` full micro-batches.
+    - Rank 3: `2014` usable same-image groups, `2014` full micro-batches.
+    - Incomplete groups are present but safely dropped; all ranks have enough
+      complete same-image groups for training.
+- Conclusion:
+  - The completed clean Stage1 checkpoint above is useful as a diagnostic
+    artifact, but it should not be used as the Stage1 parent for the next clean
+    Stage2 run.
+  - The next valid experiment should rerun Stage1 after this sampler fix before
+    evaluating manifold-weight or Stage2 changes.
