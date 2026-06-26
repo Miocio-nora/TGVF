@@ -267,6 +267,19 @@ def test_valkit_execute_cli_uses_clean_run_py_not_legacy_wrapper(tmp_path) -> No
     assert status["will_launch_valkit"] is True
     assert status["returncode"] == 0
     assert result["returncode"] == 0
+    assert result["plan_sha256"] == bundle["plan_sha256"]
+    assert result["execution_identity"]["checkpoint_identity"]["exists"] is True
+    assert result["execution_identity"]["benchmarks"] == ["vstar", "blink"]
+    assert result["execution_identity"]["run_py_identity"]["exists"] is True
+    assert result["execution_identity"]["work_dir_identity"]["kind"] == "directory"
+    assert result["execution_identity"]["launch_command_identity"]["exists"] is True
+    assert result["execution_identity"]["stdout_identity"]["exists"] is True
+    assert result["execution_identity"]["stderr_identity"]["exists"] is True
+    assert status["execution_identity"]["plan_sha256"] == bundle["plan_sha256"]
+    assert status["result_identity"]["exists"] is True
+    assert status["stdout_identity"]["exists"] is True
+    assert status["stderr_identity"]["exists"] is True
+    assert status["launch_command_identity"]["exists"] is True
     assert "--data" in argv
     assert "vstar" in argv
     assert "blink" in argv

@@ -234,6 +234,13 @@ def build_valkit_execution_status(bundle: dict[str, Any]) -> dict[str, Any]:
         "returncode": runner.get("returncode"),
         "benchmarks": list(run.get("benchmarks") or []),
         "mode": run.get("mode"),
+        "git_commit": bundle.get("git_commit"),
+        "dirty_worktree": bundle.get("dirty_worktree"),
+        "execution_identity": runner.get("execution_identity"),
+        "result_identity": runner.get("result_identity"),
+        "stdout_identity": runner.get("stdout_identity"),
+        "stderr_identity": runner.get("stderr_identity"),
+        "launch_command_identity": runner.get("launch_command_identity"),
         "unavailable_reason": runner.get("unavailable_reason"),
     }
 
@@ -288,9 +295,19 @@ def execute_valkit_plan(output_dir: str | Path, plan: dict[str, Any]) -> dict[st
     finished_at = time.time()
     stdout_path.write_text(completed.stdout, encoding="utf-8")
     stderr_path.write_text(completed.stderr, encoding="utf-8")
+    execution_identity = _valkit_execution_identity(
+        plan=plan,
+        launch_command=launch_command,
+        command_path=command_path,
+        stdout_path=stdout_path,
+        stderr_path=stderr_path,
+    )
     result = {
         "schema_version": "clean_valkit_execution_result_v1",
         "run_id": plan.get("run_id"),
+        "plan_sha256": bundle.get("plan_sha256"),
+        "git_commit": plan.get("git_commit"),
+        "dirty_worktree": plan.get("dirty_worktree"),
         "returncode": completed.returncode,
         "started_at_unix": started_at,
         "finished_at_unix": finished_at,
@@ -298,6 +315,7 @@ def execute_valkit_plan(output_dir: str | Path, plan: dict[str, Any]) -> dict[st
         "stdout_log": str(stdout_path),
         "stderr_log": str(stderr_path),
         "launch_command": launch_command,
+        "execution_identity": execution_identity,
     }
     _write_json(result_path, result)
     runner = bundle["runner"]
@@ -310,6 +328,11 @@ def execute_valkit_plan(output_dir: str | Path, plan: dict[str, Any]) -> dict[st
     runner["stdout_log"] = str(stdout_path)
     runner["stderr_log"] = str(stderr_path)
     runner["result"] = str(result_path)
+    runner["execution_identity"] = execution_identity
+    runner["result_identity"] = file_identity(result_path).to_dict()
+    runner["stdout_identity"] = execution_identity["stdout_identity"]
+    runner["stderr_identity"] = execution_identity["stderr_identity"]
+    runner["launch_command_identity"] = execution_identity["launch_command_identity"]
     status = build_valkit_execution_status(bundle)
     _write_json(bundle_path, bundle)
     _write_json(status_path, status)
@@ -337,7 +360,7 @@ def build_valkit_launch_command(plan: dict[str, Any]) -> dict[str, Any]:
     if not model_name:
         raise ValueError("--valkit-model-name is required for --execute")
     benchmarks = [str(item) for item in run.get("benchmarks") or []]
-    work_dir = str(run.get("work_dir") or (Path(str(plan.get("output_dir"))) / "valkit_work"))
+    work_dir = _valkit_work_dir(plan)
     Path(work_dir).mkdir(parents=True, exist_ok=True)
     argv = [
         sys.executable,
@@ -363,6 +386,47 @@ def build_valkit_launch_command(plan: dict[str, Any]) -> dict[str, Any]:
         "env_delta": {
             "PYTHONPATH_prepend": str(root),
         },
+        "legacy_shell_wrapper_allowed": False,
+    }
+
+
+def _valkit_work_dir(plan: dict[str, Any]) -> str:
+    run = plan.get("run") or {}
+    return str(run.get("work_dir") or (Path(str(plan.get("output_dir"))) / "valkit_work"))
+
+
+def _valkit_execution_identity(
+    *,
+    plan: dict[str, Any],
+    launch_command: dict[str, Any],
+    command_path: Path,
+    stdout_path: Path,
+    stderr_path: Path,
+) -> dict[str, Any]:
+    run = plan.get("run") or {}
+    model = plan.get("model") or {}
+    root = Path(str(launch_command.get("cwd") or ""))
+    work_dir = _valkit_work_dir(plan)
+    return {
+        "schema_version": "clean_valkit_execution_identity_v1",
+        "plan_sha256": _payload_sha256(plan),
+        "git_commit": plan.get("git_commit"),
+        "dirty_worktree": plan.get("dirty_worktree"),
+        "checkpoint_identity": model.get("checkpoint"),
+        "stage2_checkpoint_identity": model.get("stage2_checkpoint"),
+        "benchmarks": list(run.get("benchmarks") or []),
+        "mode": run.get("mode"),
+        "max_image_resolution": run.get("max_image_resolution"),
+        "tgvf_protocol": run.get("tgvf_protocol"),
+        "post_tgvf_forward_mode": run.get("post_tgvf_forward_mode"),
+        "valkit_model_name": run.get("valkit_model_name"),
+        "valkit_run_mode": run.get("valkit_run_mode"),
+        "valkit_root": run.get("valkit_root"),
+        "run_py_identity": file_identity(root / "run.py").to_dict(),
+        "work_dir_identity": _path_identity(work_dir),
+        "launch_command_identity": file_identity(command_path).to_dict(),
+        "stdout_identity": file_identity(stdout_path).to_dict(),
+        "stderr_identity": file_identity(stderr_path).to_dict(),
         "legacy_shell_wrapper_allowed": False,
     }
 

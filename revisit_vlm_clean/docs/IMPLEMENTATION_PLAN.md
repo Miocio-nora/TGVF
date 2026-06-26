@@ -2182,6 +2182,19 @@ Implemented after Phase 85.
 - this phase does not change training data order, losses, optimizer behavior,
   checkpoint contents, validation cadence, or model execution.
 
+## Phase 87: ValKit Execution Result Identity
+
+Implemented after Phase 86.
+
+- explicit ValKit `--execute` results now record plan hash, git/worktree
+  identity, checkpoint identities, benchmark/mode/protocol identity, ValKit
+  root/run.py identity, work-dir identity, launch-command identity, and
+  stdout/stderr file identities;
+- `valkit_execution_status.json` mirrors the execution identity and result/log
+  identities so a ValKit run can be audited without relying on prose;
+- this phase does not change the ValKit command argv, benchmark selection,
+  scoring behavior, or subprocess execution semantics.
+
 ## Later Phases
 
 1. Port DeepStack original-image injection/masking into clean training and eval
