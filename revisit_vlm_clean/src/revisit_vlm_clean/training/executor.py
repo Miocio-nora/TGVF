@@ -12,6 +12,7 @@ import math
 import os
 import random
 import time
+from contextlib import nullcontext
 from collections.abc import Mapping
 from hashlib import sha1, sha256
 from pathlib import Path
@@ -704,6 +705,11 @@ def launch_training(
         loaded_modules = _load_training_parameter_audit_modules(
             bundle,
             expected_stage=expected_stage,
+        )
+        _apply_legacy_distributed_training_semantics(
+            loaded_modules=loaded_modules,
+            expected_stage=expected_stage,
+            runtime_context=runtime_context,
         )
         trainable_parameters = _write_actual_trainable_parameters_audit(
             execution_dir=rank_execution_dir,
@@ -1750,7 +1756,7 @@ def _checkpoint_probe_payload(
     optimizer_step: int = 0,
     micro_step: int = 0,
 ) -> dict[str, Any]:
-    tgvf_module = modules.get("tgvf")
+    tgvf_module = _unwrap_distributed_data_parallel_module(modules.get("tgvf"))
     if tgvf_module is None or not hasattr(tgvf_module, "state_dict"):
         raise ValueError("checkpoint audit requires a tgvf module with state_dict")
     config = _checkpoint_runtime_config(
@@ -2912,30 +2918,36 @@ def _write_single_process_training_runtime(
             optimizer.zero_grad(set_to_none=True)
             for micro_index in range(accumulation_steps):
                 batch_record = train_cursor.next_batch()
-                result = _run_training_step_probe_for_stage(
-                    bundle=bundle,
-                    artifacts=artifacts,
-                    loaded_modules=loaded_modules,
+                with _training_micro_step_sync_context(
+                    modules=modules,
                     expected_stage=expected_stage,
-                    samples=batch_record["samples"],
-                )
-                loss_tensor = result.get("loss_tensor")
-                if loss_tensor is None:
-                    loss_tensor = result.get("_loss_total_tensor")
-                if loss_tensor is None or not hasattr(loss_tensor, "backward"):
-                    raise ValueError("single-process training requires a differentiable loss")
-                if getattr(loss_tensor, "requires_grad", False) is not True:
-                    raise ValueError("single-process training loss tensor must require gradients")
-                loss_value = _scalar_float(loss_tensor)
-                if loss_value is None or not math.isfinite(loss_value):
-                    raise ValueError("single-process training requires finite losses")
-                loss_scalars = _loss_scalar_fields(result)
-                loss_scalars["loss_total"] = loss_value
-                debug_payload = dict(result.get("debug") or {})
-                if debug_payload:
-                    micro_debug_logs.append(debug_payload)
-                scaled_loss = loss_tensor / float(accumulation_steps)
-                scaled_loss.backward()
+                    micro_index=micro_index,
+                    accumulation_steps=accumulation_steps,
+                ):
+                    result = _run_training_step_probe_for_stage(
+                        bundle=bundle,
+                        artifacts=artifacts,
+                        loaded_modules=loaded_modules,
+                        expected_stage=expected_stage,
+                        samples=batch_record["samples"],
+                    )
+                    loss_tensor = result.get("loss_tensor")
+                    if loss_tensor is None:
+                        loss_tensor = result.get("_loss_total_tensor")
+                    if loss_tensor is None or not hasattr(loss_tensor, "backward"):
+                        raise ValueError("single-process training requires a differentiable loss")
+                    if getattr(loss_tensor, "requires_grad", False) is not True:
+                        raise ValueError("single-process training loss tensor must require gradients")
+                    loss_value = _scalar_float(loss_tensor)
+                    if loss_value is None or not math.isfinite(loss_value):
+                        raise ValueError("single-process training requires finite losses")
+                    loss_scalars = _loss_scalar_fields(result)
+                    loss_scalars["loss_total"] = loss_value
+                    debug_payload = dict(result.get("debug") or {})
+                    if debug_payload:
+                        micro_debug_logs.append(debug_payload)
+                    scaled_loss = loss_tensor / float(accumulation_steps)
+                    scaled_loss.backward()
                 total_micro_steps += 1
                 micro_losses.append(
                     {
@@ -2952,7 +2964,11 @@ def _write_single_process_training_runtime(
                 )
             grad_after_accumulation = _optimizer_grad_summary(optimizer)
             if distributed:
-                _average_optimizer_gradients(optimizer, world_size=world_size)
+                _average_optimizer_gradients(
+                    optimizer,
+                    world_size=world_size,
+                    skip_parameter_ids=_distributed_data_parallel_parameter_ids(modules),
+                )
                 _distributed_barrier(runtime_context)
             grad_after_sync = _optimizer_grad_summary(optimizer)
             clipped_grad_norm = None
@@ -3133,6 +3149,11 @@ def _write_single_process_training_runtime(
         "training_run_launched": True,
         "single_process": not distributed,
         "ddp_enabled": distributed,
+        "legacy_distributed_training_semantics": _legacy_distributed_training_semantics_summary(
+            modules=modules,
+            expected_stage=expected_stage,
+            distributed=distributed,
+        ),
         "rank": rank,
         "local_rank": int(runtime_context.get("local_rank") or 0),
         "is_main": is_main,
@@ -3763,7 +3784,7 @@ def _load_checkpoint_model_states_for_resume(
     modules: dict[str, Any],
     expected_stage: TrainingStage,
 ) -> dict[str, Any]:
-    tgvf_module = modules.get("tgvf")
+    tgvf_module = _unwrap_distributed_data_parallel_module(modules.get("tgvf"))
     if tgvf_module is None or not hasattr(tgvf_module, "load_state_dict"):
         raise ValueError("checkpoint-resume audit requires a tgvf module")
     tgvf_module.load_state_dict(checkpoint["tgvf_module"], strict=True)
@@ -3855,7 +3876,9 @@ def _resume_state_checks(
     checks = {
         "tgvf_module": _state_dict_parity_check(
             checkpoint.get("tgvf_module"),
-            modules.get("tgvf").state_dict() if modules.get("tgvf") is not None else None,
+            _unwrap_distributed_data_parallel_module(modules.get("tgvf")).state_dict()
+            if modules.get("tgvf") is not None
+            else None,
         )
     }
     if expected_stage == TrainingStage.STAGE2:
@@ -3908,7 +3931,12 @@ def _optimizer_parameters(optimizer: Any) -> list[Any]:
     return parameters
 
 
-def _average_optimizer_gradients(optimizer: Any, *, world_size: int) -> None:
+def _average_optimizer_gradients(
+    optimizer: Any,
+    *,
+    world_size: int,
+    skip_parameter_ids: set[int] | None = None,
+) -> None:
     if world_size <= 1:
         return
     try:
@@ -3917,12 +3945,111 @@ def _average_optimizer_gradients(optimizer: Any, *, world_size: int) -> None:
         raise RuntimeError("distributed gradient averaging requires torch.distributed") from exc
     if not (dist.is_available() and dist.is_initialized()):
         raise RuntimeError("distributed gradient averaging requires an initialized process group")
+    skip_parameter_ids = skip_parameter_ids or set()
     for parameter in _optimizer_parameters(optimizer):
+        if id(parameter) in skip_parameter_ids:
+            continue
         grad = getattr(parameter, "grad", None)
         if grad is None:
             continue
         dist.all_reduce(grad, op=dist.ReduceOp.SUM)
         grad.div_(float(world_size))
+
+
+def _apply_legacy_distributed_training_semantics(
+    *,
+    loaded_modules: dict[str, Any],
+    expected_stage: TrainingStage,
+    runtime_context: dict[str, Any],
+) -> None:
+    """Match historical Stage1 distributed semantics before optimizer creation."""
+    if expected_stage != TrainingStage.STAGE1 or not runtime_context.get("distributed"):
+        return
+    modules = dict(loaded_modules.get("modules") or {})
+    tgvf = modules.get("tgvf")
+    if tgvf is None or _is_distributed_data_parallel_module(tgvf):
+        return
+    try:
+        from torch.nn.parallel import DistributedDataParallel
+    except Exception as exc:
+        raise RuntimeError("distributed Stage1 launch requires DistributedDataParallel") from exc
+    if hasattr(tgvf, "train"):
+        tgvf.train()
+    local_rank = int(runtime_context.get("local_rank") or 0)
+    device = str(runtime_context.get("device") or "")
+    wrapped = DistributedDataParallel(
+        tgvf,
+        device_ids=[local_rank] if device.startswith("cuda") else None,
+        output_device=local_rank if device.startswith("cuda") else None,
+        find_unused_parameters=False,
+    )
+    modules["tgvf"] = wrapped
+    loaded_modules["modules"] = modules
+    loader = dict(loaded_modules.get("loader") or {})
+    loader["distributed_training"] = {
+        "stage1_tgvf_wrapped_with_ddp": True,
+        "ddp_broadcast_initial_parameters": True,
+        "gradient_sync": "legacy_ddp_tgvf_plus_manual_protocol_rows",
+        "gradient_accumulation": "ddp_no_sync_until_final_micro_step",
+    }
+    loaded_modules["loader"] = loader
+
+
+def _training_micro_step_sync_context(
+    *,
+    modules: dict[str, Any],
+    expected_stage: TrainingStage,
+    micro_index: int,
+    accumulation_steps: int,
+) -> Any:
+    if (
+        expected_stage == TrainingStage.STAGE1
+        and micro_index < accumulation_steps - 1
+        and _is_distributed_data_parallel_module(modules.get("tgvf"))
+    ):
+        return modules["tgvf"].no_sync()
+    return nullcontext()
+
+
+def _legacy_distributed_training_semantics_summary(
+    *,
+    modules: dict[str, Any],
+    expected_stage: TrainingStage,
+    distributed: bool,
+) -> dict[str, Any]:
+    tgvf_ddp = _is_distributed_data_parallel_module(modules.get("tgvf"))
+    return {
+        "stage": str(expected_stage),
+        "distributed": bool(distributed),
+        "stage1_tgvf_wrapped_with_ddp": bool(
+            expected_stage == TrainingStage.STAGE1 and tgvf_ddp
+        ),
+        "manual_gradient_average_skips_ddp_parameters": bool(tgvf_ddp),
+        "non_ddp_trainables_manually_averaged": bool(distributed),
+    }
+
+
+def _distributed_data_parallel_parameter_ids(modules: dict[str, Any]) -> set[int]:
+    parameter_ids: set[int] = set()
+    for module in modules.values():
+        if not _is_distributed_data_parallel_module(module) or not hasattr(module, "parameters"):
+            continue
+        parameter_ids.update(id(parameter) for parameter in module.parameters())
+    return parameter_ids
+
+
+def _is_distributed_data_parallel_module(module: Any) -> bool:
+    try:
+        from torch.nn.parallel import DistributedDataParallel
+    except Exception:
+        return False
+    return isinstance(module, DistributedDataParallel)
+
+
+def _unwrap_distributed_data_parallel_module(module: Any) -> Any:
+    if _is_distributed_data_parallel_module(module):
+        return module.module
+    return module
 
 
 def _optimizer_grad_summary(optimizer: Any) -> dict[str, Any]:

@@ -126,6 +126,89 @@ def test_stage1_same_image_cursor_assigns_whole_image_groups_to_rank() -> None:
         assert len({item["sample_index"] for item in trace}) == 4
 
 
+def test_stage1_clean_ddp_helpers_unwrap_tgvf_checkpoint_state(monkeypatch) -> None:
+    import torch
+
+    class FakeDDP(torch.nn.Module):
+        def __init__(self, module):
+            super().__init__()
+            self.module = module
+
+    base_tgvf = torch.nn.Linear(2, 2)
+    fake_ddp = FakeDDP(base_tgvf)
+    monkeypatch.setattr(
+        training_executor,
+        "_is_distributed_data_parallel_module",
+        lambda module: isinstance(module, FakeDDP),
+    )
+
+    optimizer = torch.optim.AdamW(fake_ddp.parameters(), lr=1e-4)
+    checkpoint = training_executor._checkpoint_probe_payload(
+        bundle={
+            "stage": "stage1",
+            "run_id": "unit",
+            "protocol": "legacy_v3_tags",
+            "model": {},
+            "training": {},
+            "tgvf": {"variant": "tgvf_v2_bidirectional"},
+        },
+        loaded_modules={"loader": {}},
+        modules={"tgvf": fake_ddp},
+        optimizer=optimizer,
+        scheduler=None,
+        expected_stage=training_executor.TrainingStage.STAGE1,
+    )
+
+    assert sorted(checkpoint["tgvf_module"]) == ["bias", "weight"]
+
+
+def test_stage1_clean_ddp_helpers_skip_manual_tgvf_gradient_sync(monkeypatch) -> None:
+    import torch
+    from contextlib import contextmanager
+
+    class FakeDDP(torch.nn.Module):
+        def __init__(self, module):
+            super().__init__()
+            self.module = module
+            self.no_sync_entered = 0
+
+        @contextmanager
+        def no_sync(self):
+            self.no_sync_entered += 1
+            yield
+
+    base_tgvf = torch.nn.Linear(2, 2)
+    fake_ddp = FakeDDP(base_tgvf)
+    token_rows = torch.nn.Parameter(torch.zeros(2, 2))
+    monkeypatch.setattr(
+        training_executor,
+        "_is_distributed_data_parallel_module",
+        lambda module: isinstance(module, FakeDDP),
+    )
+
+    skipped = training_executor._distributed_data_parallel_parameter_ids(
+        {"tgvf": fake_ddp, "qwen": torch.nn.ParameterList([token_rows])}
+    )
+    assert skipped == {id(parameter) for parameter in fake_ddp.parameters()}
+    assert id(token_rows) not in skipped
+
+    with training_executor._training_micro_step_sync_context(
+        modules={"tgvf": fake_ddp},
+        expected_stage=training_executor.TrainingStage.STAGE1,
+        micro_index=0,
+        accumulation_steps=2,
+    ):
+        pass
+    with training_executor._training_micro_step_sync_context(
+        modules={"tgvf": fake_ddp},
+        expected_stage=training_executor.TrainingStage.STAGE1,
+        micro_index=1,
+        accumulation_steps=2,
+    ):
+        pass
+    assert fake_ddp.no_sync_entered == 1
+
+
 def test_manifest_list_cli(capsys) -> None:
     assert manifest_main(["--list"]) == 0
     captured = capsys.readouterr()

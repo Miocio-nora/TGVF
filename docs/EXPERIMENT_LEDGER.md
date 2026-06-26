@@ -4734,3 +4734,67 @@ entry, update this file immediately.
   - The next valid comparison still requires a fresh clean Stage1 run from
     code after this audit, then internal diagnostics on the resulting
     checkpoint.
+
+### AUDIT-20260627-clean-stage1-forward-training-ddp-semantics
+
+- Status: COMPLETED.
+- Question:
+  - For clean-vs-legacy Stage1 comparison, are the forward/backward training
+    semantics actually aligned, not just the config/artifact identity?
+- Correction to prior notes:
+  - The earlier note in
+    `AUDIT-20260627-clean-stage1-tgvf-config-and-sampler-identity` said clean
+    manual gradient averaging was expected to be mathematically equivalent to
+    legacy DDP for current trainable groups.
+  - That was too weak for a comparable run. Legacy Stage1 wraps the TGVF module
+    in `DistributedDataParallel`, which broadcasts rank0 initial parameters and
+    uses DDP gradient synchronization with `no_sync()` during gradient
+    accumulation. Clean Stage1 did not wrap TGVF in DDP.
+- Confirmed non-equivalence before this fix:
+  - Legacy `scripts/train_tgvf_v3_stage1.py`:
+    - builds `raw_foveal_module`;
+    - calls `raw_foveal_module.train()`;
+    - wraps it with `DistributedDataParallel(...)` when `world_size > 1`;
+    - uses `foveal_module.no_sync()` for non-final accumulation micro-steps;
+    - manually averages protocol token row gradients separately.
+  - Clean executor before this audit:
+    - built one TGVF module per rank without DDP wrapping;
+    - relied on manual all-reduce over optimizer gradients after accumulation;
+    - therefore did not inherit DDP's initial parameter broadcast and did not
+      match the legacy accumulation synchronization path.
+- Code fix:
+  - Clean distributed Stage1 launch now applies legacy-compatible distributed
+    training semantics before trainable-parameter audit and optimizer
+    construction:
+    - wrap `modules["tgvf"]` with PyTorch `DistributedDataParallel`;
+    - keep `find_unused_parameters=False`, matching the legacy default;
+    - record loader metadata:
+      `stage1_tgvf_wrapped_with_ddp=true`,
+      `ddp_broadcast_initial_parameters=true`, and
+      `gradient_sync=legacy_ddp_tgvf_plus_manual_protocol_rows`.
+  - Clean trainer loop now uses the DDP module's `no_sync()` context for
+    non-final accumulation micro-steps, matching legacy Stage1.
+  - Clean manual gradient averaging now skips parameters owned by DDP modules,
+    so TGVF gradients are not double-averaged; non-DDP trainables such as
+    protocol token row parameters remain manually averaged.
+  - Clean Stage1 checkpoint save/resume unwraps DDP before reading/writing
+    `tgvf_module`, preserving legacy-compatible checkpoint keys without a
+    `module.` prefix.
+- What this does not claim:
+  - This does not validate the old clean Stage1 outputs. Runs produced before
+    this fix remain diagnostic side results.
+  - This does not prove all remaining variables are aligned; the next
+    comparable run must still pin the local Qwen3 model path and legacy-visible
+    Stage1 settings.
+- Verification:
+  - `PYTHONPATH=revisit_vlm_clean/src:src python -m py_compile revisit_vlm_clean/src/revisit_vlm_clean/training/executor.py revisit_vlm_clean/tests/test_cli.py`
+    passed.
+  - `PYTHONPATH=revisit_vlm_clean/src:src pytest -q revisit_vlm_clean/tests/test_cli.py -k 'stage1_clean_ddp_helpers or stage1_same_image_cursor'`
+    passed: `5 passed, 46 deselected`.
+  - `PYTHONPATH=revisit_vlm_clean/src:src pytest -q revisit_vlm_clean/tests/test_cli.py`
+    passed: `51 passed, 2 warnings`.
+- Conclusion:
+  - This fixes the most important currently confirmed forward/training
+    semantics gap in clean distributed Stage1.
+  - A fresh clean Stage1 run after this commit is required before comparing
+    clean Stage1 diagnostics against 20260617/20260620 legacy references.
