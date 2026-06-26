@@ -20,8 +20,12 @@ remaining engineering work.
 - Stage1/FVT internal diagnostics:
   - clean now exposes `tgvf_eval_stage_diagnostics`
     (`python -m revisit_vlm_clean.cli.stage_diagnostics`);
-  - the entrypoint supports the preserved `readout,query,distribution` suite
-    for both Stage1 checkpoints and Stage2 checkpoints;
+  - the entrypoint supports the clean-native `readout,query,distribution`
+    suite for both Stage1 checkpoints and Stage2 checkpoints;
+  - readout covers `correct_D`, `no_D`, `random_D`,
+    `wrong_same_image_D`, and `wrong_diff_image_D`;
+  - Stage2 checkpoints load saved `qwen_lora` when present, while the visual
+    tap and merger use the clean utility-model path;
   - Stage2 use is explicitly a Stage1-style regression diagnostic, not an
     external benchmark table.
 
@@ -52,12 +56,12 @@ remaining engineering work.
    - Final benchmark tables should use clean-native backend paths, not the
      diagnostic bridge, unless explicitly labeled as diagnostic.
 
-6. Stage1/FVT diagnostics are clean-wrapped, not reimplemented.
-   - `tgvf_eval_stage_diagnostics` provides clean identity, plan, command, and
-     status files while preserving the established legacy metric implementation.
-   - This is intentional for metric continuity; a clean-native rewrite is not
-     required unless the legacy diagnostics become incompatible with the clean
-     checkpoint contract.
+6. Stage1/FVT diagnostics still need real-run validation on a checkpoint.
+   - The implementation path is now clean-native rather than a legacy shell
+     bridge.
+   - Unit tests cover plan/command/status behavior, but a GPU smoke run should
+     still verify one small checkpoint/sample slice before treating it as a
+     production benchmark-adjacent diagnostic.
 
 7. ValKit is first-class but externally configured.
    - The clean ValKit surface exists, but executable runs require explicit

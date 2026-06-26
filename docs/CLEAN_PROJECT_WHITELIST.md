@@ -766,10 +766,13 @@ Current code-backed classification:
   - `eval/eval_v3_query_sensitivity.py`
   - `eval/eval_v3_fvt_distribution.py`
   - Clean entrypoint: `tgvf_eval_stage_diagnostics`
-    (`python -m revisit_vlm_clean.cli.stage_diagnostics`), which wraps the
-    preserved `eval/run_tgvf_v3_eval_suite.sh` and exposes
-    `readout,query,distribution` for both Stage1 checkpoints and Stage2
-    checkpoints as Stage1-style regression diagnostics.
+    (`python -m revisit_vlm_clean.cli.stage_diagnostics`), which is the
+    clean-native Stage1-style D/readout diagnostic runner. It preserves the
+    established `readout,query,distribution` metric/report names for both
+    Stage1 checkpoints and Stage2 checkpoints, but does not shell out through
+    `eval/run_tgvf_v3_eval_suite.sh`. Stage2 checkpoints load their saved
+    `qwen_lora` when present; D generation uses the clean utility-model vision
+    tap/merger path.
 - Old generic benchmark framework:
   - `src/tgvf_eval/run.py`
   - `src/tgvf_eval/run_suite.py`
