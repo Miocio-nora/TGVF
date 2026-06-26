@@ -3633,7 +3633,7 @@ entry, update this file immediately.
 
 ### EXP-20260626-155246-clean-qwen3-stage12-deepstack-mask075-4gpu
 
-- Status: RELAUNCH_PENDING_AFTER_LEGACY_LOGGING_ALIGNMENT.
+- Status: RUNNING_RELAUNCH_AFTER_LEGACY_LOGGING_ALIGNMENT.
 - Question:
   - Train the clean Qwen3 Stage1 -> Stage2 mainline with the smoke-selected
     4-GPU batch settings, then use the resulting chain for later benchmark
@@ -3676,7 +3676,7 @@ entry, update this file immediately.
   - Initial formal plan commit: `28f50dc`.
   - Micro4 fallback ledger commit: `d435f86`.
   - Progress/W&B logging patch commit: `527d57b`.
-  - Legacy-aligned component/debug logging patch: pending commit.
+  - Legacy-aligned component/debug logging patch: `69b01e3`.
   - Worktree expected clean except untracked `logs/` and `third_party/`.
 - Stage1 checkpoint:
   - None for launch; Stage1 starts from `Qwen/Qwen3-VL-8B-Thinking`.
@@ -3714,6 +3714,10 @@ entry, update this file immediately.
     `PYTHONPATH=revisit_vlm_clean/src:src python -m revisit_vlm_clean.cli.train_stage1 --run-id clean_qwen3_stage1_4gpu_m4a2_wandb_20260626_170602 --train-file data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend/splits/tgvf_v4_teacher_stage1_protocol_c_focus.train.jsonl --output-dir outputs/clean_training/qwen3_stage12_deepstack_mask075_4gpu_20260626_170602/stage1_micro4 --max-image-resolution 512 --max-steps 2000 --save-every 2000 --world-size 4 --micro-batch-size 4 --global-batch 32 --wandb-project tgvf-clean-qwen3-deepstack --wandb-mode online --write-plan`.
   - Stage1 micro4 relaunch command:
     `CUDA_VISIBLE_DEVICES=0,1,2,3 PYTHONPATH=revisit_vlm_clean/src:src torchrun --nproc-per-node 4 -m revisit_vlm_clean.training.stage1_executor --plan outputs/clean_training/qwen3_stage12_deepstack_mask075_4gpu_20260626_170602/stage1_micro4/training_plan.json --launch-training`.
+  - Stage1 micro4 legacy-logging relaunch plan command:
+    `PYTHONPATH=revisit_vlm_clean/src:src python -m revisit_vlm_clean.cli.train_stage1 --run-id clean_qwen3_stage1_4gpu_m4a2_legacylog_20260626_172639 --train-file data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend/splits/tgvf_v4_teacher_stage1_protocol_c_focus.train.jsonl --output-dir outputs/clean_training/qwen3_stage12_deepstack_mask075_4gpu_20260626_172639/stage1_micro4 --max-image-resolution 512 --max-steps 2000 --save-every 2000 --world-size 4 --micro-batch-size 4 --global-batch 32 --wandb-project tgvf-clean-qwen3-deepstack --wandb-mode online --write-plan`.
+  - Stage1 micro4 legacy-logging relaunch command:
+    `CUDA_VISIBLE_DEVICES=0,1,2,3 PYTHONPATH=revisit_vlm_clean/src:src torchrun --nproc-per-node 4 -m revisit_vlm_clean.training.stage1_executor --plan outputs/clean_training/qwen3_stage12_deepstack_mask075_4gpu_20260626_172639/stage1_micro4/training_plan.json --launch-training`.
   - Stage2 plan/launch command:
     TBD after Stage1 checkpoint exists.
 - GPUs:
@@ -3726,11 +3730,15 @@ entry, update this file immediately.
     `clean_stage1_qwen3_mask075_4gpu_m4_20260626_155809`.
   - Stopped Stage1 relaunch session with incomplete component logging:
     `clean_stage1_qwen3_m4_wandb_20260626_170602`.
+  - Active Stage1 legacy-logging relaunch session:
+    `clean_stage1_qwen3_m4_legacylog_20260626_172639`.
 - Started:
   - Initial Stage1 micro8 launch: 2026-06-26T15:55:33+09:00.
   - Stage1 micro4 fallback launch: 2026-06-26T15:59:57+09:00.
   - Stage1 micro4 relaunch with progress/W&B patch:
     2026-06-26T17:08:16+09:00.
+  - Stage1 micro4 legacy-logging relaunch:
+    2026-06-26T17:28:03+09:00.
 - Finished:
   - Paused/interrupted at 2026-06-26T16:53:33+09:00 before checkpoint
     completion, to patch missing clean-native progress/W&B logging.
@@ -3772,6 +3780,31 @@ entry, update this file immediately.
     - This run is invalid for training diagnostics because it lacks Stage1
       component losses (`loss_gen`, `loss_visual_token_manifold`,
       `loss_same_image_negative`) and legacy debug metrics.
+  - Stage1 micro4 legacy-logging relaunch: VERIFIED_RUNNING.
+    - Output:
+      `outputs/clean_training/qwen3_stage12_deepstack_mask075_4gpu_20260626_172639/stage1_micro4`.
+    - Plan:
+      `outputs/clean_training/qwen3_stage12_deepstack_mask075_4gpu_20260626_172639/stage1_micro4/training_plan.json`.
+    - Log:
+      `logs/clean_training/clean_stage1_qwen3_m4_legacylog_20260626_172639.log`.
+    - Expected progress file:
+      `outputs/clean_training/qwen3_stage12_deepstack_mask075_4gpu_20260626_172639/stage1_micro4/clean_training_execution/training_progress.jsonl`.
+    - W&B:
+      `https://wandb.ai/mio_nora/tgvf-clean-qwen3-deepstack/runs/0yc1jt1f`.
+    - Code commit embedded in plan: `69b01e3c46dc866130b69691aa2393d60d3dd19c`.
+    - Plan dirty worktree: `False`.
+    - Verification at about 2026-06-26T17:29+09:00:
+      - tmux session alive.
+      - progress reached at least `step=5/2000`.
+      - latest checked scalar losses include
+        `loss_total=3.743674874305725`, `loss_gen=2.21875`,
+        `loss_same_image_negative=1.23046875`,
+        `loss_visual_token_manifold=2.9445611238479614`.
+      - latest checked legacy debug fields include `finite_rate=1.0`,
+        `position_mode=native_source_grid`,
+        `attention_mask_mode=weak_strict_original_image_keys_4d`,
+        `visual_token_manifold_active=True`, `source_visual_token_count=234`,
+        and `answer_token_count=15`.
 - Analysis:
   - The single-process smoke under-sampled long first-batch examples; real DDP
     `micro_batch_size=8` is not robust.
