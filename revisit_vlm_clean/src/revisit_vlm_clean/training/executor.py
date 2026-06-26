@@ -382,15 +382,28 @@ def prepare_training_execution(
         plan=plan,
         expected_stage=expected_stage,
     )
+    deepstack_training = (
+        _write_deepstack_training_plan_artifact(
+            execution_dir=out,
+            plan=plan,
+            expected_stage=expected_stage,
+        )
+        if expected_stage == TrainingStage.STAGE2
+        else None
+    )
     bundle["runtime_artifacts"] = {
         **dataset_runtime["paths"],
         "checkpoint_contract": checkpoint_contract["path"],
         "optimizer_groups": optimizer_groups["path"],
     }
+    if deepstack_training is not None:
+        bundle["runtime_artifacts"]["deepstack_training_plan"] = deepstack_training["path"]
     bundle["dataset_runtime"] = dataset_runtime["dataset_runtime"]
     bundle["first_batch_identity"] = dataset_runtime["first_batch_identity"]
     bundle["checkpoint_contract"] = checkpoint_contract["contract"]
     bundle["optimizer_groups"] = optimizer_groups["contract"]
+    if deepstack_training is not None:
+        bundle["deepstack_training_plan"] = deepstack_training["plan"]
     status = _execution_status(bundle)
     bundle_path = out / "clean_training_execution_bundle.json"
     status_path = out / "clean_training_execution_status.json"
@@ -412,6 +425,11 @@ def prepare_training_execution(
         "checkpoint_contract": checkpoint_contract["path"],
         "optimizer_groups": optimizer_groups["path"],
         "runner_status": status["runner_status"],
+        **(
+            {"deepstack_training_plan": deepstack_training["path"]}
+            if deepstack_training is not None
+            else {}
+        ),
     }
 
 
@@ -1052,6 +1070,11 @@ def _trainer_runtime_contract(
             "optimizer_groups.json",
             "first_batch_identity.json",
             "checkpoint_contract.json",
+            *(
+                ["deepstack_training_plan.json"]
+                if expected_stage == TrainingStage.STAGE2
+                else []
+            ),
         ],
         "must_emit_before_first_optimizer_step": [
             "git_and_plan_identity",
@@ -1149,6 +1172,8 @@ def _load_runtime_artifacts(
         "checkpoint_contract",
         "optimizer_groups",
     }
+    if expected_stage == TrainingStage.STAGE2:
+        required.add("deepstack_training_plan")
     missing = sorted(required - set(artifact_paths))
     if missing:
         raise ValueError(f"execution bundle missing runtime artifact paths: {missing}")
@@ -1185,6 +1210,14 @@ def _validate_runtime_artifact_payloads(
         )
     if artifacts["optimizer_groups"].get("status") != "validated":
         raise ValueError("optimizer_groups must be validated before runtime audit")
+    if expected_stage == TrainingStage.STAGE2:
+        deepstack_plan = artifacts["deepstack_training_plan"]
+        if deepstack_plan.get("schema_version") != "clean_deepstack_training_plan_v1":
+            raise ValueError("deepstack_training_plan schema mismatch")
+        if deepstack_plan.get("stage") != "stage2":
+            raise ValueError("deepstack_training_plan stage mismatch")
+        if deepstack_plan.get("gate_name") != "apply_deepstack_training_scope_when_enabled":
+            raise ValueError("deepstack_training_plan gate mismatch")
     dataset = artifacts["dataset_runtime_identity"]
     first_batch = artifacts["first_batch_identity"]
     if dataset.get("global_batch_size") != first_batch.get("requested_global_batch_size"):
@@ -2121,6 +2154,11 @@ def _write_training_launch_readiness_audit(
     unknown_gates = [
         gate["name"] for gate in gate_rows if gate.get("status") == "unknown_gate"
     ]
+    blocked_gates = [
+        gate["name"]
+        for gate in gate_rows
+        if str(gate.get("status") or "").startswith("blocked_")
+    ]
     identity_validated_gates = [
         gate["name"]
         for gate in gate_rows
@@ -2133,8 +2171,13 @@ def _write_training_launch_readiness_audit(
     unexpected_blockers = [
         item for item in blocking_items if item != expected_nonlaunch_blocker
     ]
+    non_identity_gates = [
+        gate["name"]
+        for gate in gate_rows
+        if gate.get("status") != "identity_validated"
+    ]
     all_required_gates_identity_validated = bool(gate_rows) and not (
-        pending_gates or unknown_gates
+        non_identity_gates
     )
     contract_ready_for_trainer_loop = (
         all_required_gates_identity_validated and not unexpected_blockers
@@ -2178,6 +2221,8 @@ def _write_training_launch_readiness_audit(
         "identity_validated_gates": identity_validated_gates,
         "pending_gates": pending_gates,
         "unknown_gates": unknown_gates,
+        "blocked_gates": blocked_gates,
+        "non_identity_gates": non_identity_gates,
         "remaining_blockers": blocking_items,
         "expected_nonlaunch_blocker": (
             expected_nonlaunch_blocker
@@ -2200,8 +2245,10 @@ def _write_training_launch_readiness_audit(
         },
         "deepstack": {
             "enabled": bool(deepstack.get("enabled")),
+            "original_image_scope": deepstack.get("original_image_scope"),
             "mask_scope": deepstack.get("mask_scope"),
             "training_scope_gate_status": deepstack_gate_status,
+            "training_plan": bundle.get("deepstack_training_plan"),
         },
         "notes": [
             "readiness summarizes existing clean runtime audit gates",
@@ -2324,10 +2371,11 @@ def _validate_training_launch_contract(
     if world_size > 1 and not runtime_context.get("distributed"):
         raise ValueError("distributed clean launch requires torchrun runtime context")
     if expected_stage == TrainingStage.STAGE2:
-        deepstack = bundle.get("deepstack") or {}
-        if bool(deepstack.get("enabled")):
+        deepstack_plan = artifacts.get("deepstack_training_plan") or {}
+        if not bool(deepstack_plan.get("execution_supported", True)):
             raise ValueError(
-                "clean Stage2 launch does not yet support DeepStack training injection"
+                "clean Stage2 launch does not yet support DeepStack training injection: "
+                + "; ".join(str(item) for item in deepstack_plan.get("blocking_items") or [])
             )
     if artifacts["optimizer_groups"].get("status") != "validated":
         raise ValueError("optimizer groups must be validated before launch")
@@ -4215,6 +4263,12 @@ def _runtime_audit_report(
         blocking_items.append(
             f"{expected_stage.value} training cadence requires --audit-cadence"
         )
+    if expected_stage == TrainingStage.STAGE2:
+        deepstack_plan = artifacts.get("deepstack_training_plan") or {}
+        if not bool(deepstack_plan.get("execution_supported", True)):
+            blocking_items.extend(
+                str(item) for item in deepstack_plan.get("blocking_items") or []
+            )
     status = "ready_for_explicit_launch" if not blocking_items else "blocked_before_training_loop"
     return {
         "schema_version": "clean_training_runtime_audit_v1",
@@ -4417,8 +4471,8 @@ def _launch_gate_audit(
                 }
             )
     if bundle.get("stage") == str(TrainingStage.STAGE2):
-        deepstack = bundle.get("deepstack") or {}
-        if not bool(deepstack.get("enabled")):
+        deepstack_plan = artifacts.get("deepstack_training_plan") or {}
+        if bool(deepstack_plan.get("execution_supported", True)):
             satisfied.add("apply_deepstack_training_scope_when_enabled")
     pending_model_load = {
         "load_model_and_processor",
@@ -4449,6 +4503,17 @@ def _launch_gate_audit(
     for gate in required:
         if gate in satisfied:
             status = "identity_validated"
+        elif (
+            gate == "apply_deepstack_training_scope_when_enabled"
+            and bundle.get("stage") == str(TrainingStage.STAGE2)
+            and not bool(
+                (artifacts.get("deepstack_training_plan") or {}).get(
+                    "execution_supported",
+                    True,
+                )
+            )
+        ):
+            status = "blocked_unimplemented_deepstack_training"
         elif gate in pending_model_load or gate in stage_pending:
             status = "pending_real_trainer_loop"
         else:
@@ -4704,6 +4769,22 @@ def _write_optimizer_groups_artifact(
     path = execution_dir / "optimizer_groups.json"
     _write_json(path, contract)
     return {"path": str(path), "contract": contract}
+
+
+def _write_deepstack_training_plan_artifact(
+    *,
+    execution_dir: Path,
+    plan: dict[str, Any],
+    expected_stage: TrainingStage,
+) -> dict[str, Any]:
+    if expected_stage != TrainingStage.STAGE2:
+        raise ValueError("deepstack training plan is Stage2-only")
+    payload = dict(plan.get("deepstack_training_plan") or {})
+    if payload.get("schema_version") != "clean_deepstack_training_plan_v1":
+        raise ValueError("Stage2 plan missing clean deepstack_training_plan")
+    path = execution_dir / "deepstack_training_plan.json"
+    _write_json(path, payload)
+    return {"path": str(path), "plan": payload}
 
 
 def _optimizer_groups_contract(
@@ -5049,6 +5130,8 @@ def _validate_training_plan(plan: dict[str, Any], *, expected_stage: TrainingSta
     _validate_dataset(plan.get("dataset") or {}, stage=stage)
     if stage == TrainingStage.STAGE1:
         _validate_stage1_readout_context(plan.get("readout_context") or {})
+    if stage == TrainingStage.STAGE2:
+        _validate_stage2_deepstack_training_plan(plan)
     _validate_module_policy(plan.get("module_policy") or {}, stage=stage)
     _validate_prepare_command(plan.get("clean_prepare_execution_command") or {}, stage=stage)
     _validate_clean_command(plan.get("clean_training_command") or {}, stage=stage)
@@ -5135,6 +5218,32 @@ def _validate_stage1_readout_context(context: dict[str, Any]) -> None:
         != "weak_strict_original_image_key_blocking_after_tgvf_append"
     ):
         raise ValueError("Stage1 readout_context attention mask blocking identity mismatch")
+
+
+def _validate_stage2_deepstack_training_plan(plan: dict[str, Any]) -> None:
+    deepstack = plan.get("deepstack") or {}
+    deepstack_plan = plan.get("deepstack_training_plan") or {}
+    if deepstack_plan.get("schema_version") != "clean_deepstack_training_plan_v1":
+        raise ValueError("Stage2 plan must include clean deepstack_training_plan")
+    enabled = bool(deepstack.get("enabled"))
+    if bool(deepstack_plan.get("enabled")) != enabled:
+        raise ValueError("Stage2 deepstack_training_plan enabled mismatch")
+    if deepstack_plan.get("gate_name") != "apply_deepstack_training_scope_when_enabled":
+        raise ValueError("Stage2 deepstack_training_plan gate mismatch")
+    blocking_items = list(deepstack_plan.get("blocking_items") or [])
+    if enabled:
+        scope = deepstack.get("original_image_scope")
+        if deepstack_plan.get("original_image_scope") != scope:
+            raise ValueError("Stage2 deepstack_training_plan scope mismatch")
+        if deepstack_plan.get("execution_supported") is not False:
+            raise ValueError("enabled Stage2 DeepStack must remain execution-blocked")
+        if not blocking_items:
+            raise ValueError("enabled Stage2 DeepStack plan must record blocking items")
+    else:
+        if deepstack_plan.get("execution_supported") is not True:
+            raise ValueError("disabled Stage2 DeepStack plan must be execution-supported")
+        if blocking_items:
+            raise ValueError("disabled Stage2 DeepStack plan must not record blockers")
 
 
 def _validate_prepare_command(command: dict[str, Any], *, stage: TrainingStage) -> None:

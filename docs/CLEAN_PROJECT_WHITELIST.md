@@ -174,6 +174,13 @@ before training/eval cleanup can proceed.
   before clipping, and keep checkpoint/result writing on rank 0. Stage2
   `val_file` runs rank-0 no-backward validation at the planned `eval_every`
   cadence and records `validation_records`.
+- Stage2 prepare-execution must write `deepstack_training_plan.json`.
+  Disabled DeepStack is a validated no-op. Enabled DeepStack must remain
+  launch-blocked until original-image DeepStack injection/masking is actually
+  ported. The execution bundle, runtime audit, launch readiness, and launch
+  guard must preserve this artifact and read its `blocking_items`; DeepStack
+  blockers must not exist only as an unstructured status string or verbal
+  convention.
 - Single-process launch must use deterministic sample cursors instead of
   replaying the fixed audit probe batch. Stage1 may group same-image samples
   for matrix CE; Stage2 train cursor follows `target_focus_ratio` when both
@@ -337,6 +344,13 @@ before training/eval cleanup can proceed.
   before clipping, and keep checkpoint/result writing on rank 0. Stage2
   `val_file` runs rank-0 no-backward validation at the planned `eval_every`
   cadence and records `validation_records`.
+- Stage2 prepare-execution must write `deepstack_training_plan.json`.
+  Disabled DeepStack is a validated no-op. Enabled DeepStack must remain
+  launch-blocked until original-image DeepStack injection/masking is actually
+  ported. The execution bundle, runtime audit, launch readiness, and launch
+  guard must preserve this artifact and read its `blocking_items`; DeepStack
+  blockers must not exist only as an unstructured status string or verbal
+  convention.
 - Single-process launch must use deterministic sample cursors instead of
   replaying the fixed audit probe batch. Stage2 train cursor follows
   `target_focus_ratio` when both focus/no-focus rows exist; validation cursor

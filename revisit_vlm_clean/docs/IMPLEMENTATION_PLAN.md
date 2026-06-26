@@ -2023,6 +2023,34 @@ Implemented after Phase 76.
 - Stage2 DeepStack training remains blocked until original-image DeepStack
   injection/masking is ported.
 
+## Phase 78: Structured DeepStack Training Contract
+
+Implemented after Phase 77.
+
+- Stage2 launch plans now include a structured `deepstack_training_plan`;
+- prepare-execution writes `deepstack_training_plan.json` as a required Stage2
+  runtime artifact;
+- disabled DeepStack is recorded as a validated no-op and does not block clean
+  launch;
+- enabled DeepStack records:
+  - requested DeepStack scope;
+  - original-image DeepStack blocking/restoration semantics for
+    `through_answer` and `evidence_only`;
+  - the fact that D remains a v-merge-level visual-token span rather than a
+    DeepStack-like feature path;
+  - current unimplemented training blockers for native Qwen3 original-image
+    DeepStack injection and post-D scope masking/restoration;
+- clean launch rejects enabled Stage2 DeepStack from the prepared artifact
+  blockers, not from an unstructured status string;
+- runtime audit and launch-readiness include the same structured DeepStack
+  blocker evidence;
+- launch-readiness now requires every required gate to be
+  `identity_validated`; blocked gates cannot accidentally count as ready.
+
+This phase does not implement actual Stage2 DeepStack feature injection or
+masking. It makes the unsupported state explicit, machine-readable, and
+preserved across plan, prepare, runtime audit, and launch.
+
 ## Later Phases
 
 1. Port DeepStack original-image injection/masking into clean training and eval

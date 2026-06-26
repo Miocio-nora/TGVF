@@ -435,6 +435,7 @@ def build_stage2_launch_plan(
         world_size=config.batch.world_size,
         deepstack_enabled=config.deepstack.enabled,
     )
+    deepstack_training_plan = _deepstack_training_plan(config)
     return {
         "training_plan_schema_version": TRAINING_PLAN_SCHEMA_VERSION,
         "stage": TrainingStage.STAGE2,
@@ -477,6 +478,7 @@ def build_stage2_launch_plan(
             ),
         },
         "deepstack": config.deepstack.to_dict(),
+        "deepstack_training_plan": deepstack_training_plan,
         "lora": {
             "rank": config.lora_rank,
             "alpha": config.lora_alpha,
@@ -508,7 +510,10 @@ def build_stage2_launch_plan(
         },
         "clean_constraints": {
             "fvt_position_mode_whitelist": ["native_source_grid"],
-            "deepstack_training_semantics_supported": True,
+            "deepstack_training_schema_supported": True,
+            "deepstack_training_execution_supported": deepstack_training_plan[
+                "execution_supported"
+            ],
             "d_deepstack_features_default": False,
             "legacy_command_is_final": False,
         },
@@ -735,6 +740,59 @@ def _clean_native_training_status(
             else "auditable launch plan plus clean execution bundle handoff"
         ),
         "blocking_items": blockers,
+    }
+
+
+def _deepstack_training_plan(config: Stage2LaunchConfig) -> dict[str, Any]:
+    state = config.deepstack
+    scope = state.original_image_scope
+    enabled = bool(state.enabled)
+    restore_for_answer = scope == DeepStackScope.EVIDENCE_ONLY
+    block_after_tgvf_append = scope in {
+        DeepStackScope.THROUGH_ANSWER,
+        DeepStackScope.EVIDENCE_ONLY,
+    }
+    blocking_items = (
+        [
+            "native Qwen3 original-image DeepStack feature injection is not ported "
+            "into clean Stage2 training",
+            "post-D DeepStack masking/restoration by scope is not ported into "
+            "clean Stage2 training",
+        ]
+        if enabled
+        else []
+    )
+    return {
+        "schema_version": "clean_deepstack_training_plan_v1",
+        "stage": "stage2",
+        "enabled": enabled,
+        "requested": state.to_dict(),
+        "execution_supported": not blocking_items,
+        "default_enabled": False,
+        "original_image_scope": str(scope),
+        "original_image_deepstack": {
+            "required_when_enabled": enabled,
+            "injection_source": "native_qwen3_original_image_deepstack_features",
+            "block_after_tgvf_append": block_after_tgvf_append,
+            "restore_for_answer": restore_for_answer,
+            "scope_mapping": {
+                "through_answer": "block original-image DeepStack from D/evidence through answer",
+                "evidence_only": (
+                    "block original-image DeepStack for D/evidence and restore for answer"
+                ),
+            },
+        },
+        "d_deepstack_features": {
+            "required_for_current_mainline": False,
+            "reason": "D remains a v-merge-level visual-token span",
+        },
+        "current_training_path": {
+            "uses_manual_inputs_embeds": True,
+            "qwen3_deepstack_features_injected": False,
+            "post_d_deepstack_scope_mask_applied": False,
+        },
+        "gate_name": "apply_deepstack_training_scope_when_enabled",
+        "blocking_items": blocking_items,
     }
 
 

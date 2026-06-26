@@ -82,7 +82,8 @@ starting training. `clean_training_command.sh` is executable only for currently
 supported clean launches. `world_size=1` uses `python -m ... --launch-training`;
 `world_size>1` uses `torchrun --nproc-per-node <world_size>`. Stage2 DeepStack
 training launches remain blocked until original-image DeepStack
-injection/masking is ported.
+injection/masking is ported, but the blocker is recorded as a structured
+`deepstack_training_plan`.
 
 The planned clean training modules are importable:
 
@@ -193,7 +194,8 @@ bundle and runs the clean trainer loop. Single-process launch writes
 with `val_file` also run rank-0 no-backward in-training validation at
 `eval_every` and final `max_steps`, recorded in `validation_records`. This path
 is clean-native and does not call the historical training scripts, but it still
-rejects Stage2 DeepStack-enabled training plans.
+rejects Stage2 DeepStack-enabled training plans using the prepared
+`deepstack_training_plan.json` blocker evidence.
 
 Single-process launch uses deterministic train/validation sample cursors rather
 than repeatedly replaying the audit probe batch. Stage1 uses same-image groups
@@ -204,6 +206,12 @@ sequentially over the validation file. The runtime records
 Distributed launch shards the train cursor by rank, uses local-rank device maps
 under torchrun, averages optimizer gradients before clipping, and keeps
 checkpoint/result writing on rank 0.
+
+Stage2 prepare-execution writes `deepstack_training_plan.json`. Disabled
+DeepStack is a validated no-op. Enabled DeepStack records the requested scope,
+the original-image DeepStack masking/restoration semantics, and the current
+unimplemented training blockers; D remains a v-merge-level visual-token span by
+default.
 
 ## Fixed Manifests
 

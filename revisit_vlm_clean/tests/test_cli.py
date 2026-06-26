@@ -2724,10 +2724,77 @@ def test_stage2_deepstack_plan_disables_legacy_command(tmp_path, capsys) -> None
     payload = capsys.readouterr().out
     assert '"enabled": true' in payload
     assert '"original_image_scope": "evidence_only"' in payload
+    assert '"deepstack_training_plan"' in payload
+    assert '"execution_supported": false' in payload
+    assert '"restore_for_answer": true' in payload
     assert '"clean_native_training"' in payload
     assert '"executable": false' in payload
     assert "DeepStack original-image injection/masking" in payload
     assert "historical Stage2 script has no DeepStack training controls" in payload
+
+
+def test_stage2_deepstack_prepare_writes_training_plan_and_launch_guard(tmp_path) -> None:
+    train_file = tmp_path / "stage2.train.jsonl"
+    checkpoint = tmp_path / "stage1.pt"
+    train_file.write_text(
+        '{"image": "/tmp/image.jpg", "question": "q", "answer": "a", '
+        '"need_focus": true, "evidence_state": "need_local_visual_evidence"}\n',
+        encoding="utf-8",
+    )
+    _write_minimal_stage1_checkpoint(checkpoint)
+    output_dir = tmp_path / "stage2_deepstack_plan"
+    assert (
+        stage2_main(
+            [
+                "--run-id",
+                "stage2_deepstack_prepare",
+                "--train-file",
+                str(train_file),
+                "--stage1-checkpoint",
+                str(checkpoint),
+                "--output-dir",
+                str(output_dir),
+                "--mask-original-image-after-tgvf-scope",
+                "through_answer",
+                "--deepstack-enabled",
+                "--write-plan",
+            ]
+        )
+        == 0
+    )
+    assert (
+        stage2_executor_main(
+            [
+                "--plan",
+                str(output_dir / "training_plan.json"),
+                "--prepare-execution",
+            ]
+        )
+        == 0
+    )
+    execution_dir = output_dir / "clean_training_execution"
+    deepstack_plan = json.loads((execution_dir / "deepstack_training_plan.json").read_text())
+    bundle = json.loads((execution_dir / "clean_training_execution_bundle.json").read_text())
+    assert deepstack_plan["schema_version"] == "clean_deepstack_training_plan_v1"
+    assert deepstack_plan["enabled"] is True
+    assert deepstack_plan["execution_supported"] is False
+    assert deepstack_plan["original_image_deepstack"]["block_after_tgvf_append"] is True
+    assert deepstack_plan["original_image_deepstack"]["restore_for_answer"] is False
+    assert deepstack_plan["d_deepstack_features"]["required_for_current_mainline"] is False
+    assert bundle["runtime_artifacts"]["deepstack_training_plan"] == str(
+        execution_dir / "deepstack_training_plan.json"
+    )
+    assert "deepstack_training_plan.json" in bundle["trainer_runtime_contract"][
+        "required_runtime_artifacts"
+    ]
+    with pytest.raises(ValueError, match="native Qwen3 original-image DeepStack"):
+        stage2_executor_main(
+            [
+                "--plan",
+                str(output_dir / "training_plan.json"),
+                "--launch-training",
+            ]
+        )
 
 
 def test_generate_data_dry_run_cli(tmp_path, capsys) -> None:
