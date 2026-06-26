@@ -162,16 +162,18 @@ before training/eval cleanup can proceed.
   unsupported runtime feature remains;
   `will_launch_training` and `launch_permitted` must remain `false`.
 - `clean_prepare_execution_command.sh` is the runnable clean handoff command;
-  `clean_training_command.sh` is executable only for supported single-process
-  clean launches. Plans that require DDP/multi-process execution or DeepStack
+  `clean_training_command.sh` is executable for supported single-process and
+  torchrun distributed clean launches. Plans that require Stage2 DeepStack
   training injection must keep the command non-executable and record the
   blocking reason.
 - Explicit clean launch may write `single_process_training_runtime.json`,
+  `distributed_rank_N_training_runtime.json`,
   `clean_training_launch_result.json`, `clean_training_launch_status.json`, and
-  `checkpoint_step_N.pt` checkpoints. This is currently a single-process
-  runtime only. Stage2 `val_file` runs no-backward validation at the planned
-  `eval_every` cadence and records `validation_records`; DDP/multi-process
-  training remains unresolved.
+  `checkpoint_step_N.pt` checkpoints. Distributed torchrun launch must shard
+  train samples by rank, set local-rank device maps, average optimizer gradients
+  before clipping, and keep checkpoint/result writing on rank 0. Stage2
+  `val_file` runs rank-0 no-backward validation at the planned `eval_every`
+  cadence and records `validation_records`.
 - Single-process launch must use deterministic sample cursors instead of
   replaying the fixed audit probe batch. Stage1 may group same-image samples
   for matrix CE; Stage2 train cursor follows `target_focus_ratio` when both
@@ -323,16 +325,18 @@ before training/eval cleanup can proceed.
   unsupported runtime feature remains;
   `will_launch_training` and `launch_permitted` must remain `false`.
 - `clean_prepare_execution_command.sh` is the runnable clean handoff command;
-  `clean_training_command.sh` is executable only for supported single-process
-  clean launches. Plans that require DDP/multi-process execution or DeepStack
+  `clean_training_command.sh` is executable for supported single-process and
+  torchrun distributed clean launches. Plans that require Stage2 DeepStack
   training injection must keep the command non-executable and record the
   blocking reason.
 - Explicit clean launch may write `single_process_training_runtime.json`,
+  `distributed_rank_N_training_runtime.json`,
   `clean_training_launch_result.json`, `clean_training_launch_status.json`, and
-  `checkpoint_step_N.pt` checkpoints. This is currently a single-process
-  runtime only. Stage2 `val_file` runs no-backward validation at the planned
-  `eval_every` cadence and records `validation_records`; DDP/multi-process
-  training remains unresolved.
+  `checkpoint_step_N.pt` checkpoints. Distributed torchrun launch must shard
+  train samples by rank, set local-rank device maps, average optimizer gradients
+  before clipping, and keep checkpoint/result writing on rank 0. Stage2
+  `val_file` runs rank-0 no-backward validation at the planned `eval_every`
+  cadence and records `validation_records`.
 - Single-process launch must use deterministic sample cursors instead of
   replaying the fixed audit probe batch. Stage2 train cursor follows
   `target_focus_ratio` when both focus/no-focus rows exist; validation cursor

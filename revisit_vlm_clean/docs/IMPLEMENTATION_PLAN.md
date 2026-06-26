@@ -1999,12 +1999,35 @@ Implemented after Phase 75.
 - audit-only probes retain their fixed probe-batch behavior unless launch passes
   explicit cursor samples.
 
+## Phase 77: Clean Torchrun Distributed Training Launch
+
+Implemented after Phase 76.
+
+- Stage1/Stage2 launch plans now treat `world_size>1` as a supported clean
+  `distributed_torchrun` runtime when Stage2 DeepStack training is disabled;
+- `clean_training_command.sh` is executable for distributed plans and uses
+  `torchrun --nproc-per-node <world_size> -m revisit_vlm_clean.training...`;
+- direct `python -m ... --launch-training` for a distributed plan fails before
+  model load unless torchrun provides matching `WORLD_SIZE`;
+- distributed launch initializes a torch distributed process group, sets the
+  local CUDA device when available, and injects the local-rank `device_map`
+  into the clean model loader;
+- each rank writes its own runtime evidence, while rank 0 owns
+  `clean_training_launch_result.json`, `clean_training_launch_status.json`,
+  checkpoint publication, and Stage2 validation records;
+- train cursors are rank-sharded and preserve original sample indices in
+  `sample_trace`;
+- gradients in optimizer param groups are all-reduced and averaged before
+  gradient clipping, matching the legacy Stage2 manual averaging behavior while
+  keeping checkpoint state dicts unwrapped;
+- Stage2 DeepStack training remains blocked until original-image DeepStack
+  injection/masking is ported.
+
 ## Later Phases
 
-1. Port DDP/multi-process clean training execution.
-2. Port DeepStack original-image injection/masking into clean training and eval
+1. Port DeepStack original-image injection/masking into clean training and eval
    execution.
-3. Keep data generation first-class:
+2. Keep data generation first-class:
    - deterministic Stage1/Stage2 transforms stay in `tgvf_generate_data` and
      are preserved rather than rewritten in the current execution cleanup;
    - heavy teacher trajectory generation is ported only when regeneration is

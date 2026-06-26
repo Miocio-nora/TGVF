@@ -414,20 +414,23 @@ def test_stage1_training_write_plan_cli(tmp_path) -> None:
     assert "qwen_visual_merger" in plan["module_policy"]["frozen"]
     assert plan["module_policy"]["visual_merger"]["trainable"] is False
     assert plan["module_policy"]["training_runtime"]["use_cache"] is False
-    assert plan["clean_native_training"]["executable"] is False
+    assert plan["clean_native_training"]["executable"] is True
     assert plan["clean_native_training"]["required_for_final_clean_project"] is True
     assert plan["clean_native_training"]["prepare_execution_supported"] is True
-    assert plan["clean_native_training"]["status"] == "clean_native_launch_blocked"
-    assert "DDP/multi-process clean training is not ported yet" in (
-        plan["clean_native_training"]["blocking_items"]
+    assert (
+        plan["clean_native_training"]["status"]
+        == "clean_native_distributed_launch_supported"
     )
+    assert plan["clean_native_training"]["runtime"] == "distributed_torchrun"
+    assert plan["clean_native_training"]["blocking_items"] == []
     assert plan["clean_prepare_execution_command"]["final_clean_native"] is True
     assert plan["clean_prepare_execution_command"]["executable"] is True
     assert plan["clean_prepare_execution_command"]["status"] == "prepare_execution_supported"
     assert plan["clean_prepare_execution_command"]["will_launch_training"] is False
     assert plan["clean_training_command"]["final_clean_native"] is True
-    assert plan["clean_training_command"]["executable"] is False
-    assert plan["clean_training_command"]["will_launch_training"] is False
+    assert plan["clean_training_command"]["executable"] is True
+    assert plan["clean_training_command"]["will_launch_training"] is True
+    assert plan["clean_training_command"]["runtime"] == "distributed_torchrun"
     assert (
         plan["clean_training_command"]["planned_entrypoint"]
         == "revisit_vlm_clean.training.stage1_executor"
@@ -436,7 +439,7 @@ def test_stage1_training_write_plan_cli(tmp_path) -> None:
     assert plan["legacy_reference_command"]["executable"] is False
     assert "audit reference only" in plan["legacy_reference_command"]["unavailable_reason"]
     native_status = json.loads((output_dir / "clean_native_training_status.json").read_text())
-    assert native_status["status"] == "clean_native_launch_blocked"
+    assert native_status["status"] == "clean_native_distributed_launch_supported"
     prepare_command_path = output_dir / "clean_prepare_execution_command.sh"
     assert prepare_command_path.stat().st_mode & 0o111
     prepare_command = prepare_command_path.read_text()
@@ -444,7 +447,8 @@ def test_stage1_training_write_plan_cli(tmp_path) -> None:
     assert "--prepare-execution" in prepare_command
     assert "not executable" not in prepare_command
     clean_command = (output_dir / "clean_training_command.sh").read_text()
-    assert "not executable" in clean_command
+    assert "not executable" not in clean_command
+    assert clean_command.startswith("torchrun --nproc-per-node 4")
     assert "revisit_vlm_clean.training.stage1_executor" in clean_command
     assert "--launch-training" in clean_command
     command = (output_dir / "legacy_reference_command.sh").read_text()
@@ -502,6 +506,47 @@ def test_stage1_training_executor_preflight_cli(tmp_path, capsys) -> None:
     assert report["will_launch_training"] is False
     assert report["preflight_report"].endswith("stage1_training_preflight_report.json")
     assert stage1_executor_main(["--plan", str(output_dir / "training_plan.json")]) == 2
+
+
+def test_stage1_distributed_launch_requires_torchrun_env(tmp_path, monkeypatch) -> None:
+    monkeypatch.delenv("WORLD_SIZE", raising=False)
+    monkeypatch.delenv("RANK", raising=False)
+    monkeypatch.delenv("LOCAL_RANK", raising=False)
+    train_file = tmp_path / "stage1.train.jsonl"
+    train_file.write_text(
+        '{"image": "/tmp/image.jpg", "question": "q", "target": "mark", '
+        '"evidence_description": "The mark is blue."}\n',
+        encoding="utf-8",
+    )
+    output_dir = tmp_path / "stage1_plan"
+    assert (
+        stage1_main(
+            [
+                "--run-id",
+                "stage1_distributed_guard",
+                "--train-file",
+                str(train_file),
+                "--output-dir",
+                str(output_dir),
+                "--global-batch",
+                "4",
+                "--world-size",
+                "2",
+                "--micro-batch-size",
+                "1",
+                "--write-plan",
+            ]
+        )
+        == 0
+    )
+    with pytest.raises(ValueError, match="distributed clean launch requires torchrun"):
+        stage1_executor_main(
+            [
+                "--plan",
+                str(output_dir / "training_plan.json"),
+                "--launch-training",
+            ]
+        )
 
 
 def test_stage1_training_executor_prepare_execution_cli(tmp_path, capsys) -> None:
@@ -912,19 +957,22 @@ def test_stage2_training_write_plan_cli(tmp_path) -> None:
         plan["module_policy"]["training_runtime"]["print_trainable_parameter_names_before_launch"]
         is True
     )
-    assert plan["clean_native_training"]["executable"] is False
+    assert plan["clean_native_training"]["executable"] is True
     assert plan["clean_native_training"]["legacy_reference_is_final"] is False
     assert plan["clean_native_training"]["prepare_execution_supported"] is True
-    assert plan["clean_native_training"]["status"] == "clean_native_launch_blocked"
-    assert "DDP/multi-process clean training is not ported yet" in (
-        plan["clean_native_training"]["blocking_items"]
+    assert (
+        plan["clean_native_training"]["status"]
+        == "clean_native_distributed_launch_supported"
     )
+    assert plan["clean_native_training"]["runtime"] == "distributed_torchrun"
+    assert plan["clean_native_training"]["blocking_items"] == []
     assert plan["clean_prepare_execution_command"]["executable"] is True
     assert plan["clean_prepare_execution_command"]["status"] == "prepare_execution_supported"
     assert plan["clean_prepare_execution_command"]["will_launch_training"] is False
     assert plan["clean_training_command"]["final_clean_native"] is True
-    assert plan["clean_training_command"]["executable"] is False
-    assert plan["clean_training_command"]["will_launch_training"] is False
+    assert plan["clean_training_command"]["executable"] is True
+    assert plan["clean_training_command"]["will_launch_training"] is True
+    assert plan["clean_training_command"]["runtime"] == "distributed_torchrun"
     assert (
         plan["clean_training_command"]["planned_entrypoint"]
         == "revisit_vlm_clean.training.stage2_executor"
@@ -940,7 +988,8 @@ def test_stage2_training_write_plan_cli(tmp_path) -> None:
     assert "--prepare-execution" in prepare_command
     assert "not executable" not in prepare_command
     clean_command = (output_dir / "clean_training_command.sh").read_text()
-    assert "not executable" in clean_command
+    assert "not executable" not in clean_command
+    assert clean_command.startswith("torchrun --nproc-per-node 4")
     assert "revisit_vlm_clean.training.stage2_executor" in clean_command
     assert "--launch-training" in clean_command
     command = (output_dir / "legacy_reference_command.sh").read_text()
@@ -2074,10 +2123,7 @@ def test_stage2_training_executor_can_launch_single_process_training_loop(
     assert launch_status["final_checkpoint"] == str(execution_dir / "checkpoint_step_2.pt")
     assert launch_status["in_training_validation_enabled"] is True
     assert launch_status["validation_record_count"] == 2
-    assert launch_status["unsupported_runtime_features"] == [
-        "ddp_multi_process_training",
-        "stage2_deepstack_training",
-    ]
+    assert launch_status["unsupported_runtime_features"] == ["stage2_deepstack_training"]
 
 
 def test_stage2_training_executor_runtime_audit_can_write_checkpoint_audit(

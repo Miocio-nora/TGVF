@@ -79,8 +79,10 @@ state, a clean-native executor status, and a separate temporary legacy
 reference command. They also write `clean_prepare_execution_command.sh`, which
 runs the clean executor handoff and produces execution-bundle artifacts without
 starting training. `clean_training_command.sh` is executable only for currently
-supported single-process clean launches; multi-process/DDP and DeepStack
-training launches remain blocked.
+supported clean launches. `world_size=1` uses `python -m ... --launch-training`;
+`world_size>1` uses `torchrun --nproc-per-node <world_size>`. Stage2 DeepStack
+training launches remain blocked until original-image DeepStack
+injection/masking is ported.
 
 The planned clean training modules are importable:
 
@@ -183,14 +185,15 @@ blockers, and DeepStack state. It can report that the contract is ready for the
 future trainer loop, but it still records `launch_permitted=false` and
 `will_launch_training=false`.
 With explicit `--launch-training`, the executor prepares the clean execution
-bundle and runs the clean single-process trainer loop. It writes
-`single_process_training_runtime.json`, `clean_training_launch_result.json`,
-`clean_training_launch_status.json`, and `checkpoint_step_N.pt` checkpoints
-according to the plan cadence. Stage2 plans with `val_file` also run
-no-backward in-training validation at `eval_every` and final `max_steps`,
-recorded in `validation_records`. This path is clean-native and does not call
-the historical training scripts, but it currently rejects `world_size>1` and
-Stage2 DeepStack-enabled training plans.
+bundle and runs the clean trainer loop. Single-process launch writes
+`single_process_training_runtime.json`; distributed torchrun launch writes
+`distributed_rank_N_training_runtime.json` per rank. Rank 0 writes
+`clean_training_launch_result.json`, `clean_training_launch_status.json`, and
+`checkpoint_step_N.pt` checkpoints according to the plan cadence. Stage2 plans
+with `val_file` also run rank-0 no-backward in-training validation at
+`eval_every` and final `max_steps`, recorded in `validation_records`. This path
+is clean-native and does not call the historical training scripts, but it still
+rejects Stage2 DeepStack-enabled training plans.
 
 Single-process launch uses deterministic train/validation sample cursors rather
 than repeatedly replaying the audit probe batch. Stage1 uses same-image groups
@@ -198,6 +201,9 @@ when available for matrix-CE-compatible batches; Stage2 training honors
 `target_focus_ratio` when both focus and no-focus rows exist; validation cycles
 sequentially over the validation file. The runtime records
 `train_cursor`, `validation_cursor`, and per-micro-step `sample_trace` evidence.
+Distributed launch shards the train cursor by rank, uses local-rank device maps
+under torchrun, averages optimizer gradients before clipping, and keeps
+checkpoint/result writing on rank 0.
 
 ## Fixed Manifests
 

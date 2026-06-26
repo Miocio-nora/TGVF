@@ -704,24 +704,24 @@ def _clean_native_training_status(
     deepstack_enabled: bool = False,
 ) -> dict[str, Any]:
     blockers = []
-    runtime = "single_process"
-    if world_size != 1:
-        runtime = "distributed_not_ported"
-        blockers.append("DDP/multi-process clean training is not ported yet")
+    runtime = "single_process" if world_size == 1 else "distributed_torchrun"
     if stage == TrainingStage.STAGE2 and deepstack_enabled:
         blockers.append(
             "DeepStack original-image injection/masking is specified but not implemented "
             "by a clean Stage2 executor"
         )
     executable = not blockers
+    status = (
+        "clean_native_single_process_launch_supported"
+        if executable and world_size == 1
+        else "clean_native_distributed_launch_supported"
+        if executable
+        else "clean_native_launch_blocked"
+    )
     return {
         "stage": str(stage),
         "executable": executable,
-        "status": (
-            "clean_native_single_process_launch_supported"
-            if executable
-            else "clean_native_launch_blocked"
-        ),
+        "status": status,
         "required_for_final_clean_project": True,
         "legacy_reference_is_final": False,
         "prepare_execution_supported": True,
@@ -729,6 +729,8 @@ def _clean_native_training_status(
         "runtime": runtime,
         "current_artifact": (
             "clean single-process trainer loop"
+            if executable and world_size == 1
+            else "clean torchrun distributed trainer loop"
             if executable
             else "auditable launch plan plus clean execution bundle handoff"
         ),
