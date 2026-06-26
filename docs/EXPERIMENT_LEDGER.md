@@ -3633,7 +3633,7 @@ entry, update this file immediately.
 
 ### EXP-20260626-155246-clean-qwen3-stage12-deepstack-mask075-4gpu
 
-- Status: PLANNED.
+- Status: RUNNING.
 - Question:
   - Train the clean Qwen3 Stage1 -> Stage2 mainline with the smoke-selected
     4-GPU batch settings, then use the resulting chain for later benchmark
@@ -3654,8 +3654,10 @@ entry, update this file immediately.
   - Protocol: `protocol_c_tool_observation`.
   - Max image resolution: 512.
   - Stage1 global batch: 32.
-  - Stage1 batch identity: `world_size=4`, `micro_batch_size=8`,
-    `gradient_accumulation_steps=1`.
+  - Stage1 global batch remains 32. Initial `micro_batch_size=8`,
+    `gradient_accumulation_steps=1` OOMed on the first real DDP batch, so the
+    active fallback is `world_size=4`, `micro_batch_size=4`,
+    `gradient_accumulation_steps=2`.
   - Stage2 global batch: 128.
   - Stage2 batch identity: `world_size=4`, `micro_batch_size=8`,
     `gradient_accumulation_steps=4`.
@@ -3671,7 +3673,8 @@ entry, update this file immediately.
 - Code commit / worktree:
   - Planned on branch `clean/tgvf-clean-project-20260625`.
   - Pre-ledger commit: `a5a12d3`.
-  - Formal plan commit: TBD after this PLANNED entry is committed.
+  - Initial formal plan commit: `28f50dc`.
+  - Micro4 fallback ledger commit: TBD after this RUNNING entry is committed.
   - Worktree expected clean except untracked `logs/` and `third_party/`.
 - Stage1 checkpoint:
   - None for launch; Stage1 starts from `Qwen/Qwen3-VL-8B-Thinking`.
@@ -3701,22 +3704,37 @@ entry, update this file immediately.
     `PYTHONPATH=revisit_vlm_clean/src:src python -m revisit_vlm_clean.cli.train_stage1 --run-id clean_qwen3_stage1_4gpu_m8a1_20260626_155246 --train-file data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend/splits/tgvf_v4_teacher_stage1_protocol_c_focus.train.jsonl --output-dir outputs/clean_training/qwen3_stage12_deepstack_mask075_4gpu_20260626_155246/stage1 --max-image-resolution 512 --max-steps 2000 --save-every 2000 --world-size 4 --micro-batch-size 8 --global-batch 32 --wandb-project tgvf-clean-qwen3-deepstack --wandb-mode online --write-plan`.
   - Stage1 launch command:
     `CUDA_VISIBLE_DEVICES=0,1,2,3 PYTHONPATH=revisit_vlm_clean/src:src torchrun --nproc-per-node 4 -m revisit_vlm_clean.training.stage1_executor --plan outputs/clean_training/qwen3_stage12_deepstack_mask075_4gpu_20260626_155246/stage1/training_plan.json --launch-training`.
+  - Stage1 micro4 fallback plan command:
+    `PYTHONPATH=revisit_vlm_clean/src:src python -m revisit_vlm_clean.cli.train_stage1 --run-id clean_qwen3_stage1_4gpu_m4a2_20260626_155809 --train-file data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend/splits/tgvf_v4_teacher_stage1_protocol_c_focus.train.jsonl --output-dir outputs/clean_training/qwen3_stage12_deepstack_mask075_4gpu_20260626_155246/stage1_micro4 --max-image-resolution 512 --max-steps 2000 --save-every 2000 --world-size 4 --micro-batch-size 4 --global-batch 32 --wandb-project tgvf-clean-qwen3-deepstack --wandb-mode online --write-plan`.
+  - Stage1 micro4 fallback launch command:
+    `CUDA_VISIBLE_DEVICES=0,1,2,3 PYTHONPATH=revisit_vlm_clean/src:src torchrun --nproc-per-node 4 -m revisit_vlm_clean.training.stage1_executor --plan outputs/clean_training/qwen3_stage12_deepstack_mask075_4gpu_20260626_155246/stage1_micro4/training_plan.json --launch-training`.
   - Stage2 plan/launch command:
     TBD after Stage1 checkpoint exists.
 - GPUs:
   - Stage1 planned: GPUs `0,1,2,3`.
   - Stage2 planned: GPUs `0,1,2,3`, after Stage1 finishes.
 - tmux:
-  - Planned Stage1 session:
+  - Failed initial Stage1 session:
     `clean_stage1_qwen3_mask075_4gpu_20260626_155246`.
+  - Active Stage1 fallback session:
+    `clean_stage1_qwen3_mask075_4gpu_m4_20260626_155809`.
 - Started:
-  - TBD.
+  - Initial Stage1 micro8 launch: 2026-06-26T15:55:33+09:00.
+  - Stage1 micro4 fallback launch: TBD.
 - Finished:
   - TBD.
 - Metrics:
-  - TBD.
+  - Initial Stage1 micro8 attempt: FAILED/OOM.
+    - Log:
+      `logs/clean_training/clean_stage1_qwen3_mask075_4gpu_20260626_155246.log`.
+    - Failure: rank 2 root failure; rank 3 also reported CUDA OOM in Qwen3
+      language-model MLP forward. GPU memory was effectively full
+      (`178.29 GiB` in use on a `178.36 GiB` card).
+  - Stage1 micro4 fallback: RUNNING/TBD.
 - Analysis:
-  - TBD.
+  - The single-process smoke under-sampled long first-batch examples; real DDP
+    `micro_batch_size=8` is not robust.
+  - Fallback keeps Stage1 global batch fixed: `4 * 4 * 2 = 32`.
 - Conclusion:
   - TBD.
 - Comparable to baseline:
