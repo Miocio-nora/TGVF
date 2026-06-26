@@ -765,6 +765,11 @@ Current code-backed classification:
   - `eval/eval_v3_readout.py`
   - `eval/eval_v3_query_sensitivity.py`
   - `eval/eval_v3_fvt_distribution.py`
+  - Clean entrypoint: `tgvf_eval_stage_diagnostics`
+    (`python -m revisit_vlm_clean.cli.stage_diagnostics`), which wraps the
+    preserved `eval/run_tgvf_v3_eval_suite.sh` and exposes
+    `readout,query,distribution` for both Stage1 checkpoints and Stage2
+    checkpoints as Stage1-style regression diagnostics.
 - Old generic benchmark framework:
   - `src/tgvf_eval/run.py`
   - `src/tgvf_eval/run_suite.py`

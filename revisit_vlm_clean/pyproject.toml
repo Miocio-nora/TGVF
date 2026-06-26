@@ -15,6 +15,7 @@ dev = ["pytest>=8.0.0"]
 [project.scripts]
 tgvf_build_manifest = "revisit_vlm_clean.cli.manifest:main"
 tgvf_eval_benchmark = "revisit_vlm_clean.cli.benchmark:main"
+tgvf_eval_stage_diagnostics = "revisit_vlm_clean.cli.stage_diagnostics:main"
 tgvf_merge_benchmark = "revisit_vlm_clean.cli.merge_benchmark:main"
 tgvf_eval_valkit = "revisit_vlm_clean.cli.valkit:main"
 tgvf_generate_data = "revisit_vlm_clean.cli.generate_data:main"

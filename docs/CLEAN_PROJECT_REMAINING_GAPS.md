@@ -17,6 +17,13 @@ remaining engineering work.
   - non-rank0 processes do not initialize W&B or duplicate progress rows.
 - The progress/W&B behavior is covered by
   `revisit_vlm_clean/tests/test_cli.py::test_stage2_training_executor_can_launch_single_process_training_loop`.
+- Stage1/FVT internal diagnostics:
+  - clean now exposes `tgvf_eval_stage_diagnostics`
+    (`python -m revisit_vlm_clean.cli.stage_diagnostics`);
+  - the entrypoint supports the preserved `readout,query,distribution` suite
+    for both Stage1 checkpoints and Stage2 checkpoints;
+  - Stage2 use is explicitly a Stage1-style regression diagnostic, not an
+    external benchmark table.
 
 ## Remaining Gaps
 
@@ -45,24 +52,30 @@ remaining engineering work.
    - Final benchmark tables should use clean-native backend paths, not the
      diagnostic bridge, unless explicitly labeled as diagnostic.
 
-6. ValKit is first-class but externally configured.
+6. Stage1/FVT diagnostics are clean-wrapped, not reimplemented.
+   - `tgvf_eval_stage_diagnostics` provides clean identity, plan, command, and
+     status files while preserving the established legacy metric implementation.
+   - This is intentional for metric continuity; a clean-native rewrite is not
+     required unless the legacy diagnostics become incompatible with the clean
+     checkpoint contract.
+
+7. ValKit is first-class but externally configured.
    - The clean ValKit surface exists, but executable runs require explicit
      `--execute`, `--valkit-root`, and `--valkit-model-name`.
    - Results from ValKit and project-native external benchmarks are not
      interchangeable unless sample identity and scorer identity are matched.
 
-7. Stage1/Stage2 throughput is not optimized.
+8. Stage1/Stage2 throughput is not optimized.
    - Stage1 DDP utilization is bursty because batches are not length/visual-token
      bucketed across ranks.
    - This is an efficiency gap, not a correctness blocker.
 
-8. Stage2 visual-token manifold loss is still an experiment decision.
+9. Stage2 visual-token manifold loss is still an experiment decision.
    - Clean Stage2 default remains `loss_visual_token_manifold=0.0`.
    - Raising it should be a separately named ablation, not a silent default
      change.
 
-9. Mid-run resume policy is minimal.
+10. Mid-run resume policy is minimal.
    - Clean checkpoint save/load contracts exist.
    - The current formal Stage1 plan saves only at final step 2000, so an
      interruption before then requires relaunch from scratch.
-
