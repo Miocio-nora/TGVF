@@ -188,6 +188,7 @@ def build_valkit_execution_bundle(
 ) -> dict[str, Any]:
     _validate_valkit_plan(plan)
     runner = plan.get("runner") or {}
+    plan_artifact_identities = _valkit_plan_artifact_identities(plan)
     runner_status = (
         ValKitRunnerStatus.READY_TO_EXECUTE.value
         if will_launch
@@ -213,6 +214,7 @@ def build_valkit_execution_bundle(
             "legacy_shell_wrapper_allowed": False,
             "final_clean_surface": True,
             "unavailable_reason": runner.get("unavailable_reason"),
+            "plan_artifact_identities": plan_artifact_identities,
         },
     }
 
@@ -237,6 +239,7 @@ def build_valkit_execution_status(bundle: dict[str, Any]) -> dict[str, Any]:
         "git_commit": bundle.get("git_commit"),
         "dirty_worktree": bundle.get("dirty_worktree"),
         "execution_identity": runner.get("execution_identity"),
+        "plan_artifact_identities": runner.get("plan_artifact_identities"),
         "result_identity": runner.get("result_identity"),
         "stdout_identity": runner.get("stdout_identity"),
         "stderr_identity": runner.get("stderr_identity"),
@@ -329,6 +332,7 @@ def execute_valkit_plan(output_dir: str | Path, plan: dict[str, Any]) -> dict[st
     runner["stderr_log"] = str(stderr_path)
     runner["result"] = str(result_path)
     runner["execution_identity"] = execution_identity
+    runner["plan_artifact_identities"] = execution_identity["plan_artifact_identities"]
     runner["result_identity"] = file_identity(result_path).to_dict()
     runner["stdout_identity"] = execution_identity["stdout_identity"]
     runner["stderr_identity"] = execution_identity["stderr_identity"]
@@ -424,10 +428,25 @@ def _valkit_execution_identity(
         "valkit_root": run.get("valkit_root"),
         "run_py_identity": file_identity(root / "run.py").to_dict(),
         "work_dir_identity": _path_identity(work_dir),
+        "plan_artifact_identities": _valkit_plan_artifact_identities(plan),
         "launch_command_identity": file_identity(command_path).to_dict(),
         "stdout_identity": file_identity(stdout_path).to_dict(),
         "stderr_identity": file_identity(stderr_path).to_dict(),
         "legacy_shell_wrapper_allowed": False,
+    }
+
+
+def _valkit_plan_artifact_identities(plan: dict[str, Any]) -> dict[str, Any]:
+    output_dir = Path(str(plan.get("output_dir") or ""))
+    return {
+        "valkit_plan": file_identity(output_dir / "valkit_plan.json").to_dict(),
+        "valkit_plan_txt": file_identity(output_dir / "valkit_plan.txt").to_dict(),
+        "valkit_preflight_report": file_identity(
+            output_dir / "valkit_preflight_report.json"
+        ).to_dict(),
+        "valkit_prepare_execution_command": file_identity(
+            output_dir / "valkit_prepare_execution_command.sh"
+        ).to_dict(),
     }
 
 

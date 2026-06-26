@@ -2339,6 +2339,24 @@ Implemented after Phase 94.
 - this phase changes documentation only. It does not add runtime results, change
   model execution, alter scoring, or change merge semantics.
 
+## Phase 96: ValKit Plan Artifact Identity
+
+Implemented after Phase 95.
+
+- ValKit prepare-execution and explicit execution bundles now record identities
+  for the concrete plan artifacts written beside the run:
+  - `valkit_plan.json`;
+  - `valkit_plan.txt`;
+  - `valkit_preflight_report.json`;
+  - `valkit_prepare_execution_command.sh`;
+- `valkit_execution_status.json` mirrors those identities so an execution
+  directory can be audited back to the exact handoff plan files, not only to the
+  in-memory `plan_sha256`;
+- tests assert that both handoff-only and fake-runtime `--execute` paths expose
+  the plan artifact identities;
+- this phase does not change the ValKit command argv, benchmark selection,
+  scoring behavior, subprocess execution, or data generation.
+
 ## Later Phases
 
 1. Port DeepStack original-image injection/masking into clean training and eval

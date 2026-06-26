@@ -200,9 +200,15 @@ def test_valkit_prepare_execution_cli(tmp_path) -> None:
     assert bundle["runner"]["will_launch_valkit"] is False
     assert bundle["runner"]["valkit_runtime_ported"] is False
     assert bundle["runner"]["legacy_shell_wrapper_allowed"] is False
+    plan_artifacts = bundle["runner"]["plan_artifact_identities"]
+    assert plan_artifacts["valkit_plan"]["exists"] is True
+    assert plan_artifacts["valkit_plan_txt"]["exists"] is True
+    assert plan_artifacts["valkit_preflight_report"]["exists"] is True
+    assert plan_artifacts["valkit_prepare_execution_command"]["exists"] is True
     status = json.loads((execution_dir / "valkit_execution_status.json").read_text())
     assert status["runner_status"] == "handoff_supported_valkit_runner_not_ported"
     assert status["will_launch_valkit"] is False
+    assert status["plan_artifact_identities"] == plan_artifacts
 
 
 def test_valkit_execute_cli_uses_clean_run_py_not_legacy_wrapper(tmp_path) -> None:
@@ -272,10 +278,16 @@ def test_valkit_execute_cli_uses_clean_run_py_not_legacy_wrapper(tmp_path) -> No
     assert result["execution_identity"]["benchmarks"] == ["vstar", "blink"]
     assert result["execution_identity"]["run_py_identity"]["exists"] is True
     assert result["execution_identity"]["work_dir_identity"]["kind"] == "directory"
+    plan_artifacts = result["execution_identity"]["plan_artifact_identities"]
+    assert plan_artifacts["valkit_plan"]["exists"] is True
+    assert plan_artifacts["valkit_plan_txt"]["exists"] is True
+    assert plan_artifacts["valkit_preflight_report"]["exists"] is True
+    assert plan_artifacts["valkit_prepare_execution_command"]["exists"] is True
     assert result["execution_identity"]["launch_command_identity"]["exists"] is True
     assert result["execution_identity"]["stdout_identity"]["exists"] is True
     assert result["execution_identity"]["stderr_identity"]["exists"] is True
     assert status["execution_identity"]["plan_sha256"] == bundle["plan_sha256"]
+    assert status["plan_artifact_identities"] == plan_artifacts
     assert status["result_identity"]["exists"] is True
     assert status["stdout_identity"]["exists"] is True
     assert status["stderr_identity"]["exists"] is True
