@@ -859,6 +859,28 @@ def _execution_bundle_path(
     )
 
 
+def _training_plan_artifact_identities(plan_path: str | Path) -> dict[str, Any]:
+    plan = Path(plan_path)
+    plan_dir = plan.parent
+    return {
+        "training_plan": file_identity(plan).to_dict(),
+        "training_plan_txt": file_identity(plan_dir / "training_plan.txt").to_dict(),
+        "dataset_identity": file_identity(plan_dir / "dataset_identity.json").to_dict(),
+        "clean_native_training_status": file_identity(
+            plan_dir / "clean_native_training_status.json"
+        ).to_dict(),
+        "clean_prepare_execution_command": file_identity(
+            plan_dir / "clean_prepare_execution_command.sh"
+        ).to_dict(),
+        "clean_training_command": file_identity(
+            plan_dir / "clean_training_command.sh"
+        ).to_dict(),
+        "legacy_reference_command": file_identity(
+            plan_dir / "legacy_reference_command.sh"
+        ).to_dict(),
+    }
+
+
 def _torchrun_env_matches_plan(plan: dict[str, Any]) -> bool:
     plan_world_size = int(((plan.get("batch") or {}).get("world_size")) or 1)
     env_world_size = int(os.environ.get("WORLD_SIZE", "1"))
@@ -927,6 +949,7 @@ def _build_execution_bundle(
         "execution_dir": str(execution_dir),
         "plan_path": str(plan_path),
         "plan_identity": file_identity(plan_path).to_dict(),
+        "plan_artifact_identities": _training_plan_artifact_identities(plan_path),
         "training_plan_schema_version": plan.get("training_plan_schema_version"),
         "git_commit": plan.get("git_commit"),
         "dirty_worktree": plan.get("dirty_worktree"),
@@ -997,6 +1020,7 @@ def _execution_status(bundle: dict[str, Any]) -> dict[str, Any]:
         "stage": bundle.get("stage"),
         "run_id": bundle.get("run_id"),
         "plan_identity": bundle.get("plan_identity"),
+        "plan_artifact_identities": bundle.get("plan_artifact_identities"),
         "bundle_valid": True,
         "runner_status": executor.get("status"),
         "training_runtime_ported": bool(executor.get("trainer_loop_ported")),
@@ -1019,6 +1043,10 @@ def _execution_bundle_text(bundle: dict[str, Any], status: dict[str, Any]) -> st
         f"stage: {bundle.get('stage')}",
         f"plan_path: {bundle.get('plan_path')}",
         f"plan_sha256: {(bundle.get('plan_identity') or {}).get('sha256')}",
+        (
+            "plan_artifact_count: "
+            f"{len(bundle.get('plan_artifact_identities') or {})}"
+        ),
         f"output_dir: {bundle.get('output_dir')}",
         f"execution_dir: {bundle.get('execution_dir')}",
         (
@@ -3003,6 +3031,7 @@ def _clean_training_launch_result(
         "bundle_identity": file_identity(bundle_path).to_dict(),
         "plan_path": bundle.get("plan_path"),
         "plan_identity": bundle.get("plan_identity"),
+        "plan_artifact_identities": bundle.get("plan_artifact_identities"),
         "git_commit": bundle.get("git_commit"),
         "dirty_worktree": bundle.get("dirty_worktree"),
         "dataset_identity": _launch_dataset_identity(artifacts),
@@ -3048,6 +3077,7 @@ def _clean_training_launch_status(result: dict[str, Any]) -> dict[str, Any]:
         "will_launch_training": result.get("will_launch_training"),
         "training_runtime_ported": result.get("training_runtime_ported"),
         "plan_identity": result.get("plan_identity"),
+        "plan_artifact_identities": result.get("plan_artifact_identities"),
         "bundle_identity": result.get("bundle_identity"),
         "dataset_identity": result.get("dataset_identity"),
         "input_checkpoint_contract": result.get("input_checkpoint_contract"),

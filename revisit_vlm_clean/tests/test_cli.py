@@ -648,7 +648,16 @@ def test_stage1_training_executor_prepare_execution_cli(tmp_path, capsys) -> Non
     assert optimizer_groups["groups"][0]["lr"] == 1e-4
     assert optimizer_groups["groups"][0]["weight_decay"] == 0.01
     assert bundle["plan_identity"]["sha256"]
+    plan_artifacts = bundle["plan_artifact_identities"]
+    assert plan_artifacts["training_plan"]["exists"] is True
+    assert plan_artifacts["training_plan_txt"]["exists"] is True
+    assert plan_artifacts["dataset_identity"]["exists"] is True
+    assert plan_artifacts["clean_native_training_status"]["exists"] is True
+    assert plan_artifacts["clean_prepare_execution_command"]["exists"] is True
+    assert plan_artifacts["clean_training_command"]["exists"] is True
+    assert plan_artifacts["legacy_reference_command"]["exists"] is True
     assert status["runner_status"] == "ready_for_explicit_single_process_launch"
+    assert status["plan_artifact_identities"] == plan_artifacts
     assert status["trainer_runtime_contract_status"] == "single_process_launch_supported"
     assert status["will_launch_training"] is False
     assert (execution_dir / "clean_training_execution_bundle.txt").exists()
@@ -1176,8 +1185,17 @@ def test_stage2_training_executor_prepare_execution_cli(tmp_path, capsys) -> Non
     assert [group["lr"] for group in optimizer_groups["groups"]] == [2e-5, 5e-6, 1e-5]
     assert optimizer_groups["optimizer"]["weight_decay"] == 0.01
     assert bundle["safety"]["legacy_reference_allowed"] is False
+    plan_artifacts = bundle["plan_artifact_identities"]
+    assert plan_artifacts["training_plan"]["exists"] is True
+    assert plan_artifacts["training_plan_txt"]["exists"] is True
+    assert plan_artifacts["dataset_identity"]["exists"] is True
+    assert plan_artifacts["clean_native_training_status"]["exists"] is True
+    assert plan_artifacts["clean_prepare_execution_command"]["exists"] is True
+    assert plan_artifacts["clean_training_command"]["exists"] is True
+    assert plan_artifacts["legacy_reference_command"]["exists"] is True
     status = json.loads((execution_dir / "clean_training_execution_status.json").read_text())
     assert status["bundle_valid"] is True
+    assert status["plan_artifact_identities"] == plan_artifacts
     assert status["trainer_runtime_contract_status"] == "single_process_launch_supported"
     assert status["checkpoint_contract_status"] == "validated"
     assert status["optimizer_groups_status"] == "validated"
@@ -2121,6 +2139,7 @@ def test_stage2_training_executor_can_launch_single_process_training_loop(
     assert launch_result["validation_steps"] == [1, 2]
     assert launch_result["validation_record_count"] == 2
     assert launch_result["plan_identity"]["sha256"] == bundle["plan_identity"]["sha256"]
+    assert launch_result["plan_artifact_identities"] == bundle["plan_artifact_identities"]
     assert launch_result["bundle_identity"]["exists"] is True
     assert launch_result["dataset_identity"]["train_file"]["line_count"] == 3
     assert launch_result["dataset_identity"]["val_file"]["line_count"] == 2
@@ -2157,6 +2176,9 @@ def test_stage2_training_executor_can_launch_single_process_training_loop(
     assert (execution_dir / "checkpoint_step_2.pt").exists()
     assert launch_status["final_checkpoint"] == str(execution_dir / "checkpoint_step_2.pt")
     assert launch_status["plan_identity"]["sha256"] == launch_result["plan_identity"]["sha256"]
+    assert launch_status["plan_artifact_identities"] == (
+        launch_result["plan_artifact_identities"]
+    )
     assert launch_status["dataset_identity"]["train_file"]["line_count"] == 3
     assert launch_status["input_checkpoint_contract"]["status"] == "validated"
     assert launch_status["final_checkpoint_identity"]["sha256"] == (

@@ -2375,6 +2375,27 @@ Implemented after Phase 96.
   artifacts without changing backend selection, model execution, scoring, or
   benchmark sampling.
 
+## Phase 98: Training Plan Artifact Identity
+
+Implemented after Phase 97.
+
+- clean training execution bundles now record identities for the concrete
+  plan-side artifacts written by `tgvf_train_stage1/2 --write-plan`:
+  - `training_plan.json`;
+  - `training_plan.txt`;
+  - `dataset_identity.json`;
+  - `clean_native_training_status.json`;
+  - `clean_prepare_execution_command.sh`;
+  - `clean_training_command.sh`;
+  - `legacy_reference_command.sh`;
+- `clean_training_execution_status.json` mirrors those identities, and explicit
+  clean launch result/status artifacts preserve them after the training loop;
+- this keeps plan handoff identity separate from runtime artifact identity:
+  plan artifacts prove what was intended to launch, runtime artifacts prove what
+  the executor audited or produced;
+- this phase does not change training data order, losses, optimizer behavior,
+  checkpoint contents, DeepStack execution, or launch semantics.
+
 ## Later Phases
 
 1. Port DeepStack original-image injection/masking into clean training and eval

@@ -86,7 +86,8 @@ supported clean launches. `world_size=1` uses `python -m ... --launch-training`;
 training launches remain blocked until original-image DeepStack
 injection/masking is ported, but the blocker is recorded as a structured
 `deepstack_training_plan`. Clean launch result and status artifacts record plan,
-dataset, runtime artifact, input checkpoint, and published checkpoint identities.
+plan-side artifact, dataset, runtime artifact, input checkpoint, and published
+checkpoint identities.
 
 The planned clean training modules are importable:
 
@@ -122,7 +123,10 @@ Preflight writes a JSON report next to the plan by default, or to
 `checkpoint_contract.json`, `optimizer_groups.json`, and a text summary without
 launching training. These artifacts are the clean handoff surface for the
 trainer loop; they still record `will_launch_training=false` because
-prepare-execution itself never starts training. Stage2 prepare-execution loads
+prepare-execution itself never starts training. The execution bundle/status also
+record identities for the plan-side files, including `training_plan.txt`,
+`dataset_identity.json`, both clean command scripts, and the non-executable
+legacy reference script. Stage2 prepare-execution loads
 and validates the Stage1 checkpoint contract before the handoff is accepted.
 `--audit-runtime` validates the execution bundle plus runtime artifacts and
 writes `clean_training_runtime_audit.json`,
