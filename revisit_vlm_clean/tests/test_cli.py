@@ -2070,6 +2070,26 @@ def test_stage2_training_executor_can_launch_single_process_training_loop(
     loader_calls = 0
     train_step_calls = 0
     validation_step_calls = 0
+    wandb_inits = []
+    wandb_logs = []
+    wandb_summaries = []
+    wandb_finishes = []
+
+    class FakeWandbLogger:
+        def __init__(self, **kwargs):
+            wandb_inits.append(kwargs)
+
+        def log(self, metrics, *, step=None):
+            wandb_logs.append({"step": step, "metrics": metrics})
+
+        def update_summary(self, values):
+            wandb_summaries.append(values)
+
+        def finish(self):
+            wandb_finishes.append(True)
+
+    def fake_create_wandb_logger(**kwargs):
+        return FakeWandbLogger(**kwargs)
 
     def fake_loader(bundle, *, expected_stage):
         nonlocal loader_calls
@@ -2123,6 +2143,7 @@ def test_stage2_training_executor_can_launch_single_process_training_loop(
 
     monkeypatch.setattr(training_executor, "_load_training_parameter_audit_modules", fake_loader)
     monkeypatch.setattr(training_executor, "_run_stage2_training_step_probe", fake_step_probe)
+    monkeypatch.setattr(training_executor, "_create_wandb_logger", fake_create_wandb_logger)
     assert (
         stage2_main(
             [
@@ -2146,6 +2167,10 @@ def test_stage2_training_executor_can_launch_single_process_training_loop(
                 "1",
                 "--eval-every",
                 "1",
+                "--wandb-project",
+                "clean-unit",
+                "--wandb-mode",
+                "offline",
                 "--write-plan",
             ]
         )
@@ -2209,6 +2234,30 @@ def test_stage2_training_executor_can_launch_single_process_training_loop(
     assert launch_result["runtime_artifact_identities"]["checkpoint_contract"]["exists"] is True
     assert runtime["optimizer_steps_completed"] == 2
     assert runtime["micro_steps_completed"] == 4
+    assert runtime["progress_logging"]["progress_records_written"] == 4
+    assert runtime["progress_logging"]["wandb_enabled"] is True
+    assert runtime["progress_logging"]["wandb_project"] == "clean-unit"
+    assert runtime["progress_logging"]["wandb_mode"] == "offline"
+    progress_records = [
+        json.loads(line)
+        for line in (execution_dir / "training_progress.jsonl").read_text().splitlines()
+    ]
+    assert [record["event"] for record in progress_records] == [
+        "start",
+        "optimizer_step",
+        "optimizer_step",
+        "finish",
+    ]
+    assert progress_records[1]["global_step"] == 1
+    assert progress_records[2]["global_step"] == 2
+    assert progress_records[1]["loss_total"] is not None
+    assert wandb_inits[0]["project"] == "clean-unit"
+    assert wandb_inits[0]["mode"] == "offline"
+    assert wandb_inits[0]["name"] == "stage2_single_process_launch"
+    assert [item["step"] for item in wandb_logs] == [1, 2]
+    assert wandb_logs[0]["metrics"]["trainer/global_step"] == 1
+    assert wandb_summaries[-1]["optimizer_steps_completed"] == 2
+    assert wandb_finishes == [True]
     assert runtime["checkpoint_save_steps"] == [1, 2]
     assert runtime["in_training_validation_enabled"] is True
     assert runtime["validation_steps"] == [1, 2]

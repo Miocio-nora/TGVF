@@ -3633,7 +3633,7 @@ entry, update this file immediately.
 
 ### EXP-20260626-155246-clean-qwen3-stage12-deepstack-mask075-4gpu
 
-- Status: RUNNING.
+- Status: PAUSED_FOR_CODE_FIX.
 - Question:
   - Train the clean Qwen3 Stage1 -> Stage2 mainline with the smoke-selected
     4-GPU batch settings, then use the resulting chain for later benchmark
@@ -3716,13 +3716,14 @@ entry, update this file immediately.
 - tmux:
   - Failed initial Stage1 session:
     `clean_stage1_qwen3_mask075_4gpu_20260626_155246`.
-  - Active Stage1 fallback session:
+  - Interrupted Stage1 fallback session:
     `clean_stage1_qwen3_mask075_4gpu_m4_20260626_155809`.
 - Started:
   - Initial Stage1 micro8 launch: 2026-06-26T15:55:33+09:00.
   - Stage1 micro4 fallback launch: 2026-06-26T15:59:57+09:00.
 - Finished:
-  - TBD.
+  - Paused/interrupted at 2026-06-26T16:53:33+09:00 before checkpoint
+    completion, to patch missing clean-native progress/W&B logging.
 - Metrics:
   - Initial Stage1 micro8 attempt: FAILED/OOM.
     - Log:
@@ -3730,7 +3731,7 @@ entry, update this file immediately.
     - Failure: rank 2 root failure; rank 3 also reported CUDA OOM in Qwen3
       language-model MLP forward. GPU memory was effectively full
       (`178.29 GiB` in use on a `178.36 GiB` card).
-  - Stage1 micro4 fallback: RUNNING/TBD.
+  - Stage1 micro4 fallback: INTERRUPTED_FOR_CODE_FIX.
     - Log:
       `logs/clean_training/clean_stage1_qwen3_mask075_4gpu_m4_20260626_155809.log`.
     - As of 2026-06-26T16:04:04+09:00, tmux session is alive and all four
@@ -3739,14 +3740,23 @@ entry, update this file immediately.
     - GPU utilization is bursty rather than continuous, consistent with
       first-batch/batch-prep and per-rank length imbalance under non-bucketed
       Stage1 data.
+    - This attempt did not produce a completed Stage1 checkpoint and must not
+      be used as a Stage1 result.
 - Analysis:
   - The single-process smoke under-sampled long first-batch examples; real DDP
     `micro_batch_size=8` is not robust.
   - Fallback keeps Stage1 global batch fixed: `4 * 4 * 2 = 32`.
+  - Clean-native trainer launch initially recorded `wandb.mode=online` in the
+    plan but did not actually call `wandb.init/log`; it also wrote step runtime
+    only at the end. This observability gap is being patched before relaunch.
 - Conclusion:
-  - TBD.
+  - Stage1 should be relaunched from a fresh clean plan/output after the
+    progress/W&B logging patch is committed.
 - Comparable to baseline:
   - No; this is the formal training chain, not a benchmark result.
 - Follow-up:
+  - Relaunch Stage1 with the same active batch identity:
+    `world_size=4`, `micro_batch_size=4`, `gradient_accumulation_steps=2`,
+    `global_batch_size=32`.
   - After Stage1 completes, bind its exact checkpoint/processor and launch
     Stage2 with the recorded DeepStack/mask/batch settings.

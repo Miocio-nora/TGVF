@@ -10,6 +10,7 @@ import argparse
 import json
 import math
 import os
+import time
 from collections.abc import Mapping
 from hashlib import sha256
 from pathlib import Path
@@ -1160,6 +1161,171 @@ def _write_json(path: Path, payload: dict[str, Any]) -> None:
         json.dumps(_to_jsonable(payload), indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
+
+
+def _append_jsonl(path: Path, payload: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(_to_jsonable(payload), sort_keys=True) + "\n")
+        handle.flush()
+
+
+def _create_wandb_logger(**kwargs: Any) -> Any:
+    from revisit_vlm.wandb_logging import WandbLogger
+
+    return WandbLogger(**kwargs)
+
+
+class _CleanTrainingProgressLogger:
+    def __init__(
+        self,
+        *,
+        execution_dir: Path,
+        bundle: dict[str, Any],
+        expected_stage: TrainingStage,
+        runtime_context: dict[str, Any],
+    ) -> None:
+        self._is_main = bool(runtime_context.get("is_main"))
+        self._started_at = time.time()
+        self.records_written = 0
+        self.path = execution_dir / "training_progress.jsonl" if self._is_main else None
+        self._wandb_logger = None
+        self._wandb_enabled = False
+        self._wandb_project = None
+        self._wandb_mode = None
+        if not self._is_main:
+            return
+        wandb_config = dict(bundle.get("wandb") or {})
+        self._wandb_project = wandb_config.get("project")
+        self._wandb_mode = wandb_config.get("mode")
+        if self._wandb_project and self._wandb_mode != "disabled":
+            self._wandb_enabled = True
+            self._wandb_logger = _create_wandb_logger(
+                project=self._wandb_project,
+                name=str(bundle.get("run_id") or ""),
+                group=str(bundle.get("stage") or expected_stage.value),
+                job_type="clean_training",
+                mode=self._wandb_mode,
+                config=_clean_training_wandb_config(bundle),
+                directory=execution_dir / "wandb",
+                tags=[
+                    "clean-native",
+                    str(expected_stage.value),
+                    str(bundle.get("protocol") or ""),
+                ],
+            )
+
+    def log_event(
+        self,
+        event: str,
+        payload: dict[str, Any] | None = None,
+        *,
+        step: int | None = None,
+        wandb_metrics: dict[str, Any] | None = None,
+        stdout: str | None = None,
+    ) -> None:
+        if not self._is_main or self.path is None:
+            return
+        record = {
+            "schema_version": "clean_training_progress_event_v1",
+            "event": event,
+            "elapsed_seconds": time.time() - self._started_at,
+            **(payload or {}),
+        }
+        _append_jsonl(self.path, record)
+        self.records_written += 1
+        if stdout:
+            print(stdout, flush=True)
+        if self._wandb_logger is not None and wandb_metrics is not None:
+            self._wandb_logger.log(wandb_metrics, step=step)
+
+    def close(self, *, summary: dict[str, Any] | None = None) -> None:
+        if self._wandb_logger is None:
+            return
+        if summary:
+            self._wandb_logger.update_summary(summary)
+        self._wandb_logger.finish()
+
+    def summary(self) -> dict[str, Any]:
+        return {
+            "rank0_only": True,
+            "progress_log_path": str(self.path) if self.path else None,
+            "progress_records_written": self.records_written,
+            "wandb_enabled": self._wandb_enabled,
+            "wandb_project": self._wandb_project,
+            "wandb_mode": self._wandb_mode,
+        }
+
+
+def _clean_training_wandb_config(bundle: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "run_id": bundle.get("run_id"),
+        "stage": bundle.get("stage"),
+        "protocol": bundle.get("protocol"),
+        "git_commit": bundle.get("git_commit"),
+        "dirty_worktree": bundle.get("dirty_worktree"),
+        "model": bundle.get("model"),
+        "dataset": bundle.get("dataset"),
+        "batch": bundle.get("batch"),
+        "training": bundle.get("training"),
+        "loss": bundle.get("loss"),
+        "optimizer": bundle.get("optimizer"),
+        "module_policy": bundle.get("module_policy"),
+    }
+
+
+def _mean(values: list[float]) -> float | None:
+    finite = [float(value) for value in values if math.isfinite(float(value))]
+    return sum(finite) / len(finite) if finite else None
+
+
+def _grad_total_norm(summary: dict[str, Any]) -> float | None:
+    value = summary.get("total_norm")
+    return float(value) if isinstance(value, (int, float)) and math.isfinite(float(value)) else None
+
+
+def _training_step_wandb_metrics(
+    *,
+    global_step: int,
+    total_micro_steps: int,
+    micro_losses: list[dict[str, Any]],
+    grad_after_sync: dict[str, Any],
+    grad_after_clip: dict[str, Any],
+    clipped_grad_norm: float | None,
+    scheduler_last_lr: list[Any],
+    checkpoint_record: dict[str, Any] | None,
+    validation_record: dict[str, Any] | None,
+) -> dict[str, Any]:
+    loss_values = [
+        float(item["loss_total"])
+        for item in micro_losses
+        if isinstance(item.get("loss_total"), (int, float))
+    ]
+    sample_counts = [
+        int(item.get("sample_count") or 0)
+        for item in micro_losses
+        if isinstance(item.get("sample_count"), (int, float))
+    ]
+    metrics: dict[str, Any] = {
+        "trainer/global_step": global_step,
+        "trainer/micro_steps_completed": total_micro_steps,
+        "train/loss_total": _mean(loss_values),
+        "train/micro_step_count": len(micro_losses),
+        "train/sample_count": sum(sample_counts),
+        "train/grad_norm_after_sync": _grad_total_norm(grad_after_sync),
+        "train/grad_norm_after_clip": _grad_total_norm(grad_after_clip),
+        "train/clipped_grad_norm": clipped_grad_norm,
+        "checkpoint/saved": checkpoint_record is not None,
+        "validation/ran": validation_record is not None,
+    }
+    for index, lr in enumerate(scheduler_last_lr):
+        if isinstance(lr, (int, float)):
+            metrics[f"train/lr_group_{index}"] = float(lr)
+    if validation_record is not None and isinstance(
+        validation_record.get("loss_total"), (int, float)
+    ):
+        metrics["validation/loss_total"] = float(validation_record["loss_total"])
+    return metrics
 
 
 def _validate_execution_bundle(bundle: dict[str, Any], *, expected_stage: TrainingStage) -> None:
@@ -2486,74 +2652,99 @@ def _write_single_process_training_runtime(
     checkpoint_records = []
     validation_records = []
     total_micro_steps = 0
-    optimizer.zero_grad(set_to_none=True)
-    for global_step in range(1, max_steps + 1):
-        micro_losses = []
+    progress_logger = _CleanTrainingProgressLogger(
+        execution_dir=execution_dir,
+        bundle=bundle,
+        expected_stage=expected_stage,
+        runtime_context=runtime_context,
+    )
+    progress_logger.log_event(
+        "start",
+        {
+            "stage": bundle.get("stage"),
+            "run_id": bundle.get("run_id"),
+            "rank": rank,
+            "world_size": world_size,
+            "max_steps": max_steps,
+            "gradient_accumulation_steps": accumulation_steps,
+            "ddp_enabled": distributed,
+            "wandb_logging": progress_logger.summary(),
+        },
+        stdout=(
+            f"[clean-train] start stage={bundle.get('stage')} run_id={bundle.get('run_id')} "
+            f"max_steps={max_steps} accum={accumulation_steps} "
+            f"wandb_enabled={progress_logger.summary()['wandb_enabled']}"
+        ),
+    )
+    try:
         optimizer.zero_grad(set_to_none=True)
-        for micro_index in range(accumulation_steps):
-            batch_record = train_cursor.next_batch()
-            result = _run_training_step_probe_for_stage(
-                bundle=bundle,
-                artifacts=artifacts,
-                loaded_modules=loaded_modules,
-                expected_stage=expected_stage,
-                samples=batch_record["samples"],
-            )
-            loss_tensor = result.get("loss_tensor")
-            if loss_tensor is None:
-                loss_tensor = result.get("_loss_total_tensor")
-            if loss_tensor is None or not hasattr(loss_tensor, "backward"):
-                raise ValueError("single-process training requires a differentiable loss")
-            if getattr(loss_tensor, "requires_grad", False) is not True:
-                raise ValueError("single-process training loss tensor must require gradients")
-            loss_value = _scalar_float(loss_tensor)
-            if loss_value is None or not math.isfinite(loss_value):
-                raise ValueError("single-process training requires finite losses")
-            scaled_loss = loss_tensor / float(accumulation_steps)
-            scaled_loss.backward()
-            total_micro_steps += 1
-            micro_losses.append(
+        for global_step in range(1, max_steps + 1):
+            micro_losses = []
+            optimizer.zero_grad(set_to_none=True)
+            for micro_index in range(accumulation_steps):
+                batch_record = train_cursor.next_batch()
+                result = _run_training_step_probe_for_stage(
+                    bundle=bundle,
+                    artifacts=artifacts,
+                    loaded_modules=loaded_modules,
+                    expected_stage=expected_stage,
+                    samples=batch_record["samples"],
+                )
+                loss_tensor = result.get("loss_tensor")
+                if loss_tensor is None:
+                    loss_tensor = result.get("_loss_total_tensor")
+                if loss_tensor is None or not hasattr(loss_tensor, "backward"):
+                    raise ValueError("single-process training requires a differentiable loss")
+                if getattr(loss_tensor, "requires_grad", False) is not True:
+                    raise ValueError("single-process training loss tensor must require gradients")
+                loss_value = _scalar_float(loss_tensor)
+                if loss_value is None or not math.isfinite(loss_value):
+                    raise ValueError("single-process training requires finite losses")
+                scaled_loss = loss_tensor / float(accumulation_steps)
+                scaled_loss.backward()
+                total_micro_steps += 1
+                micro_losses.append(
+                    {
+                        "micro_step": total_micro_steps,
+                        "micro_index": micro_index,
+                        "loss_total": loss_value,
+                        "scaled_loss_total": _scalar_float(scaled_loss),
+                        "sample_count": result.get("sample_count"),
+                        "sample_trace": batch_record["sample_trace"],
+                    }
+                )
+            grad_after_accumulation = _optimizer_grad_summary(optimizer)
+            if distributed:
+                _average_optimizer_gradients(optimizer, world_size=world_size)
+                _distributed_barrier(runtime_context)
+            grad_after_sync = _optimizer_grad_summary(optimizer)
+            clipped_grad_norm = None
+            if max_grad_norm is not None:
+                clipped_grad_norm = _scalar_float(
+                    torch.nn.utils.clip_grad_norm_(
+                        _optimizer_parameters(optimizer),
+                        max_grad_norm,
+                    )
+                )
+            grad_after_clip = _optimizer_grad_summary(optimizer)
+            optimizer.step()
+            scheduler.step()
+            scheduler_last_lr = list(scheduler.get_last_lr())
+            optimizer.zero_grad(set_to_none=True)
+            step_records.append(
                 {
-                    "micro_step": total_micro_steps,
-                    "micro_index": micro_index,
-                    "loss_total": loss_value,
-                    "scaled_loss_total": _scalar_float(scaled_loss),
-                    "sample_count": result.get("sample_count"),
-                    "sample_trace": batch_record["sample_trace"],
+                    "global_step": global_step,
+                    "micro_steps": micro_losses,
+                    "grad_after_accumulation": grad_after_accumulation,
+                    "grad_after_sync": grad_after_sync,
+                    "clipped_grad_norm": clipped_grad_norm,
+                    "grad_after_clip": grad_after_clip,
+                    "scheduler_last_lr": scheduler_last_lr,
                 }
             )
-        grad_after_accumulation = _optimizer_grad_summary(optimizer)
-        if distributed:
-            _average_optimizer_gradients(optimizer, world_size=world_size)
-            _distributed_barrier(runtime_context)
-        grad_after_sync = _optimizer_grad_summary(optimizer)
-        clipped_grad_norm = None
-        if max_grad_norm is not None:
-            clipped_grad_norm = _scalar_float(
-                torch.nn.utils.clip_grad_norm_(
-                    _optimizer_parameters(optimizer),
-                    max_grad_norm,
-                )
-            )
-        grad_after_clip = _optimizer_grad_summary(optimizer)
-        optimizer.step()
-        scheduler.step()
-        scheduler_last_lr = list(scheduler.get_last_lr())
-        optimizer.zero_grad(set_to_none=True)
-        step_records.append(
-            {
-                "global_step": global_step,
-                "micro_steps": micro_losses,
-                "grad_after_accumulation": grad_after_accumulation,
-                "grad_after_sync": grad_after_sync,
-                "clipped_grad_norm": clipped_grad_norm,
-                "grad_after_clip": grad_after_clip,
-                "scheduler_last_lr": scheduler_last_lr,
-            }
-        )
-        if is_main and global_step in checkpoint_steps:
-            checkpoint_records.append(
-                _save_clean_training_checkpoint(
+            checkpoint_record = None
+            if is_main and global_step in checkpoint_steps:
+                checkpoint_record = _save_clean_training_checkpoint(
                     execution_dir=execution_dir,
                     bundle=bundle,
                     loaded_modules=loaded_modules,
@@ -2565,10 +2756,10 @@ def _write_single_process_training_runtime(
                     optimizer_step=global_step,
                     micro_step=total_micro_steps,
                 )
-            )
-        if is_main and global_step in eval_steps:
-            validation_records.append(
-                _run_single_process_validation_step(
+                checkpoint_records.append(checkpoint_record)
+            validation_record = None
+            if is_main and global_step in eval_steps:
+                validation_record = _run_single_process_validation_step(
                     global_step=global_step,
                     bundle=bundle,
                     artifacts=artifacts,
@@ -2576,8 +2767,95 @@ def _write_single_process_training_runtime(
                     validation_cursor=validation_cursor,
                     expected_stage=expected_stage,
                 )
+                validation_records.append(validation_record)
+            loss_values = [
+                float(item["loss_total"])
+                for item in micro_losses
+                if isinstance(item.get("loss_total"), (int, float))
+            ]
+            mean_loss = _mean(loss_values)
+            progress_logger.log_event(
+                "optimizer_step",
+                {
+                    "stage": bundle.get("stage"),
+                    "run_id": bundle.get("run_id"),
+                    "rank": rank,
+                    "world_size": world_size,
+                    "global_step": global_step,
+                    "max_steps": max_steps,
+                    "micro_steps_completed": total_micro_steps,
+                    "loss_total": mean_loss,
+                    "micro_losses": micro_losses,
+                    "grad_after_sync_total_norm": _grad_total_norm(grad_after_sync),
+                    "grad_after_clip_total_norm": _grad_total_norm(grad_after_clip),
+                    "clipped_grad_norm": clipped_grad_norm,
+                    "scheduler_last_lr": scheduler_last_lr,
+                    "checkpoint_record": checkpoint_record,
+                    "validation_record": validation_record,
+                },
+                step=global_step,
+                wandb_metrics=_training_step_wandb_metrics(
+                    global_step=global_step,
+                    total_micro_steps=total_micro_steps,
+                    micro_losses=micro_losses,
+                    grad_after_sync=grad_after_sync,
+                    grad_after_clip=grad_after_clip,
+                    clipped_grad_norm=clipped_grad_norm,
+                    scheduler_last_lr=scheduler_last_lr,
+                    checkpoint_record=checkpoint_record,
+                    validation_record=validation_record,
+                ),
+                stdout=(
+                    f"[clean-train] step={global_step}/{max_steps} "
+                    f"loss={mean_loss if mean_loss is not None else 'nan'} "
+                    f"micro_steps={total_micro_steps} "
+                    f"checkpoint={checkpoint_record is not None} "
+                    f"validation={validation_record is not None}"
+                ),
             )
-        _distributed_barrier(runtime_context)
+            _distributed_barrier(runtime_context)
+        progress_logger.log_event(
+            "finish",
+            {
+                "stage": bundle.get("stage"),
+                "run_id": bundle.get("run_id"),
+                "rank": rank,
+                "world_size": world_size,
+                "optimizer_steps_completed": len(step_records),
+                "micro_steps_completed": total_micro_steps,
+                "checkpoint_record_count": len(checkpoint_records),
+                "validation_record_count": len(validation_records),
+            },
+            stdout=(
+                f"[clean-train] finish stage={bundle.get('stage')} "
+                f"steps={len(step_records)} checkpoints={len(checkpoint_records)}"
+            ),
+        )
+    except BaseException as exc:
+        progress_logger.log_event(
+            "error",
+            {
+                "stage": bundle.get("stage"),
+                "run_id": bundle.get("run_id"),
+                "rank": rank,
+                "world_size": world_size,
+                "exception_type": type(exc).__name__,
+                "exception_message": str(exc),
+                "optimizer_steps_completed": len(step_records),
+                "micro_steps_completed": total_micro_steps,
+            },
+            stdout=f"[clean-train] error type={type(exc).__name__} message={exc}",
+        )
+        raise
+    finally:
+        progress_logger.close(
+            summary={
+                "optimizer_steps_completed": len(step_records),
+                "micro_steps_completed": total_micro_steps,
+                "checkpoint_record_count": len(checkpoint_records),
+                "validation_record_count": len(validation_records),
+            }
+        )
 
     payload = {
         "schema_version": (
@@ -2611,6 +2889,7 @@ def _write_single_process_training_runtime(
         "validation_cursor": validation_cursor.summary() if validation_cursor else None,
         "checkpoint_records": checkpoint_records,
         "step_records": step_records,
+        "progress_logging": progress_logger.summary(),
         "notes": [
             (
                 "clean executor ran one rank of the distributed trainer loop"
