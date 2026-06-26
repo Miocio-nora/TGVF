@@ -98,6 +98,7 @@ tgvf_train_stage2_executor --plan /path/to/training_plan.json --prepare-executio
 tgvf_train_stage2_executor --plan /path/to/training_plan.json --prepare-execution --audit-runtime --audit-optimizer-step
 tgvf_train_stage2_executor --plan /path/to/training_plan.json --prepare-execution --audit-runtime --audit-trainer-loop
 tgvf_train_stage2_executor --plan /path/to/training_plan.json --prepare-execution --audit-runtime --audit-checkpoint-publish
+tgvf_train_stage2_executor --plan /path/to/training_plan.json --prepare-execution --audit-runtime --audit-checkpoint-resume
 ```
 
 Without `--preflight-only`, `--prepare-execution`, or `--audit-runtime`, these
@@ -160,6 +161,11 @@ probe. The checkpoint uses historical clean step semantics: Stage1 records
 `global_step=optimizer_step=1`; Stage2 records `global_step=1` and
 `micro_step=gradient_accumulation_steps`. This proves post-loop checkpoint
 publish/load wiring only; it still does not launch the full training run.
+With explicit `--audit-checkpoint-resume`, runtime audit also writes
+`training_checkpoint_resume_runtime.json` after reloading a fresh
+model/optimizer/scheduler stack from the published checkpoint probe. This
+proves clean resume wiring and step-counter restoration only; it still does not
+continue into the full training run.
 
 ## Fixed Manifests
 

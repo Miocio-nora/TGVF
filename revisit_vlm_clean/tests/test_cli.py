@@ -1556,6 +1556,148 @@ def test_stage2_training_executor_runtime_audit_can_publish_post_loop_checkpoint
     )
 
 
+def test_stage2_training_executor_runtime_audit_can_resume_published_checkpoint(
+    tmp_path,
+    monkeypatch,
+    capsys,
+) -> None:
+    import torch
+
+    train_file = tmp_path / "stage2.train.jsonl"
+    checkpoint = tmp_path / "stage1.pt"
+    train_file.write_text(
+        '{"image": "/tmp/image.jpg", "question": "q", "answer": "a", '
+        '"need_focus": true, "evidence_state": "need_local_visual_evidence"}\n',
+        encoding="utf-8",
+    )
+    _write_minimal_stage1_checkpoint(checkpoint)
+    output_dir = tmp_path / "stage2_plan"
+    loader_modules = []
+    step_calls = 0
+
+    def make_modules():
+        qwen = torch.nn.Linear(2, 2)
+        qwen.bias.requires_grad_(False)
+        tgvf = torch.nn.Sequential(torch.nn.Linear(2, 1))
+        loader_modules.append((qwen, tgvf))
+        return qwen, tgvf
+
+    def fake_loader(bundle, *, expected_stage):
+        assert expected_stage.value == "stage2"
+        assert bundle["stage"] == "stage2"
+        qwen, tgvf = make_modules()
+        return {
+            "modules": {"qwen_lora": qwen, "tgvf": tgvf},
+            "loader": {
+                "backend": "fake_checkpoint_resume_audit_loader",
+                "loader_call": len(loader_modules),
+            },
+        }
+
+    def fake_step_probe(*, bundle, artifacts, loaded_modules):
+        nonlocal step_calls
+        step_calls += 1
+        assert bundle["stage"] == "stage2"
+        modules = loaded_modules["modules"]
+        parameters = [
+            parameter
+            for module in (modules["qwen_lora"], modules["tgvf"])
+            for parameter in module.parameters()
+            if parameter.requires_grad
+        ]
+        loss_tensor = torch.stack([parameter.square().sum() for parameter in parameters]).sum()
+        return {
+            "forward_completed": True,
+            "sample_count": 1,
+            "loss_total": float(loss_tensor.detach()),
+            "loss_tensor": loss_tensor,
+            "loss_focus": 1.0,
+            "loss_no_focus": 0.0,
+            "loss_visual_token_manifold": 0.0,
+            "mask_original_image_after_tgvf": True,
+            "debug": {
+                "fast_batched_stage2": True,
+                "focus_count": 1,
+                "no_focus_count": 0,
+                "focus_loss_token_weight": 3.5,
+                "no_focus_loss_token_weight": 0.0,
+                "mask_original_image_after_tgvf_prob": 1.0,
+                "mask_original_image_after_tgvf_scope": "through_answer",
+                "focus_sample_mask_active_rate": 1.0,
+                "no_focus_mask_active_rate": 0.0,
+            },
+        }
+
+    monkeypatch.setattr(training_executor, "_load_training_parameter_audit_modules", fake_loader)
+    monkeypatch.setattr(training_executor, "_run_stage2_training_step_probe", fake_step_probe)
+    assert (
+        stage2_main(
+            [
+                "--run-id",
+                "stage2_checkpoint_resume_audit",
+                "--train-file",
+                str(train_file),
+                "--stage1-checkpoint",
+                str(checkpoint),
+                "--output-dir",
+                str(output_dir),
+                "--global-batch",
+                "2",
+                "--micro-batch-size",
+                "1",
+                "--write-plan",
+            ]
+        )
+        == 0
+    )
+
+    assert (
+        stage2_executor_main(
+            [
+                "--plan",
+                str(output_dir / "training_plan.json"),
+                "--prepare-execution",
+                "--audit-runtime",
+                "--audit-checkpoint-resume",
+            ]
+        )
+        == 0
+    )
+    payload = capsys.readouterr().out
+    assert '"training_checkpoint_resume_runtime"' in payload
+    execution_dir = output_dir / "clean_training_execution"
+    resume_runtime = json.loads(
+        (execution_dir / "training_checkpoint_resume_runtime.json").read_text()
+    )
+    runtime_audit = json.loads((execution_dir / "clean_training_runtime_audit.json").read_text())
+    assert len(loader_modules) == 2
+    assert step_calls == 3
+    assert resume_runtime["status"] == "actual_training_checkpoint_resume_audit"
+    assert resume_runtime["actual_checkpoint_resume_probe_loaded"] is True
+    assert resume_runtime["model_state_loaded"] is True
+    assert resume_runtime["optimizer_state_loaded"] is True
+    assert resume_runtime["scheduler_state_loaded"] is True
+    assert resume_runtime["state_checks_ok"] is True
+    assert resume_runtime["step_checks_ok"] is True
+    assert resume_runtime["protocol_rows_ok"] is True
+    assert resume_runtime["global_step"] == 1
+    assert resume_runtime["micro_step"] == 2
+    assert resume_runtime["fresh_loader"]["loader_call"] == 2
+    assert resume_runtime["state_checks"]["tgvf_module"]["ok"] is True
+    assert resume_runtime["state_checks"]["qwen_lora"]["ok"] is True
+    assert resume_runtime["optimizer"]["state_entry_count"] > 0
+    gate_status = {
+        gate["name"]: gate["status"] for gate in runtime_audit["launch_gates"]["gates"]
+    }
+    assert runtime_audit["launch_gates"]["training_checkpoint_resume_runtime_status"] == (
+        "actual_training_checkpoint_resume_audit"
+    )
+    assert gate_status["publish_training_checkpoint_after_trainer_loop"] == (
+        "identity_validated"
+    )
+    assert gate_status["resume_training_from_clean_checkpoint"] == "identity_validated"
+
+
 def test_stage2_training_executor_runtime_audit_can_write_checkpoint_audit(
     tmp_path,
     monkeypatch,

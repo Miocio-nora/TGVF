@@ -1860,6 +1860,33 @@ Implemented after Phase 70.
   max-step training loop, implement resume, or implement DeepStack training
   execution. `will_launch_training` remains `false`.
 
+## Phase 72: Clean Checkpoint Resume Runtime Audit Gate
+
+Implemented after Phase 71.
+
+- Stage1/Stage2 executors now support explicit `--audit-checkpoint-resume`
+  together with `--audit-runtime`;
+- `--audit-checkpoint-resume` implies:
+  - actual model-parameter audit;
+  - actual optimizer/scheduler construction;
+  - actual training-step forward probe;
+  - bounded trainer-loop probe;
+  - post-loop checkpoint publish probe;
+- the audit writes `training_checkpoint_resume_runtime.json` after:
+  - loading a fresh model/module stack through the clean loader;
+  - constructing a fresh AdamW/LambdaLR stack from the clean optimizer plan;
+  - loading TGVF and Stage2 Qwen-LoRA state from the published checkpoint;
+  - restoring Stage1 Protocol-C token rows when present and required;
+  - loading optimizer and scheduler state dicts;
+  - validating resumed model-state parity and historical step counters;
+- runtime launch gates now mark `resume_training_from_clean_checkpoint` as
+  `identity_validated` only when the fresh stack successfully restores model,
+  optimizer, scheduler, protocol-row, and step-counter state without entering
+  the full training run;
+- this phase still does not enable `clean_training_command.sh`, continue past
+  the resume probe, run the full max-step loop, or implement DeepStack training
+  execution. `will_launch_training` remains `false`.
+
 ## Later Phases
 
 1. Replace training launch plans with clean-native training execution.

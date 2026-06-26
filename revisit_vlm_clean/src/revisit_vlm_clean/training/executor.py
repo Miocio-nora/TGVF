@@ -144,6 +144,16 @@ def build_parser(stage: TrainingStage) -> argparse.ArgumentParser:
             "a full training run."
         ),
     )
+    parser.add_argument(
+        "--audit-checkpoint-resume",
+        action="store_true",
+        help=(
+            "During --audit-runtime, run the checkpoint publish probe, reload fresh "
+            "model/optimizer/scheduler objects from that checkpoint, and write "
+            "training_checkpoint_resume_runtime.json. This still does not launch "
+            "a full training run."
+        ),
+    )
     return parser
 
 
@@ -179,6 +189,7 @@ def main_for_stage(stage: TrainingStage, argv: list[str] | None = None) -> int:
                 audit_optimizer_step=args.audit_optimizer_step,
                 audit_trainer_loop=args.audit_trainer_loop,
                 audit_checkpoint_publish=args.audit_checkpoint_publish,
+                audit_checkpoint_resume=args.audit_checkpoint_resume,
             )
             prepared["runtime_audit"] = audit["runtime_audit"]
             prepared["trainable_parameters"] = audit["trainable_parameters"]
@@ -195,6 +206,10 @@ def main_for_stage(stage: TrainingStage, argv: list[str] | None = None) -> int:
             if audit.get("training_checkpoint_publish_runtime"):
                 prepared["training_checkpoint_publish_runtime"] = audit[
                     "training_checkpoint_publish_runtime"
+                ]
+            if audit.get("training_checkpoint_resume_runtime"):
+                prepared["training_checkpoint_resume_runtime"] = audit[
+                    "training_checkpoint_resume_runtime"
                 ]
         print_json(prepared)
         return 0
@@ -215,6 +230,7 @@ def main_for_stage(stage: TrainingStage, argv: list[str] | None = None) -> int:
             audit_optimizer_step=args.audit_optimizer_step,
             audit_trainer_loop=args.audit_trainer_loop,
             audit_checkpoint_publish=args.audit_checkpoint_publish,
+            audit_checkpoint_resume=args.audit_checkpoint_resume,
         )
         audit["preflight_report"] = str(report_path)
         print_json(audit)
@@ -313,6 +329,7 @@ def audit_training_runtime(
     audit_optimizer_step: bool = False,
     audit_trainer_loop: bool = False,
     audit_checkpoint_publish: bool = False,
+    audit_checkpoint_resume: bool = False,
 ) -> dict[str, Any]:
     bundle_file = Path(bundle_path)
     if not bundle_file.exists():
@@ -331,6 +348,7 @@ def audit_training_runtime(
             or audit_optimizer_step
             or audit_trainer_loop
             or audit_checkpoint_publish
+            or audit_checkpoint_resume
         )
         else None
     )
@@ -349,6 +367,7 @@ def audit_training_runtime(
             or audit_optimizer_step
             or audit_trainer_loop
             or audit_checkpoint_publish
+            or audit_checkpoint_resume
         )
         else _write_trainable_parameters_placeholder(
             execution_dir=execution_dir,
@@ -369,6 +388,7 @@ def audit_training_runtime(
             or audit_optimizer_step
             or audit_trainer_loop
             or audit_checkpoint_publish
+            or audit_checkpoint_resume
         )
         else None
     )
@@ -396,6 +416,7 @@ def audit_training_runtime(
             or audit_optimizer_step
             or audit_trainer_loop
             or audit_checkpoint_publish
+            or audit_checkpoint_resume
         )
         else None
     )
@@ -418,7 +439,7 @@ def audit_training_runtime(
             optimizer_runtime=optimizer_runtime,
             expected_stage=expected_stage,
         )
-        if audit_trainer_loop or audit_checkpoint_publish
+        if audit_trainer_loop or audit_checkpoint_publish or audit_checkpoint_resume
         else None
     )
     training_checkpoint_publish_runtime = (
@@ -430,7 +451,18 @@ def audit_training_runtime(
             trainer_loop_runtime=trainer_loop_runtime,
             expected_stage=expected_stage,
         )
-        if audit_checkpoint_publish
+        if audit_checkpoint_publish or audit_checkpoint_resume
+        else None
+    )
+    training_checkpoint_resume_runtime = (
+        _write_training_checkpoint_resume_runtime_audit(
+            execution_dir=execution_dir,
+            bundle=bundle,
+            artifacts=artifacts,
+            checkpoint_publish_runtime=training_checkpoint_publish_runtime,
+            expected_stage=expected_stage,
+        )
+        if audit_checkpoint_resume
         else None
     )
     audit = _runtime_audit_report(
@@ -444,6 +476,7 @@ def audit_training_runtime(
         optimizer_step_runtime=optimizer_step_runtime,
         trainer_loop_runtime=trainer_loop_runtime,
         training_checkpoint_publish_runtime=training_checkpoint_publish_runtime,
+        training_checkpoint_resume_runtime=training_checkpoint_resume_runtime,
         expected_stage=expected_stage,
     )
     resolved_report_path = (
@@ -481,6 +514,8 @@ def audit_training_runtime(
         result["training_checkpoint_publish_runtime"] = training_checkpoint_publish_runtime[
             "path"
         ]
+    if training_checkpoint_resume_runtime is not None:
+        result["training_checkpoint_resume_runtime"] = training_checkpoint_resume_runtime["path"]
     return result
 
 
@@ -718,6 +753,7 @@ def _required_launch_gates(stage: TrainingStage) -> list[str]:
         "emit_trainable_parameter_audit",
         "save_checkpoint_with_clean_contract",
         "publish_training_checkpoint_after_trainer_loop",
+        "resume_training_from_clean_checkpoint",
     ]
     if stage == TrainingStage.STAGE1:
         return [
@@ -1572,6 +1608,232 @@ def _checkpoint_publish_step_checks(
     return checks
 
 
+def _write_training_checkpoint_resume_runtime_audit(
+    *,
+    execution_dir: Path,
+    bundle: dict[str, Any],
+    artifacts: dict[str, dict[str, Any]],
+    checkpoint_publish_runtime: dict[str, Any] | None,
+    expected_stage: TrainingStage,
+) -> dict[str, Any]:
+    if not _checkpoint_publish_runtime_validated(checkpoint_publish_runtime):
+        raise ValueError("checkpoint-resume audit requires a valid checkpoint-publish audit")
+    try:
+        import torch
+    except Exception as exc:
+        raise RuntimeError("checkpoint-resume audit requires torch") from exc
+
+    publish_payload = checkpoint_publish_runtime["payload"]  # type: ignore[index]
+    checkpoint_path = Path(str(publish_payload.get("checkpoint_path") or ""))
+    if not checkpoint_path.exists():
+        raise FileNotFoundError(f"checkpoint-resume audit missing checkpoint: {checkpoint_path}")
+    checkpoint = _torch_load_checkpoint_probe(torch, checkpoint_path)
+    resume_loaded_modules = _load_training_parameter_audit_modules(
+        bundle,
+        expected_stage=expected_stage,
+    )
+    resume_modules = dict(resume_loaded_modules.get("modules") or {})
+    model_load = _load_checkpoint_model_states_for_resume(
+        checkpoint=checkpoint,
+        bundle=bundle,
+        loaded_modules=resume_loaded_modules,
+        modules=resume_modules,
+        expected_stage=expected_stage,
+    )
+    constructed = _construct_actual_optimizer_scheduler(
+        torch_module=torch,
+        bundle=bundle,
+        artifacts=artifacts,
+        loaded_modules=resume_loaded_modules,
+        expected_stage=expected_stage,
+    )
+    resume_optimizer = constructed["optimizer"]
+    resume_scheduler = constructed["scheduler"]
+    _reload_optimizer_scheduler_probe(
+        optimizer=resume_optimizer,
+        scheduler=resume_scheduler,
+        optimizer_state=checkpoint.get("optimizer"),
+        scheduler_state=checkpoint.get("scheduler"),
+    )
+    state_checks = _resume_state_checks(
+        checkpoint=checkpoint,
+        modules=resume_modules,
+        expected_stage=expected_stage,
+    )
+    state_checks_ok = all(check.get("ok") is True for check in state_checks.values())
+    global_step = int(publish_payload.get("global_step") or 0)
+    optimizer_step = int(publish_payload.get("optimizer_step") or global_step)
+    micro_step = int(publish_payload.get("micro_step") or 0)
+    step_checks = _checkpoint_publish_step_checks(
+        loaded=checkpoint,
+        expected_stage=expected_stage,
+        global_step=global_step,
+        optimizer_step=optimizer_step,
+        micro_step=micro_step,
+    )
+    step_checks_ok = all(check.get("ok") is True for check in step_checks.values())
+    protocol_rows = model_load.get("protocol_c_token_rows") or {}
+    protocol_rows_ok = bool(protocol_rows.get("ok", True))
+    payload = {
+        "schema_version": "clean_training_checkpoint_resume_runtime_audit_v1",
+        "stage": bundle.get("stage"),
+        "run_id": bundle.get("run_id"),
+        "status": "actual_training_checkpoint_resume_audit",
+        "actual_checkpoint_resume_probe_loaded": True,
+        "training_run_launched": False,
+        "full_epoch_loop_entered": False,
+        "checkpoint_path": str(checkpoint_path),
+        "checkpoint_identity": file_identity(checkpoint_path).to_dict(),
+        "fresh_loader": resume_loaded_modules.get("loader") or {},
+        "model_state_loaded": bool(model_load.get("model_state_loaded")),
+        "model_load": model_load,
+        "optimizer_state_loaded": checkpoint.get("optimizer") is not None,
+        "scheduler_state_loaded": checkpoint.get("scheduler") is not None,
+        "optimizer": {
+            "param_group_count": len(resume_optimizer.param_groups),
+            "state_entry_count": len((resume_optimizer.state_dict()).get("state") or {}),
+            "constructed_group_names": [
+                group["name"] for group in constructed["constructed_groups"]
+            ],
+            "empty_planned_group_names": constructed["empty_groups"],
+        },
+        "scheduler": {
+            "last_lr": list(resume_scheduler.get_last_lr()),
+            "state_dict_keys": sorted(str(key) for key in resume_scheduler.state_dict().keys()),
+        },
+        "global_step": checkpoint.get("global_step"),
+        "optimizer_step": checkpoint.get("optimizer_step"),
+        "micro_step": checkpoint.get("micro_step"),
+        "state_checks_ok": state_checks_ok,
+        "state_checks": state_checks,
+        "step_checks_ok": step_checks_ok,
+        "step_checks": step_checks,
+        "protocol_rows_ok": protocol_rows_ok,
+        "notes": [
+            "checkpoint resume probe loaded a fresh model/optimizer/scheduler stack",
+            (
+                "this audit proves clean resume wiring without launching a full "
+                "training run"
+            ),
+        ],
+    }
+    path = execution_dir / "training_checkpoint_resume_runtime.json"
+    _write_json(path, payload)
+    return {"path": str(path), "payload": payload}
+
+
+def _load_checkpoint_model_states_for_resume(
+    *,
+    checkpoint: dict[str, Any],
+    bundle: dict[str, Any],
+    loaded_modules: dict[str, Any],
+    modules: dict[str, Any],
+    expected_stage: TrainingStage,
+) -> dict[str, Any]:
+    tgvf_module = modules.get("tgvf")
+    if tgvf_module is None or not hasattr(tgvf_module, "load_state_dict"):
+        raise ValueError("checkpoint-resume audit requires a tgvf module")
+    tgvf_module.load_state_dict(checkpoint["tgvf_module"], strict=True)
+    payload = {
+        "model_state_loaded": True,
+        "tgvf_module_loaded": True,
+    }
+    if expected_stage == TrainingStage.STAGE1:
+        payload["protocol_c_token_rows"] = _restore_protocol_rows_for_resume(
+            checkpoint=checkpoint,
+            bundle=bundle,
+            loaded_modules=loaded_modules,
+            modules=modules,
+        )
+        return payload
+
+    qwen_lora = modules.get("qwen_lora")
+    if qwen_lora is None:
+        raise ValueError("checkpoint-resume audit requires qwen_lora module")
+    payload["qwen_lora"] = _load_qwen_lora_resume_state(
+        module=qwen_lora,
+        state=checkpoint.get("qwen_lora"),
+    )
+    return payload
+
+
+def _load_qwen_lora_resume_state(*, module: Any, state: Any) -> dict[str, Any]:
+    if not isinstance(state, Mapping):
+        raise ValueError("checkpoint-resume audit requires qwen_lora state mapping")
+    try:
+        from peft import set_peft_model_state_dict
+    except Exception:
+        set_peft_model_state_dict = None
+    if set_peft_model_state_dict is not None:
+        try:
+            result = set_peft_model_state_dict(module, dict(state))
+            return {
+                "loaded": True,
+                "loader": "peft.set_peft_model_state_dict",
+                "result_type": type(result).__name__,
+            }
+        except Exception:
+            pass
+    incompatible = module.load_state_dict(dict(state), strict=False)
+    return {
+        "loaded": True,
+        "loader": "module.load_state_dict(strict=False)",
+        "missing_keys": list(getattr(incompatible, "missing_keys", []) or []),
+        "unexpected_keys": list(getattr(incompatible, "unexpected_keys", []) or []),
+    }
+
+
+def _restore_protocol_rows_for_resume(
+    *,
+    checkpoint: dict[str, Any],
+    bundle: dict[str, Any],
+    loaded_modules: dict[str, Any],
+    modules: dict[str, Any],
+) -> dict[str, Any]:
+    required = _protocol_c_rows_required(bundle)
+    available = checkpoint.get("protocol_c_token_rows") is not None
+    info = {"required": required, "available_in_checkpoint": available, "ok": True}
+    if not required or not available:
+        return info
+    try:
+        from scripts.train_tgvf_v3_stage1 import _restore_protocol_c_token_rows
+    except Exception as exc:
+        return {**info, "ok": False, "loaded": False, "reason": f"import_failed:{exc}"}
+    processor = loaded_modules.get("processor")
+    tokenizer = loaded_modules.get("tokenizer") or getattr(processor, "tokenizer", None)
+    model = modules.get("qwen") or modules.get("qwen_lora")
+    if tokenizer is None or model is None:
+        return {**info, "ok": False, "loaded": False, "reason": "missing_tokenizer_or_model"}
+    restored = _restore_protocol_c_token_rows(
+        model=model,
+        tokenizer=tokenizer,
+        protocol=str(bundle.get("protocol")),
+        checkpoint=checkpoint,
+    )
+    return {**info, **restored, "ok": restored.get("loaded") is True}
+
+
+def _resume_state_checks(
+    *,
+    checkpoint: dict[str, Any],
+    modules: dict[str, Any],
+    expected_stage: TrainingStage,
+) -> dict[str, Any]:
+    checks = {
+        "tgvf_module": _state_dict_parity_check(
+            checkpoint.get("tgvf_module"),
+            modules.get("tgvf").state_dict() if modules.get("tgvf") is not None else None,
+        )
+    }
+    if expected_stage == TrainingStage.STAGE2:
+        qwen_lora = modules.get("qwen_lora")
+        checks["qwen_lora"] = _state_dict_parity_check(
+            checkpoint.get("qwen_lora"),
+            _qwen_lora_state_dict(qwen_lora) if qwen_lora is not None else None,
+        )
+    return checks
+
+
 def _run_training_step_probe_for_stage(
     *,
     bundle: dict[str, Any],
@@ -2006,48 +2268,20 @@ def _write_actual_optimizer_scheduler_audit(
     except Exception as exc:
         raise RuntimeError("optimizer audit requires torch") from exc
 
-    optimizer_contract = artifacts["optimizer_groups"]
-    group_specs = _actual_optimizer_group_specs(
+    constructed = _construct_actual_optimizer_scheduler(
+        torch_module=torch,
+        bundle=bundle,
+        artifacts=artifacts,
         loaded_modules=loaded_modules,
-        optimizer_contract=optimizer_contract,
         expected_stage=expected_stage,
     )
-    constructed_specs = [spec for spec in group_specs if spec["params"]]
-    if not constructed_specs:
-        raise ValueError("optimizer audit found no trainable parameters for any planned group")
-    optimizer_kwargs = _adamw_kwargs_from_contract(optimizer_contract)
-    optimizer = torch.optim.AdamW(
-        [
-            {
-                "params": spec["params"],
-                "lr": spec["lr"],
-                "name": spec["name"],
-                "weight_decay": spec["weight_decay"],
-            }
-            for spec in constructed_specs
-        ],
-        **optimizer_kwargs,
-    )
-    scheduler = _build_clean_lr_scheduler(
-        torch_module=torch,
-        optimizer=optimizer,
-        scheduler_contract=optimizer_contract.get("scheduler") or {},
-        max_steps=int(((bundle.get("training") or {}).get("max_steps")) or 0),
-    )
+    optimizer_contract = constructed["optimizer_contract"]
+    optimizer = constructed["optimizer"]
+    scheduler = constructed["scheduler"]
     optimizer_state = optimizer.state_dict()
     scheduler_state = scheduler.state_dict()
-    constructed_groups = [
-        {
-            "name": spec["name"],
-            "lr": spec["lr"],
-            "weight_decay": spec["weight_decay"],
-            "parameter_names": spec["parameter_names"],
-            "parameter_tensor_count": len(spec["params"]),
-            "parameter_numel": sum(_numel(parameter) for parameter in spec["params"]),
-        }
-        for spec in constructed_specs
-    ]
-    empty_groups = [spec["name"] for spec in group_specs if not spec["params"]]
+    constructed_groups = constructed["constructed_groups"]
+    empty_groups = constructed["empty_groups"]
     payload = {
         "schema_version": "clean_training_optimizer_scheduler_audit_v1",
         "stage": bundle.get("stage"),
@@ -2092,6 +2326,62 @@ def _write_actual_optimizer_scheduler_audit(
         "payload": payload,
         "optimizer": optimizer,
         "scheduler": scheduler,
+    }
+
+
+def _construct_actual_optimizer_scheduler(
+    *,
+    torch_module: Any,
+    bundle: dict[str, Any],
+    artifacts: dict[str, dict[str, Any]],
+    loaded_modules: dict[str, Any],
+    expected_stage: TrainingStage,
+) -> dict[str, Any]:
+    optimizer_contract = artifacts["optimizer_groups"]
+    group_specs = _actual_optimizer_group_specs(
+        loaded_modules=loaded_modules,
+        optimizer_contract=optimizer_contract,
+        expected_stage=expected_stage,
+    )
+    constructed_specs = [spec for spec in group_specs if spec["params"]]
+    if not constructed_specs:
+        raise ValueError("optimizer audit found no trainable parameters for any planned group")
+    optimizer_kwargs = _adamw_kwargs_from_contract(optimizer_contract)
+    optimizer = torch_module.optim.AdamW(
+        [
+            {
+                "params": spec["params"],
+                "lr": spec["lr"],
+                "name": spec["name"],
+                "weight_decay": spec["weight_decay"],
+            }
+            for spec in constructed_specs
+        ],
+        **optimizer_kwargs,
+    )
+    scheduler = _build_clean_lr_scheduler(
+        torch_module=torch_module,
+        optimizer=optimizer,
+        scheduler_contract=optimizer_contract.get("scheduler") or {},
+        max_steps=int(((bundle.get("training") or {}).get("max_steps")) or 0),
+    )
+    constructed_groups = [
+        {
+            "name": spec["name"],
+            "lr": spec["lr"],
+            "weight_decay": spec["weight_decay"],
+            "parameter_names": spec["parameter_names"],
+            "parameter_tensor_count": len(spec["params"]),
+            "parameter_numel": sum(_numel(parameter) for parameter in spec["params"]),
+        }
+        for spec in constructed_specs
+    ]
+    return {
+        "optimizer_contract": optimizer_contract,
+        "optimizer": optimizer,
+        "scheduler": scheduler,
+        "constructed_groups": constructed_groups,
+        "empty_groups": [spec["name"] for spec in group_specs if not spec["params"]],
     }
 
 
@@ -2501,6 +2791,7 @@ def _runtime_audit_report(
     optimizer_step_runtime: dict[str, Any] | None,
     trainer_loop_runtime: dict[str, Any] | None,
     training_checkpoint_publish_runtime: dict[str, Any] | None,
+    training_checkpoint_resume_runtime: dict[str, Any] | None,
     expected_stage: TrainingStage,
 ) -> dict[str, Any]:
     artifact_checks = _runtime_artifact_checks(
@@ -2513,6 +2804,7 @@ def _runtime_audit_report(
         optimizer_step_runtime,
         trainer_loop_runtime,
         training_checkpoint_publish_runtime,
+        training_checkpoint_resume_runtime,
     )
     launch_gates = _launch_gate_audit(
         bundle,
@@ -2524,6 +2816,7 @@ def _runtime_audit_report(
         optimizer_step_runtime,
         trainer_loop_runtime,
         training_checkpoint_publish_runtime,
+        training_checkpoint_resume_runtime,
     )
     blocking_items = ["native trainer loop has not been ported into revisit_vlm_clean"]
     if not trainable_parameters["payload"].get("actual_model_parameters_loaded"):
@@ -2584,6 +2877,10 @@ def _runtime_audit_report(
             f"{expected_stage.value} post-trainer-loop checkpoint publish requires "
             "--audit-checkpoint-publish"
         )
+    if not _checkpoint_resume_runtime_validated(training_checkpoint_resume_runtime):
+        blocking_items.append(
+            f"{expected_stage.value} checkpoint resume requires --audit-checkpoint-resume"
+        )
     return {
         "schema_version": "clean_training_runtime_audit_v1",
         "stage": str(expected_stage),
@@ -2610,6 +2907,7 @@ def _runtime_artifact_checks(
     optimizer_step_runtime: dict[str, Any] | None,
     trainer_loop_runtime: dict[str, Any] | None,
     training_checkpoint_publish_runtime: dict[str, Any] | None,
+    training_checkpoint_resume_runtime: dict[str, Any] | None,
 ) -> list[dict[str, Any]]:
     artifact_paths = dict(bundle.get("runtime_artifacts") or {})
     artifact_paths["trainable_parameters"] = trainable_parameters["path"]
@@ -2626,6 +2924,10 @@ def _runtime_artifact_checks(
     if training_checkpoint_publish_runtime is not None:
         artifact_paths["training_checkpoint_publish_runtime"] = (
             training_checkpoint_publish_runtime["path"]
+        )
+    if training_checkpoint_resume_runtime is not None:
+        artifact_paths["training_checkpoint_resume_runtime"] = (
+            training_checkpoint_resume_runtime["path"]
         )
     checks = []
     for name, path_text in sorted(artifact_paths.items()):
@@ -2646,6 +2948,12 @@ def _runtime_artifact_checks(
             payload = (
                 training_checkpoint_publish_runtime["payload"]
                 if training_checkpoint_publish_runtime
+                else {}
+            )
+        elif name == "training_checkpoint_resume_runtime":
+            payload = (
+                training_checkpoint_resume_runtime["payload"]
+                if training_checkpoint_resume_runtime
                 else {}
             )
         else:
@@ -2673,6 +2981,7 @@ def _launch_gate_audit(
     optimizer_step_runtime: dict[str, Any] | None,
     trainer_loop_runtime: dict[str, Any] | None,
     training_checkpoint_publish_runtime: dict[str, Any] | None,
+    training_checkpoint_resume_runtime: dict[str, Any] | None,
 ) -> dict[str, Any]:
     required = list(
         (bundle.get("trainer_runtime_contract") or {}).get("required_launch_gates") or []
@@ -2699,6 +3008,11 @@ def _launch_gate_audit(
     )
     if actual_checkpoint_publish_validated:
         satisfied.add("publish_training_checkpoint_after_trainer_loop")
+    actual_checkpoint_resume_validated = _checkpoint_resume_runtime_validated(
+        training_checkpoint_resume_runtime
+    )
+    if actual_checkpoint_resume_validated:
+        satisfied.add("resume_training_from_clean_checkpoint")
     actual_trainer_loop_validated = bool(
         trainer_loop_runtime
         and trainer_loop_runtime["payload"].get("actual_trainer_loop_probe")
@@ -2769,6 +3083,7 @@ def _launch_gate_audit(
         "emit_trainable_parameter_audit",
         "save_checkpoint_with_clean_contract",
         "publish_training_checkpoint_after_trainer_loop",
+        "resume_training_from_clean_checkpoint",
     }
     stage_pending = {
         "build_tgvf_module_from_stage1_plan",
@@ -2826,6 +3141,11 @@ def _launch_gate_audit(
             if training_checkpoint_publish_runtime
             else "not_requested"
         ),
+        "training_checkpoint_resume_runtime_status": (
+            training_checkpoint_resume_runtime["payload"].get("status")
+            if training_checkpoint_resume_runtime
+            else "not_requested"
+        ),
         "checkpoint_contract_status": artifacts["checkpoint_contract"].get("status"),
         "trainable_parameters_status": trainable_parameters["payload"].get("status"),
         "gates": gates,
@@ -2862,6 +3182,21 @@ def _checkpoint_publish_runtime_validated(runtime: dict[str, Any] | None) -> boo
     )
 
 
+def _checkpoint_resume_runtime_validated(runtime: dict[str, Any] | None) -> bool:
+    return bool(
+        runtime
+        and runtime["payload"].get("actual_checkpoint_resume_probe_loaded")
+        and runtime["payload"].get("model_state_loaded")
+        and runtime["payload"].get("optimizer_state_loaded")
+        and runtime["payload"].get("scheduler_state_loaded")
+        and runtime["payload"].get("state_checks_ok")
+        and runtime["payload"].get("step_checks_ok")
+        and runtime["payload"].get("protocol_rows_ok")
+        and not runtime["payload"].get("training_run_launched")
+        and not runtime["payload"].get("full_epoch_loop_entered")
+    )
+
+
 def _runtime_audit_status(audit: dict[str, Any]) -> dict[str, Any]:
     gates = audit.get("launch_gates") or {}
     return {
@@ -2877,6 +3212,9 @@ def _runtime_audit_status(audit: dict[str, Any]) -> dict[str, Any]:
         "trainer_loop_runtime_status": gates.get("trainer_loop_runtime_status"),
         "training_checkpoint_publish_runtime_status": gates.get(
             "training_checkpoint_publish_runtime_status"
+        ),
+        "training_checkpoint_resume_runtime_status": gates.get(
+            "training_checkpoint_resume_runtime_status"
         ),
         "blocking_items": list(audit.get("blocking_items") or []),
     }

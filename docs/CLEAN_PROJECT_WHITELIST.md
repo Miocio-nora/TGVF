@@ -144,6 +144,12 @@ before training/eval cleanup can proceed.
   probe. It may validate post-loop checkpoint keys, state parity, optimizer and
   scheduler reload, and historical step counters, but it still must not launch
   the full training run.
+- Explicit checkpoint-resume audit may write
+  `training_checkpoint_resume_runtime.json` after reloading a fresh
+  model/optimizer/scheduler stack from the published checkpoint probe. It may
+  validate model-state parity, optimizer/scheduler restore, protocol-token rows
+  when required, and step counters, but it still must not continue into the full
+  training run.
 - `clean_prepare_execution_command.sh` is the runnable clean handoff command;
   `clean_training_command.sh` stays non-executable until the trainer loop is
   ported.
@@ -275,6 +281,12 @@ before training/eval cleanup can proceed.
   probe. It may validate post-loop checkpoint keys, state parity, optimizer and
   scheduler reload, and historical step counters, but it still must not launch
   the full training run.
+- Explicit checkpoint-resume audit may write
+  `training_checkpoint_resume_runtime.json` after reloading a fresh
+  model/optimizer/scheduler stack from the published checkpoint probe. It may
+  validate model-state parity, optimizer/scheduler restore, protocol-token rows
+  when required, and step counters, but it still must not continue into the full
+  training run.
 - `clean_prepare_execution_command.sh` is the runnable clean handoff command;
   `clean_training_command.sh` stays non-executable until the trainer loop is
   ported.
