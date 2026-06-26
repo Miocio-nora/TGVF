@@ -1792,18 +1792,26 @@ def test_stage2_training_executor_runtime_audit_can_resume_published_checkpoint(
                 str(output_dir / "training_plan.json"),
                 "--prepare-execution",
                 "--audit-runtime",
-                "--audit-checkpoint-resume",
+                "--audit-launch-readiness",
             ]
         )
         == 0
     )
     payload = capsys.readouterr().out
     assert '"training_checkpoint_resume_runtime"' in payload
+    assert '"training_launch_readiness"' in payload
     execution_dir = output_dir / "clean_training_execution"
     resume_runtime = json.loads(
         (execution_dir / "training_checkpoint_resume_runtime.json").read_text()
     )
+    cadence_runtime = json.loads((execution_dir / "training_cadence_runtime.json").read_text())
+    launch_readiness = json.loads(
+        (execution_dir / "training_launch_readiness.json").read_text()
+    )
     runtime_audit = json.loads((execution_dir / "clean_training_runtime_audit.json").read_text())
+    runtime_status = json.loads(
+        (execution_dir / "clean_training_runtime_audit_status.json").read_text()
+    )
     assert len(loader_modules) == 2
     assert step_calls == 3
     assert resume_runtime["status"] == "actual_training_checkpoint_resume_audit"
@@ -1820,16 +1828,44 @@ def test_stage2_training_executor_runtime_audit_can_resume_published_checkpoint(
     assert resume_runtime["state_checks"]["tgvf_module"]["ok"] is True
     assert resume_runtime["state_checks"]["qwen_lora"]["ok"] is True
     assert resume_runtime["optimizer"]["state_entry_count"] > 0
+    assert cadence_runtime["status"] == "actual_training_cadence_audit"
+    assert cadence_runtime["actual_training_cadence_validated"] is True
     gate_status = {
         gate["name"]: gate["status"] for gate in runtime_audit["launch_gates"]["gates"]
     }
     assert runtime_audit["launch_gates"]["training_checkpoint_resume_runtime_status"] == (
         "actual_training_checkpoint_resume_audit"
     )
+    assert runtime_audit["launch_gates"]["training_cadence_runtime_status"] == (
+        "actual_training_cadence_audit"
+    )
     assert gate_status["publish_training_checkpoint_after_trainer_loop"] == (
         "identity_validated"
     )
     assert gate_status["resume_training_from_clean_checkpoint"] == "identity_validated"
+    assert gate_status["validate_training_cadence_from_plan"] == "identity_validated"
+    assert gate_status["apply_deepstack_training_scope_when_enabled"] == (
+        "identity_validated"
+    )
+    assert launch_readiness["status"] == "launch_contract_ready_trainer_loop_disabled"
+    assert launch_readiness["all_required_gates_identity_validated"] is True
+    assert launch_readiness["contract_ready_for_trainer_loop"] is True
+    assert launch_readiness["launch_permitted"] is False
+    assert launch_readiness["launch_disabled_reason"] == "native_trainer_loop_not_enabled"
+    assert launch_readiness["pending_gates"] == []
+    assert launch_readiness["unknown_gates"] == []
+    assert launch_readiness["unexpected_blockers"] == []
+    assert launch_readiness["remaining_blockers"] == [
+        "native trainer loop has not been ported into revisit_vlm_clean"
+    ]
+    assert launch_readiness["deepstack"]["enabled"] is False
+    assert launch_readiness["deepstack"]["training_scope_gate_status"] == (
+        "identity_validated"
+    )
+    assert runtime_audit["launch_readiness"]["status"] == launch_readiness["status"]
+    assert runtime_status["training_launch_readiness_status"] == launch_readiness["status"]
+    assert runtime_status["launch_contract_ready_for_trainer_loop"] is True
+    assert runtime_status["launch_permitted"] is False
 
 
 def test_stage2_training_executor_runtime_audit_can_write_checkpoint_audit(

@@ -100,6 +100,7 @@ tgvf_train_stage2_executor --plan /path/to/training_plan.json --prepare-executio
 tgvf_train_stage2_executor --plan /path/to/training_plan.json --prepare-execution --audit-runtime --audit-checkpoint-publish
 tgvf_train_stage2_executor --plan /path/to/training_plan.json --prepare-execution --audit-runtime --audit-checkpoint-resume
 tgvf_train_stage2_executor --plan /path/to/training_plan.json --prepare-execution --audit-runtime --audit-cadence
+tgvf_train_stage2_executor --plan /path/to/training_plan.json --prepare-execution --audit-runtime --audit-launch-readiness
 ```
 
 Without `--preflight-only`, `--prepare-execution`, or `--audit-runtime`, these
@@ -171,6 +172,13 @@ With explicit `--audit-cadence`, runtime audit writes
 `training_cadence_runtime.json` after resolving `max_steps`, checkpoint-save
 steps, and Stage2 eval steps from the plan. This is static launch-contract
 evidence only and does not load the model.
+With explicit `--audit-launch-readiness`, runtime audit runs the strongest
+non-launch prerequisite probes, including checkpoint resume and cadence, then
+writes `training_launch_readiness.json`. It summarizes the existing runtime
+launch gates, artifact statuses, expected non-launch blocker, unexpected
+blockers, and DeepStack state. It can report that the contract is ready for the
+future trainer loop, but it still records `launch_permitted=false` and
+`will_launch_training=false`.
 
 ## Fixed Manifests
 

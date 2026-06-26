@@ -1908,6 +1908,39 @@ Implemented after Phase 72.
   checkpoints, enable `clean_training_command.sh`, or implement DeepStack
   training execution. `will_launch_training` remains `false`.
 
+## Phase 74: Clean Training Launch Readiness Audit
+
+Implemented after Phase 73.
+
+- Stage1/Stage2 executors now support explicit `--audit-launch-readiness`
+  together with `--audit-runtime`;
+- this flag implies the strongest non-launch runtime probes that are needed for
+  readiness:
+  - checkpoint publish/resume audit;
+  - optimizer/scheduler construction;
+  - bounded training-step and gradient-accumulation trainer-loop probes;
+  - save/eval cadence audit;
+- the audit writes `training_launch_readiness.json`, summarizing the existing
+  runtime launch gates rather than maintaining a second gate implementation:
+  - total required gates;
+  - identity-validated gates;
+  - pending gates;
+  - unknown gates;
+  - expected non-launch blocker;
+  - unexpected blockers;
+  - artifact statuses;
+  - DeepStack enabled/scope/gate status;
+- Stage2 default `deepstack.enabled=false` now satisfies
+  `apply_deepstack_training_scope_when_enabled`; an explicitly enabled
+  DeepStack plan must still wait for the actual training injection/masking path;
+- when every required gate is identity-validated and the only remaining blocker
+  is the deliberate missing native trainer loop, readiness reports
+  `status=launch_contract_ready_trainer_loop_disabled` and
+  `launch_permitted=false`;
+- this phase does not enter the full `max_steps` loop, enable
+  `clean_training_command.sh`, or launch training. `will_launch_training`
+  remains `false`.
+
 ## Later Phases
 
 1. Replace training launch plans with clean-native training execution.

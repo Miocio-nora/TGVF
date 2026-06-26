@@ -164,6 +164,15 @@ def build_parser(stage: TrainingStage) -> argparse.ArgumentParser:
             "training."
         ),
     )
+    parser.add_argument(
+        "--audit-launch-readiness",
+        action="store_true",
+        help=(
+            "During --audit-runtime, run all prerequisite non-launch runtime "
+            "audits needed for a clean launch-readiness summary and write "
+            "training_launch_readiness.json. This still does not launch training."
+        ),
+    )
     return parser
 
 
@@ -201,6 +210,7 @@ def main_for_stage(stage: TrainingStage, argv: list[str] | None = None) -> int:
                 audit_checkpoint_publish=args.audit_checkpoint_publish,
                 audit_checkpoint_resume=args.audit_checkpoint_resume,
                 audit_cadence=args.audit_cadence,
+                audit_launch_readiness=args.audit_launch_readiness,
             )
             prepared["runtime_audit"] = audit["runtime_audit"]
             prepared["trainable_parameters"] = audit["trainable_parameters"]
@@ -224,6 +234,10 @@ def main_for_stage(stage: TrainingStage, argv: list[str] | None = None) -> int:
                 ]
             if audit.get("training_cadence_runtime"):
                 prepared["training_cadence_runtime"] = audit["training_cadence_runtime"]
+            if audit.get("training_launch_readiness"):
+                prepared["training_launch_readiness"] = audit[
+                    "training_launch_readiness"
+                ]
         print_json(prepared)
         return 0
     if args.audit_runtime:
@@ -245,6 +259,7 @@ def main_for_stage(stage: TrainingStage, argv: list[str] | None = None) -> int:
             audit_checkpoint_publish=args.audit_checkpoint_publish,
             audit_checkpoint_resume=args.audit_checkpoint_resume,
             audit_cadence=args.audit_cadence,
+            audit_launch_readiness=args.audit_launch_readiness,
         )
         audit["preflight_report"] = str(report_path)
         print_json(audit)
@@ -345,7 +360,11 @@ def audit_training_runtime(
     audit_checkpoint_publish: bool = False,
     audit_checkpoint_resume: bool = False,
     audit_cadence: bool = False,
+    audit_launch_readiness: bool = False,
 ) -> dict[str, Any]:
+    if audit_launch_readiness:
+        audit_checkpoint_resume = True
+        audit_cadence = True
     bundle_file = Path(bundle_path)
     if not bundle_file.exists():
         raise FileNotFoundError(f"training execution bundle does not exist: {bundle_file}")
@@ -504,6 +523,18 @@ def audit_training_runtime(
         training_cadence_runtime=training_cadence_runtime,
         expected_stage=expected_stage,
     )
+    training_launch_readiness = (
+        _write_training_launch_readiness_audit(
+            execution_dir=execution_dir,
+            bundle=bundle,
+            audit=audit,
+            expected_stage=expected_stage,
+        )
+        if audit_launch_readiness
+        else None
+    )
+    if training_launch_readiness is not None:
+        audit["launch_readiness"] = training_launch_readiness["payload"]
     resolved_report_path = (
         Path(report_path)
         if report_path is not None
@@ -543,6 +574,8 @@ def audit_training_runtime(
         result["training_checkpoint_resume_runtime"] = training_checkpoint_resume_runtime["path"]
     if training_cadence_runtime is not None:
         result["training_cadence_runtime"] = training_cadence_runtime["path"]
+    if training_launch_readiness is not None:
+        result["training_launch_readiness"] = training_launch_readiness["path"]
     return result
 
 
@@ -1804,6 +1837,113 @@ def _write_training_cadence_runtime_audit(
         ],
     }
     path = execution_dir / "training_cadence_runtime.json"
+    _write_json(path, payload)
+    return {"path": str(path), "payload": payload}
+
+
+def _write_training_launch_readiness_audit(
+    *,
+    execution_dir: Path,
+    bundle: dict[str, Any],
+    audit: dict[str, Any],
+    expected_stage: TrainingStage,
+) -> dict[str, Any]:
+    gates = audit.get("launch_gates") or {}
+    gate_rows = list(gates.get("gates") or [])
+    pending_gates = [
+        gate["name"]
+        for gate in gate_rows
+        if gate.get("status") == "pending_real_trainer_loop"
+    ]
+    unknown_gates = [
+        gate["name"] for gate in gate_rows if gate.get("status") == "unknown_gate"
+    ]
+    identity_validated_gates = [
+        gate["name"]
+        for gate in gate_rows
+        if gate.get("status") == "identity_validated"
+    ]
+    blocking_items = list(audit.get("blocking_items") or [])
+    expected_nonlaunch_blocker = (
+        "native trainer loop has not been ported into revisit_vlm_clean"
+    )
+    unexpected_blockers = [
+        item for item in blocking_items if item != expected_nonlaunch_blocker
+    ]
+    all_required_gates_identity_validated = bool(gate_rows) and not (
+        pending_gates or unknown_gates
+    )
+    contract_ready_for_trainer_loop = (
+        all_required_gates_identity_validated and not unexpected_blockers
+    )
+    status = (
+        "launch_contract_ready_trainer_loop_disabled"
+        if contract_ready_for_trainer_loop
+        else "blocked_before_launch"
+    )
+    deepstack = dict(bundle.get("deepstack") or {})
+    deepstack_gate_status = next(
+        (
+            gate.get("status")
+            for gate in gate_rows
+            if gate.get("name") == "apply_deepstack_training_scope_when_enabled"
+        ),
+        "not_applicable",
+    )
+    payload = {
+        "schema_version": "clean_training_launch_readiness_v1",
+        "stage": str(expected_stage),
+        "run_id": bundle.get("run_id"),
+        "status": status,
+        "will_launch_training": False,
+        "training_runtime_ported": False,
+        "launch_permitted": False,
+        "launch_disabled_reason": (
+            "native_trainer_loop_not_enabled"
+            if contract_ready_for_trainer_loop
+            else "launch_contract_not_ready"
+        ),
+        "required_gates_total": int(gates.get("total") or len(gate_rows)),
+        "identity_validated_gates_total": int(
+            gates.get("identity_validated") or len(identity_validated_gates)
+        ),
+        "all_required_gates_identity_validated": all_required_gates_identity_validated,
+        "contract_ready_for_trainer_loop": contract_ready_for_trainer_loop,
+        "identity_validated_gates": identity_validated_gates,
+        "pending_gates": pending_gates,
+        "unknown_gates": unknown_gates,
+        "remaining_blockers": blocking_items,
+        "expected_nonlaunch_blocker": (
+            expected_nonlaunch_blocker
+            if expected_nonlaunch_blocker in blocking_items
+            else None
+        ),
+        "unexpected_blockers": unexpected_blockers,
+        "artifact_statuses": {
+            "trainable_parameters": gates.get("trainable_parameters_status"),
+            "optimizer_runtime": gates.get("optimizer_runtime_status"),
+            "training_step_runtime": gates.get("training_step_runtime_status"),
+            "trainer_loop_runtime": gates.get("trainer_loop_runtime_status"),
+            "training_checkpoint_publish_runtime": gates.get(
+                "training_checkpoint_publish_runtime_status"
+            ),
+            "training_checkpoint_resume_runtime": gates.get(
+                "training_checkpoint_resume_runtime_status"
+            ),
+            "training_cadence_runtime": gates.get("training_cadence_runtime_status"),
+        },
+        "deepstack": {
+            "enabled": bool(deepstack.get("enabled")),
+            "mask_scope": deepstack.get("mask_scope"),
+            "training_scope_gate_status": deepstack_gate_status,
+        },
+        "notes": [
+            "readiness summarizes existing clean runtime audit gates",
+            "this artifact never flips will_launch_training to true",
+            "full training launch remains disabled until the native trainer loop is ported",
+        ],
+    }
+    path = execution_dir / "training_launch_readiness.json"
     _write_json(path, payload)
     return {"path": str(path), "payload": payload}
 
@@ -3192,6 +3332,10 @@ def _launch_gate_audit(
                     "attach_lora_modules_from_plan",
                 }
             )
+    if bundle.get("stage") == str(TrainingStage.STAGE2):
+        deepstack = bundle.get("deepstack") or {}
+        if not bool(deepstack.get("enabled")):
+            satisfied.add("apply_deepstack_training_scope_when_enabled")
     pending_model_load = {
         "load_model_and_processor",
         "ensure_protocol_token_rows",
@@ -3344,6 +3488,7 @@ def _training_cadence_runtime_validated(runtime: dict[str, Any] | None) -> bool:
 
 def _runtime_audit_status(audit: dict[str, Any]) -> dict[str, Any]:
     gates = audit.get("launch_gates") or {}
+    launch_readiness = audit.get("launch_readiness") or {}
     return {
         "schema_version": "clean_training_runtime_audit_status_v1",
         "stage": audit.get("stage"),
@@ -3362,6 +3507,11 @@ def _runtime_audit_status(audit: dict[str, Any]) -> dict[str, Any]:
             "training_checkpoint_resume_runtime_status"
         ),
         "training_cadence_runtime_status": gates.get("training_cadence_runtime_status"),
+        "training_launch_readiness_status": launch_readiness.get("status"),
+        "launch_contract_ready_for_trainer_loop": launch_readiness.get(
+            "contract_ready_for_trainer_loop"
+        ),
+        "launch_permitted": launch_readiness.get("launch_permitted"),
         "blocking_items": list(audit.get("blocking_items") or []),
     }
 
@@ -3377,8 +3527,18 @@ def _runtime_audit_text(audit: dict[str, Any]) -> str:
         f"training_runtime_ported: {audit.get('training_runtime_ported')}",
         f"identity_validated_gates: {gates.get('identity_validated')}",
         f"pending_real_trainer_loop_gates: {gates.get('pending_real_trainer_loop')}",
-        "blocking_items:",
     ]
+    if audit.get("launch_readiness"):
+        launch_readiness = audit["launch_readiness"]
+        lines.extend(
+            [
+                f"launch_readiness_status: {launch_readiness.get('status')}",
+                "launch_contract_ready_for_trainer_loop: "
+                f"{launch_readiness.get('contract_ready_for_trainer_loop')}",
+                f"launch_permitted: {launch_readiness.get('launch_permitted')}",
+            ]
+        )
+    lines.append("blocking_items:")
     lines.extend(f"- {item}" for item in audit.get("blocking_items") or [])
     return "\n".join(lines) + "\n"
 

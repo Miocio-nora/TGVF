@@ -154,6 +154,13 @@ before training/eval cleanup can proceed.
   resolving `max_steps`, checkpoint-save steps, and Stage2 eval steps from the
   clean plan. It is static launch-contract evidence only and must not load the
   model or launch training.
+- Explicit launch-readiness audit may write `training_launch_readiness.json`.
+  It must summarize the existing runtime launch gates, checkpoint-resume probe,
+  cadence probe, artifact statuses, and DeepStack state without introducing a
+  parallel gate implementation. A clean contract may be marked ready for the
+  future trainer loop only when every required gate is identity-validated and
+  the only remaining blocker is the deliberate missing native trainer loop;
+  `will_launch_training` and `launch_permitted` must remain `false`.
 - `clean_prepare_execution_command.sh` is the runnable clean handoff command;
   `clean_training_command.sh` stays non-executable until the trainer loop is
   ported.
@@ -295,6 +302,13 @@ before training/eval cleanup can proceed.
   resolving `max_steps`, checkpoint-save steps, and Stage2 eval steps from the
   clean plan. It is static launch-contract evidence only and must not load the
   model or launch training.
+- Explicit launch-readiness audit may write `training_launch_readiness.json`.
+  It must summarize the existing runtime launch gates, checkpoint-resume probe,
+  cadence probe, artifact statuses, and DeepStack state without introducing a
+  parallel gate implementation. A clean contract may be marked ready for the
+  future trainer loop only when every required gate is identity-validated and
+  the only remaining blocker is the deliberate missing native trainer loop;
+  `will_launch_training` and `launch_permitted` must remain `false`.
 - `clean_prepare_execution_command.sh` is the runnable clean handoff command;
   `clean_training_command.sh` stays non-executable until the trainer loop is
   ported.
