@@ -4612,3 +4612,56 @@ entry, update this file immediately.
     Stage1 because its same-image sampler changed the effective training
     distribution. A new clean Stage1 replay is required before judging
     manifold, Stage2, or benchmark behavior against the old baseline.
+
+### AUDIT-20260627-clean-stage1-executor-identity-followup
+
+- Status: COMPLETED.
+- Question:
+  - After fixing the clean Stage1 same-image sampler, are there remaining
+    executor/plan identity gaps that could make future clean-vs-legacy
+    comparisons ambiguous?
+- Confirmed gaps and fixes:
+  - Stage1 training-step defaults:
+    - Legacy `v3_stage1_training_step` receives explicit
+      `same_image_negative_margin=1.0` and `readout_batch_size=4`.
+    - Clean executor previously relied on callee defaults for those values.
+    - Clean `train_stage1`, `Stage1LaunchConfig`, training plan, legacy
+      reference command, and training-step probe now carry both values
+      explicitly.
+    - AST keyword check after the change showed the clean and legacy
+      `v3_stage1_training_step(...)` calls have the same keyword set.
+  - Stage1 dataset required fields:
+    - Legacy `TGVFv3Stage1Dataset.required_fields` includes
+      `evidence_description`.
+    - Clean dataset runtime audit now requires
+      `["image", "question", "target", "evidence_description"]` for Stage1.
+  - `first_batch_identity.json`:
+    - Clean executor previously recorded the first N JSONL rows from the file
+      scanner. For Stage1, this did not prove the same-image sampler,
+      rank-owner assignment, or accumulation-step materialization.
+    - Clean executor now materializes the first Stage1 optimizer step with
+      `TGVFv3Stage1Dataset(focus_only=True)` plus `_SingleProcessSampleCursor`
+      over every rank and accumulation micro-step.
+    - The artifact now records rank, micro-index, sample index, sampler mode,
+      and sampler group owner for each materialized row.
+- Verification:
+  - `PYTHONPATH=revisit_vlm_clean/src:src pytest -q revisit_vlm_clean/tests/test_cli.py -k 'stage1'`
+    passed: `15 passed`.
+  - `PYTHONPATH=revisit_vlm_clean/src:src pytest -q revisit_vlm_clean/tests/test_cli.py -k 'training_plan or stage1_same_image_cursor or stage1_first_batch'`
+    passed: `5 passed`.
+  - `python -m py_compile revisit_vlm_clean/src/revisit_vlm_clean/cli/train_stage1.py revisit_vlm_clean/src/revisit_vlm_clean/training_plan.py revisit_vlm_clean/src/revisit_vlm_clean/training/executor.py revisit_vlm_clean/tests/test_cli.py`
+    passed.
+  - `git diff --check -- revisit_vlm_clean/src/revisit_vlm_clean/cli/train_stage1.py revisit_vlm_clean/src/revisit_vlm_clean/training_plan.py revisit_vlm_clean/src/revisit_vlm_clean/training/executor.py revisit_vlm_clean/tests/test_cli.py`
+    passed.
+- Interpretation:
+  - These fixes do not explain the old clean Stage1 diagnostic gap by
+    themselves; they remove ambiguity and prevent future runs from looking
+    comparable while using an unproven executor identity.
+  - Existing clean Stage1 outputs generated before these fixes remain
+    diagnostic side results, not final equivalence results.
+- Next required comparable run:
+  - Re-run clean Stage1 from the corrected code with the legacy-comparable
+    local Qwen3 model path, legacy-compatible sampler semantics, explicit
+    Stage1 training-step defaults, and `visual_token_manifold=0.01`.
+  - Only after that run should Stage2 and benchmark conclusions be compared
+    against 20260617/20260620 legacy references.

@@ -124,7 +124,9 @@ class Stage1LaunchConfig:
     loss_gen: float = 1.0
     loss_visual_token_manifold: float = 0.1
     loss_same_image_negative: float = 1.0
+    same_image_negative_margin: float = 1.0
     same_image_negative_mode: str = "matrix_ce"
+    readout_batch_size: int = 4
     min_confidence: float | None = None
     wandb_project: str | None = None
     wandb_mode: str | None = None
@@ -158,6 +160,10 @@ class Stage1LaunchConfig:
             )
         if self.same_image_negative_mode not in {"matrix_ce", "cyclic_margin"}:
             raise ValueError("same_image_negative_mode must be matrix_ce or cyclic_margin")
+        if float(self.same_image_negative_margin) <= 0:
+            raise ValueError("same_image_negative_margin must be > 0")
+        if int(self.readout_batch_size) < 1:
+            raise ValueError("readout_batch_size must be >= 1")
         if self.lr_scheduler not in {"constant", "linear", "cosine"}:
             raise ValueError("lr_scheduler must be constant, linear, or cosine")
         if int(self.warmup_steps) < 0:
@@ -369,6 +375,8 @@ def build_stage1_launch_plan(
             "fvt_position_mode": config.fvt_position_mode,
             "focus_action_im_end": config.focus_action_im_end,
             "mask_original_image_after_tgvf": config.mask_original_image_after_tgvf,
+            "readout_batch_size": config.readout_batch_size,
+            "same_image_negative_margin": config.same_image_negative_margin,
             "same_image_negative_mode": config.same_image_negative_mode,
         },
         "readout_context": _stage1_readout_context(config),
@@ -909,8 +917,12 @@ def _stage1_legacy_command(config: Stage1LaunchConfig) -> list[str]:
         str(config.loss_visual_token_manifold),
         "--loss-same-image-negative",
         str(config.loss_same_image_negative),
+        "--same-image-negative-margin",
+        str(config.same_image_negative_margin),
         "--same-image-negative-mode",
         config.same_image_negative_mode,
+        "--readout-batch-size",
+        str(config.readout_batch_size),
         "--max-grad-norm",
         str(config.max_grad_norm),
     ]

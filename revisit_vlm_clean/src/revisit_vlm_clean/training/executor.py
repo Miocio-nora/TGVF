@@ -4079,6 +4079,9 @@ def _run_stage1_training_step_probe(
         ),
         device=_parameter_audit_device(torch),
         hidden_state_index=int(training.get("capture_layer") or -1),
+        same_image_negative_margin=float(
+            training.get("same_image_negative_margin") or 1.0
+        ),
         same_image_negative_mode=str(training.get("same_image_negative_mode") or "matrix_ce"),
         mask_original_image_after_tgvf=bool(
             training.get("mask_original_image_after_tgvf")
@@ -4088,6 +4091,7 @@ def _run_stage1_training_step_probe(
         capture_mode=str(training.get("capture_mode") or "teacher_forced"),
         protocol=str(bundle.get("protocol")),
         focus_action_im_end=bool(training.get("focus_action_im_end")),
+        readout_batch_size=int(training.get("readout_batch_size") or 4),
     )
     return {
         "forward_completed": True,
@@ -5382,6 +5386,11 @@ def _write_dataset_runtime_artifacts(
         label="train_file",
         first_batch_size=requested_batch,
     )
+    if expected_stage == TrainingStage.STAGE1:
+        first_batch = _stage1_materialized_first_batch_rows(
+            plan=plan,
+            train_path=str(train_identity["path"]),
+        )
     val_summary = None
     if expected_stage == TrainingStage.STAGE2 and dataset.get("val_file") is not None:
         val_summary, _ = _scan_training_jsonl(
@@ -5750,8 +5759,93 @@ def _scan_training_jsonl(
 
 def _required_dataset_fields(stage: TrainingStage) -> list[str]:
     if stage == TrainingStage.STAGE1:
-        return ["image", "question", "target"]
+        return ["image", "question", "target", "evidence_description"]
     return ["image", "question", "answer", "need_focus", "evidence_state"]
+
+
+def _stage1_materialized_first_batch_rows(
+    *,
+    plan: dict[str, Any],
+    train_path: str,
+) -> list[dict[str, Any]]:
+    try:
+        from revisit_vlm.qwen3_vl_tgvf import NEED_LOCAL_EVIDENCE
+        from revisit_vlm.tgvf_v3_stage1 import TGVFv3Stage1Dataset
+    except Exception as exc:
+        raise RuntimeError(
+            "Stage1 first-batch materialization dependencies unavailable"
+        ) from exc
+    batch = plan.get("batch") or {}
+    training = plan.get("training") or {}
+    world_size = max(1, int(batch.get("world_size") or 1))
+    micro_batch_size = max(1, int(batch.get("micro_batch_size") or 1))
+    accumulation_steps = max(1, int(batch.get("gradient_accumulation_steps") or 1))
+    seed = int(training.get("seed") or 0)
+    dataset = TGVFv3Stage1Dataset(train_path, focus_only=True)
+    row_identities = _stage1_focus_row_identities(
+        train_path,
+        need_local_evidence=str(NEED_LOCAL_EVIDENCE),
+    )
+    if len(row_identities) != len(dataset.samples):
+        raise ValueError(
+            "Stage1 first-batch row identity count does not match parsed samples: "
+            f"{len(row_identities)} != {len(dataset.samples)}"
+        )
+    materialized: list[dict[str, Any]] = []
+    for rank in range(world_size):
+        cursor = _SingleProcessSampleCursor(
+            samples=list(dataset.samples),
+            batch_size=micro_batch_size,
+            stage=TrainingStage.STAGE1,
+            dataset_role="train",
+            dataset_path=train_path,
+            rank=rank,
+            world_size=world_size,
+            seed=seed,
+        )
+        for micro_index in range(accumulation_steps):
+            batch_record = cursor.next_batch()
+            for trace in batch_record["sample_trace"]:
+                sample_index = int(trace["sample_index"])
+                row = dict(row_identities[sample_index])
+                row.update(
+                    {
+                        "rank": rank,
+                        "micro_index": micro_index,
+                        "sample_index": sample_index,
+                        "sampler_mode": cursor.summary().get("mode"),
+                        "sampler_group_owner": cursor.summary().get(
+                            "same_image_group_owner"
+                        ),
+                    }
+                )
+                materialized.append(row)
+    return materialized
+
+
+def _stage1_focus_row_identities(
+    train_path: str,
+    *,
+    need_local_evidence: str,
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    path = Path(train_path)
+    with path.open("r", encoding="utf-8") as handle:
+        for line_no, line in enumerate(handle, start=1):
+            if not line.strip():
+                continue
+            record = json.loads(line)
+            need_focus = bool(record.get("need_focus", True))
+            trajectory_type = record.get("trajectory_type", "single_focus")
+            evidence_state = record.get("evidence_state", need_local_evidence)
+            if (
+                not need_focus
+                or trajectory_type != "single_focus"
+                or evidence_state != need_local_evidence
+            ):
+                continue
+            rows.append(_row_runtime_identity(record, line_no=line_no))
+    return rows
 
 
 def _row_runtime_identity(record: dict[str, Any], *, line_no: int) -> dict[str, Any]:

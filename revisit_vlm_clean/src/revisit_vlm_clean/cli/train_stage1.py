@@ -67,11 +67,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--loss-gen", type=float, default=1.0)
     parser.add_argument("--loss-visual-token-manifold", type=float, default=0.1)
     parser.add_argument("--loss-same-image-negative", type=float, default=1.0)
+    parser.add_argument("--same-image-negative-margin", type=float, default=1.0)
     parser.add_argument(
         "--same-image-negative-mode",
         choices=("matrix_ce", "cyclic_margin"),
         default="matrix_ce",
     )
+    parser.add_argument("--readout-batch-size", type=int, default=4)
     parser.add_argument("--min-confidence", type=float, default=None)
     parser.add_argument("--global-batch", type=int, default=DEFAULT_STAGE1_GLOBAL_BATCH)
     parser.add_argument("--world-size", type=int, default=1)
@@ -124,6 +126,8 @@ def _defaults() -> dict[str, object]:
         "max_steps": DEFAULT_STAGE1_MAX_STEPS,
         "focus_action_im_end": True,
         "same_image_negative": "matrix_ce",
+        "same_image_negative_margin": 1.0,
+        "readout_batch_size": 4,
         "visual_token_manifold_loss": 0.1,
         "lr_scheduler": "cosine",
         "warmup_steps": 100,
@@ -173,7 +177,9 @@ def _config_from_args(args: argparse.Namespace) -> Stage1LaunchConfig:
         loss_gen=args.loss_gen,
         loss_visual_token_manifold=args.loss_visual_token_manifold,
         loss_same_image_negative=args.loss_same_image_negative,
+        same_image_negative_margin=args.same_image_negative_margin,
         same_image_negative_mode=args.same_image_negative_mode,
+        readout_batch_size=args.readout_batch_size,
         min_confidence=args.min_confidence,
         wandb_project=args.wandb_project,
         wandb_mode=args.wandb_mode,

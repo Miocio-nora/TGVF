@@ -722,7 +722,8 @@ def test_stage1_distributed_launch_requires_torchrun_env(tmp_path, monkeypatch) 
 def test_stage1_training_executor_prepare_execution_cli(tmp_path, capsys) -> None:
     train_file = tmp_path / "stage1.train.jsonl"
     train_file.write_text(
-        '{"image": "/tmp/image.jpg", "question": "q", "target": "mark"}\n',
+        '{"image": "/tmp/image.jpg", "question": "q", "target": "mark", '
+        '"evidence_description": "e"}\n',
         encoding="utf-8",
     )
     output_dir = tmp_path / "stage1_plan"
@@ -786,8 +787,16 @@ def test_stage1_training_executor_prepare_execution_cli(tmp_path, capsys) -> Non
     assert dataset_runtime["stage"] == "stage1"
     assert dataset_runtime["train_file"]["line_count"] == 1
     assert dataset_runtime["train_file"]["missing_required_counts"]["target"] == 0
-    assert first_batch["materialized_batch_size"] == 1
+    assert (
+        dataset_runtime["train_file"]["missing_required_counts"]["evidence_description"]
+        == 0
+    )
+    assert first_batch["requested_global_batch_size"] == 32
+    assert first_batch["materialized_batch_size"] == 32
     assert first_batch["rows"][0]["row_sha256"]
+    assert {row["row_sha256"] for row in first_batch["rows"]} == {
+        first_batch["rows"][0]["row_sha256"]
+    }
     assert optimizer_groups["status"] == "validated"
     assert optimizer_groups["group_names"] == ["tgvf_module", "protocol_c_token_rows"]
     assert optimizer_groups["groups"][0]["lr"] == 1e-4
@@ -839,6 +848,92 @@ def test_stage1_training_executor_prepare_execution_cli(tmp_path, capsys) -> Non
     ]
 
 
+def test_stage1_first_batch_identity_uses_actual_same_image_sampler(
+    tmp_path,
+) -> None:
+    from hashlib import sha1
+
+    def image_id_for_rank(rank: int) -> str:
+        for index in range(1000):
+            image_id = f"rank_{rank}_image_{index}"
+            owner = int(sha1(image_id.encode("utf-8")).hexdigest(), 16) % 2
+            if owner == rank:
+                return image_id
+        raise AssertionError(f"could not find image_id for rank {rank}")
+
+    rank0_image = image_id_for_rank(0)
+    rank1_image = image_id_for_rank(1)
+    rows = []
+    for image_id in (rank1_image, rank0_image):
+        for item_index in range(4):
+            rows.append(
+                {
+                    "image": f"/tmp/{image_id}.jpg",
+                    "image_id": image_id,
+                    "question": f"q {image_id} {item_index}",
+                    "target": f"target {item_index}",
+                    "evidence_description": "e",
+                    "need_focus": True,
+                    "trajectory_type": "single_focus",
+                    "evidence_state": "need_local_visual_evidence",
+                }
+            )
+    train_file = tmp_path / "stage1.train.jsonl"
+    train_file.write_text(
+        "\n".join(json.dumps(row) for row in rows) + "\n",
+        encoding="utf-8",
+    )
+    output_dir = tmp_path / "stage1_plan"
+    execution_dir = tmp_path / "stage1_execution"
+
+    assert (
+        stage1_main(
+            [
+                "--run-id",
+                "stage1_sampler_identity",
+                "--train-file",
+                str(train_file),
+                "--output-dir",
+                str(output_dir),
+                "--world-size",
+                "2",
+                "--micro-batch-size",
+                "4",
+                "--gradient-accumulation-steps",
+                "1",
+                "--global-batch",
+                "8",
+                "--write-plan",
+            ]
+        )
+        == 0
+    )
+    assert (
+        stage1_executor_main(
+            [
+                "--plan",
+                str(output_dir / "training_plan.json"),
+                "--prepare-execution",
+                "--execution-dir",
+                str(execution_dir),
+            ]
+        )
+        == 0
+    )
+
+    first_batch = json.loads((execution_dir / "first_batch_identity.json").read_text())
+    assert first_batch["materialized_batch_size"] == 8
+    assert {row["rank"] for row in first_batch["rows"]} == {0, 1}
+    by_rank = {
+        rank: {row["image_id"] for row in first_batch["rows"] if row["rank"] == rank}
+        for rank in (0, 1)
+    }
+    assert by_rank == {0: {rank0_image}, 1: {rank1_image}}
+    assert {
+        row["sampler_mode"] for row in first_batch["rows"]
+    } == {"same_image_legacy_shuffle"}
+
+
 def test_training_executor_rejects_executable_legacy_reference(tmp_path) -> None:
     train_file = tmp_path / "stage1.train.jsonl"
     train_file.write_text('{"image": "/tmp/image.jpg", "question": "q"}\n', encoding="utf-8")
@@ -872,7 +967,8 @@ def test_stage1_training_executor_runtime_audit_can_write_cadence_probe(
 ) -> None:
     train_file = tmp_path / "stage1.train.jsonl"
     train_file.write_text(
-        '{"image": "/tmp/image.jpg", "question": "q", "target": "mark"}\n',
+        '{"image": "/tmp/image.jpg", "question": "q", "target": "mark", '
+        '"evidence_description": "e"}\n',
         encoding="utf-8",
     )
     output_dir = tmp_path / "stage1_plan"
@@ -2483,7 +2579,8 @@ def test_stage1_training_executor_runtime_audit_checkpoint_includes_protocol_row
 
     train_file = tmp_path / "stage1.train.jsonl"
     train_file.write_text(
-        '{"image": "/tmp/image.jpg", "question": "q", "target": "mark"}\n',
+        '{"image": "/tmp/image.jpg", "question": "q", "target": "mark", '
+        '"evidence_description": "e"}\n',
         encoding="utf-8",
     )
     output_dir = tmp_path / "stage1_plan"
