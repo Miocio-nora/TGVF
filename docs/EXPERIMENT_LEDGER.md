@@ -3633,7 +3633,7 @@ entry, update this file immediately.
 
 ### EXP-20260626-155246-clean-qwen3-stage12-deepstack-mask075-4gpu
 
-- Status: RUNNING_RELAUNCH.
+- Status: RELAUNCH_PENDING_AFTER_LEGACY_LOGGING_ALIGNMENT.
 - Question:
   - Train the clean Qwen3 Stage1 -> Stage2 mainline with the smoke-selected
     4-GPU batch settings, then use the resulting chain for later benchmark
@@ -3676,6 +3676,7 @@ entry, update this file immediately.
   - Initial formal plan commit: `28f50dc`.
   - Micro4 fallback ledger commit: `d435f86`.
   - Progress/W&B logging patch commit: `527d57b`.
+  - Legacy-aligned component/debug logging patch: pending commit.
   - Worktree expected clean except untracked `logs/` and `third_party/`.
 - Stage1 checkpoint:
   - None for launch; Stage1 starts from `Qwen/Qwen3-VL-8B-Thinking`.
@@ -3723,7 +3724,7 @@ entry, update this file immediately.
     `clean_stage1_qwen3_mask075_4gpu_20260626_155246`.
   - Interrupted Stage1 fallback session:
     `clean_stage1_qwen3_mask075_4gpu_m4_20260626_155809`.
-  - Active Stage1 relaunch session:
+  - Stopped Stage1 relaunch session with incomplete component logging:
     `clean_stage1_qwen3_m4_wandb_20260626_170602`.
 - Started:
   - Initial Stage1 micro8 launch: 2026-06-26T15:55:33+09:00.
@@ -3733,6 +3734,10 @@ entry, update this file immediately.
 - Finished:
   - Paused/interrupted at 2026-06-26T16:53:33+09:00 before checkpoint
     completion, to patch missing clean-native progress/W&B logging.
+  - Stopped at 2026-06-26T17:25:03+09:00 before checkpoint completion,
+    because clean progress/W&B logging recorded only `loss_total` plus optimizer
+    state and did not inherit the legacy Stage1/Stage2 component/debug metric
+    surface.
 - Metrics:
   - Initial Stage1 micro8 attempt: FAILED/OOM.
     - Log:
@@ -3751,7 +3756,8 @@ entry, update this file immediately.
       Stage1 data.
     - This attempt did not produce a completed Stage1 checkpoint and must not
       be used as a Stage1 result.
-  - Stage1 micro4 relaunch with progress/W&B patch: STARTING.
+  - Stage1 micro4 relaunch with progress/W&B patch:
+    STOPPED_FOR_INCOMPLETE_LEGACY_LOGGING.
     - Output:
       `outputs/clean_training/qwen3_stage12_deepstack_mask075_4gpu_20260626_170602/stage1_micro4`.
     - Log:
@@ -3762,6 +3768,10 @@ entry, update this file immediately.
       `https://wandb.ai/mio_nora/tgvf-clean-qwen3-deepstack/runs/mohvyqge`.
     - As of startup verification, progress logging reached `step=2/2000`
       with finite losses and `wandb_enabled=True`.
+    - Last observed progress before stop: about `step=48/2000`.
+    - This run is invalid for training diagnostics because it lacks Stage1
+      component losses (`loss_gen`, `loss_visual_token_manifold`,
+      `loss_same_image_negative`) and legacy debug metrics.
 - Analysis:
   - The single-process smoke under-sampled long first-batch examples; real DDP
     `micro_batch_size=8` is not robust.
@@ -3769,9 +3779,15 @@ entry, update this file immediately.
   - Clean-native trainer launch initially recorded `wandb.mode=online` in the
     plan but did not actually call `wandb.init/log`; it also wrote step runtime
     only at the end. This observability gap is being patched before relaunch.
+  - The first patch was still too narrow: it proved liveness/W&B upload but
+    omitted legacy training diagnostics. Legacy Stage1 logs component losses,
+    grad norm, peak memory, shape, attention, norm, mask/readout/position, and
+    finite-rate diagnostics. Legacy Stage2 logs component losses, focus/no-focus
+    counts, mask-active rates, value-span match rate, protocol boundary stats,
+    grad norm, learning rates, peak memory, and batch identity.
 - Conclusion:
-  - Stage1 should be relaunched from a fresh clean plan/output after the
-    progress/W&B logging patch is committed.
+  - Stage1 must be relaunched from a fresh clean plan/output after the
+    legacy-aligned component/debug logging patch is committed.
 - Comparable to baseline:
   - No; this is the formal training chain, not a benchmark result.
 - Follow-up:

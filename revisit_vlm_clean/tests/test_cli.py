@@ -2251,11 +2251,20 @@ def test_stage2_training_executor_can_launch_single_process_training_loop(
     assert progress_records[1]["global_step"] == 1
     assert progress_records[2]["global_step"] == 2
     assert progress_records[1]["loss_total"] is not None
+    assert progress_records[1]["loss_focus"] == 1.0
+    assert progress_records[1]["loss_no_focus"] == 0.0
+    assert progress_records[1]["loss_visual_token_manifold"] == 0.0
+    assert progress_records[1]["debug_summary"]["focus_count"] == 2
+    assert progress_records[1]["debug_summary"]["focus_sample_mask_active_rate"] == 1.0
     assert wandb_inits[0]["project"] == "clean-unit"
     assert wandb_inits[0]["mode"] == "offline"
     assert wandb_inits[0]["name"] == "stage2_single_process_launch"
     assert [item["step"] for item in wandb_logs] == [1, 2]
     assert wandb_logs[0]["metrics"]["trainer/global_step"] == 1
+    assert wandb_logs[0]["metrics"]["train/loss_focus"] == 1.0
+    assert wandb_logs[0]["metrics"]["train/loss_no_focus"] == 0.0
+    assert wandb_logs[0]["metrics"]["train/focus_count"] == 2.0
+    assert wandb_logs[0]["metrics"]["train/focus_sample_mask_active_rate"] == 1.0
     assert wandb_summaries[-1]["optimizer_steps_completed"] == 2
     assert wandb_finishes == [True]
     assert runtime["checkpoint_save_steps"] == [1, 2]

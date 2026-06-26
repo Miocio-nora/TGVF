@@ -1279,6 +1279,202 @@ def _mean(values: list[float]) -> float | None:
     return sum(finite) / len(finite) if finite else None
 
 
+def _loss_scalar_fields(result: dict[str, Any]) -> dict[str, float]:
+    losses: dict[str, float] = {}
+    for key, value in result.items():
+        if not key.startswith("loss_") or key == "loss_tensor":
+            continue
+        scalar = _scalar_float(value)
+        if scalar is not None and math.isfinite(scalar):
+            losses[key] = scalar
+    return losses
+
+
+def _mean_loss_scalar_fields(micro_losses: list[dict[str, Any]]) -> dict[str, float | None]:
+    values_by_key: dict[str, list[float]] = {}
+    for item in micro_losses:
+        for key, value in item.items():
+            if not key.startswith("loss_") or not isinstance(value, (int, float)):
+                continue
+            scalar = float(value)
+            if math.isfinite(scalar):
+                values_by_key.setdefault(key, []).append(scalar)
+    return {key: _mean(values) for key, values in sorted(values_by_key.items())}
+
+
+def _compact_debug_payload(debug: dict[str, Any]) -> dict[str, Any]:
+    compact: dict[str, Any] = {}
+    for key, value in debug.items():
+        if key == "debug_examples":
+            if isinstance(value, list):
+                compact["debug_example_count"] = len(value)
+            continue
+        compact[key] = value
+    return compact
+
+
+def _weighted_mean_from_debug(
+    debug_logs: list[dict[str, Any]],
+    *,
+    value_key: str,
+    weight_key: str,
+) -> float | None:
+    total = 0.0
+    weight_total = 0
+    for item in debug_logs:
+        value = item.get(value_key)
+        weight = int(item.get(weight_key, 0) or 0)
+        if weight <= 0 or not isinstance(value, (int, float)):
+            continue
+        total += float(value) * weight
+        weight_total += weight
+    return total / weight_total if weight_total else None
+
+
+def _mean_debug_scalar(debug_logs: list[dict[str, Any]], key: str) -> float | None:
+    values = [
+        float(item[key])
+        for item in debug_logs
+        if isinstance(item.get(key), (int, float))
+    ]
+    return _mean(values)
+
+
+def _sum_debug_int(debug_logs: list[dict[str, Any]], key: str) -> int:
+    return sum(int(item.get(key, 0) or 0) for item in debug_logs)
+
+
+def _merge_protocol_boundary_debug(debug_logs: list[dict[str, Any]]) -> dict[str, Any]:
+    names = (
+        "focus_start",
+        "focus_end",
+        "tgvf_start",
+        "tgvf_end",
+        "evidence_start",
+        "evidence_end",
+    )
+    merged: dict[str, Any] = {}
+    acc_values: list[float] = []
+    total_support = 0
+    for name in names:
+        support_key = f"protocol_c_boundary_support_{name}"
+        acc_key = f"protocol_c_boundary_acc_{name}"
+        support = _sum_debug_int(debug_logs, support_key)
+        total_support += support
+        merged[support_key] = support
+        if support <= 0:
+            merged[acc_key] = None
+            continue
+        weighted = 0.0
+        for item in debug_logs:
+            item_support = int(item.get(support_key, 0) or 0)
+            item_acc = item.get(acc_key)
+            if item_support > 0 and isinstance(item_acc, (int, float)):
+                weighted += float(item_acc) * item_support
+        acc = weighted / support
+        merged[acc_key] = acc
+        acc_values.append(acc)
+    merged["protocol_c_boundary_support_total"] = total_support
+    merged["protocol_c_boundary_acc_mean"] = _mean(acc_values)
+    return merged
+
+
+def _summarize_training_debug(debug_logs: list[dict[str, Any]]) -> dict[str, Any]:
+    if not debug_logs:
+        return {}
+    compact_logs = [_compact_debug_payload(item) for item in debug_logs]
+    summary = dict(compact_logs[-1])
+    if any("focus_count" in item or "no_focus_count" in item for item in debug_logs):
+        focus = _sum_debug_int(debug_logs, "focus_count")
+        no_focus = _sum_debug_int(debug_logs, "no_focus_count")
+        summary.update(
+            {
+                "focus_count": focus,
+                "single_focus_count": _sum_debug_int(debug_logs, "single_focus_count"),
+                "multi_focus_count": _sum_debug_int(debug_logs, "multi_focus_count"),
+                "no_focus_count": no_focus,
+                "focus_ratio": focus / max(focus + no_focus, 1),
+                "no_focus_ratio": no_focus / max(focus + no_focus, 1),
+                "focus_sample_mask_active_rate": _weighted_mean_from_debug(
+                    debug_logs,
+                    value_key="focus_sample_mask_active_rate",
+                    weight_key="focus_count",
+                ),
+                "no_focus_mask_active_rate": _weighted_mean_from_debug(
+                    debug_logs,
+                    value_key="no_focus_mask_active_rate",
+                    weight_key="no_focus_count",
+                ),
+                "mask_original_image_after_tgvf_prob": _mean_debug_scalar(
+                    debug_logs,
+                    "mask_original_image_after_tgvf_prob",
+                ),
+                "value_span_match_rate": _mean_debug_scalar(
+                    debug_logs,
+                    "value_span_match_rate",
+                ),
+                "focus_loss_token_weight": _sum_debug_int(
+                    debug_logs,
+                    "focus_loss_token_weight",
+                ),
+                "no_focus_loss_token_weight": _sum_debug_int(
+                    debug_logs,
+                    "no_focus_loss_token_weight",
+                ),
+            }
+        )
+        scopes = [
+            str(item.get("mask_original_image_after_tgvf_scope"))
+            for item in debug_logs
+            if item.get("mask_original_image_after_tgvf_scope") is not None
+        ]
+        if scopes:
+            summary["mask_original_image_after_tgvf_scope"] = scopes[0]
+        summary.update(_merge_protocol_boundary_debug(debug_logs))
+    examples = []
+    for item in debug_logs:
+        item_examples = item.get("debug_examples")
+        if isinstance(item_examples, list):
+            examples.extend(item_examples)
+        if len(examples) >= 2:
+            break
+    if examples:
+        summary["debug_example_count"] = sum(
+            len(item.get("debug_examples") or [])
+            for item in debug_logs
+            if isinstance(item.get("debug_examples"), list)
+        )
+    return summary
+
+
+def _flatten_scalar_metrics(prefix: str, payload: Any) -> dict[str, Any]:
+    metrics: dict[str, Any] = {}
+    if isinstance(payload, bool):
+        metrics[prefix] = float(payload)
+    elif isinstance(payload, (int, float)) and math.isfinite(float(payload)):
+        metrics[prefix] = float(payload)
+    elif isinstance(payload, dict):
+        for key, value in payload.items():
+            nested = f"{prefix}/{key}" if prefix else str(key)
+            metrics.update(_flatten_scalar_metrics(nested, value))
+    elif isinstance(payload, (list, tuple)) and all(
+        isinstance(item, (int, float)) for item in payload
+    ):
+        for index, value in enumerate(payload):
+            if math.isfinite(float(value)):
+                metrics[f"{prefix}/dim_{index}"] = float(value)
+    return metrics
+
+
+def _cuda_peak_memory_gb(torch_module: Any) -> float | None:
+    try:
+        if not torch_module.cuda.is_available():
+            return None
+        return float(torch_module.cuda.max_memory_allocated()) / float(1024**3)
+    except Exception:
+        return None
+
+
 def _grad_total_norm(summary: dict[str, Any]) -> float | None:
     value = summary.get("total_norm")
     return float(value) if isinstance(value, (int, float)) and math.isfinite(float(value)) else None
@@ -1295,12 +1491,11 @@ def _training_step_wandb_metrics(
     scheduler_last_lr: list[Any],
     checkpoint_record: dict[str, Any] | None,
     validation_record: dict[str, Any] | None,
+    debug_summary: dict[str, Any] | None = None,
+    peak_memory_gb: float | None = None,
+    effective_global_batch_size: int | None = None,
 ) -> dict[str, Any]:
-    loss_values = [
-        float(item["loss_total"])
-        for item in micro_losses
-        if isinstance(item.get("loss_total"), (int, float))
-    ]
+    loss_means = _mean_loss_scalar_fields(micro_losses)
     sample_counts = [
         int(item.get("sample_count") or 0)
         for item in micro_losses
@@ -1309,22 +1504,28 @@ def _training_step_wandb_metrics(
     metrics: dict[str, Any] = {
         "trainer/global_step": global_step,
         "trainer/micro_steps_completed": total_micro_steps,
-        "train/loss_total": _mean(loss_values),
         "train/micro_step_count": len(micro_losses),
         "train/sample_count": sum(sample_counts),
         "train/grad_norm_after_sync": _grad_total_norm(grad_after_sync),
         "train/grad_norm_after_clip": _grad_total_norm(grad_after_clip),
         "train/clipped_grad_norm": clipped_grad_norm,
+        "train/grad_norm": clipped_grad_norm,
+        "train/peak_memory_gb": peak_memory_gb,
+        "train/effective_global_batch_size": effective_global_batch_size,
         "checkpoint/saved": checkpoint_record is not None,
         "validation/ran": validation_record is not None,
     }
+    for key, value in loss_means.items():
+        metrics[f"train/{key}"] = value
+    if debug_summary:
+        for key, value in _flatten_scalar_metrics("train", debug_summary).items():
+            metrics[key] = value
     for index, lr in enumerate(scheduler_last_lr):
         if isinstance(lr, (int, float)):
             metrics[f"train/lr_group_{index}"] = float(lr)
-    if validation_record is not None and isinstance(
-        validation_record.get("loss_total"), (int, float)
-    ):
-        metrics["validation/loss_total"] = float(validation_record["loss_total"])
+    if validation_record is not None:
+        for key, value in _loss_scalar_fields(validation_record).items():
+            metrics[f"validation/{key}"] = value
     return metrics
 
 
@@ -2680,6 +2881,12 @@ def _write_single_process_training_runtime(
         optimizer.zero_grad(set_to_none=True)
         for global_step in range(1, max_steps + 1):
             micro_losses = []
+            micro_debug_logs = []
+            try:
+                if torch.cuda.is_available():
+                    torch.cuda.reset_peak_memory_stats()
+            except Exception:
+                pass
             optimizer.zero_grad(set_to_none=True)
             for micro_index in range(accumulation_steps):
                 batch_record = train_cursor.next_batch()
@@ -2700,6 +2907,11 @@ def _write_single_process_training_runtime(
                 loss_value = _scalar_float(loss_tensor)
                 if loss_value is None or not math.isfinite(loss_value):
                     raise ValueError("single-process training requires finite losses")
+                loss_scalars = _loss_scalar_fields(result)
+                loss_scalars["loss_total"] = loss_value
+                debug_payload = dict(result.get("debug") or {})
+                if debug_payload:
+                    micro_debug_logs.append(debug_payload)
                 scaled_loss = loss_tensor / float(accumulation_steps)
                 scaled_loss.backward()
                 total_micro_steps += 1
@@ -2707,9 +2919,12 @@ def _write_single_process_training_runtime(
                     {
                         "micro_step": total_micro_steps,
                         "micro_index": micro_index,
-                        "loss_total": loss_value,
+                        **loss_scalars,
                         "scaled_loss_total": _scalar_float(scaled_loss),
                         "sample_count": result.get("sample_count"),
+                        "debug_summary": _compact_debug_payload(debug_payload)
+                        if debug_payload
+                        else None,
                         "sample_trace": batch_record["sample_trace"],
                     }
                 )
@@ -2731,6 +2946,7 @@ def _write_single_process_training_runtime(
             scheduler.step()
             scheduler_last_lr = list(scheduler.get_last_lr())
             optimizer.zero_grad(set_to_none=True)
+            peak_memory_gb = _cuda_peak_memory_gb(torch)
             step_records.append(
                 {
                     "global_step": global_step,
@@ -2740,6 +2956,7 @@ def _write_single_process_training_runtime(
                     "clipped_grad_norm": clipped_grad_norm,
                     "grad_after_clip": grad_after_clip,
                     "scheduler_last_lr": scheduler_last_lr,
+                    "peak_memory_gb": peak_memory_gb,
                 }
             )
             checkpoint_record = None
@@ -2774,6 +2991,8 @@ def _write_single_process_training_runtime(
                 if isinstance(item.get("loss_total"), (int, float))
             ]
             mean_loss = _mean(loss_values)
+            loss_means = _mean_loss_scalar_fields(micro_losses)
+            debug_summary = _summarize_training_debug(micro_debug_logs)
             progress_logger.log_event(
                 "optimizer_step",
                 {
@@ -2785,11 +3004,24 @@ def _write_single_process_training_runtime(
                     "max_steps": max_steps,
                     "micro_steps_completed": total_micro_steps,
                     "loss_total": mean_loss,
+                    **{
+                        key: value
+                        for key, value in loss_means.items()
+                        if key != "loss_total"
+                    },
                     "micro_losses": micro_losses,
                     "grad_after_sync_total_norm": _grad_total_norm(grad_after_sync),
                     "grad_after_clip_total_norm": _grad_total_norm(grad_after_clip),
                     "clipped_grad_norm": clipped_grad_norm,
+                    "grad_norm": clipped_grad_norm,
+                    "peak_memory_gb": peak_memory_gb,
+                    "effective_global_batch_size": int(
+                        ((bundle.get("batch") or {}).get("global_batch_size") or 0)
+                    )
+                    or None,
                     "scheduler_last_lr": scheduler_last_lr,
+                    "learning_rates": scheduler_last_lr,
+                    "debug_summary": debug_summary,
                     "checkpoint_record": checkpoint_record,
                     "validation_record": validation_record,
                 },
@@ -2804,6 +3036,12 @@ def _write_single_process_training_runtime(
                     scheduler_last_lr=scheduler_last_lr,
                     checkpoint_record=checkpoint_record,
                     validation_record=validation_record,
+                    debug_summary=debug_summary,
+                    peak_memory_gb=peak_memory_gb,
+                    effective_global_batch_size=int(
+                        ((bundle.get("batch") or {}).get("global_batch_size") or 0)
+                    )
+                    or None,
                 ),
                 stdout=(
                     f"[clean-train] step={global_step}/{max_steps} "
