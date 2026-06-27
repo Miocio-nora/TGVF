@@ -6603,7 +6603,7 @@ entry, update this file immediately.
 
 ### EXP-20260628-0520-clean-qwen3-stage2-norm01-free-coredev2511-mediafix-login
 
-- Status: PLANNED.
+- Status: SIDE_RESULT / INVALID_FOR_BASELINE.
 - Question:
   - Rerun `EXP-20260628-0510` with the same evaluation identity, but fix the
     tmux launch environment by running the orchestrator inside `bash -lc`.
@@ -6613,8 +6613,8 @@ entry, update this file immediately.
   - Invalid predecessor:
     `EXP-20260628-0510-clean-qwen3-stage2-norm01-free-coredev2511-mediafix`.
 - Intended diff:
-  - Only launch environment changes: tmux uses `bash -lc`, so `torch` and the
-    revisit-vlm environment are available.
+  - Only launch environment changes: tmux uses `bash -lc`, intended to make
+    `torch` and the revisit-vlm environment available.
   - Checkpoint, model/processor, manifest/order, parser/scorer, no-extra-prompt
     free mode, DeepStack state, max resolution/tokens, and `sdpa` remain fixed.
 - Code commit / worktree:
@@ -6658,8 +6658,91 @@ entry, update this file immediately.
   - Max answer tokens: `512`.
   - Attention implementation: `sdpa`.
 - tmux:
-  - Planned:
+  - Session:
     `clean_qwen3_stage2_norm01_free_coredev2511_ds512_mediafix_login_20260628_0520`.
+- Started:
+  - `2026-06-28T05:15:35+09:00`.
+  - Runtime commit recorded by orchestrator:
+    `3f67d8934cfbfcca84f118d7e9414869a33acca7`.
+- Finished:
+  - `2026-06-28T05:16:02+09:00`.
+- Metrics:
+  - `n_rows=2511`, `n_scored=0`, parse `0.0`, malformed `1.0`.
+  - Every row has `error="ModuleNotFoundError: No module named 'torch'"`.
+  - Shard process exit codes were all `0` because the runner catches row-level
+    backend errors and writes malformed rows.
+- Analysis:
+  - `bash -lc` was insufficient because the tmux server retained an older/base
+    environment. The top-level torch probe failed, but the launch script did
+    not use `set -e`, so it continued into shard execution and produced a fake
+    complete result.
+- Conclusion:
+  - Do not use this output in result tables.
+  - Next rerun must explicitly activate the `revisit-vlm` conda environment
+    inside tmux and fail fast on the torch probe.
+
+### EXP-20260628-0530-clean-qwen3-stage2-norm01-free-coredev2511-mediafix-conda
+
+- Status: PLANNED.
+- Question:
+  - Rerun `EXP-20260628-0520` with the same evaluation identity, but fix the
+    tmux environment deterministically by explicit conda activation and fail
+    fast on `torch` import.
+- Baseline anchor:
+  - Original baseline:
+    `EXP-20260628-0216-clean-qwen3-original-coredev2511-maxans512`.
+  - Invalid predecessors:
+    `EXP-20260628-0510-clean-qwen3-stage2-norm01-free-coredev2511-mediafix`
+    and
+    `EXP-20260628-0520-clean-qwen3-stage2-norm01-free-coredev2511-mediafix-login`.
+- Intended diff:
+  - Only launch environment changes:
+    `source /home/dredvpn009/Flash_Storage/anaconda3/etc/profile.d/conda.sh`
+    then `conda activate revisit-vlm`, with `set -euo pipefail`.
+  - Checkpoint, model/processor, manifest/order, parser/scorer, no-extra-prompt
+    free mode, DeepStack state, max resolution/tokens, and `sdpa` remain fixed.
+- Code commit / worktree:
+  - Planned launch commit: pending after this ledger entry is committed.
+  - Dirty worktree before ledger entry: false except this ledger update.
+- Model / processor:
+  - `/nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking`.
+- Stage2 checkpoint:
+  - `outputs/clean_training/qwen3_stage2_norm01_stage1_mask075_deepstack_4gpu_20260627_163250/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt`.
+  - sha256:
+    `50245a11c27ad9755eb815b5f008af50a659fa07a4043f0f9427f5bbea3c0236`.
+- Stage2 runtime eval JSONL:
+  - `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend_open_answer/splits/tgvf_v4_teacher_stage2_protocol_c.test.jsonl`.
+  - sha256:
+    `3b719e1bd03a09741cc05dac3ed85e423a9b2c29209b07546792a6795cdbbfc5`.
+- Benchmark:
+  - Subset id: `core_balanced_dev_2511_seed20260625`.
+  - Manifest:
+    `revisit_vlm_clean/benchmark_manifests/core_balanced_dev_2511_seed20260625.json`.
+  - Manifest internal hash:
+    `a461d9b482b7165b42b9bbb0fbf0ea6aff31fde0a838c13d953f070e770b0579`.
+  - Benchmark root:
+    `/home/dredvpn009/Flash_Storage/datasets/benchmarks`.
+  - Sample count/order vs original baseline: `2511/2511`, same order.
+- Output:
+  - Full:
+    `outputs/clean_benchmarks/qwen3_stage2_norm01_free_coredev2511_deepstack512_mediafix_conda_4shard_20260628_0530`.
+- Evaluation identity:
+  - Eval family: `project_native_external`.
+  - Mode: `tgvf_free`.
+  - Runner backend: `tgvf_stage2_qwen3_native`.
+  - Post-TGVF continuation: `natural_continue`.
+  - Post-TGVF forward mode: `no_kv_full_sequence`.
+  - DeepStack: enabled; `original_image_scope=through_answer`;
+    D DeepStack-like features disabled.
+  - Stage2 D condition: `correct_D`.
+  - Prompt suffix / softforce prompt: empty.
+  - Max image resolution: `512`.
+  - Max action tokens: `64`.
+  - Max answer tokens: `512`.
+  - Attention implementation: `sdpa`.
+- tmux:
+  - Planned:
+    `clean_qwen3_stage2_norm01_free_coredev2511_ds512_mediafix_conda_20260628_0530`.
 - Started:
   - Pending.
 - Finished:
