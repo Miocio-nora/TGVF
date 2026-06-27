@@ -6683,7 +6683,7 @@ entry, update this file immediately.
 
 ### EXP-20260628-0530-clean-qwen3-stage2-norm01-free-coredev2511-mediafix-conda
 
-- Status: PLANNED.
+- Status: RUNNING.
 - Question:
   - Rerun `EXP-20260628-0520` with the same evaluation identity, but fix the
     tmux environment deterministically by explicit conda activation and fail
@@ -6702,7 +6702,10 @@ entry, update this file immediately.
   - Checkpoint, model/processor, manifest/order, parser/scorer, no-extra-prompt
     free mode, DeepStack state, max resolution/tokens, and `sdpa` remain fixed.
 - Code commit / worktree:
-  - Planned launch commit: pending after this ledger entry is committed.
+  - Ledger/planned-entry commit:
+    `7a679dba65e722910a6ff8f7f6897ffdc2b547fb`.
+  - Runtime launch commit:
+    `7a679dba65e722910a6ff8f7f6897ffdc2b547fb`.
   - Dirty worktree before ledger entry: false except this ledger update.
 - Model / processor:
   - `/nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking`.
@@ -6741,10 +6744,22 @@ entry, update this file immediately.
   - Max answer tokens: `512`.
   - Attention implementation: `sdpa`.
 - tmux:
-  - Planned:
-    `clean_qwen3_stage2_norm01_free_coredev2511_ds512_mediafix_conda_20260628_0530`.
+  - Shard sessions:
+    `clean_qwen3_stage2_norm01_free_coredev2511_ds512_mediafix_conda_20260628_0530_s0`,
+    `clean_qwen3_stage2_norm01_free_coredev2511_ds512_mediafix_conda_20260628_0530_s1`,
+    `clean_qwen3_stage2_norm01_free_coredev2511_ds512_mediafix_conda_20260628_0530_s2`,
+    `clean_qwen3_stage2_norm01_free_coredev2511_ds512_mediafix_conda_20260628_0530_s3`.
+  - Launch implementation note: after a heredoc-based tmux wrapper exited before
+    writing logs, the actual run was launched as four explicit shard sessions
+    using absolute Python
+    `/home/dredvpn009/Flash_Storage/anaconda3/envs/revisit-vlm/bin/python`.
 - Started:
-  - Pending.
+  - `2026-06-28T05:25:11+09:00`.
+  - Torch/env probe:
+    `/home/dredvpn009/Flash_Storage/anaconda3/envs/revisit-vlm/bin/python`,
+    torch `2.11.0+cu128`.
+  - Early runtime check: four Python processes are on GPUs 0-3; shard 0 has
+    loaded weights and written first progress row.
 - Finished:
   - Pending.
 - Metrics:
