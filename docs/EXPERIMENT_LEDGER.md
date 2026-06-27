@@ -5042,6 +5042,18 @@ entry, update this file immediately.
     - Current conclusion: the DDP semantics fix was a real missing piece. The
       remaining gap is narrower and is no longer the broad collapse seen in
       earlier clean Stage1 attempts.
+  - User decision / backup status:
+    - Keep this checkpoint as a backup and diagnostic reference:
+      `outputs/clean_training/qwen3_stage1_legacyrepro_ddp_manifold001_4gpu_20260627_040717/stage1_micro4/clean_training_execution/checkpoint_step_2000.pt`.
+    - Do not treat it as the immediate Stage2 parent: D norm is still high
+      (`norm_ratio_D_to_Vmerge=5.6769`), and the current mean/std manifold
+      objective appears to trade off against target-specific D discrimination.
+    - Across the recent clean Stage1 ablations, larger manifold weight reduced
+      norm but hurt the useful D signal; weaker manifold recovered signal
+      better but did not control norm enough.
+    - Next training hypothesis: replace or demote the current mean/std
+      manifold term and test a direct token-norm constraint, ideally as the
+      primary scale control rather than increasing `visual_token_manifold`.
   - Conclusion:
-    - This is the best clean Stage1 replay so far and should be treated as the
-      current Stage1 candidate for the next Stage2 comparison.
+    - This is the best clean Stage1 replay so far, but it is now archived as a
+      backup/diagnostic reference rather than promoted directly to Stage2.
