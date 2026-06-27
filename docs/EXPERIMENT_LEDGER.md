@@ -6325,3 +6325,112 @@ entry, update this file immediately.
   - Comparable to
     `EXP-20260628-010859-clean-qwen3-original-coredev2511-baseline-scoringfix`
     with only `max_answer_tokens` changed.
+
+### EXP-20260628-0407-clean-qwen3-stage2-norm01-free-coredev2511
+
+- Status: RUNNING.
+- Question:
+  - After confirming the Qwen3 original parser/scorer baseline is healthy with
+    `max_answer_tokens=512`, evaluate the current clean Stage2 method on the
+    same CoreDev-2511 benchmark sample set.
+- Baseline anchor:
+  - Original baseline:
+    `EXP-20260628-0216-clean-qwen3-original-coredev2511-maxans512`.
+  - Baseline output:
+    `outputs/clean_benchmarks/qwen3_original_coredev2511_4shard_maxans512_20260628_0216_rescored_bboxfix_20260628_035759/merged`.
+- Intended diff:
+  - Replace original Qwen3 generation with clean Stage2 TGVF free-router
+    evaluation using the current Stage2 checkpoint.
+  - Keep benchmark manifest/order, benchmark root, max image resolution,
+    max answer tokens, parser/scorer, scoring backend, and no-extra-prompt
+    policy fixed.
+  - Enable Qwen3 DeepStack benchmark execution with training-matched
+    `original_image_scope=through_answer`.
+- Not allowed to change:
+  - Benchmark sample set/order.
+  - Prompt suffix / softforce prompt; this is `tgvf_free`.
+  - Parser/scorer identity or scoring backend.
+  - Stage2 checkpoint.
+- Code commit / worktree:
+  - `0b310645c8838140ee0eb0e665dbdd7701feb697`.
+  - Dirty worktree before ledger entry: false.
+- Model / processor:
+  - `/nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking`.
+- Stage2 checkpoint:
+  - `outputs/clean_training/qwen3_stage2_norm01_stage1_mask075_deepstack_4gpu_20260627_163250/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt`.
+  - sha256:
+    `50245a11c27ad9755eb815b5f008af50a659fa07a4043f0f9427f5bbea3c0236`.
+  - Source training entry:
+    `EXP-20260627-163250-clean-qwen3-stage2-norm01-mask075-deepstack`.
+- Stage2 runtime eval JSONL:
+  - `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend_open_answer/splits/tgvf_v4_teacher_stage2_protocol_c.test.jsonl`.
+  - Rows: `1002`; focus/no-focus: `857/145`.
+  - sha256:
+    `3b719e1bd03a09741cc05dac3ed85e423a9b2c29209b07546792a6795cdbbfc5`.
+- Benchmark:
+  - Subset id: `core_balanced_dev_2511_seed20260625`.
+  - Human label: `CoreDev-2511`.
+  - Manifest:
+    `revisit_vlm_clean/benchmark_manifests/core_balanced_dev_2511_seed20260625.json`.
+  - Manifest file sha256:
+    `3a013b2bcc64316054d28239a3cea3f44211cadbfe19787be3b7f285620fa5c1`.
+  - Manifest internal hash:
+    `a461d9b482b7165b42b9bbb0fbf0ea6aff31fde0a838c13d953f070e770b0579`.
+  - Benchmark root:
+    `/home/dredvpn009/Flash_Storage/datasets/benchmarks`.
+  - Sample count: `2511`.
+  - Sample overlap/order vs original 512 baseline:
+    `2511/2511`, same order.
+  - Allocation:
+    `vstar_bench=191`, `blink=420`, `hr_bench_4k=200`,
+    `mmmu_pro=300`, `mathvista=300`, `mathverse=500`,
+    `ocrbench_v2=600`.
+- Output:
+  - Smoke:
+    `outputs/clean_benchmarks/qwen3_stage2_norm01_free_coredev2511_deepstack512_smoke1_20260628_0407`.
+  - Full:
+    `outputs/clean_benchmarks/qwen3_stage2_norm01_free_coredev2511_deepstack512_4shard_20260628_0407`.
+- Evaluation identity:
+  - Eval family: `project_native_external`.
+  - Mode: `tgvf_free`.
+  - Runner backend: `tgvf_stage2_qwen3_native`.
+  - Post-TGVF continuation: `natural_continue`.
+  - Post-TGVF forward mode: `no_kv_full_sequence`.
+  - DeepStack: enabled; `original_image_scope=through_answer`;
+    D DeepStack-like features disabled.
+  - Stage2 D condition: `correct_D`.
+  - Force prefix mode: `target_hint` (runtime default; only relevant for force).
+  - Parser/scorer: `revisit_vlm_clean.scoring.parse_and_score:v3_external`,
+    scoring backend `auto`.
+  - Prompt suffix / softforce prompt: empty.
+  - Max image resolution: `512`.
+  - Max action tokens: `64`.
+  - Max answer tokens: `512`.
+- Script / command:
+  - Smoke command uses one modulo shard with `--num-shards 2511 --shard-index 0`
+    to run one real sample before the full benchmark.
+  - Full benchmark uses four shard commands, one per GPU `0,1,2,3`, each with
+    `CUDA_VISIBLE_DEVICES=<gpu>`, `--device cuda:0`, `--device-map cuda:0`,
+    `--num-shards 4`, and one `--shard-index`.
+  - Base full command:
+    `PYTHONPATH=revisit_vlm_clean/src:src python -m revisit_vlm_clean.cli.benchmark --run-id clean_qwen3_stage2_norm01_free_coredev2511_ds512_20260628_0407_s<shard> --checkpoint-path outputs/clean_training/qwen3_stage2_norm01_stage1_mask075_deepstack_4gpu_20260627_163250/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt --model-id /nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking --processor-id /nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking --mode tgvf_free --runner-backend tgvf_stage2_qwen3_native --post-tgvf-forward-mode no_kv_full_sequence --subset-id core_balanced_dev_2511_seed20260625 --manifest-path revisit_vlm_clean/benchmark_manifests/core_balanced_dev_2511_seed20260625.json --manifest-hash a461d9b482b7165b42b9bbb0fbf0ea6aff31fde0a838c13d953f070e770b0579 --benchmark-root /home/dredvpn009/Flash_Storage/datasets/benchmarks --output-dir outputs/clean_benchmarks/qwen3_stage2_norm01_free_coredev2511_deepstack512_4shard_20260628_0407/shards/shard_<shard> --max-image-resolution 512 --max-action-tokens 64 --max-answer-tokens 512 --scoring-backend auto --dtype bfloat16 --device cuda:0 --device-map cuda:0 --attn-implementation sdpa --stage2-checkpoint outputs/clean_training/qwen3_stage2_norm01_stage1_mask075_deepstack_4gpu_20260627_163250/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt --stage2-eval-jsonl data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend_open_answer/splits/tgvf_v4_teacher_stage2_protocol_c.test.jsonl --stage2-d-condition correct_D --force-prefix-mode target_hint --deepstack-enabled --deepstack-original-image-scope through_answer --num-shards 4 --shard-index <shard> --execute`.
+- GPUs:
+  - Planned full benchmark: `0,1,2,3`.
+  - Preflight at 2026-06-28T04:07:16+09:00:
+    GPUs `0-7` showed `0 MiB` used and `0%` utilization.
+- tmux:
+  - Smoke: pending.
+  - Full: pending.
+- Started:
+  - Pending.
+- Finished:
+  - Pending.
+- Metrics:
+  - Pending.
+- Analysis:
+  - Pending.
+- Conclusion:
+  - Pending.
+- Comparable to baseline:
+  - Intended comparable to the Qwen3 original 512-token CoreDev-2511 baseline
+    except for replacing original generation with the Stage2 free method.
