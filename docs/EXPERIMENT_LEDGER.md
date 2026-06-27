@@ -6683,7 +6683,7 @@ entry, update this file immediately.
 
 ### EXP-20260628-0530-clean-qwen3-stage2-norm01-free-coredev2511-mediafix-conda
 
-- Status: RUNNING.
+- Status: SIDE_RESULT / INVALID_FOR_BASELINE.
 - Question:
   - Rerun `EXP-20260628-0520` with the same evaluation identity, but fix the
     tmux environment deterministically by explicit conda activation and fail
@@ -6761,10 +6761,45 @@ entry, update this file immediately.
   - Early runtime check: four Python processes are on GPUs 0-3; shard 0 has
     loaded weights and written first progress row.
 - Finished:
-  - Pending.
+  - Stopped manually at `2026-06-28T05:52:13+09:00` after shard 0 and shard 2
+    showed the same OOM -> CUDA/MHA error cascade.
 - Metrics:
-  - Pending.
+  - No merged result was produced; this run is partial and invalid.
+  - Completed shards:
+    - shard 0: `628/628` rows, `334` scored, `294` malformed.
+      First error at row `267`:
+      `OutOfMemoryError: CUDA out of memory`; then `293` rows with
+      `RuntimeError: Expected mha_graph.execute(...).is_good()`.
+    - shard 2: `628/628` rows, `384` scored, `244` malformed.
+      First error at row `299`:
+      `OutOfMemoryError: CUDA out of memory`; then `243` rows with
+      `RuntimeError: Expected mha_graph.execute(...).is_good()`.
+  - Stopped shards:
+    - shard 1: stopped after progress `325/628`; no rows file was written.
+    - shard 3: stopped after progress `525/627`; no rows file was written.
 - Analysis:
-  - Pending.
+  - The explicit Python/torch environment fix worked: model weights loaded and
+    shards reached real benchmark progress on GPUs 0-3.
+  - The run is invalid because row-level error handling continued after a CUDA
+    OOM, leaving the CUDA/MHA state poisoned and producing hundreds of
+    malformed rows instead of a clean fail-fast.
+  - Parser/scorer audit performed during this run:
+    - Legacy external benchmark scripts use `SCORING_BACKEND=auto` and
+      `OFFICIAL_LLM_MODE=disabled`.
+    - Legacy BLINK/HR use official-compatible choice scorers; MMMU-Pro,
+      MathVista, MathVerse, and OCRBench-v2 use local official scorers when
+      available.
+    - Clean `score_output_rows()` exactly reproduced stored parsed answers and
+      scores for the clean original CoreDev-2511 run, for legacy BLINK original
+      n=120, and for legacy HR original n=300.
+    - The broader legacy fallback parser can extract extra bare letters from
+      long reasoning text, but that was not the effective BLINK/HR official
+      scorer behavior and is too permissive for the clean default.
 - Conclusion:
-  - Pending.
+  - Do not use this output in result tables.
+  - Parser/scorer settings are aligned with the legacy effective benchmark
+    path; the immediate blocker is Stage2 clean-native eval memory/error
+    recovery under DeepStack + max answer 512, not parser mismatch.
+  - Before rerunning this benchmark, add fail-fast or model reload after CUDA
+    OOM, and/or reduce eval memory pressure as a named non-comparable
+    diagnostic.
