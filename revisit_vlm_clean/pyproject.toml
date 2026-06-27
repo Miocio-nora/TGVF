@@ -19,10 +19,14 @@ tgvf_eval_stage_diagnostics = "revisit_vlm_clean.cli.stage_diagnostics:main"
 tgvf_merge_benchmark = "revisit_vlm_clean.cli.merge_benchmark:main"
 tgvf_eval_valkit = "revisit_vlm_clean.cli.valkit:main"
 tgvf_generate_data = "revisit_vlm_clean.cli.generate_data:main"
+tgvf_stage3_grpo_judge = "revisit_vlm_clean.cli.stage3_grpo_judge:main"
+tgvf_stage3_grpo_prepare_judge_models = "revisit_vlm_clean.cli.stage3_grpo_prepare_judge_models:main"
 tgvf_train_stage1 = "revisit_vlm_clean.cli.train_stage1:main"
 tgvf_train_stage2 = "revisit_vlm_clean.cli.train_stage2:main"
+tgvf_train_stage3_grpo = "revisit_vlm_clean.cli.train_stage3_grpo:main"
 tgvf_train_stage1_executor = "revisit_vlm_clean.training.stage1_executor:main"
 tgvf_train_stage2_executor = "revisit_vlm_clean.training.stage2_executor:main"
+tgvf_train_stage3_grpo_executor = "revisit_vlm_clean.training.stage3_grpo_executor:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

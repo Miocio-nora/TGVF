@@ -576,6 +576,7 @@ class Qwen3FocusCapture:
     second_full_forward_used: bool = False
     malformed: bool = False
     errors: list[str] = field(default_factory=list)
+    generated_logprobs: list[float] = field(default_factory=list)
 
 
 @dataclass
@@ -624,6 +625,7 @@ class Qwen3Continuation:
     input_ids: torch.Tensor | None
     last_logits: torch.Tensor | None
     stop_reason: str
+    generated_logprobs: list[float] = field(default_factory=list)
 
 
 def load_qwen3_vl(
@@ -848,6 +850,9 @@ def generate_direct_qwen3(
     max_new_tokens: int = 64,
     device: torch.device | str | None = None,
     protocol: str | None = None,
+    do_sample: bool = False,
+    temperature: float = 1.0,
+    top_p: float = 1.0,
 ) -> dict[str, Any]:
     messages = build_direct_messages(image, question)
     inputs = build_qwen3_inputs(processor, messages)
@@ -858,15 +863,21 @@ def generate_direct_qwen3(
     generated = model.generate(
         **model_inputs,
         max_new_tokens=max_new_tokens,
-        do_sample=False,
+        do_sample=do_sample,
+        return_dict_in_generate=True,
+        output_scores=True,
+        **_sampling_kwargs(do_sample=do_sample, temperature=temperature, top_p=top_p),
     )
     wall = time.perf_counter() - start
-    new_ids = generated[0, prompt_len:].detach().cpu().tolist()
+    sequences = generated.sequences if hasattr(generated, "sequences") else generated
+    new_ids = sequences[0, prompt_len:].detach().cpu().tolist()
+    logprobs = _selected_logprobs_from_generate_scores(getattr(generated, "scores", None), new_ids)
     text = _decode(tokenizer, new_ids)
     parsed = parse_v3_action(text, protocol=protocol)
     return {
         "raw_output": text,
         "generated_ids": new_ids,
+        "generated_logprobs": logprobs,
         "parsed_answer": parsed.answer if parsed.answer_valid else text.strip(),
         "wall_time_sec": wall,
         "output_tokens": len(new_ids),
@@ -888,6 +899,9 @@ def capture_focus_single_pass_qwen3(
     force_action_prefix: bool = False,
     scripted_target_text: str | None = None,
     protocol: str | None = None,
+    do_sample: bool = False,
+    temperature: float = 1.0,
+    top_p: float = 1.0,
 ) -> Qwen3FocusCapture:
     protocol = normalize_tgvf_protocol(protocol)
     messages = messages or build_focus_force_messages(image, question, protocol=protocol)
@@ -912,6 +926,9 @@ def capture_focus_single_pass_qwen3(
             else None
         ),
         protocol=protocol,
+        do_sample=do_sample,
+        temperature=temperature,
+        top_p=top_p,
     )
 
 
@@ -927,6 +944,9 @@ def capture_focus_single_pass_from_inputs_qwen3(
     eos_token_id: int | None = None,
     forced_prefix_text: str | None = None,
     protocol: str | None = None,
+    do_sample: bool = False,
+    temperature: float = 1.0,
+    top_p: float = 1.0,
 ) -> Qwen3FocusCapture:
     if max_new_tokens <= 0:
         raise ValueError("max_new_tokens must be positive")
@@ -942,6 +962,9 @@ def capture_focus_single_pass_from_inputs_qwen3(
             hidden_state_index=hidden_state_index,
             eos_token_id=eos_token_id,
             protocol=protocol,
+            do_sample=do_sample,
+            temperature=temperature,
+            top_p=top_p,
         )
 
     if (
@@ -958,6 +981,9 @@ def capture_focus_single_pass_from_inputs_qwen3(
             hidden_state_index=hidden_state_index,
             eos_token_id=eos_token_id,
             protocol=protocol,
+            do_sample=do_sample,
+            temperature=temperature,
+            top_p=top_p,
         )
 
     focus_start, focus_end = protocol_focus_tokens(protocol)
@@ -1204,6 +1230,9 @@ def _capture_focus_forced_prefix_from_inputs_qwen3(
     hidden_state_index: int,
     eos_token_id: int | None,
     protocol: str | None = None,
+    do_sample: bool = False,
+    temperature: float = 1.0,
+    top_p: float = 1.0,
 ) -> Qwen3FocusCapture:
     focus_start, focus_end = protocol_focus_tokens(protocol)
     focus_start_ids = _marker_ids(tokenizer, focus_start)
@@ -1274,11 +1303,13 @@ def _capture_focus_forced_prefix_from_inputs_qwen3(
     generate_kwargs = {
         **forced_inputs,
         "max_new_tokens": max_new_tokens,
-        "do_sample": False,
+        "do_sample": do_sample,
         "use_cache": True,
         "return_dict_in_generate": True,
         "output_hidden_states": True,
+        "output_scores": True,
         "stopping_criteria": stopping_criteria,
+        **_sampling_kwargs(do_sample=do_sample, temperature=temperature, top_p=top_p),
     }
     if eos_token_id is not None:
         generate_kwargs["eos_token_id"] = eos_token_id
@@ -1286,6 +1317,11 @@ def _capture_focus_forced_prefix_from_inputs_qwen3(
     sequences = generated.sequences
     new_ids = sequences[0, int(forced_inputs["input_ids"].shape[-1]) :].detach().cpu().tolist()
     combined_ids = [*forced_generated_ids, *new_ids]
+    generated_logprobs = _selected_logprobs_from_generate_scores(
+        getattr(generated, "scores", None),
+        new_ids,
+    )
+    combined_logprobs = [float("nan")] * len(forced_generated_ids) + generated_logprobs
     forced_hidden = _forced_prefix_hidden_from_generate(
         getattr(generated, "hidden_states", None),
         prompt_len=prompt_len,
@@ -1340,6 +1376,7 @@ def _capture_focus_forced_prefix_from_inputs_qwen3(
             second_full_forward_used=False,
             malformed=is_generic_target(target_text),
             errors=["generic_target"] if is_generic_target(target_text) else [],
+            generated_logprobs=combined_logprobs,
         )
 
     generated_text = _decode(tokenizer, combined_ids)
@@ -1396,6 +1433,7 @@ def _capture_focus_forced_prefix_from_inputs_qwen3(
         second_full_forward_used=False,
         malformed=bool(parsed.malformed),
         errors=errors or ["no_complete_focus_span"],
+        generated_logprobs=combined_logprobs,
     )
 
 
@@ -1410,6 +1448,9 @@ def _capture_focus_generate_from_inputs_qwen3(
     hidden_state_index: int,
     eos_token_id: int | None,
     protocol: str | None = None,
+    do_sample: bool = False,
+    temperature: float = 1.0,
+    top_p: float = 1.0,
 ) -> Qwen3FocusCapture:
     focus_start, focus_end = protocol_focus_tokens(protocol)
     focus_start_ids = _marker_ids(tokenizer, focus_start)
@@ -1427,17 +1468,23 @@ def _capture_focus_generate_from_inputs_qwen3(
     generate_kwargs = {
         **model_inputs,
         "max_new_tokens": max_new_tokens,
-        "do_sample": False,
+        "do_sample": do_sample,
         "use_cache": True,
         "return_dict_in_generate": True,
         "output_hidden_states": True,
+        "output_scores": True,
         "stopping_criteria": stopping_criteria,
+        **_sampling_kwargs(do_sample=do_sample, temperature=temperature, top_p=top_p),
     }
     if eos_token_id is not None:
         generate_kwargs["eos_token_id"] = eos_token_id
     generated = model.generate(**generate_kwargs)
     sequences = generated.sequences
     generated_ids = sequences[0, prompt_len:].detach().cpu().tolist()
+    generated_logprobs = _selected_logprobs_from_generate_scores(
+        getattr(generated, "scores", None),
+        generated_ids,
+    )
     generated_text = _decode(tokenizer, generated_ids)
     attention_mask = model_inputs.get("attention_mask")
     if attention_mask is not None:
@@ -1490,6 +1537,7 @@ def _capture_focus_generate_from_inputs_qwen3(
             second_full_forward_used=False,
             malformed=is_generic_target(target_text),
             errors=["generic_target"] if is_generic_target(target_text) else [],
+            generated_logprobs=generated_logprobs,
         )
     parsed = parse_v3_action(generated_text, protocol=protocol)
     errors = list(parsed.malformed_reasons)
@@ -1522,6 +1570,7 @@ def _capture_focus_generate_from_inputs_qwen3(
             second_full_forward_used=False,
             malformed=False,
             errors=[],
+            generated_logprobs=generated_logprobs,
         )
     return Qwen3FocusCapture(
         target_text="",
@@ -1544,6 +1593,7 @@ def _capture_focus_generate_from_inputs_qwen3(
         second_full_forward_used=False,
         malformed=bool(parsed.malformed),
         errors=errors or ["no_complete_focus_span"],
+        generated_logprobs=generated_logprobs,
     )
 
 
@@ -1938,6 +1988,9 @@ def continue_generation_qwen3(
     max_new_tokens: int = 64,
     eos_token_id: int | None = None,
     stop_on_repetition: bool | None = None,
+    do_sample: bool = False,
+    temperature: float = 1.0,
+    top_p: float = 1.0,
 ) -> Qwen3Continuation:
     tokenizer = getattr(tokenizer_or_processor, "tokenizer", tokenizer_or_processor)
     logits = state.last_logits
@@ -1947,6 +2000,7 @@ def continue_generation_qwen3(
     state_model_kwargs = dict(getattr(state, "model_kwargs", {}) or {})
     tgvf_next_position_ids = state_model_kwargs.get("tgvf_next_position_ids")
     generated_ids: list[int] = []
+    generated_logprobs: list[float] = []
     stop_reason = "max_new_tokens"
     device = logits.device if logits is not None else (_infer_model_device(model) or torch.device("cpu"))
     blocked_focus_start_ids: list[int] = []
@@ -1960,9 +2014,15 @@ def continue_generation_qwen3(
     for _ in range(max_new_tokens):
         if blocked_focus_start_ids:
             logits[:, -1, blocked_focus_start_ids] = -torch.inf
-        next_token = torch.argmax(logits[:, -1, :], dim=-1, keepdim=True)
+        next_token, selected_logprob = _select_next_token(
+            logits[:, -1, :],
+            do_sample=do_sample,
+            temperature=temperature,
+            top_p=top_p,
+        )
         token_id = int(next_token[0, 0].detach().cpu().item())
         generated_ids.append(token_id)
+        generated_logprobs.append(float(selected_logprob))
         if input_ids is not None:
             input_ids = torch.cat([input_ids.to(device), next_token.to(device)], dim=-1)
         if attention_mask is not None:
@@ -2027,7 +2087,107 @@ def continue_generation_qwen3(
         input_ids=input_ids,
         last_logits=logits,
         stop_reason=stop_reason,
+        generated_logprobs=generated_logprobs,
     )
+
+
+def teacher_forced_continue_logprobs_qwen3(
+    model: Any,
+    tokenizer_or_processor: Any,
+    state: Qwen3AppendResult | Qwen3FocusCapture,
+    *,
+    generated_token_ids: list[int],
+) -> torch.Tensor:
+    """Replay continuation tokens after a cached state and return logprobs.
+
+    Unlike ``continue_generation_qwen3``, this function is not decorated with
+    ``no_grad``. It is used by Stage3 GRPO to replay sampled continuation tokens
+    under the current policy/reference model.
+    """
+    tokenizer = getattr(tokenizer_or_processor, "tokenizer", tokenizer_or_processor)
+    logits = state.last_logits
+    if logits is None:
+        raise ValueError("teacher-forced continuation replay requires state.last_logits")
+    past_key_values = state.past_key_values
+    attention_mask = state.attention_mask
+    input_ids = state.input_ids
+    state_model_kwargs = dict(getattr(state, "model_kwargs", {}) or {})
+    tgvf_next_position_ids = state_model_kwargs.get("tgvf_next_position_ids")
+    device = logits.device if logits is not None else (_infer_model_device(model) or torch.device("cpu"))
+    blocked_focus_start_ids: list[int] = []
+    if os.environ.get("TGVF_BLOCK_FOCUS_IN_CONTINUATION", "1").strip() != "0":
+        for marker in (
+            PROTOCOL_C_FOCUS_START,
+            PROTOCOL_C_FOCUS_END,
+            FOCUS_START,
+            FOCUS_END,
+            TOOL_CALL_START,
+            TOOL_CALL_END,
+        ):
+            ids = _marker_ids(tokenizer, marker)
+            if len(ids) == 1:
+                blocked_focus_start_ids.append(int(ids[0]))
+    logprob_rows: list[torch.Tensor] = []
+    for index, token_id in enumerate(generated_token_ids):
+        step_logits = logits[:, -1, :]
+        if blocked_focus_start_ids:
+            step_logits = step_logits.clone()
+            step_logits[:, blocked_focus_start_ids] = -torch.inf
+        token = torch.tensor([[int(token_id)]], dtype=torch.long, device=device)
+        logprob_rows.append(torch.log_softmax(step_logits.float(), dim=-1).gather(-1, token).view(()))
+        if input_ids is not None:
+            input_ids = torch.cat([input_ids.to(device), token.to(device)], dim=-1)
+        if attention_mask is not None:
+            attention_mask = _extend_attention(attention_mask.to(device), 1)
+        if tgvf_next_position_ids is not None:
+            base_position_ids = tgvf_next_position_ids.to(device=token.device)
+            position_ids = base_position_ids + index
+            cache_position = None
+            if attention_mask is not None:
+                cache_position = torch.arange(
+                    attention_mask.shape[-1] - 1,
+                    attention_mask.shape[-1],
+                    device=token.device,
+                    dtype=torch.long,
+                )
+            outputs = model(
+                input_ids=token.to(device),
+                past_key_values=past_key_values,
+                attention_mask=attention_mask,
+                position_ids=position_ids,
+                cache_position=cache_position,
+                use_cache=True,
+                return_dict=True,
+            )
+        elif input_ids is not None and hasattr(model, "prepare_inputs_for_generation"):
+            step_inputs = model.prepare_inputs_for_generation(
+                input_ids.to(device),
+                past_key_values=past_key_values,
+                attention_mask=attention_mask,
+                use_cache=True,
+                is_first_iteration=False,
+            )
+            step_inputs["return_dict"] = True
+            outputs = model(**step_inputs)
+        else:
+            position_ids = _chunk_position_ids_1d(
+                attention_mask=attention_mask,
+                chunk_length=1,
+                device=token.device,
+            )
+            outputs = model(
+                input_ids=token,
+                past_key_values=past_key_values,
+                attention_mask=attention_mask,
+                position_ids=position_ids,
+                use_cache=True,
+                return_dict=True,
+            )
+        past_key_values = outputs.past_key_values
+        logits = outputs.logits
+    if not logprob_rows:
+        return torch.empty((0,), dtype=torch.float32, device=device)
+    return torch.stack(logprob_rows)
 
 
 def _decoded_tail_is_repetitive(text: str, *, min_repeats: int = 4, max_ngram: int = 8) -> bool:
@@ -3036,6 +3196,63 @@ def _infer_model_device(model: Any) -> torch.device | None:
         return next(model.parameters()).device
     except (AttributeError, StopIteration):
         return None
+
+
+def _sampling_kwargs(*, do_sample: bool, temperature: float, top_p: float) -> dict[str, Any]:
+    if not do_sample:
+        return {}
+    kwargs: dict[str, Any] = {}
+    if float(temperature) > 0:
+        kwargs["temperature"] = float(temperature)
+    if float(top_p) < 1.0:
+        kwargs["top_p"] = float(top_p)
+    return kwargs
+
+
+def _select_next_token(
+    logits: torch.Tensor,
+    *,
+    do_sample: bool,
+    temperature: float,
+    top_p: float,
+) -> tuple[torch.Tensor, float]:
+    if logits.ndim != 2 or int(logits.shape[0]) != 1:
+        raise ValueError("Stage3 decode currently expects batch=1 logits")
+    logprobs = torch.log_softmax(logits.float(), dim=-1)
+    if not do_sample:
+        next_token = torch.argmax(logits, dim=-1, keepdim=True)
+        selected = logprobs.gather(-1, next_token.to(logprobs.device))[0, 0]
+        return next_token.to(logits.device), float(selected.detach().cpu())
+    probs = torch.softmax(logits.float() / max(float(temperature), 1e-6), dim=-1)
+    if float(top_p) < 1.0:
+        sorted_probs, sorted_indices = torch.sort(probs, descending=True, dim=-1)
+        cumulative = torch.cumsum(sorted_probs, dim=-1)
+        remove = cumulative > float(top_p)
+        remove[..., 0] = False
+        sorted_probs = sorted_probs.masked_fill(remove, 0.0)
+        sorted_probs = sorted_probs / sorted_probs.sum(dim=-1, keepdim=True).clamp_min(1e-12)
+        sampled_sorted = torch.multinomial(sorted_probs, num_samples=1)
+        next_token = sorted_indices.gather(-1, sampled_sorted)
+    else:
+        next_token = torch.multinomial(probs, num_samples=1)
+    selected = logprobs.gather(-1, next_token.to(logprobs.device))[0, 0]
+    return next_token.to(logits.device), float(selected.detach().cpu())
+
+
+def _selected_logprobs_from_generate_scores(scores: Any, token_ids: list[int]) -> list[float]:
+    if scores is None:
+        return []
+    out: list[float] = []
+    for score, token_id in zip(list(scores), token_ids):
+        tensor = score
+        if not isinstance(tensor, torch.Tensor):
+            continue
+        if tensor.ndim == 1:
+            tensor = tensor.view(1, -1)
+        logprobs = torch.log_softmax(tensor.float(), dim=-1)
+        selected = logprobs[0, int(token_id)]
+        out.append(float(selected.detach().cpu()))
+    return out
 
 
 def _decode(tokenizer: Any, token_ids: list[int]) -> str:

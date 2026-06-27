@@ -303,6 +303,16 @@ class NativeStage2Engine:
                     getattr(capture, "second_full_forward_used", False)
                     or append_result.debug_metadata.get("second_full_forward_used")
                 ),
+                focus_generated_ids=list(getattr(capture, "generated_ids", []) or []),
+                focus_generated_logprobs=list(
+                    getattr(capture, "generated_logprobs", []) or []
+                ),
+                continuation_generated_ids=list(
+                    getattr(continuation, "generated_ids", []) or []
+                ),
+                continuation_generated_logprobs=list(
+                    getattr(continuation, "generated_logprobs", []) or []
+                ),
                 wall_time_sec=time.perf_counter() - started,
             )
             return NativeStage2RunResult(
@@ -482,6 +492,7 @@ class NativeStage2Engine:
                 device=self.device,
                 forced_prefix_text=forced_text,
                 protocol=self.stage2_config.protocol,
+                **self._sampling_options(),
             )
         return capture_focus_single_pass_qwen3(
             self.model,
@@ -492,6 +503,7 @@ class NativeStage2Engine:
             max_new_tokens=self.stage2_config.max_action_tokens,
             device=self.device,
             protocol=self.stage2_config.protocol,
+            **self._sampling_options(),
         )
 
     def _capture_free_router(self, sample: NativeStage2Sample) -> Any:
@@ -511,6 +523,7 @@ class NativeStage2Engine:
             device=self.device,
             force_action_prefix=False,
             protocol=self.stage2_config.protocol,
+            **self._sampling_options(),
         )
 
     def _d_from_capture(
@@ -542,7 +555,8 @@ class NativeStage2Engine:
             },
         )
         output = finalize_tgvf_output_with_frozen_qwen_merger(self.utility_model, output)
-        return output.foveated_visual_tokens.detach()
+        tokens = output.foveated_visual_tokens
+        return tokens.detach() if self.backend_options.get("detach_d", True) else tokens
 
     def _vision_features(self, sample: NativeStage2Sample) -> tuple[Any, Any, Any]:
         from revisit_vlm.qwen3_vl_tgvf import tap_qwen3_vision_features
@@ -938,7 +952,15 @@ class NativeStage2Engine:
             append_result,
             max_new_tokens=self.stage2_config.max_answer_tokens,
             eos_token_id=self.processor.tokenizer.eos_token_id,
+            **self._sampling_options(),
         )
+
+    def _sampling_options(self) -> dict[str, Any]:
+        return {
+            "do_sample": bool(self.backend_options.get("do_sample", False)),
+            "temperature": float(self.backend_options.get("temperature", 1.0)),
+            "top_p": float(self.backend_options.get("top_p", 1.0)),
+        }
 
     def _continue_generation_blocking_original_image_keys(self, append_result: Any) -> Any:
         import torch
@@ -1205,6 +1227,8 @@ class NativeStage2Engine:
             "second_full_forward_used": bool(getattr(capture, "second_full_forward_used", False)),
             "H_q_shape": _shape_list(target_hidden_states),
             "target_token_count": len(getattr(capture, "target_token_ids", []) or []),
+            "focus_generated_ids": list(getattr(capture, "generated_ids", []) or []),
+            "focus_generated_logprobs": list(getattr(capture, "generated_logprobs", []) or []),
             "source_visual_token_count": (
                 source_geometry.source_visual_token_count if source_geometry is not None else 0
             ),
