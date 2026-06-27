@@ -6897,7 +6897,7 @@ entry, update this file immediately.
 
 ### EXP-20260628-0615-clean-qwen3-stage2-norm01-free-coredev2511-recovery
 
-- Status: RUNNING.
+- Status: COMPLETE.
 - Question:
   - Rerun the same clean-native Qwen3 Stage2 free CoreDev-2511 benchmark after
     the OOM recovery fix validated by
@@ -6966,10 +6966,72 @@ entry, update this file immediately.
   - Early runtime check: all four shards loaded weights and reached
     benchmark progress row `1`.
 - Finished:
-  - Pending.
+  - `2026-06-28T07:12:30+09:00`.
+  - All four shards exited with `exit=0`; merged with manifest hash
+    verification.
 - Metrics:
-  - Pending.
+  - Output merged:
+    `outputs/clean_benchmarks/qwen3_stage2_norm01_free_coredev2511_deepstack512_recovery_4shard_20260628_0615/merged`.
+  - Same sample order as original baseline: yes, `2511/2511`.
+  - Overall:
+    - Original baseline accuracy: `0.308553`; parse: `0.941458`.
+    - TGVF free accuracy: `0.320675`; parse: `0.987256`.
+    - Delta: `+0.012122`.
+    - TGVF trigger/focus-valid rate: `0.186380`.
+    - Append success among focus-valid rows: `0.967949`.
+    - Malformed/OOM rows: `15/2511 = 0.005974`.
+  - By benchmark, accuracy delta vs original baseline:
+    - `blink`: `0.464286 -> 0.554762`, delta `+0.090476`;
+      trigger `0.080952`, parse `0.709524 -> 0.976190`.
+    - `hr_bench_4k`: `0.520000 -> 0.540000`, delta `+0.020000`;
+      trigger `0.370000`, parse `0.890000 -> 0.975000`.
+    - `mathverse`: `0.048000 -> 0.048193`, delta `+0.000193`;
+      trigger `0.240000`, parse `1.000000 -> 0.996000`.
+    - `mathvista`: `0.410000 -> 0.419463`, delta `+0.009463`;
+      trigger `0.110000`, parse `1.000000 -> 0.993333`.
+    - `mmmu_pro`: `0.343333 -> 0.281879`, delta `-0.061454`;
+      trigger `0.143333`, parse `1.000000 -> 0.993333`.
+    - `ocrbench_v2`: `0.204628 -> 0.222342`, delta `+0.017714`;
+      trigger `0.220000`, parse `1.000000 -> 0.981667`.
+    - `vstar_bench`: `0.539267 -> 0.497382`, delta `-0.041885`;
+      trigger `0.167539`, parse `0.984293 -> 1.000000`.
+  - Pairwise scored rows:
+    - Overall: method higher on `313`, baseline higher on `252`, equal on
+      `1931`, unscored method rows `15`; paired score delta sum `+25.7771`.
+    - `blink`: method higher `84`, baseline higher `46`, equal `290`.
+    - `hr_bench_4k`: method higher `27`, baseline higher `23`, equal `150`.
+    - `mathverse`: method higher `22`, baseline higher `22`, equal `454`,
+      unscored `2`.
+    - `mathvista`: method higher `44`, baseline higher `42`, equal `212`,
+      unscored `2`.
+    - `mmmu_pro`: method higher `39`, baseline higher `58`, equal `201`,
+      unscored `2`.
+    - `ocrbench_v2`: method higher `77`, baseline higher `33`, equal `481`,
+      unscored `9`.
+    - `vstar_bench`: method higher `20`, baseline higher `28`, equal `143`.
+  - Fatal CUDA/OOM recovery:
+    - `15` rows hit real OOM and were marked malformed/unscored.
+    - Recovery unloaded/reloaded runtime on all `15`; no MHA cascade and all
+      shards completed.
 - Analysis:
-  - Pending.
+  - The recovery patch fixes the prior invalid-run failure mode: large-sample
+    OOMs are isolated to their own rows instead of poisoning subsequent rows.
+  - This is a valid comparable run against the original baseline because the
+    manifest/order, model/processor, parser/scorer, max resolution/tokens,
+    free/no-extra-prompt mode, DeepStack state, and checkpoint are fixed.
+  - TGVF free improves the overall CoreDev-2511 score modestly (`+1.21pt`).
+    Gains concentrate on BLINK and OCRBench-v2; MMMU-Pro and V* regress.
+  - Triggered rows have a positive aggregate paired effect, but trigger quality
+    is benchmark-dependent. The method helps HR, MathVista/MMMU triggered
+    subsets, and OCRBench slightly; BLINK triggered rows regress even though
+    BLINK overall rises, so BLINK's gain is not only from successful focus
+    appends.
+  - The remaining reliability gap is long-sample memory pressure under
+    max-resolution-512, DeepStack-enabled, full-sequence Stage2 eval.
 - Conclusion:
-  - Pending.
+  - Parser/scorer alignment is not the blocker for this table.
+  - Clean-native Stage2 benchmark is now runnable end-to-end with bounded OOM
+    isolation.
+  - The current Qwen3 Stage2 checkpoint is better than original baseline on
+    this balanced subset overall, but not uniformly; MMMU-Pro and V* need
+    row-level mechanism analysis before treating the method as broadly solved.
