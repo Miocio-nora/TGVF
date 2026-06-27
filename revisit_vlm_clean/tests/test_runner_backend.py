@@ -252,6 +252,103 @@ def test_stage2_native_backend_uses_clean_native_engine(monkeypatch, tmp_path) -
     assert result.debug == {"fake_native": True}
 
 
+def test_stage2_native_backend_cleans_cache_after_success(monkeypatch, tmp_path) -> None:
+    runtime = _runtime(tmp_path)
+    config = _run_config()
+
+    class FakeNativeEngine:
+        instances = []
+
+        def __init__(self, *, stage2_config, backend_options) -> None:
+            self.stage2_config = stage2_config
+            self.backend_options = backend_options
+            self.cleaned = False
+            FakeNativeEngine.instances.append(self)
+
+        def prepare(self, config) -> None:
+            self.prepared_config = config
+
+        def run(self, sample, rendered, config) -> NativeStage2RunResult:
+            return NativeStage2RunResult(raw_output="A", debug={"ok": True})
+
+        def cleanup_after_row(self) -> dict:
+            self.cleaned = True
+            return {"vision_cache_entries_cleared": 1}
+
+    monkeypatch.setattr(runner_module, "NativeStage2Engine", FakeNativeEngine)
+    backend = make_backend(
+        BackendConfig(backend=STAGE2_NATIVE_BACKEND, stage2=runtime),
+        config=config,
+    )
+
+    backend.prepare(config)
+    result = backend.run(_sample(), render_benchmark_input(_sample(), config), config)
+
+    assert result.error is None
+    assert FakeNativeEngine.instances[-1].cleaned is True
+    assert result.debug["native_stage2_recovery"] == {"vision_cache_entries_cleared": 1}
+
+
+def test_stage2_native_backend_recovers_after_cuda_error(monkeypatch, tmp_path) -> None:
+    runtime = _runtime(tmp_path)
+    config = _run_config()
+
+    class FakeNativeEngine:
+        instances = []
+
+        def __init__(self, *, stage2_config, backend_options) -> None:
+            self.stage2_config = stage2_config
+            self.backend_options = backend_options
+            self.recovered_error = None
+            FakeNativeEngine.instances.append(self)
+
+        def prepare(self, config) -> None:
+            self.prepared_config = config
+
+        def run(self, sample, rendered, config) -> NativeStage2RunResult:
+            return NativeStage2RunResult(
+                raw_output="",
+                error="OutOfMemoryError: CUDA out of memory",
+                debug={"failed": True},
+            )
+
+        def recover_after_fatal_error(self, error: str) -> dict:
+            self.recovered_error = error
+            return {"fatal_cuda_error": True, "runtime_unloaded": True}
+
+    monkeypatch.setattr(runner_module, "NativeStage2Engine", FakeNativeEngine)
+    backend = make_backend(
+        BackendConfig(backend=STAGE2_NATIVE_BACKEND, stage2=runtime),
+        config=config,
+    )
+
+    backend.prepare(config)
+    result = backend.run(_sample(), render_benchmark_input(_sample(), config), config)
+
+    assert result.error == "OutOfMemoryError: CUDA out of memory"
+    assert FakeNativeEngine.instances[-1].recovered_error == result.error
+    assert result.debug["native_stage2_recovery"] == {
+        "fatal_cuda_error": True,
+        "runtime_unloaded": True,
+    }
+
+
+def test_native_stage2_engine_cleanup_clears_per_sample_caches(tmp_path) -> None:
+    engine = NativeStage2Engine(
+        stage2_config=_runtime(tmp_path),
+        backend_options={},
+    )
+    engine.vision_cache["image"] = ("tap", "v_pre", "v_merge")
+    engine.deepstack_cache["image"] = ["feature"]
+
+    report = engine.cleanup_after_row()
+
+    assert report["vision_cache_entries_cleared"] == 1
+    assert report["deepstack_cache_entries_cleared"] == 1
+    assert engine.vision_cache == {}
+    assert engine.deepstack_cache == {}
+
+
 def test_stage2_native_backend_rejects_unported_deepstack_execution(tmp_path) -> None:
     backend = make_backend(
         BackendConfig(backend=STAGE2_NATIVE_BACKEND, stage2=_runtime(tmp_path)),

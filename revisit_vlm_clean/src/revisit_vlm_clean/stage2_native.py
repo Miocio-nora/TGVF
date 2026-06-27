@@ -8,6 +8,7 @@ backend independent from historical evaluator classes.
 from __future__ import annotations
 
 import base64
+import gc
 import hashlib
 import io
 import os
@@ -174,6 +175,44 @@ class NativeStage2Engine:
                 "backend_options": dict(self.backend_options),
             }
         return dict(self._identity)
+
+    def cleanup_after_row(self) -> dict[str, Any]:
+        """Release per-sample caches that can otherwise accumulate GPU tensors."""
+        vision_entries = len(self.vision_cache)
+        deepstack_entries = len(self.deepstack_cache)
+        self.vision_cache.clear()
+        self.deepstack_cache.clear()
+        _collect_cuda_garbage()
+        return {
+            "vision_cache_entries_cleared": vision_entries,
+            "deepstack_cache_entries_cleared": deepstack_entries,
+        }
+
+    def recover_after_fatal_error(self, error: str | None) -> dict[str, Any]:
+        cleanup = self.cleanup_after_row()
+        fatal = _is_cuda_fatal_error(error)
+        unloaded = False
+        if fatal:
+            self._unload_runtime()
+            unloaded = True
+        return {
+            **cleanup,
+            "fatal_cuda_error": fatal,
+            "runtime_unloaded": unloaded,
+        }
+
+    def _unload_runtime(self) -> None:
+        self._loaded = None
+        self._checkpoint = None
+        self.model = None
+        self.utility_model = None
+        self.processor = None
+        self.foveal_module = None
+        self.device = None
+        if self._identity is not None:
+            self._identity["heavy_runtime_loaded"] = False
+            self._identity["runtime_unloaded_after_error"] = True
+        _collect_cuda_garbage()
 
     def _run_force(self, sample: NativeStage2Sample) -> NativeStage2RunResult:
         self._ensure_loaded(sample)
@@ -1643,6 +1682,32 @@ def _generated_answer_has_started(
     if uses_evidence:
         return "<|evidence_end|>" in text
     return "<ANSWER>" in text
+
+
+def _collect_cuda_garbage() -> None:
+    gc.collect()
+    try:
+        import torch
+
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            torch.cuda.ipc_collect()
+    except Exception:
+        return
+
+
+def _is_cuda_fatal_error(error: str | None) -> bool:
+    text = str(error or "").lower()
+    return any(
+        marker in text
+        for marker in (
+            "outofmemoryerror",
+            "cuda out of memory",
+            "mha_graph.execute",
+            "cublas",
+            "cuda error",
+        )
+    )
 
 
 def _protocol_text_modes(protocol: str) -> tuple[bool, bool]:

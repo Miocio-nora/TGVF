@@ -457,16 +457,29 @@ class TGVFStage2Qwen3NativeBackend(CleanRunnerBackend):
     ) -> ModelRunResult:
         started = time.perf_counter()
         try:
-            return _native_stage2_result_to_model_run_result(
-                self._engine.run(sample, rendered, config),
+            native_result = self._engine.run(sample, rendered, config)
+            result = _native_stage2_result_to_model_run_result(
+                native_result,
                 started=started,
             )
+            result = _stage2_native_cleanup_or_recover(self._engine, result)
+            return result
         except Exception as exc:
+            error = f"{type(exc).__name__}: {exc}"
+            recovery = _stage2_native_recover(self._engine, error)
+            identity = (
+                self._engine.identity()
+                if callable(getattr(self._engine, "identity", None))
+                else {"engine": type(self._engine).__name__}
+            )
             return ModelRunResult(
                 raw_output="",
                 wall_time_sec=time.perf_counter() - started,
-                error=f"{type(exc).__name__}: {exc}",
-                debug={"native_stage2": self._engine.identity()},
+                error=error,
+                debug={
+                    "native_stage2": identity,
+                    "native_stage2_recovery": recovery,
+                },
             )
 
 
@@ -486,6 +499,36 @@ def _native_stage2_result_to_model_run_result(
         error=result.error,
         debug=result.debug,
     )
+
+
+def _stage2_native_cleanup_or_recover(
+    engine: NativeStage2Engine,
+    result: ModelRunResult,
+) -> ModelRunResult:
+    if result.error:
+        recovery = _stage2_native_recover(engine, result.error)
+    else:
+        cleanup = getattr(engine, "cleanup_after_row", None)
+        recovery = cleanup() if callable(cleanup) else None
+    if recovery is not None:
+        return replace(
+            result,
+            debug={
+                **dict(result.debug or {}),
+                "native_stage2_recovery": recovery,
+            },
+        )
+    return result
+
+
+def _stage2_native_recover(engine: NativeStage2Engine, error: str) -> dict[str, Any] | None:
+    recover = getattr(engine, "recover_after_fatal_error", None)
+    if callable(recover):
+        return recover(error)
+    cleanup = getattr(engine, "cleanup_after_row", None)
+    if callable(cleanup):
+        return cleanup()
+    return None
 
 
 def resolve_backend_name(name: str) -> str:
