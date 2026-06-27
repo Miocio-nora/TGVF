@@ -6015,3 +6015,152 @@ entry, update this file immediately.
   - A corrected rerun is required from the fixed code commit.
 - Comparable to baseline:
   - No. It produced no shard rows and is retained only as a failure diagnosis.
+
+### EXP-20260628-010859-clean-qwen3-original-coredev2511-baseline-scoringfix
+
+- Status: DONE.
+- Question:
+  - What is the valid clean original Qwen3-VL baseline on CoreDev-2511 after
+    fixing OCRBench-v2 official scoring and benchmark failure-output handling?
+- Baseline anchor:
+  - Replaces invalid no-output runs:
+    - `EXP-20260627-230746-clean-qwen3-original-coredev2511-baseline`.
+    - `EXP-20260628-001951-clean-qwen3-original-coredev2511-baseline-logged-rerun`.
+- Intended diff:
+  - Same benchmark identity as the prior attempts.
+  - Use fixed code commit `a48ef3f9850b4dc4b01fdce74af2136eb5b0ffff`.
+  - NLTK `wordnet` and `omw-1.4` are installed under
+    `/home/dredvpn009/nltk_data` for OCRBench-v2 official METEOR.
+  - Runner logs progress and preserves generated rows as non-comparable output
+    if scoring fails.
+- Not allowed to change:
+  - Model, processor, sample set, manifest hash, max image resolution,
+    mode, runner backend, parser/scorer, or benchmark root.
+- Code commit / worktree:
+  - `a48ef3f9850b4dc4b01fdce74af2136eb5b0ffff`.
+  - Dirty worktree before launch: true only because this ledger entry is being
+    added.
+  - Verification before launch:
+    `PYTHONPATH=revisit_vlm_clean/src:src pytest -q revisit_vlm_clean/tests/test_scoring.py revisit_vlm_clean/tests/test_benchmark_data.py`
+    passed, `38 passed`.
+  - Real OCRBench-v2 official scoring smoke passed for `text counting en` and
+    `full-page OCR en`.
+- Model / processor:
+  - `/nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking`.
+- Checkpoint path:
+  - `/nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking`.
+- Benchmark:
+  - Subset id: `core_balanced_dev_2511_seed20260625`.
+  - Human label: `CoreDev-2511`.
+  - Manifest:
+    `revisit_vlm_clean/benchmark_manifests/core_balanced_dev_2511_seed20260625.json`.
+  - Manifest file sha256:
+    `3a013b2bcc64316054d28239a3cea3f44211cadbfe19787be3b7f285620fa5c1`.
+  - Manifest internal hash:
+    `a461d9b482b7165b42b9bbb0fbf0ea6aff31fde0a838c13d953f070e770b0579`.
+  - Benchmark root:
+    `/home/dredvpn009/Flash_Storage/datasets/benchmarks`.
+  - Sample count: `2511`.
+  - Allocation:
+    `vstar_bench=191`, `blink=420`, `hr_bench_4k=200`,
+    `mmmu_pro=300`, `mathvista=300`, `mathverse=500`,
+    `ocrbench_v2=600`.
+- Output:
+  - `outputs/clean_benchmarks/qwen3_original_coredev2511_4shard_scoringfix_20260628_010859`.
+- Evaluation identity:
+  - Eval family: `project_native_external`.
+  - Mode: `original`.
+  - Runner backend: `qwen3_original`.
+  - Post-TGVF continuation: `natural_continue`.
+  - Post-TGVF forward mode: `kv_cache` (schema-required, not used by original
+    backend).
+  - DeepStack: disabled/noop for original backend.
+  - Parser/scorer: `revisit_vlm_clean.scoring.parse_and_score:v3_external`,
+    scoring backend `auto`.
+  - Max image resolution: `512`.
+  - Max answer tokens: `128`.
+- Script / command:
+  - Four shard commands, one per GPU `0,1,2,3`, each with
+    `CUDA_VISIBLE_DEVICES=<gpu>`, `--device cuda:0`, `--device-map cuda:0`,
+    `--num-shards 4`, and one `--shard-index`.
+  - Each shard writes under `shards/shard_<i>` and logs to
+    `logs/shard_<i>.log`.
+  - Each shard writes process status to `logs/shard_<i>.exit_code.txt`.
+  - Merge command after completion:
+    `PYTHONPATH=revisit_vlm_clean/src:src python -m revisit_vlm_clean.cli.merge_benchmark --output-dir outputs/clean_benchmarks/qwen3_original_coredev2511_4shard_scoringfix_20260628_010859/merged --run-id clean_qwen3_original_coredev2511_4shard_scoringfix_20260628_010859 --expected-num-shards 4 --expected-source-manifest-hash a461d9b482b7165b42b9bbb0fbf0ea6aff31fde0a838c13d953f070e770b0579 outputs/clean_benchmarks/qwen3_original_coredev2511_4shard_scoringfix_20260628_010859/shards/shard_0 outputs/clean_benchmarks/qwen3_original_coredev2511_4shard_scoringfix_20260628_010859/shards/shard_1 outputs/clean_benchmarks/qwen3_original_coredev2511_4shard_scoringfix_20260628_010859/shards/shard_2 outputs/clean_benchmarks/qwen3_original_coredev2511_4shard_scoringfix_20260628_010859/shards/shard_3`.
+- GPUs:
+  - Planned: `0,1,2,3`, one shard per GPU.
+- tmux:
+  - `clean_qwen3_original_coredev2511_scoringfix_20260628_010859_s0`.
+  - `clean_qwen3_original_coredev2511_scoringfix_20260628_010859_s1`.
+  - `clean_qwen3_original_coredev2511_scoringfix_20260628_010859_s2`.
+  - `clean_qwen3_original_coredev2511_scoringfix_20260628_010859_s3`.
+- Started:
+  - 2026-06-28T01:10:33+09:00.
+- Finished:
+  - 2026-06-28T01:57:09+09:00.
+- Metrics:
+  - Shard exits:
+    - `shard_0`: `exit=0`, rows=`628`.
+    - `shard_1`: `exit=0`, rows=`628`.
+    - `shard_2`: `exit=0`, rows=`628`.
+    - `shard_3`: `exit=0`, rows=`627`.
+  - Merge:
+    - Output:
+      `outputs/clean_benchmarks/qwen3_original_coredev2511_4shard_scoringfix_20260628_010859/merged`.
+    - Rows: `2511`.
+    - Scored rows: `2511`.
+    - Comparable: true.
+    - Comparability note: `deterministically merged clean benchmark shards`.
+    - Manifest hash:
+      `a461d9b482b7165b42b9bbb0fbf0ea6aff31fde0a838c13d953f070e770b0579`.
+    - Scoring errors: `0`.
+    - Malformed rows: `0`.
+  - Overall:
+    - Accuracy: `0.19372487579257566` (`19.37%`).
+    - Answer parse rate: `0.8403026682596575`.
+    - Trigger rate: `0.0` (original mode).
+  - By benchmark:
+    - `vstar_bench`: n=`191`, acc=`0.5026178010471204`,
+      parse=`0.93717277486911`.
+    - `blink`: n=`420`, acc=`0.1976190476190476`,
+      parse=`0.2523809523809524`.
+    - `hr_bench_4k`: n=`200`, acc=`0.395`, parse=`0.625`.
+    - `mmmu_pro`: n=`300`, acc=`0.17333333333333334`,
+      parse=`1.0`.
+    - `mathvista`: n=`300`, acc=`0.19666666666666666`,
+      parse=`1.0`.
+    - `mathverse`: n=`500`, acc=`0.008`, parse=`1.0`.
+    - `ocrbench_v2`: n=`600`, acc=`0.18907193852526274`,
+      parse=`1.0`.
+  - Official scoring:
+    - Official/scorer rows: `2320`.
+    - Official-compatible rows: `200`.
+    - Scorers:
+      `official_blink_exact_match=420`,
+      `official_compatible_hrbench4k_mc=200`,
+      `official_mmmu_pro=300`,
+      `official_mathvista=300`,
+      `official_mathverse=500`,
+      `official_ocrbench_v2=600`,
+      `project_choice_exact_match=191`.
+- Analysis:
+  - The benchmark failure was fixed end to end. The prior no-output behavior
+    was caused by scoring exceptions after generation, plus the runner only
+    writing rows after scoring.
+  - This rerun confirms the OCRBench-v2 fixes: all shards exited `0`,
+    OCRBench-v2 scored all `600` rows, and merged rows contain no
+    `scoring_error`.
+  - The low BLINK parse rate (`0.2524`) is a property of the original Qwen3
+    output/parser interaction under this clean table, not a runner failure.
+    Inspecting row examples should come before drawing model conclusions.
+  - MathVerse accuracy is very low (`0.008`) under the current official
+    disabled-LLM scorer path; treat it as a baseline measurement for this clean
+    setup and inspect rows before comparing against historical tables.
+- Conclusion:
+  - Valid CoreDev-2511 original Qwen3 baseline is available and comparable
+    within the clean benchmark framework.
+  - Use this run as the original baseline for subsequent clean Stage2
+    CoreDev-2511 comparisons.
+- Comparable to baseline:
+  - This is the valid original baseline for CoreDev-2511.
