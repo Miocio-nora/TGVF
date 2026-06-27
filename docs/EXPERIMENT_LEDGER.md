@@ -6803,3 +6803,73 @@ entry, update this file immediately.
   - Before rerunning this benchmark, add fail-fast or model reload after CUDA
     OOM, and/or reduce eval memory pressure as a named non-comparable
     diagnostic.
+
+### EXP-20260628-0600-clean-qwen3-stage2-norm01-oom-recovery-smoke
+
+- Status: PLANNED.
+- Question:
+  - Verify the clean-native Stage2 eval recovery fix from commit
+    `e182a01` on the first OOM sample observed in
+    `EXP-20260628-0530`, plus the following sample.
+- Baseline anchor:
+  - Invalid predecessor:
+    `EXP-20260628-0530-clean-qwen3-stage2-norm01-free-coredev2511-mediafix-conda`.
+  - Original parser/scorer baseline remains
+    `EXP-20260628-0216-clean-qwen3-original-coredev2511-maxans512`.
+- Intended diff:
+  - Code now clears per-sample native Stage2 vision/deepstack caches after each
+    row and unloads/reloads the native runtime after CUDA-fatal row errors.
+  - Checkpoint, model/processor, parser/scorer, mode, DeepStack state, max
+    image resolution, max answer tokens, and prompt settings remain fixed.
+- Code commit / worktree:
+  - Recovery fix commit:
+    `e182a01`.
+  - Dirty worktree before ledger entry: false except this ledger update.
+- Model / processor:
+  - `/nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking`.
+- Stage2 checkpoint:
+  - `outputs/clean_training/qwen3_stage2_norm01_stage1_mask075_deepstack_4gpu_20260627_163250/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt`.
+  - sha256:
+    `50245a11c27ad9755eb815b5f008af50a659fa07a4043f0f9427f5bbea3c0236`.
+- Stage2 runtime eval JSONL:
+  - `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend_open_answer/splits/tgvf_v4_teacher_stage2_protocol_c.test.jsonl`.
+  - sha256:
+    `3b719e1bd03a09741cc05dac3ed85e423a9b2c29209b07546792a6795cdbbfc5`.
+- Benchmark:
+  - Smoke manifest:
+    `outputs/clean_smoke_manifests/coredev2511_oom_recovery_2_20260628.json`.
+  - Manifest hash:
+    `392f6e0c35da195b4148f14d0e098284806d01f831849dac3cd14c59a9b331fa`.
+  - Source full manifest:
+    `revisit_vlm_clean/benchmark_manifests/core_balanced_dev_2511_seed20260625.json`.
+  - Sample count: `2`.
+  - Sample ids:
+    - `ocrbench_v2_data_test_10000/ocrbench_v2_snapshot_data_test_00002_of_00004_parquet/5666_000666`.
+    - `ocrbench_v2_data_test_10000/ocrbench_v2_snapshot_data_test_00002_of_00004_parquet/5869_000869`.
+- Output:
+  - `outputs/clean_benchmarks/qwen3_stage2_norm01_oom_recovery_smoke2_20260628_0600`.
+- Evaluation identity:
+  - Eval family: `project_native_external`.
+  - Mode: `tgvf_free`.
+  - Runner backend: `tgvf_stage2_qwen3_native`.
+  - Post-TGVF continuation: `natural_continue`.
+  - Post-TGVF forward mode: `no_kv_full_sequence`.
+  - DeepStack: enabled; `original_image_scope=through_answer`.
+  - Stage2 D condition: `correct_D`.
+  - Prompt suffix / softforce prompt: empty.
+  - Max image resolution: `512`.
+  - Max action tokens: `64`.
+  - Max answer tokens: `512`.
+  - Attention implementation: `sdpa`.
+- GPU:
+  - Planned: GPU `0`.
+- Started:
+  - Pending.
+- Finished:
+  - Pending.
+- Metrics:
+  - Pending.
+- Analysis:
+  - Pending.
+- Conclusion:
+  - Pending.
