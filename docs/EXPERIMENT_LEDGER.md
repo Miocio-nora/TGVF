@@ -4805,7 +4805,7 @@ entry, update this file immediately.
 
 ### EXP-20260627-040717-clean-qwen3-stage1-legacyrepro-ddp-manifold001-4gpu
 
-- Status: RUNNING.
+- Status: COMPLETED.
 - Question:
   - After fixing clean Stage1 distributed training semantics to match legacy
     DDP/no_sync behavior, can the clean project reproduce the old Qwen3
@@ -4930,3 +4930,118 @@ entry, update this file immediately.
       `loss_same_image_negative=1.3515625`,
       raw `loss_visual_token_manifold=2.961265802383423`,
       `grad_norm=5.875`.
+- Training completion:
+  - Completed at approximately 2026-06-27T06:08:00+09:00.
+  - Runtime from progress log: `7014.081746816635s` (`1h56m54s`).
+  - Optimizer steps completed: `2000`.
+  - Micro steps completed: `4000`.
+  - Checkpoints saved at steps `500`, `1000`, `1500`, and `2000`.
+  - Final checkpoint:
+    `outputs/clean_training/qwen3_stage1_legacyrepro_ddp_manifold001_4gpu_20260627_040717/stage1_micro4/clean_training_execution/checkpoint_step_2000.pt`.
+  - Final checkpoint sha256:
+    `7f702f05f5e38ca9261c2a4dc8abee663f3b2cade565760155a9e3e501f6e8c4`.
+  - Final step losses:
+    - `loss_total=1.3478202819824219`.
+    - `loss_gen=1.3125`.
+    - `loss_same_image_negative=0.00506591796875`.
+    - raw `loss_visual_token_manifold=3.0254406929016113`.
+    - weighted manifold contribution: `0.030254406929016115`.
+  - Final logged norm diagnostics:
+    - `norm_ratio_mean=5.325041770935059`.
+    - `d_norm_mean=116.21395111083984`.
+    - `v_merge_norm_mean=21.82404136657715`.
+- Internal diagnostics:
+  - Status: COMPLETED.
+  - Run id:
+    `clean_qwen3_stage1_legacyrepro_internal_diag_20260627_124111`.
+  - Purpose:
+    - Measure the fresh DDP-semantics clean Stage1 replay on the same internal
+      readout/query/distribution surfaces used for previous Stage1 comparisons.
+  - Fixed identity:
+    - Checkpoint:
+      `outputs/clean_training/qwen3_stage1_legacyrepro_ddp_manifold001_4gpu_20260627_040717/stage1_micro4/clean_training_execution/checkpoint_step_2000.pt`.
+    - Checkpoint sha256:
+      `7f702f05f5e38ca9261c2a4dc8abee663f3b2cade565760155a9e3e501f6e8c4`.
+    - Eval JSONL:
+      `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend/splits/tgvf_v4_teacher_stage1_protocol_c_focus.test.jsonl`.
+    - Max image resolution: `512`.
+    - Tasks: `readout`, `query`, `distribution`.
+    - Sample caps: readout `200`, distribution `200`, query groups `50`.
+    - Device: `cuda:0`.
+    - use_fvt_cache: false.
+  - Plan:
+    `outputs/clean_training/qwen3_stage1_legacyrepro_ddp_manifold001_4gpu_20260627_040717/stage1_micro4/internal_diagnostics_step2000_20260627_124111/clean_stage_diagnostic_plan.json`.
+  - Plan sha256:
+    `135ccd1f720ec2197c385c5952c668e2c75cbf97f0d68c37c98b6f3e55248b46`.
+  - Command:
+    - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=revisit_vlm_clean/src:src python -m revisit_vlm_clean.cli.stage_diagnostics --run-id clean_qwen3_stage1_legacyrepro_internal_diag_20260627_124111 --stage stage1 --checkpoint outputs/clean_training/qwen3_stage1_legacyrepro_ddp_manifold001_4gpu_20260627_040717/stage1_micro4/clean_training_execution/checkpoint_step_2000.pt --eval-jsonl data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend/splits/tgvf_v4_teacher_stage1_protocol_c_focus.test.jsonl --output-dir outputs/clean_training/qwen3_stage1_legacyrepro_ddp_manifold001_4gpu_20260627_040717/stage1_micro4/internal_diagnostics_step2000_20260627_124111 --model-id /nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking --processor-id /nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking --protocol protocol_c_tool_observation --focus-action-im-end --variant tgvf_v2_bidirectional --encoder-adapter-type bidirectional --max-image-resolution 512 --fvt-position-mode native_source_grid --dtype bfloat16 --attn-implementation sdpa --device cuda:0 --tasks all --readout-max-samples 200 --distribution-max-samples 200 --query-max-groups 50 --query-require-groups 0 --seed 20260525 --execute`.
+  - Output:
+    `outputs/clean_training/qwen3_stage1_legacyrepro_ddp_manifold001_4gpu_20260627_040717/stage1_micro4/internal_diagnostics_step2000_20260627_124111`.
+  - Launch:
+    - Started at 2026-06-27T12:42:00+09:00.
+    - tmux: `clean_stage1_legacyrepro_diag_20260627_124111`.
+    - Log:
+      `logs/clean_training/clean_stage1_legacyrepro_diag_20260627_124111.log`.
+    - Runtime status file reports `status=running`.
+    - `runtime_config.json` confirms checkpoint global step `2000`, protocol
+      token rows loaded from checkpoint, no Qwen LoRA in checkpoint, and
+      `spatial_merge_size=2`.
+  - Completed at 2026-06-27T12:50:00+09:00.
+  - Reports:
+    - `outputs/clean_training/qwen3_stage1_legacyrepro_ddp_manifold001_4gpu_20260627_040717/stage1_micro4/internal_diagnostics_step2000_20260627_124111/readout/readout_eval_report.json`.
+    - `outputs/clean_training/qwen3_stage1_legacyrepro_ddp_manifold001_4gpu_20260627_040717/stage1_micro4/internal_diagnostics_step2000_20260627_124111/query_sensitivity/query_sensitivity_report.json`.
+    - `outputs/clean_training/qwen3_stage1_legacyrepro_ddp_manifold001_4gpu_20260627_040717/stage1_micro4/internal_diagnostics_step2000_20260627_124111/fvt_distribution/fvt_distribution_report.json`.
+  - Results:
+    - Readout, `n=200`:
+      - `pct_correct_D_beats_target_only=0.985`.
+      - `pct_correct_D_beats_random=1.0`.
+      - `pct_correct_D_beats_wrong_same=0.87`.
+      - `pct_correct_D_beats_wrong_diff=0.90625`.
+      - `mean_delta_correct_vs_target_only=0.58361328125`.
+      - `mean_delta_correct_vs_wrong_same=0.260595703125`.
+      - `mean_nll_correct_D=1.4366015625`.
+      - `mean_nll_target_only=2.02021484375`.
+    - Query sensitivity, `groups=46`, `items=200`:
+      - `retrieval_top1=0.705`.
+      - `retrieval_top2=0.88`.
+      - `mrr=0.82825`.
+      - `mean_diagonal_gap=0.0759375`.
+      - `median_diagonal_gap=0.0546875`.
+    - FVT distribution, `n=200`:
+      - `avg_manifold_loss=2.9338350534439086`.
+      - `median_manifold_loss=2.941246747970581`.
+      - `avg_norm_D=113.53232604980468`.
+      - `avg_norm_V_merge=20.683768496513366`.
+      - `norm_ratio_D_to_Vmerge=5.676891053685856`.
+      - `finite_rate=1.0`.
+      - `collapse_warning=false`.
+      - `manifold_active_rate=1.0`.
+  - Comparison:
+    - Previous clean `visual_token_manifold=0.01` replay before the DDP
+      semantics fix:
+      - `wrong_same=0.785`, `retrieval_top1=0.425`, `mrr=0.626`,
+        `norm_ratio=5.210`.
+    - This fresh DDP-semantics replay:
+      - `wrong_same=0.87`, `retrieval_top1=0.705`, `mrr=0.82825`,
+        `norm_ratio=5.677`.
+    - Old 20260617 row-only 4GPU reference:
+      - `wrong_same=0.945`, `retrieval_top1=0.535`,
+        `norm_ratio=5.174`.
+    - Clean samplerfix `0.1` run:
+      - `wrong_same=0.77`, `retrieval_top1=0.42`, `norm_ratio=2.401`.
+  - Analysis:
+    - The DDP/no_sync clean-vs-legacy semantic fix had a large positive effect:
+      `wrong_same` improved by `+0.085` over the previous `0.01` replay, and
+      query `retrieval_top1` improved by `+0.28`.
+    - Restoring `visual_token_manifold=0.01` keeps D scale in the historical
+      high-norm range; this run is slightly above the old 20260617 norm ratio
+      (`5.677` vs `5.174`).
+    - The run still does not fully reproduce the old 20260617 readout
+      `wrong_same=0.945`, but the query retrieval surface is now stronger than
+      the old 20260617 reference (`0.705` vs `0.535`).
+    - Current conclusion: the DDP semantics fix was a real missing piece. The
+      remaining gap is narrower and is no longer the broad collapse seen in
+      earlier clean Stage1 attempts.
+  - Conclusion:
+    - This is the best clean Stage1 replay so far and should be treated as the
+      current Stage1 candidate for the next Stage2 comparison.
