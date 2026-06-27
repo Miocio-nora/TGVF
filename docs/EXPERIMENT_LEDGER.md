@@ -6496,7 +6496,7 @@ entry, update this file immediately.
 
 ### EXP-20260628-0510-clean-qwen3-stage2-norm01-free-coredev2511-mediafix
 
-- Status: PLANNED.
+- Status: RUNNING.
 - Question:
   - Rerun the current clean Stage2 Qwen3 free method on the exact same
     CoreDev-2511 sample set after fixing clean-native benchmark media handling
@@ -6521,7 +6521,7 @@ entry, update this file immediately.
   - Prompt suffix / softforce prompt; this is still `tgvf_free`.
 - Code commit / worktree:
   - Fix commit: `2364aee113b4970b368a4a4c6d4aa8069a1712dc`.
-  - Launch commit: pending ledger commit.
+  - Launch commit: `49db0636796dba4786ba39c5bb525e9a45b7fa89`.
   - Dirty worktree before ledger entry: false.
 - Model / processor:
   - `/nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking`.
@@ -6578,10 +6578,10 @@ entry, update this file immediately.
 - GPUs:
   - Planned full benchmark: `0,1,2,3`.
 - tmux:
-  - Planned:
+  - Running:
     `clean_qwen3_stage2_norm01_free_coredev2511_ds512_mediafix_20260628_0510`.
 - Started:
-  - Pending.
+  - 2026-06-28T05:10:38+09:00.
 - Finished:
   - Pending.
 - Metrics:
