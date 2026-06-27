@@ -6493,3 +6493,100 @@ entry, update this file immediately.
 - Comparable to baseline:
   - Not comparable. Same manifest/order and intended configuration, but
     `1773/2511` rows were unscored runtime failures.
+
+### EXP-20260628-0510-clean-qwen3-stage2-norm01-free-coredev2511-mediafix
+
+- Status: PLANNED.
+- Question:
+  - Rerun the current clean Stage2 Qwen3 free method on the exact same
+    CoreDev-2511 sample set after fixing clean-native benchmark media handling
+    and multi-image FVT position fallback.
+- Baseline anchor:
+  - Original baseline:
+    `EXP-20260628-0216-clean-qwen3-original-coredev2511-maxans512`.
+  - Invalid predecessor:
+    `EXP-20260628-0407-clean-qwen3-stage2-norm01-free-coredev2511`.
+- Intended diff:
+  - Same checkpoint, processor, manifest/order, parser/scorer, max image
+    resolution, max answer tokens, no-extra-prompt free mode, DeepStack
+    through-answer semantics, and `sdpa` attention as the invalid predecessor.
+  - Code now includes clean-native Stage2 media materialization for path,
+    parquet image bytes, embedded base64, and multi-image inputs; multi-image
+    full-sequence append falls back to inherited source visual positions for
+    the FVT span.
+- Not allowed to change:
+  - Benchmark sample set/order.
+  - Stage2 checkpoint.
+  - Parser/scorer identity.
+  - Prompt suffix / softforce prompt; this is still `tgvf_free`.
+- Code commit / worktree:
+  - Fix commit: `2364aee113b4970b368a4a4c6d4aa8069a1712dc`.
+  - Launch commit: pending ledger commit.
+  - Dirty worktree before ledger entry: false.
+- Model / processor:
+  - `/nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking`.
+- Stage2 checkpoint:
+  - `outputs/clean_training/qwen3_stage2_norm01_stage1_mask075_deepstack_4gpu_20260627_163250/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt`.
+  - sha256:
+    `50245a11c27ad9755eb815b5f008af50a659fa07a4043f0f9427f5bbea3c0236`.
+- Stage2 runtime eval JSONL:
+  - `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend_open_answer/splits/tgvf_v4_teacher_stage2_protocol_c.test.jsonl`.
+  - Rows: `1002`; focus/no-focus: `857/145`.
+  - sha256:
+    `3b719e1bd03a09741cc05dac3ed85e423a9b2c29209b07546792a6795cdbbfc5`.
+- Benchmark:
+  - Subset id: `core_balanced_dev_2511_seed20260625`.
+  - Manifest:
+    `revisit_vlm_clean/benchmark_manifests/core_balanced_dev_2511_seed20260625.json`.
+  - Manifest internal hash:
+    `a461d9b482b7165b42b9bbb0fbf0ea6aff31fde0a838c13d953f070e770b0579`.
+  - Benchmark root:
+    `/home/dredvpn009/Flash_Storage/datasets/benchmarks`.
+  - Sample count/order vs original baseline: `2511/2511`, same order.
+- Output:
+  - Full:
+    `outputs/clean_benchmarks/qwen3_stage2_norm01_free_coredev2511_deepstack512_mediafix_4shard_20260628_0510`.
+- Evaluation identity:
+  - Eval family: `project_native_external`.
+  - Mode: `tgvf_free`.
+  - Runner backend: `tgvf_stage2_qwen3_native`.
+  - Post-TGVF continuation: `natural_continue`.
+  - Post-TGVF forward mode: `no_kv_full_sequence`.
+  - DeepStack: enabled; `original_image_scope=through_answer`;
+    D DeepStack-like features disabled.
+  - Stage2 D condition: `correct_D`.
+  - Prompt suffix / softforce prompt: empty.
+  - Max image resolution: `512`.
+  - Max action tokens: `64`.
+  - Max answer tokens: `512`.
+  - Attention implementation: `sdpa`.
+- Smoke validation before launch:
+  - `PYTHONPATH=revisit_vlm_clean/src:src pytest -q revisit_vlm_clean/tests/test_runner_backend.py revisit_vlm_clean/tests/test_scoring.py`
+    passed: `41 passed`.
+  - HRBench embedded-base64 free smoke passed with `error=null`.
+  - BLINK multi-image direct free smoke passed with `error=null`.
+  - BLINK multi-image forced append smoke passed with `append_success=true`,
+    `D_shape=[719,4096]`, `fvt_position_mode=multi_image_inherit_source_visual_positions`,
+    DeepStack used, and `error=null`.
+  - Former MathVista `mha_graph.execute` sample smoke passed with `error=null`.
+- Script / command:
+  - Four shard commands, one per GPU `0,1,2,3`, each with
+    `CUDA_VISIBLE_DEVICES=<gpu>`, `--device cuda:0`, `--device-map cuda:0`,
+    `--num-shards 4`, and one `--shard-index`.
+  - Base full command:
+    `REVISIT_VLM_CLEAN_STAGE2_MEDIA_CACHE=outputs/clean_media_cache/stage2_native_coredev2511 PYTHONPATH=revisit_vlm_clean/src:src python -m revisit_vlm_clean.cli.benchmark --run-id clean_qwen3_stage2_norm01_free_coredev2511_ds512_mediafix_20260628_0510_s<shard> --checkpoint-path outputs/clean_training/qwen3_stage2_norm01_stage1_mask075_deepstack_4gpu_20260627_163250/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt --model-id /nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking --processor-id /nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking --mode tgvf_free --runner-backend tgvf_stage2_qwen3_native --post-tgvf-forward-mode no_kv_full_sequence --subset-id core_balanced_dev_2511_seed20260625 --manifest-path revisit_vlm_clean/benchmark_manifests/core_balanced_dev_2511_seed20260625.json --manifest-hash a461d9b482b7165b42b9bbb0fbf0ea6aff31fde0a838c13d953f070e770b0579 --benchmark-root /home/dredvpn009/Flash_Storage/datasets/benchmarks --output-dir outputs/clean_benchmarks/qwen3_stage2_norm01_free_coredev2511_deepstack512_mediafix_4shard_20260628_0510/shards/shard_<shard> --max-image-resolution 512 --max-action-tokens 64 --max-answer-tokens 512 --scoring-backend auto --dtype bfloat16 --device cuda:0 --device-map cuda:0 --attn-implementation sdpa --stage2-checkpoint outputs/clean_training/qwen3_stage2_norm01_stage1_mask075_deepstack_4gpu_20260627_163250/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt --stage2-eval-jsonl data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend_open_answer/splits/tgvf_v4_teacher_stage2_protocol_c.test.jsonl --stage2-d-condition correct_D --force-prefix-mode target_hint --deepstack-enabled --deepstack-original-image-scope through_answer --num-shards 4 --shard-index <shard> --execute`.
+- GPUs:
+  - Planned full benchmark: `0,1,2,3`.
+- tmux:
+  - Planned:
+    `clean_qwen3_stage2_norm01_free_coredev2511_ds512_mediafix_20260628_0510`.
+- Started:
+  - Pending.
+- Finished:
+  - Pending.
+- Metrics:
+  - Pending.
+- Analysis:
+  - Pending.
+- Conclusion:
+  - Pending.
