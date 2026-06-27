@@ -1,4 +1,6 @@
+import base64
 import inspect
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -458,6 +460,98 @@ def test_stage2_sample_from_clean_sample_uses_rendered_prompt() -> None:
     assert converted.question.endswith("Use focus tool.")
     assert converted.choices is None
     assert converted.metadata["choices"] == ["A", "B"]
+
+
+def test_stage2_sample_from_clean_sample_materializes_embedded_base64(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("REVISIT_VLM_CLEAN_STAGE2_MEDIA_CACHE", str(tmp_path / "media_cache"))
+    image_bytes = base64.b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ"
+        "/pLvAAAAAElFTkSuQmCC"
+    )
+    sample = BenchmarkSample(
+        sample_id="hr/sample/1",
+        benchmark="hr_bench_4k",
+        population_id="hr_bench_4k_800",
+        source_file="hr_bench_4k/snapshot/hr_bench_4k.parquet",
+        question="What is the number?",
+        media=(
+            {
+                "kind": "embedded_base64",
+                "source_key": "image",
+                "value": base64.b64encode(image_bytes).decode("ascii"),
+                "payload_loaded": True,
+                "char_length": len(image_bytes),
+            },
+        ),
+        gold_answer="7",
+    )
+    config = _run_config(EvalMode.TGVF_FREE)
+    rendered = render_benchmark_input(sample, config)
+
+    converted = stage2_sample_from_clean_sample(sample, rendered)
+
+    assert isinstance(converted.image, str)
+    assert converted.image.endswith(".png")
+    assert (tmp_path / "media_cache").is_dir()
+    assert converted.metadata["image_input_count"] == 1
+    assert converted.metadata["image_input_mode"] == "single_image"
+    assert converted.metadata["image_materialization"][0]["materialized"] is True
+    assert converted.metadata["image_materialization"][0]["materialization_source"] == "embedded_base64"
+
+
+def test_stage2_sample_from_clean_sample_materializes_multiple_image_structs(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("REVISIT_VLM_CLEAN_STAGE2_MEDIA_CACHE", str(tmp_path / "media_cache"))
+    image_bytes = base64.b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ"
+        "/pLvAAAAAElFTkSuQmCC"
+    )
+    sample = BenchmarkSample(
+        sample_id="blink/sample/1",
+        benchmark="blink",
+        population_id="blink_val_all_subtasks_1901",
+        source_file="blink/snapshot/Art_Style/val-00000-of-00001.parquet",
+        question="Which image matches?",
+        media=(
+            {
+                "kind": "image_struct",
+                "source_key": "image_1",
+                "path_hint": "a.png",
+                "payload_loaded": True,
+                "byte_length": len(image_bytes),
+                "bytes": image_bytes,
+            },
+            {
+                "kind": "image_struct",
+                "source_key": "image_2",
+                "path_hint": "b.png",
+                "payload_loaded": True,
+                "byte_length": len(image_bytes),
+                "bytes": image_bytes,
+            },
+        ),
+        choices=("A", "B"),
+        gold_answer="A",
+    )
+    config = _run_config(EvalMode.TGVF_FREE)
+    rendered = render_benchmark_input(sample, config)
+
+    converted = stage2_sample_from_clean_sample(sample, rendered)
+
+    assert isinstance(converted.image, list)
+    assert len(converted.image) == 2
+    assert all(Path(path).exists() for path in converted.image)
+    assert converted.metadata["image_input_count"] == 2
+    assert converted.metadata["image_input_mode"] == "multi_image"
+    assert [item["source_key"] for item in converted.metadata["image_materialization"]] == [
+        "image_1",
+        "image_2",
+    ]
 
 
 def test_stage2_native_engine_force_flow_with_fake_runtime(tmp_path) -> None:

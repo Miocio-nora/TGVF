@@ -7,8 +7,13 @@ backend independent from historical evaluator classes.
 
 from __future__ import annotations
 
+import base64
+import hashlib
+import io
+import os
 import time
 from dataclasses import dataclass, field
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
@@ -47,7 +52,7 @@ class NativeStage2RunResult:
 
 @dataclass(frozen=True)
 class NativeStage2Sample:
-    image: str
+    image: Any
     question: str
     answer: str
     need_focus: bool
@@ -359,7 +364,8 @@ class NativeStage2Engine:
             load_qwen3_vl,
         )
         from revisit_vlm.tgvf_training import build_tgvf_module
-        from revisit_vlm.tgvf_v3_stage1 import freeze_qwen_backbone, infer_qwen3_stage1_dims
+        from revisit_vlm.qwen3_vl_tgvf import llm_hidden_dim, tap_qwen3_vision_features
+        from revisit_vlm.tgvf_v3_stage1 import freeze_qwen_backbone
 
         self.device = _resolve_runtime_device(torch, self.backend_options.get("device"))
         checkpoint = torch.load(self.stage2_config.stage2_checkpoint, map_location="cpu")
@@ -426,13 +432,20 @@ class NativeStage2Engine:
         if hasattr(model, "config"):
             model.config.use_cache = True
         utility_model = model.get_base_model() if hasattr(model, "get_base_model") else model
-        dims = infer_qwen3_stage1_dims(
-            model=utility_model,
-            processor=processor,
-            sample=sample,  # type: ignore[arg-type]
+        tap, v_pre, _v_merge = tap_qwen3_vision_features(
+            utility_model,
+            processor,
+            image=self._image(sample),
+            question=sample.prompt_question,
             device=self.device,
-            max_image_resolution=config.max_image_resolution,
         )
+        if v_pre is None:
+            raise RuntimeError(f"Could not infer V_pre shape: {tap.errors}")
+        dims = {
+            "d_lm": int(llm_hidden_dim(utility_model)),
+            "d_v": int(v_pre.shape[-1]),
+            "spatial_merge_size": int(tap.spatial_merge_size or tap.merge_size or 2),
+        }
         tgvf_cfg = checkpoint_config.get("tgvf") or {}
         foveal_module = build_tgvf_module(
             variant=str(tgvf_cfg.get("variant") or "tgvf_v2_bidirectional"),
@@ -566,7 +579,7 @@ class NativeStage2Engine:
         config = self._run_config
         if config is None:
             raise RuntimeError("NativeStage2Engine.prepare must be called before vision tap")
-        key = f"{sample.image}|{config.max_image_resolution}"
+        key = f"{_image_identity_text(sample.image)}|{config.max_image_resolution}"
         if key not in self.vision_cache:
             self.vision_cache[key] = tap_qwen3_vision_features(
                 self.utility_model,
@@ -738,6 +751,7 @@ class NativeStage2Engine:
             THINK_START,
             _append_source_image_grid,
             _bracketed_visual_token_ids,
+            _chunk_position_ids_inherit_source_visual_positions,
             _compute_qwen3_position_ids_for_sequence,
             _encode_text,
             _full_mm_token_type_ids_for_append,
@@ -824,14 +838,76 @@ class NativeStage2Engine:
             chunk_mm_token_type_ids=chunk_mm_token_type_ids,
             device=self.device,
         )
-        position_ids = _compute_qwen3_position_ids_for_sequence(
-            model=self.utility_model,
-            input_ids=full_input_ids,
-            attention_mask=full_attention,
-            image_grid_thw=image_grid_thw,
-            video_grid_thw=capture.video_grid_thw,
-            mm_token_type_ids=full_mm_token_type_ids,
-        )
+        position_ids_mode = "native_source_grid"
+        position_ids_fallback_error = None
+        try:
+            position_ids = _compute_qwen3_position_ids_for_sequence(
+                model=self.utility_model,
+                input_ids=full_input_ids,
+                attention_mask=full_attention,
+                image_grid_thw=image_grid_thw,
+                video_grid_thw=capture.video_grid_thw,
+                mm_token_type_ids=full_mm_token_type_ids,
+            )
+        except RuntimeError as exc:
+            if (
+                _image_grid_count(source_geometry.image_grid_thw) > 1
+                and source_geometry.source_visual_position_ids is not None
+            ):
+                base_attention = torch.ones_like(capture_input_ids)
+                capture_model_kwargs = dict(getattr(capture, "model_kwargs", {}) or {})
+                base_mm_token_type_ids = capture_model_kwargs.get("mm_token_type_ids")
+                if hasattr(base_mm_token_type_ids, "to"):
+                    base_mm_token_type_ids = base_mm_token_type_ids.to(self.device)
+                    base_len = int(base_mm_token_type_ids.shape[-1])
+                    target_len = int(capture_input_ids.shape[-1])
+                    if base_len < target_len:
+                        zeros = torch.zeros(
+                            (base_mm_token_type_ids.shape[0], target_len - base_len),
+                            dtype=base_mm_token_type_ids.dtype,
+                            device=base_mm_token_type_ids.device,
+                        )
+                        base_mm_token_type_ids = torch.cat([base_mm_token_type_ids, zeros], dim=-1)
+                    elif base_len > target_len:
+                        raise ValueError(
+                            "capture mm_token_type_ids length exceeds capture input length: "
+                            f"{base_len} > {target_len}"
+                        )
+                base_position_ids = _compute_qwen3_position_ids_for_sequence(
+                    model=self.utility_model,
+                    input_ids=capture_input_ids,
+                    attention_mask=base_attention,
+                    image_grid_thw=capture.image_grid_thw,
+                    video_grid_thw=capture.video_grid_thw,
+                    mm_token_type_ids=base_mm_token_type_ids,
+                )
+                if base_position_ids is None:
+                    raise ValueError(
+                        "base position id computation failed for multi-image full-sequence prefill"
+                    ) from exc
+                chunk_position_ids = _chunk_position_ids_inherit_source_visual_positions(
+                    attention_mask=full_attention,
+                    chunk_length=int(token_ids.shape[-1]),
+                    visual_token_start=fvt_token_start,
+                    visual_token_end=fvt_token_end,
+                    source_visual_position_ids=source_geometry.source_visual_position_ids,
+                    device=self.device,
+                )
+                if chunk_position_ids is None:
+                    raise ValueError(
+                        "chunk position id computation failed for multi-image full-sequence prefill"
+                    ) from exc
+                position_ids = torch.cat(
+                    [
+                        base_position_ids.to(device=self.device),
+                        chunk_position_ids.to(device=self.device),
+                    ],
+                    dim=-1,
+                )
+                position_ids_mode = "multi_image_inherit_source_visual_positions"
+                position_ids_fallback_error = f"{type(exc).__name__}: {exc}"
+            else:
+                raise
         if position_ids is None:
             raise ValueError("position id computation failed for full-sequence prefill")
         deepstack_payload = None
@@ -902,10 +978,11 @@ class NativeStage2Engine:
                 "fvt_shape": list(d.shape),
                 "num_fvt_tokens": int(d.shape[0]),
                 "source_visual_token_count": int(source_geometry.source_visual_token_count),
-                "fvt_position_mode": "native_source_grid",
+                "fvt_position_mode": position_ids_mode,
                 "position_ids_shape": list(position_ids.shape),
+                "position_ids_fallback_error": position_ids_fallback_error,
                 "mm_token_type_ids_shape": list(full_mm_token_type_ids.shape),
-                "native_qwen3_position_compute_used": True,
+                "native_qwen3_position_compute_used": position_ids_fallback_error is None,
                 "second_full_forward_used": True,
                 "past_key_values_preserved": False,
                 "deepstack_caution": (
@@ -1072,7 +1149,12 @@ class NativeStage2Engine:
         config = self._run_config
         if config is None:
             raise RuntimeError("NativeStage2Engine.prepare must be called before image load")
-        return _image_input(sample.image, max_image_resolution=config.max_image_resolution)
+        if isinstance(sample.image, (list, tuple)):
+            return [
+                _image_input(str(image), max_image_resolution=config.max_image_resolution)
+                for image in sample.image
+            ]
+        return _image_input(str(sample.image), max_image_resolution=config.max_image_resolution)
 
     def _force_prefix_text(self, sample: NativeStage2Sample) -> str:
         from revisit_vlm.qwen3_vl_tgvf import render_force_focus_prefix
@@ -1245,7 +1327,8 @@ def stage2_sample_from_clean_sample(
     sample: BenchmarkSample,
     rendered: RenderedBenchmarkInput,
 ) -> NativeStage2Sample:
-    image = _primary_path_media(sample)
+    image_paths, media_report = _loadable_image_paths(sample)
+    image: str | list[str] = image_paths[0] if len(image_paths) == 1 else image_paths
     return NativeStage2Sample(
         image=image,
         question=rendered.user_prompt,
@@ -1264,6 +1347,9 @@ def stage2_sample_from_clean_sample(
             "population_id": sample.population_id,
             "source_file": sample.source_file,
             "choices": list(sample.choices),
+            "image_input_count": len(image_paths),
+            "image_input_mode": "single_image" if len(image_paths) == 1 else "multi_image",
+            "image_materialization": media_report,
             **sample.metadata,
         },
     )
@@ -1288,14 +1374,161 @@ def _validate_run_alignment(stage2_config: Stage2RuntimeConfig, config: RunConfi
         )
 
 
-def _primary_path_media(sample: BenchmarkSample) -> str:
-    for media in sample.media:
-        if media.get("kind") == "path" and media.get("path") and media.get("exists") is True:
-            return str(media["path"])
-    raise ValueError(
-        "clean-native Stage2 requires path-backed image media; "
-        f"sample {sample.sample_id} has media kinds {[item.get('kind') for item in sample.media]}"
-    )
+def _loadable_image_paths(sample: BenchmarkSample) -> tuple[list[str], list[dict[str, Any]]]:
+    image_paths: list[str] = []
+    media_report: list[dict[str, Any]] = []
+    for media_index, media in enumerate(sample.media):
+        resolved = _loadable_image_path(sample, media, media_index=media_index)
+        if resolved is None:
+            continue
+        path, report = resolved
+        image_paths.append(path)
+        media_report.append(report)
+    if not image_paths:
+        raise ValueError(
+            "clean-native Stage2 requires loadable image media; "
+            f"sample {sample.sample_id} has media kinds "
+            f"{[item.get('kind') for item in sample.media]}"
+        )
+    return image_paths, media_report
+
+
+def _loadable_image_path(
+    sample: BenchmarkSample,
+    media: dict[str, Any],
+    *,
+    media_index: int,
+) -> tuple[str, dict[str, Any]] | None:
+    kind = str(media.get("kind") or "")
+    path = str(media.get("path") or "")
+    if path and (media.get("exists") is True or Path(path).exists()):
+        return path, _image_media_report(
+            media,
+            media_index=media_index,
+            path=path,
+            materialized=False,
+            source="existing_path",
+        )
+    if kind in {"image_struct", "embedded_image_struct", "embedded_bytes"}:
+        bytes_value = media.get("bytes")
+        if isinstance(bytes_value, (bytes, bytearray)):
+            materialized = _materialize_image_bytes(
+                bytes(bytes_value),
+                sample=sample,
+                media=media,
+                media_index=media_index,
+            )
+            return materialized, _image_media_report(
+                media,
+                media_index=media_index,
+                path=materialized,
+                materialized=True,
+                source="embedded_bytes",
+            )
+        return None
+    if kind == "embedded_base64":
+        value = str(media.get("value") or "")
+        if not value:
+            return None
+        materialized = _materialize_image_bytes(
+            _decode_base64_image(value),
+            sample=sample,
+            media=media,
+            media_index=media_index,
+        )
+        return materialized, _image_media_report(
+            media,
+            media_index=media_index,
+            path=materialized,
+            materialized=True,
+            source="embedded_base64",
+        )
+    return None
+
+
+def _materialize_image_bytes(
+    payload: bytes,
+    *,
+    sample: BenchmarkSample,
+    media: dict[str, Any],
+    media_index: int,
+) -> str:
+    if not payload:
+        raise ValueError(f"empty embedded image payload for sample {sample.sample_id}")
+    image_format = _image_format(payload)
+    suffix = _image_suffix(image_format, media.get("path_hint") or media.get("path"))
+    digest = hashlib.sha256()
+    digest.update(sample.sample_id.encode("utf-8", errors="replace"))
+    digest.update(b"\0")
+    digest.update(str(media_index).encode("ascii"))
+    digest.update(b"\0")
+    digest.update(str(media.get("kind") or "").encode("utf-8", errors="replace"))
+    digest.update(b"\0")
+    digest.update(payload)
+    cache_dir = _stage2_media_cache_dir()
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    stem = _safe_cache_stem(f"{sample.benchmark}_{sample.sample_id}")
+    path = cache_dir / f"{stem}_{digest.hexdigest()[:20]}{suffix}"
+    if not path.exists():
+        tmp_path = path.with_suffix(path.suffix + f".{os.getpid()}.tmp")
+        tmp_path.write_bytes(payload)
+        os.replace(tmp_path, path)
+    return str(path)
+
+
+def _decode_base64_image(value: str) -> bytes:
+    payload = value.split(",", 1)[1] if value.startswith("data:image") and "," in value else value
+    return base64.b64decode(payload)
+
+
+def _image_format(payload: bytes) -> str:
+    from PIL import Image
+
+    with Image.open(io.BytesIO(payload)) as image:
+        image.verify()
+        return str(image.format or "").lower()
+
+
+def _image_suffix(image_format: str, path_hint: Any) -> str:
+    hint_suffix = Path(str(path_hint or "")).suffix.lower()
+    if hint_suffix in {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif"}:
+        return hint_suffix
+    if image_format in {"jpeg", "jpg"}:
+        return ".jpg"
+    if image_format in {"png", "webp", "bmp", "gif"}:
+        return f".{image_format}"
+    return ".img"
+
+
+def _image_media_report(
+    media: dict[str, Any],
+    *,
+    media_index: int,
+    path: str,
+    materialized: bool,
+    source: str,
+) -> dict[str, Any]:
+    return {
+        "media_index": media_index,
+        "kind": media.get("kind"),
+        "source_key": media.get("source_key"),
+        "path": path,
+        "materialized": materialized,
+        "materialization_source": source,
+        "path_hint": media.get("path_hint"),
+        "byte_length": media.get("byte_length"),
+    }
+
+
+def _stage2_media_cache_dir() -> Path:
+    configured = os.environ.get("REVISIT_VLM_CLEAN_STAGE2_MEDIA_CACHE")
+    return Path(configured or "outputs/clean_media_cache/stage2_native").resolve()
+
+
+def _safe_cache_stem(value: str) -> str:
+    chars = [char if char.isalnum() else "_" for char in value]
+    stem = "_".join(part for part in "".join(chars).split("_") if part)
+    return (stem or "sample")[:96]
 
 
 def _validate_peft_load_result(load_result: Any) -> None:
@@ -1333,9 +1566,29 @@ def _unwrap_qwen3_causal_lm(model: Any) -> Any:
 
 def _sample_uid(sample: NativeStage2Sample) -> str:
     base = "|".join(
-        [sample.image_id or sample.image, sample.question, sample.target, sample.answer]
+        [
+            sample.image_id or _image_identity_text(sample.image),
+            sample.question,
+            sample.target,
+            sample.answer,
+        ]
     )
     return str(abs(hash(base)))
+
+
+def _image_identity_text(image: Any) -> str:
+    if isinstance(image, (list, tuple)):
+        return "[" + ",".join(str(item) for item in image) + "]"
+    return str(image)
+
+
+def _image_grid_count(image_grid_thw: Any) -> int:
+    if image_grid_thw is None:
+        return 0
+    try:
+        return int(image_grid_thw.detach().cpu().view(-1, 3).shape[0])
+    except Exception:
+        return 0
 
 
 def _full_protocol_text(action_text: str, continuation: str, *, protocol: str) -> str:

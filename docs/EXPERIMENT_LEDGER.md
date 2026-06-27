@@ -6328,7 +6328,7 @@ entry, update this file immediately.
 
 ### EXP-20260628-0407-clean-qwen3-stage2-norm01-free-coredev2511
 
-- Status: RUNNING.
+- Status: SIDE_RESULT / INVALID_FOR_BASELINE.
 - Question:
   - After confirming the Qwen3 original parser/scorer baseline is healthy with
     `max_answer_tokens=512`, evaluate the current clean Stage2 method on the
@@ -6352,7 +6352,7 @@ entry, update this file immediately.
   - Parser/scorer identity or scoring backend.
   - Stage2 checkpoint.
 - Code commit / worktree:
-  - `0b310645c8838140ee0eb0e665dbdd7701feb697`.
+  - Launch commit: `d17e84f58b3f63470fccdef9388fce1cc5618eaf`.
   - Dirty worktree before ledger entry: false.
 - Model / processor:
   - `/nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking`.
@@ -6419,18 +6419,77 @@ entry, update this file immediately.
   - Preflight at 2026-06-28T04:07:16+09:00:
     GPUs `0-7` showed `0 MiB` used and `0%` utilization.
 - tmux:
-  - Smoke: pending.
-  - Full: pending.
+  - Smoke: foreground preflight, completed successfully.
+  - Full:
+    `clean_qwen3_stage2_norm01_free_coredev2511_ds512_20260628_0407`.
 - Started:
-  - Pending.
+  - Smoke: 2026-06-28T04:09:xx+09:00.
+  - Full: 2026-06-28T04:12:00+09:00.
 - Finished:
-  - Pending.
+  - Full generation/merge completed:
+    - `shard_0`: 2026-06-28T04:28:06+09:00, `exit=0`, rows `628/628`.
+    - `shard_1`: 2026-06-28T04:31:12+09:00, `exit=0`, rows `628/628`.
+    - `shard_2`: 2026-06-28T04:31:19+09:00, `exit=0`, rows `628/628`.
+    - `shard_3`: 2026-06-28T04:21:56+09:00, `exit=0`, rows `627/627`.
+    - Merge: 2026-06-28T04:31:20+09:00.
 - Metrics:
-  - Pending.
+  - Smoke:
+    - Output:
+      `outputs/clean_benchmarks/qwen3_stage2_norm01_free_coredev2511_deepstack512_smoke1_20260628_0407`.
+    - Rows: `1`; score `1.0`; parse `1.0`; trigger `0.0`.
+    - Run config recorded `git_commit=d17e84f58b3f63470fccdef9388fce1cc5618eaf`,
+      `dirty_worktree=false`, DeepStack enabled with
+      `original_image_scope=through_answer`.
+    - Smoke did not naturally trigger focus on its single VStar sample, so it
+      validates model/runtime/scoring startup but not a triggered append case.
+  - Full merged output:
+    `outputs/clean_benchmarks/qwen3_stage2_norm01_free_coredev2511_deepstack512_4shard_20260628_0407/merged`.
+  - Invalid summary:
+    - `n_rows=2511`, `n_scored=738`, `score_none=1773`, `row_error=1773`.
+    - Overall among scored rows only: accuracy `0.288618`, parse `0.293907`,
+      trigger `0.047790`, focus-valid `0.159151`, append success `0.866667`,
+      malformed `0.706093`.
+    - Error distribution from `merged/rows.jsonl`:
+      - `1520` rows: `ValueError: clean-native Stage2 requires path-backed image media`.
+      - `246` rows: `RuntimeError: Expected mha_graph.execute(...)`.
+      - `4` rows: `RuntimeError: CUDA error: CUBLAS_STATUS_INTERNAL_ERROR`.
+      - `3` rows: CUDA OOM.
+    - Media failures covered all BLINK `420/420`, HRBench `200/200`,
+      OCRBench-v2 `600/600`, and MMMU-Pro `300/300` rows.
+    - Scored/non-error rows were mainly VStar, MathVista, and MathVerse, so the
+      benchmark table is not denominator-comparable to the original baseline.
+  - Follow-up smoke/fix validation after the invalid run:
+    - HRBench embedded-base64 sample `index=191`: output
+      `outputs/clean_benchmarks/qwen3_stage2_norm01_free_coredev2511_mediafix_smoke_hr_20260628`,
+      `error=null`, parse `1.0`, score `1.0`.
+    - BLINK multi-image direct sample `index=391`: output
+      `outputs/clean_benchmarks/qwen3_stage2_norm01_free_coredev2511_mediafix_smoke_blink_multi_20260628`,
+      `error=null`, parse `1.0`, score `1.0`, debug image count `3`.
+    - BLINK multi-image forced append sample `index=391`: final validated output
+      `outputs/clean_benchmarks/qwen3_stage2_norm01_force_coredev2511_mediafix_smoke_blink_multi_append_20260628_rerun3`,
+      `append_success=true`, `D_shape=[719,4096]`,
+      `fvt_position_mode=multi_image_inherit_source_visual_positions`,
+      DeepStack used, parse `1.0`, score `1.0`, `error=null`.
+    - Former MathVista `mha_graph.execute` sample `index=1803`: output
+      `outputs/clean_benchmarks/qwen3_stage2_norm01_free_coredev2511_mediafix_smoke_mathvista_mha_20260628`,
+      `error=null`, parse `1.0`; it did not naturally append.
 - Analysis:
-  - Pending.
+  - The full run is invalid because clean-native Stage2 inherited the legacy
+    path-backed-image assumption while CoreDev-2511 includes parquet
+    `image_struct`, embedded bytes, embedded base64, and multi-image samples.
+  - A second triggered-append issue was exposed for multi-image samples:
+    Qwen3 native `compute_3d_position_ids` cannot interpret one continuous FVT
+    visual block as three separate appended image grids. The clean-native fix
+    keeps single-image native position compute unchanged and falls back only for
+    multi-image append to: native base positions for the original multi-image
+    prefix plus inherited source visual positions for the FVT span.
+  - The `mha_graph.execute` errors were not reproduced by the single formerly
+    failing MathVista smoke after the media/append fixes. Keep `sdpa` for the
+    rerun, but inspect full rerun row errors before reporting final metrics.
 - Conclusion:
-  - Pending.
+  - Do not use this output in result tables.
+  - Rerun the same CoreDev-2511 Stage2 free benchmark after the clean-native
+    media materialization and multi-image FVT position fallback patch.
 - Comparable to baseline:
-  - Intended comparable to the Qwen3 original 512-token CoreDev-2511 baseline
-    except for replacing original generation with the Stage2 free method.
+  - Not comparable. Same manifest/order and intended configuration, but
+    `1773/2511` rows were unscored runtime failures.
