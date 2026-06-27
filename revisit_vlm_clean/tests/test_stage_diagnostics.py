@@ -90,6 +90,36 @@ def test_stage_diagnostics_write_plan_records_command_and_env(tmp_path) -> None:
     assert "--processor-id" in plan["command"]
 
 
+def test_stage_diagnostics_can_disable_stage2_lora_for_legacy_readout(tmp_path, capsys) -> None:
+    checkpoint, eval_jsonl = _write_inputs(tmp_path)
+    output_dir = tmp_path / "diagnostics"
+    assert (
+        diagnostics_main(
+            [
+                "--run-id",
+                "stage2_diag_base_qwen",
+                "--stage",
+                "stage2",
+                "--checkpoint",
+                str(checkpoint),
+                "--eval-jsonl",
+                str(eval_jsonl),
+                "--output-dir",
+                str(output_dir),
+                "--no-stage2-load-lora",
+                "--dry-run",
+            ]
+        )
+        == 0
+    )
+    plan = json.loads(capsys.readouterr().out)
+    assert plan["config"]["stage2_load_lora"] is False
+    assert "--no-stage2-load-lora" in plan["command"]
+    assert plan["execution_backend"]["forward_semantics"] == (
+        "stage2_tgvf_module_with_base_qwen_readout; qwen_lora ignored by request"
+    )
+
+
 def test_stage_diagnostics_execute_invokes_clean_native_executor(
     tmp_path,
     monkeypatch,

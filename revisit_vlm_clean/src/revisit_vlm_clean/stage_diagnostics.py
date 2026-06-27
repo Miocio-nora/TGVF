@@ -52,6 +52,7 @@ class StageDiagnosticConfig:
     query_min_targets_per_image: int = 3
     eval_workers: int = 1
     use_fvt_cache: bool = False
+    stage2_load_lora: bool = True
     seed: int = 20260525
     wandb_log_eval: bool = False
     wandb_project: str | None = None
@@ -158,6 +159,7 @@ def build_stage_diagnostic_plan(config: StageDiagnosticConfig) -> dict[str, Any]
         "mask_original_image_after_tgvf": True,
         "capture_mode": "teacher_forced",
         "use_fvt_cache": config.use_fvt_cache,
+        "stage2_load_lora": config.stage2_load_lora,
         "wandb_log_eval": config.wandb_log_eval,
         "git_commit": config.git_commit,
         "dirty_worktree": config.dirty_worktree,
@@ -165,9 +167,7 @@ def build_stage_diagnostic_plan(config: StageDiagnosticConfig) -> dict[str, Any]
             "name": "clean_native_stage_diagnostics",
             "version": 1,
             "legacy_bridge": False,
-            "forward_semantics": (
-                "current_clean_stage1_readout_inputs_with_stage2_lora_when_present"
-            ),
+            "forward_semantics": _diagnostic_forward_semantics(config),
             "metric_names": "preserved_v3_readout_query_distribution",
         },
         "command": command,
@@ -308,6 +308,7 @@ def stage_diagnostic_command(config: StageDiagnosticConfig) -> list[str]:
         str(config.query_min_targets_per_image),
         "--eval-workers",
         str(config.eval_workers),
+        "--stage2-load-lora" if config.stage2_load_lora else "--no-stage2-load-lora",
         "--seed",
         str(config.seed),
         "--execute",
@@ -417,13 +418,22 @@ def _load_runtime(config: StageDiagnosticConfig, *, example_sample: Any) -> _Run
     )
 
     model = base_model
-    lora_info: dict[str, Any] = {"loaded": False, "available_in_checkpoint": "qwen_lora" in checkpoint}
-    if "qwen_lora" in checkpoint:
+    lora_info: dict[str, Any] = {
+        "loaded": False,
+        "requested": config.stage2_load_lora,
+        "available_in_checkpoint": "qwen_lora" in checkpoint,
+    }
+    if config.stage2_load_lora and "qwen_lora" in checkpoint:
         model, lora_info = _load_stage2_lora_model(
             base_model=base_model,
             checkpoint=checkpoint,
             protocol_token_info=protocol_token_info,
         )
+        lora_info["requested"] = True
+    elif "qwen_lora" in checkpoint:
+        lora_info["reason"] = "stage2_load_lora_disabled"
+    else:
+        lora_info["reason"] = "qwen_lora_absent"
     model.eval()
     utility_model = model.get_base_model() if hasattr(model, "get_base_model") else model
     device = _resolve_runtime_device(torch, config.device)
@@ -480,9 +490,7 @@ def _load_runtime(config: StageDiagnosticConfig, *, example_sample: Any) -> _Run
             "d_v": dims["d_v"],
             "spatial_merge_size": dims["spatial_merge_size"],
             "tgvf_module_config": tgvf_cfg,
-            "forward_semantics": (
-                "capture/readout use qwen_lora when present; vision tap and merger use utility model"
-            ),
+            "forward_semantics": _diagnostic_forward_semantics(config),
         },
     )
 
@@ -1479,6 +1487,14 @@ def _runtime_config(config: StageDiagnosticConfig, model_info: dict[str, Any]) -
         "execution_backend": "clean_native_stage_diagnostics",
         "model_info": model_info,
     }
+
+
+def _diagnostic_forward_semantics(config: StageDiagnosticConfig) -> str:
+    if config.stage == "stage2" and not config.stage2_load_lora:
+        return (
+            "stage2_tgvf_module_with_base_qwen_readout; qwen_lora ignored by request"
+        )
+    return "capture/readout use qwen_lora when present; vision tap and merger use utility model"
 
 
 def _sample_metadata_row(sample: Any) -> dict[str, Any]:

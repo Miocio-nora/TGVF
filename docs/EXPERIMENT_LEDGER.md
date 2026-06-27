@@ -5659,3 +5659,241 @@ entry, update this file immediately.
 - Follow-up:
   - If this passes, inspect rollout/reward/train metrics before scaling beyond
     a smoke.
+
+### EXP-20260627-230746-clean-qwen3-original-coredev2511-baseline
+
+- Status: FAILED_NO_OUTPUT.
+- Question:
+  - What is the clean original Qwen3-VL baseline on the CoreDev-2511 external
+    benchmark subset before comparing the new Stage2 checkpoint?
+- Baseline anchor:
+  - This run is the baseline anchor for the upcoming clean Stage2 comparison.
+  - It does not compare to historical BLINK-120 or legacy full-benchmark labels.
+- Intended diff:
+  - Run original Qwen3-VL-8B-Thinking only, without loading any TGVF checkpoint.
+  - Use the clean benchmark runner, current V3 external parser/scorer, and the
+    explicit CoreDev-2511 manifest.
+- Allowed changed variables:
+  - None; this is the original-model baseline measurement for this clean table.
+- Not allowed to change:
+  - Manifest path/hash, sample set, max image resolution, parser/scorer,
+    runner backend, and model/processor.
+- Code commit / worktree:
+  - `27544f22c31773fd6d7eb297f680296d60b61885`.
+  - Dirty worktree: false.
+- Model / processor:
+  - `/nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking`.
+- Checkpoint path:
+  - `/nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking`.
+- Benchmark:
+  - Subset id: `core_balanced_dev_2511_seed20260625`.
+  - Human label: `CoreDev-2511`.
+  - Manifest:
+    `revisit_vlm_clean/benchmark_manifests/core_balanced_dev_2511_seed20260625.json`.
+  - Manifest file sha256:
+    `3a013b2bcc64316054d28239a3cea3f44211cadbfe19787be3b7f285620fa5c1`.
+  - Manifest internal hash:
+    `a461d9b482b7165b42b9bbb0fbf0ea6aff31fde0a838c13d953f070e770b0579`.
+  - Benchmark root:
+    `/home/dredvpn009/Flash_Storage/datasets/benchmarks`.
+  - Sample count: `2511`.
+  - Allocation:
+    `vstar_bench=191`, `blink=420`, `hr_bench_4k=200`,
+    `mmmu_pro=300`, `mathvista=300`, `mathverse=500`,
+    `ocrbench_v2=600`.
+- Output:
+  - `outputs/clean_benchmarks/qwen3_original_coredev2511_4shard_20260627_230746`.
+- Evaluation identity:
+  - Eval family: `project_native_external`.
+  - Mode: `original`.
+  - Runner backend: `qwen3_original`.
+  - TGVF protocol field: `protocol_c_tool_observation` (schema identity only;
+    original mode does not use TGVF).
+  - Post-TGVF continuation: `natural_continue`.
+  - Post-TGVF forward mode: `kv_cache` (schema-required, not used by original
+    backend).
+  - DeepStack: disabled/noop for original backend.
+  - Parser/scorer: `revisit_vlm_clean.scoring.parse_and_score:v3_external`,
+    scoring backend `auto`.
+  - Max image resolution: `512`.
+  - Max answer tokens: `128`.
+- Script / command:
+  - Four shard commands, each with `--num-shards 4`, one `--shard-index`,
+    `CUDA_VISIBLE_DEVICES=<gpu>`, `--device cuda:0`, `--device-map cuda:0`,
+    and output under `shards/shard_<index>`.
+  - Merge command after completion:
+    `PYTHONPATH=revisit_vlm_clean/src:src python -m revisit_vlm_clean.cli.merge_benchmark --output-dir outputs/clean_benchmarks/qwen3_original_coredev2511_4shard_20260627_230746/merged --run-id clean_qwen3_original_coredev2511_4shard_20260627_230746 --expected-num-shards 4 --expected-source-manifest-hash a461d9b482b7165b42b9bbb0fbf0ea6aff31fde0a838c13d953f070e770b0579 outputs/clean_benchmarks/qwen3_original_coredev2511_4shard_20260627_230746/shards/shard_0 outputs/clean_benchmarks/qwen3_original_coredev2511_4shard_20260627_230746/shards/shard_1 outputs/clean_benchmarks/qwen3_original_coredev2511_4shard_20260627_230746/shards/shard_2 outputs/clean_benchmarks/qwen3_original_coredev2511_4shard_20260627_230746/shards/shard_3`.
+- GPUs:
+  - Planned: `0,1,2,3`, one shard per GPU.
+- tmux:
+  - `clean_qwen3_original_coredev2511_4shard_20260627_230746_s0`.
+  - `clean_qwen3_original_coredev2511_4shard_20260627_230746_s1`.
+  - `clean_qwen3_original_coredev2511_4shard_20260627_230746_s2`.
+  - `clean_qwen3_original_coredev2511_4shard_20260627_230746_s3`.
+- Started:
+  - 2026-06-27T23:08:34+09:00.
+  - Relaunched after preflight fixes: 2026-06-27T23:13:12+09:00.
+- Finished:
+  - 2026-06-27T23:59:27+09:00.
+- Metrics:
+  - No valid shard metrics.
+  - `shards/shard_0` through `shards/shard_3` existed but contained no result
+    files when checked after all tmux sessions had exited.
+- Analysis:
+  - Preflight dry-run passed with the expected manifest hash, parser/scorer,
+    clean git commit, original mode, and `qwen3_original` backend.
+  - First launch attempt exited before inference on all shards because the
+    command incorrectly passed the manifest file sha256 as `--manifest-hash`.
+    The runner expects the manifest's internal `manifest_hash` field instead.
+    No benchmark rows or summaries were written by that failed attempt.
+  - A second preflight with the internal manifest hash and clean benchmark root
+    materialized all `2511` rows successfully; `benchmark_sources.json`
+    reported all `24` source files present.
+  - The relaunched shard tmux sessions exited without writing shard outputs.
+    The shard launch did not tee stdout/stderr to persistent log files, so the
+    exact shard failure reason is unavailable from the finished sessions.
+  - This run is invalid for comparison and must be rerun with per-shard logs
+    before it can serve as the CoreDev-2511 original baseline.
+- Conclusion:
+  - Invalid run; no benchmark rows were produced.
+- Comparable to baseline:
+  - No. It was intended to be the baseline but produced no shard outputs.
+
+### EXP-20260627-234638-clean-qwen3-stage2-norm01-internal-baseqwen
+
+- Status: DONE.
+- Question:
+  - Does the new clean Stage2 checkpoint preserve the old legacy-style internal
+    D/readout/query behavior when only the Stage2 `tgvf_module` is evaluated
+    with the base Qwen readout, without loading Stage2 `qwen_lora`?
+- Baseline anchor:
+  - Stage1 source diagnostics:
+    `outputs/clean_training/qwen3_stage1_norm01_manifold0_4gpu_20260627_133252/stage1_micro4/internal_diagnostics_step2000_20260627_154418`.
+  - Earlier Stage2 internal diagnostic with LoRA loaded:
+    `outputs/clean_training/qwen3_stage2_norm01_stage1_mask075_deepstack_4gpu_20260627_163250/stage2_micro4/internal_diagnostics_step1200_20260627_223829`.
+  - Historical legacy readout behavior used Stage2 `tgvf_module` with base Qwen
+    readout and did not load Stage2 LoRA.
+- Intended diff:
+  - Use the same new Stage2 checkpoint and same internal diagnostic samples as
+    the previous Stage2 diagnostic.
+  - Disable Stage2 LoRA loading via `--no-stage2-load-lora`, so capture/readout
+    use base Qwen while the D/FVT module comes from the Stage2 checkpoint.
+- Allowed changed variables:
+  - Diagnostic-only code now exposes `--stage2-load-lora/--no-stage2-load-lora`.
+  - Runtime semantic: `stage2_tgvf_module_with_base_qwen_readout`.
+- Not allowed to change:
+  - Checkpoint, processor, protocol, eval JSONL, sample order, sample limits,
+    max image resolution, FVT position mode, dtype, or diagnostic metric code.
+- Code commit / worktree:
+  - Base commit: `27544f22c31773fd6d7eb297f680296d60b61885`.
+  - Dirty worktree: true.
+  - Dirty executable changes are limited to the diagnostic-only LoRA loading
+    switch in `revisit_vlm_clean/src/revisit_vlm_clean/stage_diagnostics.py`,
+    `revisit_vlm_clean/src/revisit_vlm_clean/cli/stage_diagnostics.py`, plus
+    its targeted test.
+  - Verification before launch:
+    `PYTHONPATH=revisit_vlm_clean/src:src pytest -q revisit_vlm_clean/tests/test_stage_diagnostics.py`
+    passed, `6 passed`.
+- Checkpoint:
+  - `outputs/clean_training/qwen3_stage2_norm01_stage1_mask075_deepstack_4gpu_20260627_163250/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt`.
+  - sha256:
+    `50245a11c27ad9755eb815b5f008af50a659fa07a4043f0f9427f5bbea3c0236`.
+- Model / processor:
+  - `/nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking`.
+- Eval data:
+  - `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend/splits/tgvf_v4_teacher_stage1_protocol_c_focus.test.jsonl`.
+  - Rows: `867`.
+  - sha256:
+    `de61c731eb961825a77df587cd76c00eabfea75b5c6003096f3cc7f1a51dd82d`.
+- Output:
+  - `outputs/clean_training/qwen3_stage2_norm01_stage1_mask075_deepstack_4gpu_20260627_163250/stage2_micro4/internal_diagnostics_step1200_baseqwen_20260627_234638`.
+- Evaluation identity:
+  - Eval family: `internal_diagnostic`.
+  - Stage: `stage2`.
+  - Diagnostic kind: `stage1_style_fvt_readout_regression`.
+  - Stage2 LoRA: disabled intentionally.
+  - Forward semantics:
+    `stage2_tgvf_module_with_base_qwen_readout; qwen_lora ignored by request`.
+  - Tasks: `readout,query,distribution`.
+  - Readout max samples: `200`.
+  - Distribution max samples: `200`.
+  - Query max groups: `50`.
+  - Query min targets per image: `3`.
+  - Query require groups: `0`.
+  - Protocol: `protocol_c_tool_observation`.
+  - Focus action im_end: true.
+  - Max image resolution: `512`.
+  - FVT position mode: `native_source_grid`.
+  - Capture mode: `teacher_forced`.
+  - DeepStack: not explicitly injected in this Stage1-style internal diagnostic.
+- Script / command:
+  - `CUDA_VISIBLE_DEVICES=7 PYTHONPATH=revisit_vlm_clean/src:src python -m revisit_vlm_clean.cli.stage_diagnostics --run-id clean_qwen3_stage2_norm01_internal_diag_baseqwen_20260627_234638 --stage stage2 --checkpoint outputs/clean_training/qwen3_stage2_norm01_stage1_mask075_deepstack_4gpu_20260627_163250/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt --eval-jsonl data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend/splits/tgvf_v4_teacher_stage1_protocol_c_focus.test.jsonl --output-dir outputs/clean_training/qwen3_stage2_norm01_stage1_mask075_deepstack_4gpu_20260627_163250/stage2_micro4/internal_diagnostics_step1200_baseqwen_20260627_234638 --model-id /nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking --processor-id /nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking --protocol protocol_c_tool_observation --variant tgvf_v2_bidirectional --num-foveated-tokens none --encoder-adapter-type bidirectional --max-image-resolution 512 --fvt-position-mode native_source_grid --dtype bfloat16 --attn-implementation sdpa --device cuda:0 --device-map cuda:0 --tasks readout,query,distribution --readout-max-samples 200 --distribution-max-samples 200 --query-max-groups 50 --query-require-groups 0 --query-min-targets-per-image 3 --eval-workers 1 --no-stage2-load-lora --seed 20260525 --focus-action-im-end --no-use-fvt-cache --execute`.
+- GPUs:
+  - Planned: `CUDA_VISIBLE_DEVICES=7`.
+- tmux:
+  - `clean_stage2_baseqwen_diag_20260627_234638`.
+- Started:
+  - 2026-06-27T23:48:26+09:00.
+- Finished:
+  - 2026-06-27T23:59:27+09:00.
+- Metrics:
+  - Runtime confirmed `stage2_load_lora=false`.
+  - Runtime confirmed checkpoint contains `qwen_lora`, but it was not loaded:
+    `available_in_checkpoint=true`, `loaded=false`,
+    `reason=stage2_load_lora_disabled`.
+  - Readout, n=`200`:
+    - `mean_nll_correct_D=1.407724609375`.
+    - `pct_correct_D_beats_target_only=0.995`.
+    - `pct_correct_D_beats_random=1.0`.
+    - `pct_correct_D_beats_wrong_same=0.905`.
+    - `pct_correct_D_beats_wrong_diff=0.84375`.
+  - Query sensitivity:
+    - `retrieval_top1=0.700`.
+    - `retrieval_top2=0.915`.
+    - `MRR=0.8350000000000002`.
+    - `mean_diagonal_gap=0.099326171875`.
+  - Distribution:
+    - `avg_manifold_loss=0.46140419349074363`.
+    - `avg_norm_D=42.51886070251465`.
+    - `avg_norm_V_merge=20.683768496513366`.
+    - `norm_ratio_D_to_Vmerge=2.1240311511843672`.
+    - `finite_rate=1.0`.
+  - Comparison table:
+    - Stage1 source norm01:
+      `NLL=1.4056`, `beats_target=0.995`, `beats_random=1.000`,
+      `beats_wrong_same=0.900`, `beats_wrong_diff=0.938`,
+      `query_top1=0.700`, `query_top2=0.915`, `MRR=0.834`,
+      `diag_gap=0.0998`, `norm_ratio=2.126`, `manifold=0.4620`.
+    - Stage2 LoRA-loaded clean diagnostic:
+      `NLL=1.6275`, `beats_target=0.870`, `beats_random=0.405`,
+      `beats_wrong_same=0.330`, `beats_wrong_diff=0.281`,
+      `query_top1=0.220`, `query_top2=0.455`, `MRR=0.484`,
+      `diag_gap=-0.0308`, `norm_ratio=2.143`, `manifold=0.4544`.
+    - Stage2 base-Qwen diagnostic from this run:
+      `NLL=1.4077`, `beats_target=0.995`, `beats_random=1.000`,
+      `beats_wrong_same=0.905`, `beats_wrong_diff=0.844`,
+      `query_top1=0.700`, `query_top2=0.915`, `MRR=0.835`,
+      `diag_gap=0.0993`, `norm_ratio=2.124`, `manifold=0.4614`.
+- Analysis:
+  - This run resolves the apparent Stage2 internal collapse as a diagnostic
+    semantics issue, not as Stage2 `tgvf_module` destruction.
+  - With Stage2 LoRA disabled, the new Stage2 checkpoint's TGVF module nearly
+    matches the Stage1 source on readout and query:
+    `wrong_same` improves from the LoRA-loaded `0.330` back to `0.905`, and
+    query `top1` improves from `0.220` back to `0.700`.
+  - The remaining drop in `wrong_diff` relative to Stage1 (`0.844` vs `0.938`)
+    should be tracked, but it is not the catastrophic failure suggested by the
+    LoRA-loaded diagnostic.
+  - D/FVT scale remains aligned with Stage1 (`norm_ratio` `2.124` vs `2.126`).
+- Conclusion:
+  - The clean Stage2 checkpoint preserves the legacy-style internal
+    Stage2-TGVF/base-Qwen D readout/query behavior.
+  - The previous clean Stage2 internal diagnostic was not comparable to legacy
+    readout because it loaded Stage2 LoRA into the readout path.
+  - For future internal D-module regression checks, report both modes explicitly
+    if needed: `stage2_load_lora=false` for legacy-comparable TGVF-module
+    readout; `stage2_load_lora=true` for full Stage2-adapted model behavior.
+- Comparable to baseline:
+  - Yes, intended to be comparable to legacy Stage2 TGVF-module readout and to
+    Stage1 source internal diagnostics, but not to the previous LoRA-loaded
+    clean Stage2 internal diagnostic except as a semantic ablation.

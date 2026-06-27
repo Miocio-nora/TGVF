@@ -64,6 +64,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--query-min-targets-per-image", type=int, default=3)
     parser.add_argument("--eval-workers", type=int, default=1)
     parser.add_argument("--use-fvt-cache", action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument(
+        "--stage2-load-lora",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "Load qwen_lora from Stage2 checkpoints for diagnostics. "
+            "Use --no-stage2-load-lora for legacy-comparable TGVF-module readout."
+        ),
+    )
     parser.add_argument("--seed", type=int, default=20260525)
     parser.add_argument("--wandb-log-eval", action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument("--wandb-project", default=None)
@@ -124,6 +133,7 @@ def _config_from_args(args: argparse.Namespace) -> StageDiagnosticConfig:
         query_min_targets_per_image=args.query_min_targets_per_image,
         eval_workers=args.eval_workers,
         use_fvt_cache=args.use_fvt_cache,
+        stage2_load_lora=args.stage2_load_lora,
         seed=args.seed,
         wandb_log_eval=args.wandb_log_eval,
         wandb_project=args.wandb_project,
