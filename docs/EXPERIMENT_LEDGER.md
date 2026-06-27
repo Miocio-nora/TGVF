@@ -6915,7 +6915,9 @@ entry, update this file immediately.
 - Code commit / worktree:
   - Runtime launch commit recorded by orchestrator:
     `164836886906472c1603b45c482f208e33fc0a5e`.
-  - Recovery fix commit:
+  - Recovery code fix commit:
+    `e182a01b9b770a33262f48951733b9f90124d24c`.
+  - Recovery smoke record commit:
     `8c92e6f7e7b1a201ad0c884a46015e58bcf5e950`.
   - Dirty worktree before ledger entry: false except this ledger update.
 - Model / processor:
