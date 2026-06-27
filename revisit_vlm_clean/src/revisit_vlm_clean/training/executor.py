@@ -2037,6 +2037,7 @@ def _write_actual_training_step_runtime_audit(
         "loss_gen": result.get("loss_gen"),
         "loss_same_image_negative": result.get("loss_same_image_negative"),
         "loss_visual_token_manifold": result.get("loss_visual_token_manifold"),
+        "loss_visual_token_norm": result.get("loss_visual_token_norm"),
         "sample_count": result.get("sample_count"),
         "focus_count": debug.get("focus_count"),
         "no_focus_count": debug.get("no_focus_count"),
@@ -3554,6 +3555,7 @@ def _run_single_process_validation_step(
         "loss_focus": result.get("loss_focus"),
         "loss_no_focus": result.get("loss_no_focus"),
         "loss_visual_token_manifold": result.get("loss_visual_token_manifold"),
+        "loss_visual_token_norm": result.get("loss_visual_token_norm"),
         "sample_count": result.get("sample_count"),
         "sample_trace": batch_record["sample_trace"],
         "focus_count": debug.get("focus_count"),
@@ -4105,7 +4107,9 @@ def _stage1_training_step_flags(
         and observed_loss_weights.get("same_image_negative") == loss.get("same_image_negative")
         and observed_loss_weights.get("visual_token_manifold")
         == loss.get("visual_token_manifold")
+        and observed_loss_weights.get("visual_token_norm") == loss.get("visual_token_norm")
         and debug.get("visual_token_manifold_active") is True
+        and debug.get("visual_token_norm_active") is True
     )
     return {
         "stage1_readout_context_applied": readout_context_applied,
@@ -4222,6 +4226,7 @@ def _run_stage1_training_step_probe(
         loss_weights=LossWeights(
             gen=float(loss.get("gen") or 0.0),
             visual_token_manifold=float(loss.get("visual_token_manifold") or 0.0),
+            visual_token_norm=float(loss.get("visual_token_norm") or 0.0),
             same_image_negative=float(loss.get("same_image_negative") or 0.0),
             contrastive_alignment=float(loss.get("contrastive_alignment") or 0.0),
         ),
@@ -4248,6 +4253,7 @@ def _run_stage1_training_step_probe(
         "loss_tensor": output.loss_total,
         "loss_gen": _scalar_float(output.loss_gen),
         "loss_visual_token_manifold": _scalar_float(output.loss_visual_token_manifold),
+        "loss_visual_token_norm": _scalar_float(output.loss_visual_token_norm),
         "loss_same_image_negative": _scalar_float(output.loss_same_image_negative),
         "debug": output.debug,
     }

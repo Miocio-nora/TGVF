@@ -5054,6 +5054,18 @@ entry, update this file immediately.
     - Next training hypothesis: replace or demote the current mean/std
       manifold term and test a direct token-norm constraint, ideally as the
       primary scale control rather than increasing `visual_token_manifold`.
+  - Code follow-up:
+    - Added a Stage1 `visual_token_norm` loss switch for direct D-scale control.
+    - Loss definition: mean squared log norm ratio between each D token norm and
+      the detached mean norm of same-sample merged visual tokens.
+    - Default remains off (`loss_visual_token_norm=0.0`) so old commands keep
+      their meaning; the intended next replay setting is
+      `loss_visual_token_manifold=0.0`, `loss_visual_token_norm=0.1`.
+    - Clean Stage1 plan/CLI/executor now carry this loss into `LossWeights`,
+      runtime audit, progress logging, and W&B loss fields.
+    - Verification before commit:
+      `python -m py_compile src/revisit_vlm/tgvf_training.py src/revisit_vlm/tgvf_v3_stage1.py scripts/train_tgvf_v3_stage1.py scripts/train_tgvf_fvt.py revisit_vlm_clean/src/revisit_vlm_clean/training_plan.py revisit_vlm_clean/src/revisit_vlm_clean/cli/train_stage1.py revisit_vlm_clean/src/revisit_vlm_clean/training/executor.py`;
+      `PYTHONPATH=revisit_vlm_clean/src:src pytest -q revisit_vlm_clean/tests/test_cli.py`.
   - Conclusion:
     - This is the best clean Stage1 replay so far, but it is now archived as a
       backup/diagnostic reference rather than promoted directly to Stage2.

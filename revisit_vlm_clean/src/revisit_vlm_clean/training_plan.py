@@ -132,6 +132,7 @@ class Stage1LaunchConfig:
     max_grad_norm: float = 1.0
     loss_gen: float = 1.0
     loss_visual_token_manifold: float = 0.1
+    loss_visual_token_norm: float = 0.0
     loss_same_image_negative: float = 1.0
     same_image_negative_margin: float = 1.0
     same_image_negative_mode: str = "matrix_ce"
@@ -193,6 +194,14 @@ class Stage1LaunchConfig:
             raise ValueError("min_lr_ratio must be in [0, 1]")
         if float(self.max_grad_norm) <= 0:
             raise ValueError("max_grad_norm must be > 0")
+        for name, value in (
+            ("loss_gen", self.loss_gen),
+            ("loss_visual_token_manifold", self.loss_visual_token_manifold),
+            ("loss_visual_token_norm", self.loss_visual_token_norm),
+            ("loss_same_image_negative", self.loss_same_image_negative),
+        ):
+            if float(value) < 0:
+                raise ValueError(f"{name} must be >= 0")
         self.batch.validate()
 
 
@@ -410,6 +419,7 @@ def build_stage1_launch_plan(
         "loss": {
             "gen": config.loss_gen,
             "visual_token_manifold": config.loss_visual_token_manifold,
+            "visual_token_norm": config.loss_visual_token_norm,
             "same_image_negative": config.loss_same_image_negative,
         },
         "optimizer": {
@@ -961,6 +971,8 @@ def _stage1_legacy_command(config: Stage1LaunchConfig) -> list[str]:
         str(config.loss_gen),
         "--loss-visual-token-manifold",
         str(config.loss_visual_token_manifold),
+        "--loss-visual-token-norm",
+        str(config.loss_visual_token_norm),
         "--loss-same-image-negative",
         str(config.loss_same_image_negative),
         "--same-image-negative-margin",

@@ -55,6 +55,7 @@ from revisit_vlm.tgvf_training import (
     same_image_negative_pairs,
     summarize_diagnostics,
     visual_token_manifold_loss,
+    visual_token_norm_loss,
 )
 
 
@@ -889,6 +890,7 @@ def v3_stage1_training_step(
     ]
     fvt_outputs: list[torch.Tensor] = []
     loss_man_values: list[torch.Tensor] = []
+    loss_norm_values: list[torch.Tensor] = []
     attention_debug_values: list[dict[str, Any]] = []
     norm_debug_values: list[dict[str, Any]] = []
     readout_debug_values: list[dict[str, Any]] = []
@@ -931,6 +933,9 @@ def v3_stage1_training_step(
         loss_man_values.append(
             _safe_visual_token_manifold_loss(d, feature.merged_visual_tokens.to(device))
         )
+        loss_norm_values.append(
+            _safe_visual_token_norm_loss(d, feature.merged_visual_tokens.to(device))
+        )
         attention_debug_values.append(attention_diagnostics(output.attention_debug))
         norm_debug_values.append(
             fvt_norm_diagnostics(
@@ -947,6 +952,7 @@ def v3_stage1_training_step(
     )
     loss_gen = torch.stack(loss_gen_values).mean()
     loss_man = torch.stack(loss_man_values).mean()
+    loss_norm = torch.stack(loss_norm_values).mean()
     zero = loss_gen.new_zeros(())
     loss_same = zero
     if loss_weights.same_image_negative:
@@ -1035,6 +1041,7 @@ def v3_stage1_training_step(
     loss_total = (
         loss_weights.gen * loss_gen
         + loss_weights.visual_token_manifold * loss_man
+        + loss_weights.visual_token_norm * loss_norm
         + loss_weights.same_image_negative * loss_same
         + loss_weights.contrastive_alignment * loss_contrastive
     )
@@ -1049,6 +1056,7 @@ def v3_stage1_training_step(
         loss_total=loss_total,
         loss_gen=loss_gen,
         loss_visual_token_manifold=loss_man,
+        loss_visual_token_norm=loss_norm,
         loss_same_image_negative=loss_same,
         loss_contrastive_alignment=loss_contrastive,
         debug={
@@ -1079,6 +1087,9 @@ def v3_stage1_training_step(
             "norm_diagnostics": _compact_diagnostics(summarize_diagnostics(norm_debug_values)),
             "finite_rate": float(torch.stack([value.cpu() for value in finite_values]).mean()),
             "visual_token_manifold_active": bool(
+                first_d.shape[-1] == first_feature.merged_visual_tokens.shape[-1]
+            ),
+            "visual_token_norm_active": bool(
                 first_d.shape[-1] == first_feature.merged_visual_tokens.shape[-1]
             ),
             "qwen_frozen": not any(parameter.requires_grad for parameter in qwen_model.parameters()),
@@ -1142,6 +1153,15 @@ def _safe_visual_token_manifold_loss(
     if foveated_visual_tokens.shape[-1] != merged_visual_tokens.shape[-1]:
         return foveated_visual_tokens.sum() * 0.0
     return visual_token_manifold_loss(foveated_visual_tokens, merged_visual_tokens)
+
+
+def _safe_visual_token_norm_loss(
+    foveated_visual_tokens: torch.Tensor,
+    merged_visual_tokens: torch.Tensor,
+) -> torch.Tensor:
+    if foveated_visual_tokens.shape[-1] != merged_visual_tokens.shape[-1]:
+        return foveated_visual_tokens.sum() * 0.0
+    return visual_token_norm_loss(foveated_visual_tokens, merged_visual_tokens)
 
 
 def _full_mm_token_type_ids(

@@ -66,6 +66,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-grad-norm", type=float, default=1.0)
     parser.add_argument("--loss-gen", type=float, default=1.0)
     parser.add_argument("--loss-visual-token-manifold", type=float, default=0.1)
+    parser.add_argument("--loss-visual-token-norm", type=float, default=0.0)
     parser.add_argument("--loss-same-image-negative", type=float, default=1.0)
     parser.add_argument("--same-image-negative-margin", type=float, default=1.0)
     parser.add_argument(
@@ -144,6 +145,7 @@ def _defaults() -> dict[str, object]:
         "same_image_negative_margin": 1.0,
         "readout_batch_size": 4,
         "visual_token_manifold_loss": 0.1,
+        "visual_token_norm_loss": 0.0,
         "lr_scheduler": "cosine",
         "warmup_steps": 100,
         "min_lr_ratio": 0.1,
@@ -191,6 +193,7 @@ def _config_from_args(args: argparse.Namespace) -> Stage1LaunchConfig:
         max_grad_norm=args.max_grad_norm,
         loss_gen=args.loss_gen,
         loss_visual_token_manifold=args.loss_visual_token_manifold,
+        loss_visual_token_norm=args.loss_visual_token_norm,
         loss_same_image_negative=args.loss_same_image_negative,
         same_image_negative_margin=args.same_image_negative_margin,
         same_image_negative_mode=args.same_image_negative_mode,

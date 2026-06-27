@@ -640,6 +640,7 @@ def test_training_default_clis(capsys) -> None:
     assert '"lr_scheduler": "cosine"' in stage1_defaults
     assert '"warmup_steps": 100' in stage1_defaults
     assert '"max_grad_norm": 1.0' in stage1_defaults
+    assert '"visual_token_norm_loss": 0.0' in stage1_defaults
     assert stage2_main(["--print-defaults"]) == 0
     stage2_defaults = capsys.readouterr().out
     assert "through_answer" in stage2_defaults
@@ -647,6 +648,25 @@ def test_training_default_clis(capsys) -> None:
     assert '"q_proj"' in stage2_defaults
     assert '"warmup_steps": 100' in stage2_defaults
     assert '"adam_betas": [' in stage2_defaults
+
+
+def test_visual_token_norm_loss_tracks_log_norm_ratio() -> None:
+    import torch
+
+    from revisit_vlm.tgvf_training import visual_token_norm_loss
+
+    merged = torch.ones(2, 4)
+    doubled = merged * 2.0
+    quintupled = merged * 5.0
+
+    assert torch.isclose(
+        visual_token_norm_loss(doubled, merged),
+        torch.log(torch.tensor(2.0)).square(),
+    )
+    assert torch.isclose(
+        visual_token_norm_loss(quintupled, merged),
+        torch.log(torch.tensor(5.0)).square(),
+    )
 
 
 def test_stage1_training_write_plan_cli(tmp_path) -> None:
@@ -673,6 +693,10 @@ def test_stage1_training_write_plan_cli(tmp_path) -> None:
                 "4",
                 "--micro-batch-size",
                 "4",
+                "--loss-visual-token-manifold",
+                "0.0",
+                "--loss-visual-token-norm",
+                "0.1",
                 "--write-plan",
             ]
         )
@@ -729,6 +753,8 @@ def test_stage1_training_write_plan_cli(tmp_path) -> None:
         "tgvf_module",
         "protocol_c_token_rows_row_only",
     ]
+    assert plan["loss"]["visual_token_manifold"] == 0.0
+    assert plan["loss"]["visual_token_norm"] == 0.1
     assert "qwen_visual_merger" in plan["module_policy"]["frozen"]
     assert plan["module_policy"]["visual_merger"]["trainable"] is False
     assert plan["module_policy"]["training_runtime"]["use_cache"] is False
@@ -778,6 +804,8 @@ def test_stage1_training_write_plan_cli(tmp_path) -> None:
     assert "--warmup-steps 100" in command
     assert "--min-lr-ratio 0.1" in command
     assert "--max-grad-norm 1.0" in command
+    assert "--loss-visual-token-manifold 0.0" in command
+    assert "--loss-visual-token-norm 0.1" in command
     assert "--gradient-accumulation-steps 2" in command
     assert "--protocol-token-row-mode row_only" in command
 
@@ -2970,12 +2998,14 @@ def test_stage1_training_executor_runtime_audit_can_write_training_step_probe(
             "loss_total": 2.0,
             "loss_gen": 1.0,
             "loss_visual_token_manifold": 0.5,
+            "loss_visual_token_norm": 0.125,
             "loss_same_image_negative": 0.25,
             "debug": {
                 "stage": "tgvf_v3_stage1",
                 "loss_weights": {
                     "gen": 1.0,
                     "visual_token_manifold": 0.1,
+                    "visual_token_norm": 0.0,
                     "same_image_negative": 1.0,
                     "contrastive_alignment": 0.0,
                 },
@@ -2985,6 +3015,7 @@ def test_stage1_training_executor_runtime_audit_can_write_training_step_probe(
                 "attention_mask_mode": "weak_strict_after_tgvf",
                 "image_keys_blocked_for_tgvf_evidence_answer": True,
                 "visual_token_manifold_active": True,
+                "visual_token_norm_active": True,
             },
         }
 
@@ -3084,12 +3115,14 @@ def test_stage1_training_executor_runtime_audit_can_write_optimizer_step_probe(
             "loss_tensor": loss_tensor,
             "loss_gen": 1.0,
             "loss_visual_token_manifold": 0.5,
+            "loss_visual_token_norm": 0.125,
             "loss_same_image_negative": 0.25,
             "debug": {
                 "stage": "tgvf_v3_stage1",
                 "loss_weights": {
                     "gen": 1.0,
                     "visual_token_manifold": 0.1,
+                    "visual_token_norm": 0.0,
                     "same_image_negative": 1.0,
                     "contrastive_alignment": 0.0,
                 },
@@ -3099,6 +3132,7 @@ def test_stage1_training_executor_runtime_audit_can_write_optimizer_step_probe(
                 "attention_mask_mode": "weak_strict_after_tgvf",
                 "image_keys_blocked_for_tgvf_evidence_answer": True,
                 "visual_token_manifold_active": True,
+                "visual_token_norm_active": True,
             },
         }
 

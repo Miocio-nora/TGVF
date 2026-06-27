@@ -79,6 +79,7 @@ class LossWeights:
     same_image_negative: float = 0.0
     contrastive_alignment: float = 0.0
     visual_token_manifold: float = 0.1
+    visual_token_norm: float = 0.0
 
 
 @dataclass
@@ -139,6 +140,7 @@ class TGVFTrainStepOutput:
     loss_total: torch.Tensor
     loss_gen: torch.Tensor
     loss_visual_token_manifold: torch.Tensor
+    loss_visual_token_norm: torch.Tensor
     loss_same_image_negative: torch.Tensor
     loss_contrastive_alignment: torch.Tensor
     debug: dict[str, Any]
@@ -868,6 +870,20 @@ def visual_token_manifold_loss(
     return mean_loss + F.mse_loss(std_d, std_v)
 
 
+def visual_token_norm_loss(
+    foveated_visual_tokens: torch.Tensor,
+    merged_visual_tokens: torch.Tensor,
+    *,
+    eps: float = 1e-6,
+) -> torch.Tensor:
+    if foveated_visual_tokens.numel() == 0 or merged_visual_tokens.numel() == 0:
+        return foveated_visual_tokens.new_zeros(())
+    d_norm = foveated_visual_tokens.float().norm(dim=-1)
+    v_ref = merged_visual_tokens.detach().float().norm(dim=-1).mean().clamp_min(eps)
+    log_ratio = torch.log((d_norm + eps) / v_ref)
+    return log_ratio.square().mean()
+
+
 def contrastive_alignment_loss(
     foveated_visual_tokens: list[torch.Tensor] | torch.Tensor,
     text_embeddings: torch.Tensor,
@@ -1384,9 +1400,18 @@ def training_step(
             temperature=contrastive_temperature,
         )
 
+    loss_norm = zero
+    if fvt_outputs:
+        norm_losses = [
+            visual_token_norm_loss(d, feature.merged_visual_tokens.to(device))
+            for d, feature in zip(fvt_outputs, features, strict=True)
+        ]
+        loss_norm = torch.stack(norm_losses).mean()
+
     loss_total = (
         loss_weights.gen * loss_gen
         + loss_weights.visual_token_manifold * loss_man
+        + loss_weights.visual_token_norm * loss_norm
         + loss_weights.same_image_negative * loss_same
         + loss_weights.contrastive_alignment * loss_contrastive
     )
@@ -1395,6 +1420,10 @@ def training_step(
         if loss_weights.visual_token_manifold:
             scalar_backward_losses.append(
                 loss_man * (float(loss_weights.visual_token_manifold) * float(backward_loss_scale))
+            )
+        if loss_weights.visual_token_norm:
+            scalar_backward_losses.append(
+                loss_norm * (float(loss_weights.visual_token_norm) * float(backward_loss_scale))
             )
         if loss_weights.contrastive_alignment:
             scalar_backward_losses.append(
@@ -1408,6 +1437,7 @@ def training_step(
         loss_total = loss_total.detach()
         loss_gen = loss_gen.detach()
         loss_man = loss_man.detach()
+        loss_norm = loss_norm.detach()
         loss_same = loss_same.detach()
         loss_contrastive = loss_contrastive.detach()
     first_feature = features[0]
@@ -1416,6 +1446,7 @@ def training_step(
         loss_total=loss_total,
         loss_gen=loss_gen,
         loss_visual_token_manifold=loss_man,
+        loss_visual_token_norm=loss_norm,
         loss_same_image_negative=loss_same,
         loss_contrastive_alignment=loss_contrastive,
         debug={
@@ -1449,6 +1480,9 @@ def training_step(
             ),
             "attention_diagnostics": summarize_diagnostics(attention_debug_values),
             "norm_diagnostics": summarize_diagnostics(norm_debug_values),
+            "visual_token_norm_active": bool(
+                first_d.shape[-1] == first_feature.merged_visual_tokens.shape[-1]
+            ),
             "qwen_frozen": not any(
                 parameter.requires_grad for parameter in qwen_model.parameters()
             ),

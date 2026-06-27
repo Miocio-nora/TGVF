@@ -150,6 +150,7 @@ def main() -> None:
     loss_weights = LossWeights(
         gen=args.loss_gen,
         visual_token_manifold=args.loss_visual_token_manifold,
+        visual_token_norm=args.loss_visual_token_norm,
         same_image_negative=args.loss_same_image_negative,
         contrastive_alignment=0.0,
     )
@@ -564,6 +565,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--capture-layer", type=int, default=-1)
     parser.add_argument("--loss-gen", type=float, default=1.0)
     parser.add_argument("--loss-visual-token-manifold", type=float, default=0.1)
+    parser.add_argument("--loss-visual-token-norm", type=float, default=0.0)
     parser.add_argument("--loss-same-image-negative", type=float, default=1.0)
     parser.add_argument("--same-image-negative-margin", type=float, default=1.0)
     parser.add_argument("--same-image-negative-mode", choices=("cyclic_margin", "matrix_ce"), default="matrix_ce")
