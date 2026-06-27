@@ -6894,3 +6894,73 @@ entry, update this file immediately.
   - GPU memory returned to zero after completion.
 - Conclusion:
   - Use the recovery fix for the next full CoreDev-2511 rerun.
+
+### EXP-20260628-0615-clean-qwen3-stage2-norm01-free-coredev2511-recovery
+
+- Status: PLANNED.
+- Question:
+  - Rerun the same clean-native Qwen3 Stage2 free CoreDev-2511 benchmark after
+    the OOM recovery fix validated by
+    `EXP-20260628-0600-clean-qwen3-stage2-norm01-oom-recovery-smoke`.
+- Baseline anchor:
+  - Original baseline:
+    `EXP-20260628-0216-clean-qwen3-original-coredev2511-maxans512`.
+  - Invalid predecessor:
+    `EXP-20260628-0530-clean-qwen3-stage2-norm01-free-coredev2511-mediafix-conda`.
+- Intended diff:
+  - Code adds per-row native Stage2 vision/deepstack cache cleanup and CUDA
+    fatal-error runtime unload/reload.
+  - Checkpoint, model/processor, manifest/order, parser/scorer, no-extra-prompt
+    free mode, DeepStack state, max resolution/tokens, and `sdpa` remain fixed.
+- Code commit / worktree:
+  - Runtime launch commit:
+    `8c92e6f7e7b1a201ad0c884a46015e58bcf5e950`.
+  - Dirty worktree before ledger entry: false except this ledger update.
+- Model / processor:
+  - `/nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking`.
+- Stage2 checkpoint:
+  - `outputs/clean_training/qwen3_stage2_norm01_stage1_mask075_deepstack_4gpu_20260627_163250/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt`.
+  - sha256:
+    `50245a11c27ad9755eb815b5f008af50a659fa07a4043f0f9427f5bbea3c0236`.
+- Stage2 runtime eval JSONL:
+  - `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend_open_answer/splits/tgvf_v4_teacher_stage2_protocol_c.test.jsonl`.
+  - sha256:
+    `3b719e1bd03a09741cc05dac3ed85e423a9b2c29209b07546792a6795cdbbfc5`.
+- Benchmark:
+  - Subset id: `core_balanced_dev_2511_seed20260625`.
+  - Manifest:
+    `revisit_vlm_clean/benchmark_manifests/core_balanced_dev_2511_seed20260625.json`.
+  - Manifest internal hash:
+    `a461d9b482b7165b42b9bbb0fbf0ea6aff31fde0a838c13d953f070e770b0579`.
+  - Benchmark root:
+    `/home/dredvpn009/Flash_Storage/datasets/benchmarks`.
+  - Sample count/order vs original baseline: `2511/2511`, same order.
+- Output:
+  - Full:
+    `outputs/clean_benchmarks/qwen3_stage2_norm01_free_coredev2511_deepstack512_recovery_4shard_20260628_0615`.
+- Evaluation identity:
+  - Eval family: `project_native_external`.
+  - Mode: `tgvf_free`.
+  - Runner backend: `tgvf_stage2_qwen3_native`.
+  - Post-TGVF continuation: `natural_continue`.
+  - Post-TGVF forward mode: `no_kv_full_sequence`.
+  - DeepStack: enabled; `original_image_scope=through_answer`;
+    D DeepStack-like features disabled.
+  - Stage2 D condition: `correct_D`.
+  - Prompt suffix / softforce prompt: empty.
+  - Max image resolution: `512`.
+  - Max action tokens: `64`.
+  - Max answer tokens: `512`.
+  - Attention implementation: `sdpa`.
+- GPUs:
+  - Planned: `0,1,2,3`, one shard per GPU.
+- Started:
+  - Pending.
+- Finished:
+  - Pending.
+- Metrics:
+  - Pending.
+- Analysis:
+  - Pending.
+- Conclusion:
+  - Pending.
