@@ -258,6 +258,54 @@ should be penalized. If local evidence is needed, failure to focus should be
 penalized even if the model guesses correctly. This means RL data probably needs
 both focus-needed and no-focus/direct cases.
 
+## 2026-06-26 Clean Data Builder Implementation Notes
+
+Implemented clean-native Stage3 RL data generation under:
+
+```text
+revisit_vlm_clean/src/revisit_vlm_clean/stage3_rl_data/
+revisit_vlm_clean/README_STAGE3_RL_DATA.md
+```
+
+CLI shape:
+
+```bash
+tgvf_generate_data stage3-rl --write-plan ...
+tgvf_generate_data stage3-rl --plan ... --preflight-only
+tgvf_generate_data stage3-rl --plan ... --dry-run
+tgvf_generate_data stage3-rl --plan ... --execute
+```
+
+Current implementation choices:
+
+- Default source-QA adapters are Visual Genome QA, TextVQA, DocVQA, and
+  ChartQA.
+- Default output root is `revisit_vlm_clean/data/stage3_rl/v0_20k`.
+- Default dataset root is `/home/dredvpn009/Flash_Storage/datasets`, matching
+  the local clean benchmark defaults.
+- Default SFT exclusions include the 50k teacher selection and accepted/Stage2
+  manifests when those paths exist.
+- Stage3 accepted prompts require TargetSpec by default.
+- Source-provided targets and rule-built targets are validated for length,
+  generic wording, task verbs, sensitive identifiers, and answer/choice leakage.
+- Extension mode preserves prior accepted sample IDs and appends new prompts.
+
+Important non-goals preserved:
+
+- No GRPO training.
+- No rollout runner.
+- No reward judge.
+- No FocusEvidence or ImageConsistency judge.
+- No D generation or TGVF inference.
+- No benchmark-derived training source.
+
+Validation added:
+
+```bash
+PYTHONPATH=revisit_vlm_clean/src pytest -q revisit_vlm_clean/tests/test_stage3_rl_data.py
+PYTHONPATH=revisit_vlm_clean/src pytest -q revisit_vlm_clean/tests/test_cli.py
+```
+
 Target quality also needs care. A target like "the orange beak" may help answer
 the question but leaks answer content. A better target is "the bird's beak
 surface" or "close-up of the bird's head and beak area". The reward should
@@ -274,3 +322,156 @@ reward grounded use of D.
 - Stage3 RL should use a separate image pool.
 - The next step is reward design, because reward requirements determine what
   fields the 20k RL data must contain.
+
+## 2026-06-27 Stage3 RL Source-QA + GPT-5.4 Triage Decision
+
+Decision:
+
+- Raw source QA should not be treated as final RL data.
+- Source QA is useful as candidate context and often gives a better gold-answer
+  anchor than free teacher generation.
+- The source question itself may be too easy, too global, or not aligned with
+  TGVF target/tool-policy needs.
+- GPT-5.4 should inspect the image and source QA bundle, then decide whether to
+  keep, rewrite, reject, or generate legacy-style local visual questions.
+- Generated questions are allowed because the 50k SFT teacher data already used
+  legacy V4 API generation and its distribution was acceptable.
+- Stage3 differs from SFT because RL should include a broader difficulty mix,
+  including direct/easy, optional-tool, useful-tool, and likely-required cases.
+
+Implementation preparation:
+
+- Added clean `teacher_triage` mode for Stage3 RL data preparation.
+- This mode writes `teacher_requests.jsonl` and `teacher_request_summary.json`.
+- It does not call the API and does not write final accepted RL prompts.
+- Request provenance categories are:
+  - `source_qa_kept`
+  - `source_qa_rewritten`
+  - `teacher_generated_legacy_style`
+- The request prompt inherits legacy V4 target rules:
+  - target is an encoder-facing visual descriptor;
+  - target must avoid answer/choice leakage;
+  - target must avoid task verbs such as determine, verify, read, and count;
+  - weak, ambiguous, unsafe, or hallucinated evidence should be skipped.
+
+Important correction:
+
+- `source_qa-only` is now only a deterministic smoke/source-pool path.
+- Formal Stage3 RL data should go through GPT-5.4 triage/generation before
+  filter/balance/accepted manifests are considered final.
+
+## 2026-06-27 Mixed 20 API Smoke Result
+
+Status:
+
+- The mixed 20-image API smoke is archived and excluded from formal samples.
+- Archive path:
+  `revisit_vlm_clean/data/stage3_rl/v0_teacher_triage_20k_20260627_041834/archives/smoke_mixed20_20260627_batch_6a3f3295/`.
+- Root-level exclusion ledger:
+  `revisit_vlm_clean/data/stage3_rl/v0_teacher_triage_20k_20260627_041834/api_archived_custom_ids.jsonl`.
+- Archived custom ids are skipped by API prepare, parse, and finalize paths.
+
+Smoke identity:
+
+- Batch id: `batch_6a3f32958870819087b273c79e521920`.
+- Images: 20.
+- Source mix: Visual Genome 8, TextVQA 6, DocVQA 4, ChartQA 2.
+- API status: 20 completed, 0 failed.
+- Parsed JSON errors: 0.
+- Runtime: about 9m42s OpenAI backend time, about 10m49s from submit to
+  local parsed outputs.
+
+Quality findings:
+
+- Raw teacher items: 116, average 5.8 items/image.
+- Existing deterministic filter accepted 114/116 before per-image cap.
+- With max 4 QA/image, 79 would be accepted, but this smoke is not formal data.
+- Problems observed:
+  - too many `no_tool` and direct/easy items;
+  - target occasionally included answer-adjacent judgments such as "longest",
+    "light-colored", "striped", or "toasted";
+  - API produced more items than needed, wasting tokens and later balance
+    rejection.
+
+Code corrections made after the smoke:
+
+- Teacher prompt version moved to `stage3_rl_gpt54_triage_v1`.
+- Teacher schema now enforces at most 4 items per image.
+- Prompt now asks for 3-4 high-quality items, more useful-tool/local-medium+
+  cases, and no more than one easy/no-tool calibration item unless necessary.
+- Target rules now explicitly ban solved visual judgments inside target text.
+- `max_output_tokens` default reduced from 5000 to 3000.
+- Teacher items marked `quality.too_easy=true` are rejected by local filters.
+- Added direct concurrent API runner for small smoke runs; Batch API should be
+  reserved for larger chunks where queue overhead is amortized.
+
+Operational decision:
+
+- Do not use the current smoke output root as the official formal Stage3 RL
+  sample set.
+- Formal generation should use a new output root with the v1 prompt and archived
+  smoke custom ids excluded.
+
+## 2026-06-27 V1 Direct 20 API Smoke Result
+
+Status:
+
+- A second 20-image smoke was run with `stage3_rl_gpt54_triage_v1`.
+- It used direct concurrent Responses API calls, not Batch API.
+- It is archived and excluded from formal samples.
+- Output root:
+  `revisit_vlm_clean/data/stage3_rl/v1_direct_smoke20_20260627_030144/`.
+- Archive:
+  `revisit_vlm_clean/data/stage3_rl/v1_direct_smoke20_20260627_030144/archives/smoke_v1_direct20_20260627_030144/`.
+
+Smoke identity:
+
+- Source mix: Visual Genome 8, TextVQA 6, DocVQA 4, ChartQA 2.
+- Teacher version: `stage3_rl_gpt54_triage_v1`.
+- Max output tokens: 3000.
+- Runner: direct concurrent API with `direct_workers=8`.
+- Runtime: 25.9s measured by runner, 27s wall-clock.
+- API errors: 0.
+- Parsed outputs before archive: 20.
+- After archive/reparse: `teacher_outputs.jsonl` has 0 active rows and
+  `archived_outputs_skipped=20`.
+
+Quality findings:
+
+- Raw teacher items: 79, average 3.95 items/image.
+- Per-image item cap worked: 19 images produced 4 items, 1 produced 3 items.
+- Local deterministic filter:
+  - valid: 77;
+  - rejected: 2;
+  - rejected reasons: one target leakage, one target task-verb false/edge case;
+  - no balance rejection because all images were at or below max 4 QA/image.
+- Tool distribution improved:
+  - `useful_tool`: 44;
+  - `likely_required`: 7;
+  - `optional_tool`: 17;
+  - `no_tool`: 11.
+- Difficulty distribution improved:
+  - `local_medium`: 43;
+  - `local_easy`: 21;
+  - `direct_easy`: 8;
+  - `local_hard`: 5;
+  - `reasoning_hard`: 2.
+
+Remaining issues:
+
+- One target still leaked an answer synonym:
+  target "row of parked vehicles..." for answer "Automobiles".
+- One target used "page count" and previously triggered
+  `target_contains_task_verb` because the validator treated any occurrence of
+  "count" as a forbidden task word. This was relaxed after discussion:
+  noun-phrase locators like "page count field" are now allowed, while
+  instruction-like targets such as "count the people" or "area to read the
+  label" remain rejected.
+- Chart target phrasing still has mild localization leakage in examples like
+  "rightmost bar", although much less than the previous smoke.
+
+Operational decision:
+
+- Direct concurrent smoke is much better for small quality checks than Batch API.
+- V1 prompt/schema is materially better than V0 and is the right baseline for
+  the next smoke/formal candidate generation.

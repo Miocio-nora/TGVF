@@ -5069,3 +5069,372 @@ entry, update this file immediately.
   - Conclusion:
     - This is the best clean Stage1 replay so far, but it is now archived as a
       backup/diagnostic reference rather than promoted directly to Stage2.
+
+### EXP-20260627-133252-clean-qwen3-stage1-norm01-manifold0-4gpu
+
+- Status: DONE.
+- Question:
+  - Test whether a direct D token-norm constraint can control Stage1 D scale
+    without the target-discrimination damage seen from increasing the previous
+    mean/std manifold loss.
+- Baseline:
+  - `EXP-20260627-040717-clean-qwen3-stage1-legacyrepro-ddp-manifold001-4gpu`.
+- Intended diff:
+  - Change Stage1 loss from `loss_visual_token_manifold=0.01` to
+    `loss_visual_token_manifold=0.0`.
+  - Enable direct norm loss with `loss_visual_token_norm=0.1`.
+- Held fixed:
+  - Qwen3 model/processor path, Protocol-C tool-observation, row-only token
+    rows, teacher-forced capture, native source grid positions, old Stage1
+    readout mask behavior, frozen Qwen visual merger, matrix CE same-image
+    negative loss, seed, LR/scheduler, max image resolution 512, global batch
+    32, 4-GPU DDP/no_sync clean training semantics.
+- Code / worktree:
+  - Branch: `clean/tgvf-clean-project-20260625`.
+  - Git commit: `0ce3c7899ec789259a68c32cb513fc039729c20e`.
+  - Dirty worktree: true; known unrelated dirty files are Stage3/RL/data
+    generation work and untracked logs/data directories.
+- Plan:
+  - `outputs/clean_training/qwen3_stage1_norm01_manifold0_4gpu_20260627_133252/stage1_micro4/training_plan.json`.
+  - Plan sha256:
+    `2422fb1e832b03c9db9c76632348f23341985374d1911456ef5aac5228ab59c7`.
+- Data:
+  - `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend/splits/tgvf_v4_teacher_stage1_protocol_c_focus.train.jsonl`.
+  - Rows: `39998`.
+  - sha256:
+    `c94a38b824b6603e555eed5ef3584c19cc903b76995d49c67ace36b18268443c`.
+- Training:
+  - GPUs: `0,1,2,3`.
+  - world size: `4`; micro batch: `4`; accumulation: `2`; global batch: `32`.
+  - max steps: `2000`; save every: `500`.
+  - W&B project: `tgvf-clean-qwen3-deepstack`; mode: `online`.
+- Command:
+  - `CUDA_VISIBLE_DEVICES=0,1,2,3 PYTHONPATH=revisit_vlm_clean/src:src torchrun --nproc-per-node 4 -m revisit_vlm_clean.training.stage1_executor --plan outputs/clean_training/qwen3_stage1_norm01_manifold0_4gpu_20260627_133252/stage1_micro4/training_plan.json --launch-training`.
+- Preflight:
+  - `stage1_executor --preflight-only`: passed, no blocking items.
+  - `stage1_executor --prepare-execution`: passed,
+    `ready_for_explicit_distributed_launch`.
+- Launch:
+  - Started at 2026-06-27T13:35+09:00.
+  - tmux: `clean_stage1_norm01_m0_20260627_133252`.
+  - Log:
+    `logs/clean_training/clean_stage1_norm01_m0_20260627_133252.log`.
+- Training completion:
+  - Finished at approximately 2026-06-27T15:32+09:00.
+  - Runtime from progress log: `7041.058387517929s` (`1h57m21s`).
+  - Optimizer steps completed: `2000`; micro steps completed: `4000`.
+  - Final checkpoint:
+    `outputs/clean_training/qwen3_stage1_norm01_manifold0_4gpu_20260627_133252/stage1_micro4/clean_training_execution/checkpoint_step_2000.pt`.
+  - Final checkpoint sha256:
+    `ab6bd554cfb405208f13270c298f7fd0ab01305c83ca07bf8eca667cbe1632a1`.
+  - Final step losses:
+    - `loss_total=1.3660708665847778`.
+    - `loss_gen=1.3203125`.
+    - `loss_same_image_negative=0.0016641616821289062`.
+    - raw `loss_visual_token_manifold=0.44337937235832214`.
+    - raw `loss_visual_token_norm=0.4409423768520355`.
+  - Final logged norm diagnostics:
+    - `norm_ratio_mean=1.9146325588226318`.
+    - `d_norm_mean=41.7850227355957`.
+    - `v_merge_norm_mean=21.82404136657715`.
+- Internal diagnostics:
+  - Status: COMPLETED.
+  - Run id:
+    `clean_qwen3_stage1_norm01_internal_diag_20260627_154418`.
+  - Output:
+    `outputs/clean_training/qwen3_stage1_norm01_manifold0_4gpu_20260627_133252/stage1_micro4/internal_diagnostics_step2000_20260627_154418`.
+  - Reports:
+    - `outputs/clean_training/qwen3_stage1_norm01_manifold0_4gpu_20260627_133252/stage1_micro4/internal_diagnostics_step2000_20260627_154418/readout/readout_eval_report.json`.
+    - `outputs/clean_training/qwen3_stage1_norm01_manifold0_4gpu_20260627_133252/stage1_micro4/internal_diagnostics_step2000_20260627_154418/query_sensitivity/query_sensitivity_report.json`.
+    - `outputs/clean_training/qwen3_stage1_norm01_manifold0_4gpu_20260627_133252/stage1_micro4/internal_diagnostics_step2000_20260627_154418/fvt_distribution/fvt_distribution_report.json`.
+  - Readout, `n=200`:
+    - `pct_correct_D_beats_target_only=0.995`.
+    - `pct_correct_D_beats_random=1.0`.
+    - `pct_correct_D_beats_wrong_same=0.9`.
+    - `pct_correct_D_beats_wrong_diff=0.9375`.
+    - `mean_nll_correct_D=1.40556640625`.
+    - `mean_delta_correct_vs_target_only=0.6146484375`.
+  - Query sensitivity, `groups=46`, `items=200`:
+    - `retrieval_top1=0.7`.
+    - `retrieval_top2=0.915`.
+    - `mrr=0.8341666666666668`.
+    - `mean_diagonal_gap=0.099765625`.
+  - FVT distribution, `n=200`:
+    - `avg_manifold_loss=0.4619758182764053`.
+    - `avg_norm_D=42.55310848236084`.
+    - `avg_norm_V_merge=20.683768496513366`.
+    - `norm_ratio_D_to_Vmerge=2.12579250719686`.
+    - `finite_rate=1.0`.
+    - `collapse_warning=false`.
+- Metrics:
+  - Compared to `EXP-20260627-040717-clean-qwen3-stage1-legacyrepro-ddp-manifold001-4gpu`:
+    - `wrong_same`: `0.87 -> 0.90`.
+    - `wrong_diff`: `0.90625 -> 0.9375`.
+    - `target_only`: `0.985 -> 0.995`.
+    - `retrieval_top1`: `0.705 -> 0.700`.
+    - `retrieval_top2`: `0.88 -> 0.915`.
+    - `mrr`: `0.82825 -> 0.83417`.
+    - `norm_ratio_D_to_Vmerge`: `5.6769 -> 2.1258`.
+    - `avg_norm_D`: `113.53 -> 42.55`.
+- Conclusion:
+  - Direct norm loss with weight `0.1` substantially improves D scale and does
+    not show the readout/query collapse seen when increasing the old mean/std
+    manifold objective. This Stage1 checkpoint is a stronger Stage2 candidate
+    than the previous `visual_token_manifold=0.01` clean replay on the internal
+    diagnostics surface.
+
+### EXP-20260626T1921-stage3-rl-data
+
+- Status: DONE.
+- Question: Build clean Stage3 RL source-QA pool manifest and reports.
+- Baseline anchor: Current 50k SFT image pool excluded by manifest.
+- Intended diff: Source-QA Stage3 RL pool, image-disjoint from SFT images; no training/eval/judge execution.
+- Allowed changed variables: Data source selection, filtering, balancing, TargetSpec rule construction.
+- Not allowed to change: SFT 50k data, benchmark eval data, GRPO/reward code, D generation.
+- Code commit / worktree: `10c2e60e4bc751336c01aed37b32ad0d29c1d292`, dirty status not recorded by data builder.
+- Train data: `/nvmesv/dredvpn009/projects/r-vlm/revisit_vlm/revisit_vlm_clean/data/stage3_rl/v0_teacher_triage_20k_20260627_041834/accepted_rl_prompts.jsonl`.
+- Validation data: none.
+- Benchmark output: none.
+- Script / command: `tgvf_generate_data stage3-rl --plan /nvmesv/dredvpn009/projects/r-vlm/revisit_vlm/revisit_vlm_clean/data/stage3_rl/v0_teacher_triage_20k_20260627_041834/stage3_rl_data_plan.json --execute`.
+- GPUs: none.
+- Started: 2026-06-26T19:21:15.034357+00:00.
+- Finished: 2026-06-26T19:21:15.039625+00:00.
+- Metrics: accepted_qa=0, accepted_images=0, rejected_qa=0.
+- Analysis: Data generation only; reports are under `/nvmesv/dredvpn009/projects/r-vlm/revisit_vlm/revisit_vlm_clean/data/stage3_rl/v0_teacher_triage_20k_20260627_041834`.
+- Conclusion: Stage3 RL source pool generated; reward/judge/training remain non-goals.
+- Comparable to baseline: Not a benchmark or training result.
+- Follow-up: Run forced probes and GRPO reward design on this source pool separately.
+
+### EXP-20260627T0244-stage3-rl-mixed20-smoke
+
+- Status: SIDE_RESULT.
+- Question: Check Stage3 RL GPT-5.4 teacher quality on a mixed 20-image smoke batch.
+- Baseline anchor: Not a benchmark/training baseline; data-generation smoke only.
+- Intended diff: Mixed source selection smoke after source-mix request preparation.
+- Not allowed to change: Formal RL sample manifests, reward/judge/training code, benchmark eval data.
+- Code commit / worktree: dirty local worktree.
+- Output root:
+  `/nvmesv/dredvpn009/projects/r-vlm/revisit_vlm/revisit_vlm_clean/data/stage3_rl/v0_teacher_triage_20k_20260627_041834`.
+- Archive:
+  `/nvmesv/dredvpn009/projects/r-vlm/revisit_vlm/revisit_vlm_clean/data/stage3_rl/v0_teacher_triage_20k_20260627_041834/archives/smoke_mixed20_20260627_batch_6a3f3295`.
+- Batch id: `batch_6a3f32958870819087b273c79e521920`.
+- Sample rule: 20 image requests, source-mix stratified as Visual Genome 8,
+  TextVQA 6, DocVQA 4, ChartQA 2.
+- API result: 20 completed, 0 failed, 0 parse errors.
+- Runtime: about 9m42s OpenAI backend time; about 10m49s submit-to-local-parse.
+- Quality summary: JSON/field format usable, but too many direct/no-tool items,
+  too many raw items per image, and several target texts contain answer-adjacent
+  judgments.
+- Conclusion: Archived and excluded from formal samples. Prompt/schema/filter
+  revised before any formal generation.
+- Comparable to baseline: No.
+
+### EXP-20260627T0301-stage3-rl-v1-direct20-smoke
+
+- Status: SIDE_RESULT.
+- Question: Check v1 Stage3 RL GPT-5.4 teacher quality and direct concurrent
+  smoke speed on 20 mixed images.
+- Baseline anchor: Previous mixed20 Batch API smoke
+  `batch_6a3f32958870819087b273c79e521920`.
+- Intended diff: Use `stage3_rl_gpt54_triage_v1`, max 4 items/image, direct
+  concurrent API with 8 workers, no Batch queue.
+- Not allowed to change: Formal RL sample manifests, reward/judge/training code,
+  benchmark eval data.
+- Output root:
+  `/nvmesv/dredvpn009/projects/r-vlm/revisit_vlm/revisit_vlm_clean/data/stage3_rl/v1_direct_smoke20_20260627_030144`.
+- Archive:
+  `/nvmesv/dredvpn009/projects/r-vlm/revisit_vlm/revisit_vlm_clean/data/stage3_rl/v1_direct_smoke20_20260627_030144/archives/smoke_v1_direct20_20260627_030144`.
+- Sample rule: 20 image requests, source-mix stratified as Visual Genome 8,
+  TextVQA 6, DocVQA 4, ChartQA 2.
+- API result: 20 completed direct requests, 0 API errors, 0 parse errors.
+- Runtime: 25.9s runner elapsed, 27s wall-clock.
+- Quality summary: 79 raw items, average 3.95/image; local deterministic filter
+  valid 77/rejected 2; tool distribution improved with 44 useful_tool and 7
+  likely_required.
+- Conclusion: V1 direct smoke is substantially faster and cleaner than V0 Batch
+  smoke. It remains archived and excluded from formal samples.
+- Comparable to baseline: No benchmark comparison; data smoke only.
+
+### EXP-20260627T0324-stage3-rl-v1-direct20k
+
+- Status: DONE.
+- Question: Generate the formal Stage3 RL v1 teacher-triage source pool for
+  about 20k accepted QA prompts.
+- Baseline anchor: V1 direct20 smoke
+  `/nvmesv/dredvpn009/projects/r-vlm/revisit_vlm/revisit_vlm_clean/data/stage3_rl/v1_direct_smoke20_20260627_030144`.
+- Intended diff: Run direct concurrent GPT-5.4 teacher generation on the v1
+  8000-image source pool, then parse/finalize accepted prompts.
+- Not allowed to change: SFT 50k data, benchmark eval data, GRPO/reward code,
+  D generation, model training.
+- Output root:
+  `/nvmesv/dredvpn009/projects/r-vlm/revisit_vlm/revisit_vlm_clean/data/stage3_rl/v1_direct_20k_20260627_032447`.
+- Sample rule: source-mix stratified image pool with default weights:
+  Visual Genome 0.40, TextVQA 0.30, DocVQA 0.20, ChartQA 0.10.
+- Target accepted prompts: 20000.
+- Candidate images: planned 8000.
+- Exclusions: default SFT 50k manifests plus archived smoke custom/image ids
+  from `smoke_mixed20_20260627_batch_6a3f3295` and
+  `smoke_v1_direct20_20260627_030144`.
+- Prompt/format: `stage3_rl_gpt54_triage_v1`, max 4 items/image,
+  max_output_tokens=3000, open-answer.
+- API mode: direct Responses API in 500-request chunks with 16 local workers.
+- GPUs: none.
+- Started: 2026-06-27T03:24:47Z.
+- Command:
+  - plan/execute through `revisit_vlm_clean.cli.generate_data stage3-rl`;
+  - API generation through repeated `--run-api-direct --limit-requests 500
+    --direct-workers 16 --skip-submitted-requests`.
+- Validation plan: parse outputs, finalize teacher outputs, report accepted QA,
+  source/tool/difficulty distributions, parse errors, API errors, and archive
+  status of smoke roots.
+- Finished: 2026-06-27T05:36:35Z.
+- API outcome: 8000/8000 direct requests submitted, 16 raw response files,
+  0 API errors. The first session was interrupted at chunk 11 before any chunk
+  11 output was written; resume used the same plan with
+  `--skip-submitted-requests` and completed chunks 11-16 without duplicate
+  submission.
+- API timing: 16 chunks, total direct chunk time 3887.395s, average 242.962s,
+  min 233.470s, max 256.409s.
+- Parse outcome: 8000 teacher outputs parsed, 0 parse errors, token usage
+  input=32486913, output=8437698, total=40924611.
+- Final data outcome: 20000 accepted QA prompts from 7849 images, 31487 QA
+  candidates, 11487 rejected prompts. `target_spec` available for all accepted
+  prompts.
+- Source distribution: visual_genome=8000, textvqa=6000, docvqa=4000,
+  chartqa=2000.
+- Provenance distribution: source_qa_kept=1796, source_qa_rewritten=7847,
+  teacher_generated_legacy_style=10357.
+- Tool-need hint distribution: useful_tool=10510, optional_tool=4668,
+  no_tool=3078, likely_required=1744.
+- Difficulty distribution: local_medium=10671, local_easy=5356,
+  direct_easy=2082, local_hard=1472, reasoning_hard=419.
+- Filter outcome: 30573 valid after deterministic filters, 914 filter
+  rejected; top filter rejection reasons were teacher_too_easy=409,
+  target_leakage=318, low_teacher_confidence=141,
+  sensitive_personal_info=40. Balance then selected 20000 accepted prompts.
+- Balance warnings: none.
+- Verification: `PYTHONPATH=revisit_vlm_clean/src pytest -q
+  revisit_vlm_clean/tests/test_stage3_rl_data.py` passed, 8 tests.
+
+### EXP-20260627-163250-clean-qwen3-stage2-norm01-mask075-deepstack
+
+- Status: RUNNING.
+- Question:
+  - Start Stage2 preparation from the current clean Qwen3 Stage1 norm-only
+    candidate, while keeping the remaining Stage1 uncertainty explicitly
+    recorded.
+- Baseline anchor:
+  - Stage2 data/protocol follows `BASE-20260619-open-answer-rowonly`
+    open-answer Protocol-C Stage2 split.
+  - Stage1 is the new clean norm-only checkpoint, not the 20260619 baseline
+    Stage1.
+- Intended diff:
+  - Use clean Stage1 checkpoint
+    `clean_qwen3_stage1_norm01_manifold0_4gpu_20260627_133252`.
+  - Enable Qwen3 DeepStack training semantics.
+  - Use original-image mask tuple:
+    `mask_original_image_after_tgvf=true`,
+    `mask_scope=through_answer`,
+    `mask_probability=0.75`.
+- Allowed changed variables:
+  - Stage1 checkpoint lineage.
+  - Stage2 DeepStack enabled.
+  - Stage2 mask probability.
+- Not allowed to change:
+  - Protocol: `protocol_c_tool_observation`.
+  - Stage2 train/val data identity.
+  - Max image resolution: `512`.
+  - Weighted span losses:
+    `evidence_state=0.2`, `focus_target=1.5`, `evidence=1.0`,
+    `value_span=1.0`, `answer=1.0`,
+    `no_focus_evidence_state=0.2`, `no_focus_answer=1.0`.
+  - D remains a v-merge-level visual token span; no D DeepStack-like features.
+- Code commit / worktree:
+  - `0ce3c7899ec789259a68c32cb513fc039729c20e`.
+  - Dirty worktree: true, due unrelated Stage3/RL/doc artifacts plus this
+    ledger entry.
+- Stage1 checkpoint:
+  - `outputs/clean_training/qwen3_stage1_norm01_manifold0_4gpu_20260627_133252/stage1_micro4/clean_training_execution/checkpoint_step_2000.pt`.
+  - sha256:
+    `ab6bd554cfb405208f13270c298f7fd0ab01305c83ca07bf8eca667cbe1632a1`.
+- Stage1 processor:
+  - `/nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking`.
+- Stage2 checkpoint/output:
+  - Planned output:
+    `outputs/clean_training/qwen3_stage2_norm01_stage1_mask075_deepstack_4gpu_20260627_163250/stage2_micro4`.
+- Train data:
+  - `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend_open_answer/splits/tgvf_v4_teacher_stage2_protocol_c.train.jsonl`.
+  - Rows: `46883`.
+  - sha256:
+    `b5027e72dda7601073ddb8bc9cf1853ec564fa415a3e9cb7d1e684cc7c0d733b`.
+  - Focus/no-focus: `39655/7228`.
+  - Answer format: `short_text=46883`.
+- Validation data:
+  - `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend_open_answer/splits/tgvf_v4_teacher_stage2_protocol_c.test.jsonl`.
+  - Rows: `1002`.
+  - sha256:
+    `3b719e1bd03a09741cc05dac3ed85e423a9b2c29209b07546792a6795cdbbfc5`.
+  - Focus/no-focus: `857/145`.
+  - Answer format: `short_text=1002`.
+- Benchmark output:
+  - Not created yet.
+- Training plan:
+  - `outputs/clean_training/qwen3_stage2_norm01_stage1_mask075_deepstack_4gpu_20260627_163250/stage2_micro4/training_plan.json`.
+  - sha256:
+    `a69cdc341cdbb7256b855f4d726e38b2d3ca20e7d88bacfe4d1aa85830b74cfa`.
+- Execution bundle:
+  - `outputs/clean_training/qwen3_stage2_norm01_stage1_mask075_deepstack_4gpu_20260627_163250/stage2_micro4/clean_training_execution/clean_training_execution_bundle.json`.
+  - sha256:
+    `8df6bdc554e15b6560f21f82140e1943e5869f10e729bb793e91ae6759451a51`.
+- Script / command:
+  - Prepare:
+    `PYTHONPATH=revisit_vlm_clean/src:src python -m revisit_vlm_clean.training.stage2_executor --plan outputs/clean_training/qwen3_stage2_norm01_stage1_mask075_deepstack_4gpu_20260627_163250/stage2_micro4/training_plan.json --prepare-execution`.
+  - Clean launch command prepared:
+    `torchrun --nproc-per-node 4 -m revisit_vlm_clean.training.stage2_executor --plan outputs/clean_training/qwen3_stage2_norm01_stage1_mask075_deepstack_4gpu_20260627_163250/stage2_micro4/training_plan.json --launch-training`.
+  - Actual launch:
+    `CUDA_VISIBLE_DEVICES=0,1,2,3 PYTHONPATH=revisit_vlm_clean/src:src torchrun --nproc-per-node 4 -m revisit_vlm_clean.training.stage2_executor --plan outputs/clean_training/qwen3_stage2_norm01_stage1_mask075_deepstack_4gpu_20260627_163250/stage2_micro4/training_plan.json --launch-training`.
+- GPUs:
+  - `CUDA_VISIBLE_DEVICES=0,1,2,3`.
+  - Planned world size: `4`.
+  - micro batch: `4`; accumulation: `8`; global batch: `128`.
+- tmux:
+  - `clean_stage2_norm01_mask075_ds_20260627_163250`.
+- Log:
+  - `logs/clean_training/clean_stage2_norm01_mask075_ds_20260627_163250.log`.
+- W&B:
+  - Project: `tgvf-clean-qwen3-deepstack`.
+  - Run:
+    `https://wandb.ai/mio_nora/tgvf-clean-qwen3-deepstack/runs/yxdq5cie`.
+  - Local W&B path warning observed: planned output-local `wandb/` path was
+    not writable, so W&B used `/tmp/wandb/run-20260627_165340-yxdq5cie`.
+- Started:
+  - 2026-06-27T16:52:22+09:00.
+- Finished:
+  - Not launched.
+- Prepared artifacts:
+  - `stage2_executor --prepare-execution` passed.
+  - Runner status: `ready_for_explicit_distributed_launch`.
+  - Stage1 checkpoint contract: `validated`, `global_step=2000`,
+    Protocol-C token rows present for 4 tokens.
+  - Optimizer groups validated:
+    `llm_lora lr=2e-5`, `tgvf_refiner lr=5e-6`,
+    `fvt_calibration lr=1e-5`.
+  - DeepStack plan:
+    `enabled=true`, `execution_supported=true`,
+    `original_image_scope=through_answer`, no blocking items,
+    no D DeepStack-like features.
+- Metrics:
+  - Initial observed training line:
+    `step=1/1200 loss=3.8515625 micro_steps=8 checkpoint=False validation=False`.
+- Analysis:
+  - This is a prepared Stage2 mainline candidate, not a completed experiment.
+  - It is not a clean ablation of any old Stage2 result because both Stage1
+    lineage and DeepStack state differ from the historical baselines.
+- Conclusion:
+  - Ready to launch after selecting GPUs and optionally running a short
+    Stage2 smoke/audit.
+- Comparable to baseline:
+  - Not yet; no training/evaluation result.
+- Follow-up:
+  - Before launch, bind GPU IDs and decide whether to run a short model-loaded
+    audit/smoke or start the full 1200-step distributed run directly.

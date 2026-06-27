@@ -10,6 +10,7 @@ __pycache__/
 .vscode/
 
 # Experiment outputs and checkpoints
+/logs/
 /outputs/
 /eval_outputs/
 /wandb/
@@ -23,9 +24,11 @@ __pycache__/
 # Local datasets and generated data
 /data/*
 !/data/train.example.jsonl
+/revisit_vlm_clean/data/
 
 # Vendored/reference projects
 /example_project/
+/third_party/
 
 # Secrets and machine-local config
 .env
