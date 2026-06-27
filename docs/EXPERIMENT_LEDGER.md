@@ -5318,7 +5318,7 @@ entry, update this file immediately.
 
 ### EXP-20260627-163250-clean-qwen3-stage2-norm01-mask075-deepstack
 
-- Status: RUNNING.
+- Status: DONE.
 - Question:
   - Start Stage2 preparation from the current clean Qwen3 Stage1 norm-only
     candidate, while keeping the remaining Stage1 uncertainty explicitly
@@ -5360,8 +5360,12 @@ entry, update this file immediately.
 - Stage1 processor:
   - `/nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking`.
 - Stage2 checkpoint/output:
-  - Planned output:
+  - Output:
     `outputs/clean_training/qwen3_stage2_norm01_stage1_mask075_deepstack_4gpu_20260627_163250/stage2_micro4`.
+  - Final checkpoint:
+    `outputs/clean_training/qwen3_stage2_norm01_stage1_mask075_deepstack_4gpu_20260627_163250/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt`.
+  - Final checkpoint sha256:
+    `50245a11c27ad9755eb815b5f008af50a659fa07a4043f0f9427f5bbea3c0236`.
 - Train data:
   - `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend_open_answer/splits/tgvf_v4_teacher_stage2_protocol_c.train.jsonl`.
   - Rows: `46883`.
@@ -5410,7 +5414,7 @@ entry, update this file immediately.
 - Started:
   - 2026-06-27T16:52:22+09:00.
 - Finished:
-  - Not launched.
+  - 2026-06-27T21:02:06+09:00.
 - Prepared artifacts:
   - `stage2_executor --prepare-execution` passed.
   - Runner status: `ready_for_explicit_distributed_launch`.
@@ -5426,18 +5430,131 @@ entry, update this file immediately.
 - Metrics:
   - Initial observed training line:
     `step=1/1200 loss=3.8515625 micro_steps=8 checkpoint=False validation=False`.
+  - Training status: `clean_distributed_training_completed`.
+  - Final observed training line:
+    `step=1200/1200 loss=0.736328125 micro_steps=9600 checkpoint=True validation=True`.
+  - Optimizer steps completed: `1200`.
+  - Micro steps completed: `9600`.
+  - Checkpoints saved at steps: `300`, `600`, `900`, `1200`.
+  - Validation records: `4`.
+  - Final W&B summary:
+    - `train/loss_total=0.73633`.
+    - `train/loss_focus=0.74561`.
+    - `train/loss_no_focus=0.34509`.
+    - `validation/loss_total=0.91016`.
+    - `validation/loss_focus=0.93359`.
+    - `validation/loss_no_focus=0.39453`.
+    - `train/qwen3_deepstack_features_injected=1.0`.
+    - `train/mask_original_image_after_tgvf_prob=0.75`.
 - Analysis:
-  - This is a prepared Stage2 mainline candidate, not a completed experiment.
+  - Stage2 completed successfully under clean distributed training.
   - It is not a clean ablation of any old Stage2 result because both Stage1
     lineage and DeepStack state differ from the historical baselines.
 - Conclusion:
-  - Ready to launch after selecting GPUs and optionally running a short
-    Stage2 smoke/audit.
+  - Stage2 checkpoint is ready for internal D/readout diagnostics and external
+    benchmark comparison.
 - Comparable to baseline:
-  - Not yet; no training/evaluation result.
+  - Training loss is not directly comparable to benchmark baselines. Benchmark
+    comparability will be decided by same-sample eval runs.
 - Follow-up:
-  - Before launch, bind GPU IDs and decide whether to run a short model-loaded
-    audit/smoke or start the full 1200-step distributed run directly.
+  - Run Stage1-style internal diagnostics on the final Stage2 checkpoint.
+  - Run same-sample benchmark comparisons against the chosen baseline.
+
+### EXP-20260627-223829-clean-qwen3-stage2-norm01-internal-diagnostics
+
+- Status: DONE.
+- Question:
+  - Did the Stage2 trajectory/LoRA training degrade the Stage1-style D/readout,
+    same-image retrieval, or FVT distribution diagnostics?
+- Baseline anchor:
+  - Compare primarily against the source Stage1 checkpoint diagnostics from
+    `EXP-20260627-133252-clean-qwen3-stage1-norm01-manifold0-4gpu`:
+    readout `wrong_same=0.9`, query `top1=0.7`, `MRR=0.83417`,
+    distribution `norm_ratio_D_to_Vmerge=2.12579`.
+- Intended diff:
+  - Load the Stage2 checkpoint from
+    `EXP-20260627-163250-clean-qwen3-stage2-norm01-mask075-deepstack`.
+  - Use the same Stage1 focus eval JSONL and diagnostic sample counts as the
+    Stage1 internal diagnostic run.
+- Allowed changed variables:
+  - Checkpoint stage: Stage2 checkpoint with Qwen LoRA loaded when present.
+- Not allowed to change:
+  - Eval JSONL, max image resolution, protocol, readout/query/distribution
+    sample limits.
+- Code commit / worktree:
+  - `0ce3c7899ec789259a68c32cb513fc039729c20e`.
+  - Dirty worktree: true.
+- Stage2 checkpoint:
+  - `outputs/clean_training/qwen3_stage2_norm01_stage1_mask075_deepstack_4gpu_20260627_163250/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt`.
+  - sha256:
+    `50245a11c27ad9755eb815b5f008af50a659fa07a4043f0f9427f5bbea3c0236`.
+- Eval data:
+  - `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend/splits/tgvf_v4_teacher_stage1_protocol_c_focus.test.jsonl`.
+- Output:
+  - `outputs/clean_training/qwen3_stage2_norm01_stage1_mask075_deepstack_4gpu_20260627_163250/stage2_micro4/internal_diagnostics_step1200_20260627_223829`.
+- Script / command:
+  - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=revisit_vlm_clean/src:src python -m revisit_vlm_clean.cli.stage_diagnostics --run-id clean_qwen3_stage2_norm01_internal_diag_20260627_223829 --stage stage2 --checkpoint outputs/clean_training/qwen3_stage2_norm01_stage1_mask075_deepstack_4gpu_20260627_163250/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt --eval-jsonl data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend/splits/tgvf_v4_teacher_stage1_protocol_c_focus.test.jsonl --output-dir outputs/clean_training/qwen3_stage2_norm01_stage1_mask075_deepstack_4gpu_20260627_163250/stage2_micro4/internal_diagnostics_step1200_20260627_223829 --model-id /nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking --processor-id /nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking --protocol protocol_c_tool_observation --focus-action-im-end --variant tgvf_v2_bidirectional --encoder-adapter-type bidirectional --max-image-resolution 512 --fvt-position-mode native_source_grid --dtype bfloat16 --attn-implementation sdpa --device cuda:0 --device-map cuda:0 --tasks all --readout-max-samples 200 --distribution-max-samples 200 --query-max-groups 50 --query-require-groups 0 --seed 20260525 --execute`.
+- GPUs:
+  - `CUDA_VISIBLE_DEVICES=0`.
+- tmux:
+  - `clean_stage2_norm01_diag_20260627_223829`.
+  - Retry after serialization fix:
+    `clean_stage2_norm01_diag_retry1_20260627_223829`.
+  - Retry after PEFT/Qwen3 position-id fix:
+    `clean_stage2_norm01_diag_retry2_20260627_223829`.
+- Started:
+  - 2026-06-27T22:38:29+09:00.
+- Finished:
+  - 2026-06-27T22:58:40+09:00.
+- Metrics:
+  - Readout, n=200:
+    `target_only=0.870`, `random=0.405`, `wrong_same=0.330`,
+    `wrong_diff=0.281`, `mean_nll_correct_D=1.62755`.
+  - Query sensitivity, groups=46 / items=200:
+    `retrieval_top1=0.220`, `retrieval_top2=0.455`, `MRR=0.48408`,
+    `mean_diagonal_gap=-0.03080`.
+  - FVT distribution, n=200:
+    `avg_manifold_loss=0.45436`, `avg_norm_D=42.9330`,
+    `avg_norm_V_merge=20.6838`, `norm_ratio_D_to_Vmerge=2.14251`,
+    `finite_rate=1.0`.
+  - Reports:
+    `outputs/clean_training/qwen3_stage2_norm01_stage1_mask075_deepstack_4gpu_20260627_163250/stage2_micro4/internal_diagnostics_step1200_20260627_223829/readout/readout_eval_report.json`,
+    `outputs/clean_training/qwen3_stage2_norm01_stage1_mask075_deepstack_4gpu_20260627_163250/stage2_micro4/internal_diagnostics_step1200_20260627_223829/query_sensitivity/query_sensitivity_report.json`,
+    `outputs/clean_training/qwen3_stage2_norm01_stage1_mask075_deepstack_4gpu_20260627_163250/stage2_micro4/internal_diagnostics_step1200_20260627_223829/fvt_distribution/fvt_distribution_report.json`.
+- Analysis:
+  - First attempt failed before readout/query/distribution execution while
+    writing `runtime_config.json`: `_json_safe` did not serialize `set`.
+  - Code patch added deterministic `set`/`frozenset` JSON conversion in
+    `revisit_vlm_clean.stage_diagnostics._json_safe`.
+  - Verification after patch:
+    `PYTHONPATH=revisit_vlm_clean/src:src pytest -q revisit_vlm_clean/tests/test_stage_diagnostics.py`
+    passed, `5 passed`.
+  - Second attempt passed JSON writing but failed before readout execution:
+    PEFT-wrapped Stage2 model did not expose Qwen3
+    `compute_3d_position_ids` to the readout input builder.
+  - Code patch made `_compute_qwen3_position_ids_for_sequence` unwrap
+    PEFT-like models via `get_base_model()`/nested `.model` for position
+    computation while still using the wrapper's input embeddings.
+  - Verification after second patch:
+    `PYTHONPATH=revisit_vlm_clean/src:src pytest -q tests/test_tgvf_v3_stage1.py revisit_vlm_clean/tests/test_stage_diagnostics.py`
+    passed, `9 passed`.
+  - Retrying the same diagnostic run id/output after both fixes.
+  - The internal diagnostic path is Stage1-style and does not explicitly enable
+    Qwen3 DeepStack injection. This is acceptable for D/readout/query
+    regression checking, but benchmark evaluation must explicitly enable
+    DeepStack with training-matched scope.
+  - Compared with the source Stage1 diagnostics, Stage2 preserves the D/FVT
+    distribution scale (`norm_ratio_D_to_Vmerge` 2.1425 vs 2.1258), but loses
+    most of the Stage1 discrimination behavior: readout `wrong_same` falls
+    from 0.900 to 0.330 and query `top1` from 0.700 to 0.220.
+- Conclusion:
+  - Stage2 significantly degrades the internal D readout/retrieval behavior
+    under this Stage1-style diagnostic, despite keeping D norm/manifold scale
+    close to the Stage1 checkpoint. Treat benchmark results from this Stage2
+    checkpoint as suspect until compared against baseline with training-matched
+    DeepStack enabled.
+- Comparable to baseline:
+  - Yes, intended to be comparable to the Stage1 internal diagnostics above.
 
 ### EXP-20260627-2220-stage3-grpo-native-smoke
 

@@ -136,6 +136,12 @@ def test_stage_diagnostics_execute_invokes_clean_native_executor(
     assert status["reports"]["readout"]["exists"] is True
 
 
+def test_stage_diagnostics_json_safe_serializes_sets_stably() -> None:
+    payload = stage_diagnostics._json_safe({"tokens": {"b", "a"}, "ids": frozenset({2, 1})})
+    assert payload == {"tokens": ["a", "b"], "ids": [1, 2]}
+    json.dumps(payload, sort_keys=True)
+
+
 def test_stage_diagnostics_wandb_upload_is_not_implemented(tmp_path) -> None:
     checkpoint, eval_jsonl = _write_inputs(tmp_path)
     with pytest.raises(ValueError, match="W&B upload is not implemented"):

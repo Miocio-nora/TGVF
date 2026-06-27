@@ -6,7 +6,11 @@ from types import SimpleNamespace
 import torch
 from torch import nn
 
-from revisit_vlm.qwen3_vl_tgvf import Qwen3FocusCapture, Qwen3SourceVisualGeometry
+from revisit_vlm.qwen3_vl_tgvf import (
+    Qwen3FocusCapture,
+    Qwen3SourceVisualGeometry,
+    _compute_qwen3_position_ids_for_sequence,
+)
 from revisit_vlm.tgvf_v3_stage1 import (
     TGVFv3Stage1Dataset,
     build_weak_strict_attention_mask,
@@ -99,6 +103,19 @@ class TinyQwen3(nn.Module):
         del input_ids, attention_mask, position_ids, image_grid_thw, mm_token_type_ids, labels, return_dict
         hidden = torch.cumsum(inputs_embeds, dim=1)
         return SimpleNamespace(logits=self.head(hidden))
+
+
+class TinyPeftLikeWrapper(nn.Module):
+    def __init__(self, base_model: TinyQwen3) -> None:
+        super().__init__()
+        self.base = base_model
+        self.embed = nn.Embedding(512, base_model.config.hidden_size)
+
+    def get_base_model(self) -> TinyQwen3:
+        return self.base
+
+    def get_input_embeddings(self) -> nn.Embedding:
+        return self.embed
 
 
 def _capture() -> Qwen3FocusCapture:
@@ -202,3 +219,24 @@ def test_v3_stage1_readout_loss_backprops_to_d_not_frozen_qwen() -> None:
     assert any(d.grad.abs().flatten() > 0)
     assert all(parameter.grad is None for parameter in model.parameters())
     assert all(not parameter.requires_grad for parameter in model.parameters())
+
+
+def test_qwen3_position_ids_unwraps_peft_like_model_but_uses_wrapper_embeddings() -> None:
+    base = TinyQwen3()
+    wrapper = TinyPeftLikeWrapper(base)
+    input_ids = torch.tensor([[11, 102, 102, 12]])
+    attention_mask = torch.ones_like(input_ids)
+
+    position_ids = _compute_qwen3_position_ids_for_sequence(
+        model=wrapper,
+        input_ids=input_ids,
+        attention_mask=attention_mask,
+        image_grid_thw=torch.tensor([[1, 2, 4]]),
+        video_grid_thw=None,
+        mm_token_type_ids=torch.tensor([[0, 1, 1, 0]]),
+    )
+
+    assert position_ids is not None
+    assert position_ids.shape == (3, 1, 4)
+    assert torch.equal(position_ids[:, 0, 1], torch.tensor([1, 1, 1]))
+    assert torch.equal(position_ids[:, 0, 2], torch.tensor([2, 2, 3]))

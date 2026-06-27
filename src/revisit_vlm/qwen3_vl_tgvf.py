@@ -3007,10 +3007,7 @@ def _compute_qwen3_position_ids_for_sequence(
     video_grid_thw: torch.Tensor | None,
     mm_token_type_ids: torch.Tensor | None,
 ) -> torch.Tensor | None:
-    model_core = getattr(model, "model", None)
-    compute_fn = getattr(model_core, "compute_3d_position_ids", None)
-    if compute_fn is None:
-        compute_fn = getattr(model, "compute_3d_position_ids", None)
+    compute_fn = _find_qwen3_compute_3d_position_ids(model)
     if compute_fn is None or not hasattr(model, "get_input_embeddings"):
         return None
     inputs_embeds = model.get_input_embeddings()(input_ids)
@@ -3031,6 +3028,33 @@ def _compute_qwen3_position_ids_for_sequence(
     if isinstance(result, (tuple, list)):
         result = result[0] if result else None
     return result if isinstance(result, torch.Tensor) else None
+
+
+def _find_qwen3_compute_3d_position_ids(model: Any) -> Any | None:
+    candidates = [model]
+    if hasattr(model, "get_base_model"):
+        try:
+            candidates.append(model.get_base_model())
+        except Exception:
+            pass
+    for attr in ("base_model", "model"):
+        candidate = getattr(model, attr, None)
+        if candidate is not None:
+            candidates.append(candidate)
+
+    seen: set[int] = set()
+    for candidate in candidates:
+        if candidate is None:
+            continue
+        ident = id(candidate)
+        if ident in seen:
+            continue
+        seen.add(ident)
+        for owner in (getattr(candidate, "model", None), candidate):
+            compute_fn = getattr(owner, "compute_3d_position_ids", None)
+            if compute_fn is not None:
+                return compute_fn
+    return None
 
 
 def _full_mm_token_type_ids_for_append(
