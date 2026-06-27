@@ -6839,7 +6839,7 @@ entry, update this file immediately.
   - Smoke manifest:
     `outputs/clean_smoke_manifests/coredev2511_oom_recovery_2_20260628.json`.
   - Manifest hash:
-    `392f6e0c35da195b4148f14d0e098284806d01f831849dac3cd14c59a9b331fa`.
+    `cce8dcb15df66d318cb639c691b7a8b9a827b28927d2ef3cf853949e41848e35`.
   - Source full manifest:
     `revisit_vlm_clean/benchmark_manifests/core_balanced_dev_2511_seed20260625.json`.
   - Sample count: `2`.
