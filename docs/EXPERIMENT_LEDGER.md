@@ -6806,7 +6806,7 @@ entry, update this file immediately.
 
 ### EXP-20260628-0600-clean-qwen3-stage2-norm01-oom-recovery-smoke
 
-- Status: PLANNED.
+- Status: COMPLETE.
 - Question:
   - Verify the clean-native Stage2 eval recovery fix from commit
     `e182a01` on the first OOM sample observed in
@@ -6824,6 +6824,8 @@ entry, update this file immediately.
 - Code commit / worktree:
   - Recovery fix commit:
     `e182a01`.
+  - Runtime launch commit:
+    `756b22f0b687e09c22b9359151b7b6def0234fad`.
   - Dirty worktree before ledger entry: false except this ledger update.
 - Model / processor:
   - `/nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking`.
@@ -6864,12 +6866,31 @@ entry, update this file immediately.
 - GPU:
   - Planned: GPU `0`.
 - Started:
-  - Pending.
+  - `2026-06-28T06:00` approximate local launch.
 - Finished:
-  - Pending.
+  - Completed normally; output files written.
 - Metrics:
-  - Pending.
+  - Output:
+    `outputs/clean_benchmarks/qwen3_stage2_norm01_oom_recovery_smoke2_20260628_0600`.
+  - `n_rows=2`, `n_scored=1`, `answer_parse_rate=0.5`,
+    `malformed_rate=0.5`, `trigger_rate=0.5`.
+  - Row 1:
+    `OutOfMemoryError: CUDA out of memory`, `malformed=true`,
+    `append_success=false`.
+  - Row 1 recovery metadata:
+    `vision_cache_entries_cleared=1`,
+    `deepstack_cache_entries_cleared=1`,
+    `fatal_cuda_error=true`, `runtime_unloaded=true`.
+  - Row 2:
+    `error=null`, `malformed=false`, `answer_parse_success=true`;
+    no MHA cascade occurred after the row-1 OOM.
 - Analysis:
-  - Pending.
+  - The first selected sample still exceeds memory as a single sample under the
+    current DeepStack/full-sequence settings, so the fix does not make every
+    sample fit.
+  - The recovery fix works for the benchmark-runner failure mode: after the
+    OOM row, the runtime was unloaded/reloaded and the next row completed
+    normally instead of producing `mha_graph.execute` errors.
+  - GPU memory returned to zero after completion.
 - Conclusion:
-  - Pending.
+  - Use the recovery fix for the next full CoreDev-2511 rerun.
