@@ -484,6 +484,13 @@ def _score_ocrbench_v2_rows(rows: list[dict], *, official_eval_path: Path) -> No
             answers=answers,
             predict=row["parsed_answer"],
         )
+        if task_type == "VQA with position en" and "bbox" not in item:
+            # The official helper only needs the GT bbox if the model emits one,
+            # but then accesses item["bbox"] unconditionally. Some OCRBench-v2
+            # records in our parquet snapshot lack this field, so use an empty
+            # box to make the official scorer return zero IoU instead of
+            # aborting the whole shard.
+            item["bbox"] = []
         if task_type == "text counting en" and "eval" not in item:
             item["eval"] = _ocrbench_text_counting_eval_method(answers)
         items.append(item)

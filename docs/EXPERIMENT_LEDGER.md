@@ -6164,3 +6164,164 @@ entry, update this file immediately.
     CoreDev-2511 comparisons.
 - Comparable to baseline:
   - This is the valid original baseline for CoreDev-2511.
+
+### EXP-20260628-0216-clean-qwen3-original-coredev2511-maxans512
+
+- Status: DONE.
+- Question:
+  - Does the low clean original Qwen3 CoreDev-2511 accuracy/parse rate come from
+    the clean run using `max_answer_tokens=128`, rather than from a parser/scorer
+    regression?
+- Baseline anchor:
+  - `EXP-20260628-010859-clean-qwen3-original-coredev2511-baseline-scoringfix`.
+- Intended diff:
+  - Change only original answer generation budget:
+    `max_answer_tokens=128 -> 512`.
+  - Keep the same model, processor, sample manifest/order, max image resolution,
+    parser/scorer, scoring backend, mode, runner backend, benchmark root, and
+    GPUs as the 128-token clean baseline.
+  - Match the legacy fullbench original token budget used by
+    `scripts/run_tgvf_v3_protocol_c_all_official_benchmarks_0_3.sh`
+    (`ORIGINAL_MAX_TOKENS=512`).
+- Not allowed to change for the generation run:
+  - Parser/scorer code or settings at launch.
+  - Prompt suffix / extra prompt.
+  - Model, processor, benchmark root, manifest, max image resolution, scoring
+    backend, runner backend, or DeepStack state.
+- Code commit / worktree:
+  - `1a5ad48a7db9a039fdee191697e7cba4558318e6`.
+  - Dirty worktree before launch: false.
+  - Post-run scorer fix:
+    - `revisit_vlm_clean/src/revisit_vlm_clean/scoring.py` now supplies an
+      empty OCRBench-v2 GT `bbox` for `VQA with position en` rows when the
+      parquet metadata lacks one, preventing the official scorer from aborting
+      the whole shard with `KeyError: 'bbox'`.
+    - Covered by
+      `test_score_output_rows_ocrbench_v2_missing_position_bbox_does_not_abort`.
+    - This changes scoring robustness only; model generation outputs are
+      unchanged.
+- Model / processor:
+  - `/nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking`.
+  - Processor: same path via `processor_id=null`.
+- Checkpoint path:
+  - `/nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking`.
+- Benchmark:
+  - Subset id: `core_balanced_dev_2511_seed20260625`.
+  - Human label: `CoreDev-2511`.
+  - Manifest:
+    `revisit_vlm_clean/benchmark_manifests/core_balanced_dev_2511_seed20260625.json`.
+  - Manifest file sha256:
+    `3a013b2bcc64316054d28239a3cea3f44211cadbfe19787be3b7f285620fa5c1`.
+  - Manifest internal hash:
+    `a461d9b482b7165b42b9bbb0fbf0ea6aff31fde0a838c13d953f070e770b0579`.
+  - Benchmark root:
+    `/home/dredvpn009/Flash_Storage/datasets/benchmarks`.
+  - Sample count: `2511`.
+  - Sample overlap with baseline:
+    `2511/2511`, same order.
+  - Allocation:
+    `vstar_bench=191`, `blink=420`, `hr_bench_4k=200`,
+    `mmmu_pro=300`, `mathvista=300`, `mathverse=500`,
+    `ocrbench_v2=600`.
+- Output:
+  - `outputs/clean_benchmarks/qwen3_original_coredev2511_4shard_maxans512_20260628_0216`.
+  - Initial merged output:
+    `outputs/clean_benchmarks/qwen3_original_coredev2511_4shard_maxans512_20260628_0216/merged`.
+  - Final comparable rescored output:
+    `outputs/clean_benchmarks/qwen3_original_coredev2511_4shard_maxans512_20260628_0216_rescored_bboxfix_20260628_035759/merged`.
+- Evaluation identity:
+  - Eval family: `project_native_external`.
+  - Mode: `original`.
+  - Runner backend: `qwen3_original`.
+  - Post-TGVF continuation: `natural_continue`.
+  - Post-TGVF forward mode: `kv_cache` (schema-required, not used by original
+    backend).
+  - DeepStack: disabled/noop for original backend.
+  - Parser/scorer: `revisit_vlm_clean.scoring.parse_and_score:v3_external`,
+    scoring backend `auto`.
+  - Prompt suffix / softforce prompt: empty.
+  - Max image resolution: `512`.
+  - Max answer tokens: `512`.
+- Script / command:
+  - Four shard commands, one per GPU `0,1,2,3`, each with
+    `CUDA_VISIBLE_DEVICES=<gpu>`, `--device cuda:0`, `--device-map cuda:0`,
+    `--num-shards 4`, and one `--shard-index`.
+  - Base command:
+    `PYTHONPATH=revisit_vlm_clean/src:src python -m revisit_vlm_clean.cli.benchmark --run-id clean_qwen3_original_coredev2511_maxans512_20260628_0216_s<shard> --checkpoint-path /nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking --model-id /nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking --mode original --runner-backend qwen3_original --post-tgvf-forward-mode kv_cache --subset-id core_balanced_dev_2511_seed20260625 --manifest-path revisit_vlm_clean/benchmark_manifests/core_balanced_dev_2511_seed20260625.json --manifest-hash a461d9b482b7165b42b9bbb0fbf0ea6aff31fde0a838c13d953f070e770b0579 --benchmark-root /home/dredvpn009/Flash_Storage/datasets/benchmarks --output-dir outputs/clean_benchmarks/qwen3_original_coredev2511_4shard_maxans512_20260628_0216/shards/shard_<shard> --max-image-resolution 512 --max-answer-tokens 512 --scoring-backend auto --dtype bfloat16 --device cuda:0 --device-map cuda:0 --attn-implementation sdpa --num-shards 4 --shard-index <shard> --execute`.
+  - Merge command after completion:
+    `PYTHONPATH=revisit_vlm_clean/src:src python -m revisit_vlm_clean.cli.merge_benchmark --output-dir outputs/clean_benchmarks/qwen3_original_coredev2511_4shard_maxans512_20260628_0216/merged --run-id clean_qwen3_original_coredev2511_maxans512_20260628_0216 --expected-num-shards 4 --expected-source-manifest-hash a461d9b482b7165b42b9bbb0fbf0ea6aff31fde0a838c13d953f070e770b0579 outputs/clean_benchmarks/qwen3_original_coredev2511_4shard_maxans512_20260628_0216/shards/shard_0 outputs/clean_benchmarks/qwen3_original_coredev2511_4shard_maxans512_20260628_0216/shards/shard_1 outputs/clean_benchmarks/qwen3_original_coredev2511_4shard_maxans512_20260628_0216/shards/shard_2 outputs/clean_benchmarks/qwen3_original_coredev2511_4shard_maxans512_20260628_0216/shards/shard_3`.
+- GPUs:
+  - Planned: `0,1,2,3`, one shard per GPU.
+  - Preflight: GPUs `0-7` showed `0 MiB` used and `0%` utilization.
+- tmux:
+  - Planned orchestrator session:
+    `clean_qwen3_original_coredev2511_maxans512_20260628_0216`.
+- Started:
+  - 2026-06-28T02:17:16+09:00.
+- Finished:
+  - Generation shards:
+    - `shard_0`: 2026-06-28T03:41:06+09:00, `exit=0`, rows `628/628`.
+    - `shard_1`: 2026-06-28T03:51:20+09:00, `exit=0`, rows `628/628`.
+    - `shard_2`: 2026-06-28T03:45:43+09:00, `exit=0`, rows `628/628`.
+    - `shard_3`: 2026-06-28T03:51:33+09:00, `exit=0`, rows `627/627`.
+  - Initial merge: 2026-06-28T03:51:34+09:00.
+  - Rescored merge: 2026-06-28T03:57:59+09:00 output family.
+- Metrics:
+  - Initial merged output was not used for final comparison:
+    - It had `score=None` on `352/2511` rows because OCRBench-v2 official
+      scoring raised `KeyError: 'bbox'` and the shard-level scorer catch left
+      partially scored rows.
+    - Its summary accuracy `0.302061` used `n_scored=2159`, so it was not
+      denominator-comparable.
+  - Final comparable rescored output:
+    - `n_rows=2511`, `n_scored=2511`, `score_none=0`,
+      `scoring_error=0`.
+    - Overall: accuracy `0.308553`, answer parse rate `0.941458`,
+      trigger rate `0.0`, malformed rate `0.0`.
+    - By benchmark:
+      - `blink`: n `420`, acc `0.464286`, parse `0.709524`.
+      - `hr_bench_4k`: n `200`, acc `0.520000`, parse `0.890000`.
+      - `mathverse`: n `500`, acc `0.048000`, parse `1.000000`.
+      - `mathvista`: n `300`, acc `0.410000`, parse `1.000000`.
+      - `mmmu_pro`: n `300`, acc `0.343333`, parse `1.000000`.
+      - `ocrbench_v2`: n `600`, acc `0.204628`, parse `1.000000`.
+      - `vstar_bench`: n `191`, acc `0.539267`, parse `0.984293`.
+  - Baseline 128-token clean original:
+    - Overall: accuracy `0.193725`, answer parse rate `0.840303`.
+    - By benchmark:
+      - `blink`: acc `0.197619`, parse `0.252381`.
+      - `hr_bench_4k`: acc `0.395000`, parse `0.625000`.
+      - `mathverse`: acc `0.008000`, parse `1.000000`.
+      - `mathvista`: acc `0.196667`, parse `1.000000`.
+      - `mmmu_pro`: acc `0.173333`, parse `1.000000`.
+      - `ocrbench_v2`: acc `0.189072`, parse `1.000000`.
+      - `vstar_bench`: acc `0.502618`, parse `0.937173`.
+    - In-memory rescore with the fixed scorer changed `0/2511` baseline scores,
+      confirming the fix does not move the 128-token anchor.
+  - Truncation / parse diagnostics:
+    - 128-token baseline hit max tokens on `2139/2511` rows; all `401`
+      parse failures hit the 128-token cap.
+    - 512-token run hit max tokens on `1536/2511` rows; all `147` parse
+      failures hit the 512-token cap.
+- Analysis:
+  - The low clean original baseline was substantially caused by the 128-token
+    answer cap. Raising the cap to 512 improves overall accuracy from
+    `19.37%` to `30.86%` and parse rate from `84.03%` to `94.15%`.
+  - The strongest improvements are on tasks where the Thinking model needs
+    room to finish its final answer: BLINK, HRBench, MathVista, MMMU-Pro, and
+    MathVerse.
+  - OCRBench remains mostly unchanged, so its limitation is not mainly final
+    answer truncation.
+  - VStar improves modestly after correct rescoring; the initial 512 summary
+    under-reported parse because the shard-level OCRBench scorer failure
+    contaminated unrelated rows in the same shard.
+- Conclusion:
+  - Use `max_answer_tokens=512` for Qwen3 original Thinking baselines.
+  - Treat the initial `.../merged` result from this run as a side artifact only;
+    use the `..._rescored_bboxfix_20260628_035759/merged` result for tables.
+  - Clean scorer now needs this OCRBench missing-bbox fix before future
+    benchmark runs.
+- Comparable to baseline:
+  - Comparable to
+    `EXP-20260628-010859-clean-qwen3-original-coredev2511-baseline-scoringfix`
+    with only `max_answer_tokens` changed.
