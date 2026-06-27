@@ -6897,7 +6897,7 @@ entry, update this file immediately.
 
 ### EXP-20260628-0615-clean-qwen3-stage2-norm01-free-coredev2511-recovery
 
-- Status: PLANNED.
+- Status: RUNNING.
 - Question:
   - Rerun the same clean-native Qwen3 Stage2 free CoreDev-2511 benchmark after
     the OOM recovery fix validated by
@@ -6913,7 +6913,9 @@ entry, update this file immediately.
   - Checkpoint, model/processor, manifest/order, parser/scorer, no-extra-prompt
     free mode, DeepStack state, max resolution/tokens, and `sdpa` remain fixed.
 - Code commit / worktree:
-  - Runtime launch commit:
+  - Runtime launch commit recorded by orchestrator:
+    `164836886906472c1603b45c482f208e33fc0a5e`.
+  - Recovery fix commit:
     `8c92e6f7e7b1a201ad0c884a46015e58bcf5e950`.
   - Dirty worktree before ledger entry: false except this ledger update.
 - Model / processor:
@@ -6955,7 +6957,14 @@ entry, update this file immediately.
 - GPUs:
   - Planned: `0,1,2,3`, one shard per GPU.
 - Started:
-  - Pending.
+  - `2026-06-28T06:12:26+09:00`.
+  - Shard sessions:
+    `clean_qwen3_stage2_norm01_free_coredev2511_ds512_recovery_20260628_0615_s0`,
+    `clean_qwen3_stage2_norm01_free_coredev2511_ds512_recovery_20260628_0615_s1`,
+    `clean_qwen3_stage2_norm01_free_coredev2511_ds512_recovery_20260628_0615_s2`,
+    `clean_qwen3_stage2_norm01_free_coredev2511_ds512_recovery_20260628_0615_s3`.
+  - Early runtime check: all four shards loaded weights and reached
+    benchmark progress row `1`.
 - Finished:
   - Pending.
 - Metrics:
