@@ -174,6 +174,19 @@ def process_predictions(input_path, output_path):
     return eval_path
 
 
+def _write_failing_ocrbench_official(root):
+    eval_path = root / "ocrbench_v2" / "official_code" / "OCRBench_v2" / "eval_scripts" / "eval.py"
+    eval_path.parent.mkdir(parents=True)
+    eval_path.write_text(
+        """
+def process_predictions(input_path, output_path):
+    raise RuntimeError("official scorer boom")
+""".strip()
+        + "\n"
+    )
+    return eval_path
+
+
 def _write_fake_mmmu_pro_official(root):
     eval_path = root / "mmmu_pro" / "official_code" / "mmmu-pro" / "evaluate.py"
     eval_path.parent.mkdir(parents=True)
@@ -992,6 +1005,59 @@ def test_benchmark_execute_dry_run_uses_ocrbench_official_batch_scorer(tmp_path)
     assert rows[0]["official_tool_used"] is True
     assert rows[0]["official_tool_path"] == str(eval_path)
     assert summary.accuracy == 1.0
+
+
+def test_benchmark_rows_survive_official_scoring_failure(tmp_path) -> None:
+    root = tmp_path / "benchmarks"
+    _write_failing_ocrbench_official(root)
+
+    from revisit_vlm_clean.benchmark_data import BenchmarkSample
+    from revisit_vlm_clean.rendering import render_benchmark_inputs
+    from revisit_vlm_clean.runner import BackendConfig, run_benchmark_rows
+    from revisit_vlm_clean.schema import (
+        EvalMode,
+        ForwardMode,
+        ParserScorerIdentity,
+        RunConfig,
+        ScoringBackend,
+    )
+
+    sample = BenchmarkSample(
+        sample_id="ocrbench_v2/sample/0",
+        benchmark="ocrbench_v2",
+        population_id="ocrbench_v2_data_test_10000",
+        source_file="ocrbench_v2/snapshot/toy.jsonl",
+        question="Read the word.",
+        choices=(),
+        gold_answer="blue",
+        metadata={"type": "text recognition en", "answers": ["blue"]},
+    )
+    config = RunConfig(
+        run_id="ocrbench_scoring_failure",
+        checkpoint_path="outputs/checkpoint.pt",
+        mode=EvalMode.ORIGINAL,
+        post_tgvf_forward_mode=ForwardMode.KV_CACHE,
+        population_id="ocrbench_v2_data_test_10000",
+        benchmark_root=str(root),
+        parser_scorer=ParserScorerIdentity(
+            scoring_backend=ScoringBackend.OFFICIAL,
+            fallback_allowed=False,
+        ),
+    )
+
+    rows, summary = run_benchmark_rows(
+        [sample],
+        render_benchmark_inputs([sample], config),
+        config=config,
+        backend_config=BackendConfig(backend="dry_run"),
+    )
+
+    assert len(rows) == 1
+    assert rows[0]["raw_output"] == "blue"
+    assert rows[0]["scoring_completed"] is False
+    assert "RuntimeError: official scorer boom" in rows[0]["scoring_error"]
+    assert summary.comparable is False
+    assert "scoring_failed" in summary.comparability_note
 
 
 def test_benchmark_execute_dry_run_uses_mmmu_pro_official_batch_scorer(tmp_path) -> None:

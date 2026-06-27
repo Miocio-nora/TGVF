@@ -1,4 +1,5 @@
 import importlib.util
+import json
 import sys
 from pathlib import Path
 
@@ -285,6 +286,44 @@ def test_score_output_rows_ocrbench_v2_official_batch_matches_legacy(tmp_path) -
     assert rows[0]["scorer_name"] == "official_ocrbench_v2"
     assert rows[0]["official_tool_used"] is True
     assert rows[0]["official_tool_path"] == str(eval_path)
+
+
+def test_score_output_rows_ocrbench_v2_text_counting_adds_eval(tmp_path) -> None:
+    eval_path = tmp_path / "ocrbench_v2" / "official_code" / "OCRBench_v2" / "eval_scripts" / "eval.py"
+    eval_path.parent.mkdir(parents=True)
+    eval_path.write_text(
+        """
+import json
+
+
+def process_predictions(input_path, output_path):
+    with open(input_path, encoding="utf-8") as handle:
+        rows = json.load(handle)
+    assert rows[0]["type"] == "text counting en"
+    assert rows[0]["eval"] == "regression"
+    rows[0]["score"] = 1.0
+    with open(output_path, "w", encoding="utf-8") as handle:
+        json.dump(rows, handle)
+""".strip()
+        + "\n"
+    )
+    rows = [
+        {
+            "sample_id": "ocrbench_v2/sample/counting",
+            "benchmark": "ocrbench_v2",
+            "question": "How many words are in the picture?",
+            "raw_output": "<ANSWER>21</ANSWER>",
+            "choices": [],
+            "gold_answer": "21",
+            "metadata": {"type": "text counting en", "answers": ["21"]},
+            "error": None,
+        }
+    ]
+
+    score_output_rows(rows, scoring_backend=ScoringBackend.OFFICIAL, benchmark_root=tmp_path)
+
+    assert rows[0]["score"] == 1.0
+    assert rows[0]["scorer_name"] == "official_ocrbench_v2"
 
 
 def test_score_output_rows_ocrbench_v2_official_requires_local_tool(tmp_path) -> None:

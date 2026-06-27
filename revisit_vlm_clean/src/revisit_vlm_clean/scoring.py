@@ -484,6 +484,8 @@ def _score_ocrbench_v2_rows(rows: list[dict], *, official_eval_path: Path) -> No
             answers=answers,
             predict=row["parsed_answer"],
         )
+        if task_type == "text counting en" and "eval" not in item:
+            item["eval"] = _ocrbench_text_counting_eval_method(answers)
         items.append(item)
         scored_rows.append(row)
 
@@ -499,6 +501,15 @@ def _score_ocrbench_v2_rows(rows: list[dict], *, official_eval_path: Path) -> No
 
     for row, item in zip(scored_rows, scored_items, strict=True):
         row["score"] = float(item.get("score") or 0.0)
+
+
+def _ocrbench_text_counting_eval_method(answers: list[Any]) -> str:
+    for answer in answers:
+        try:
+            int(str(answer).strip())
+        except Exception:
+            return "exact match"
+    return "regression"
 
 
 def _as_list(value: Any) -> list[Any]:

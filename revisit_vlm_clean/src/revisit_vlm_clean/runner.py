@@ -5,10 +5,11 @@ from __future__ import annotations
 import base64
 import io
 import json
+import sys
 import time
 from collections import Counter
 from collections.abc import Iterable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -623,7 +624,9 @@ def run_benchmark_rows(
     rows = []
     resolved_backend = resolve_backend_name(backend_config.backend)
     backend_role = backend_role_identity(backend_config.backend)
-    for sample, rendered in zip(samples, rendered_inputs, strict=True):
+    total = len(samples)
+    progress_every = max(1, min(25, total))
+    for index, (sample, rendered) in enumerate(zip(samples, rendered_inputs, strict=True), start=1):
         result = backend.run(sample, rendered, config)
         deepstack_execution = _row_deepstack_execution(
             config=config,
@@ -694,12 +697,48 @@ def run_benchmark_rows(
                 "error": result.error,
             }
         )
-    score_output_rows(
-        rows,
-        scoring_backend=config.parser_scorer.scoring_backend,
-        benchmark_root=config.benchmark_root,
-    )
+        if index == 1 or index == total or index % progress_every == 0:
+            print(
+                (
+                    "[clean_benchmark_progress] "
+                    f"run_id={config.run_id} shard={config.shard_index}/{config.num_shards} "
+                    f"rows={index}/{total} sample_id={sample.sample_id}"
+                ),
+                file=sys.stderr,
+                flush=True,
+            )
+    scoring_error = None
+    try:
+        score_output_rows(
+            rows,
+            scoring_backend=config.parser_scorer.scoring_backend,
+            benchmark_root=config.benchmark_root,
+        )
+    except Exception as exc:
+        scoring_error = f"{type(exc).__name__}: {exc}"
+        for row in rows:
+            row["scoring_completed"] = False
+            row["scoring_error"] = scoring_error
+        print(
+            (
+                "[clean_benchmark_scoring_error] "
+                f"run_id={config.run_id} shard={config.shard_index}/{config.num_shards} "
+                f"error={scoring_error}"
+            ),
+            file=sys.stderr,
+            flush=True,
+        )
+    else:
+        for row in rows:
+            row["scoring_completed"] = True
+            row["scoring_error"] = None
     summary = summarize_executed_rows(rows, config=config, manifest_hash=config.manifest_hash)
+    if scoring_error is not None:
+        summary = replace(
+            summary,
+            comparable=False,
+            comparability_note=f"scoring_failed: {scoring_error}",
+        )
     return rows, summary
 
 

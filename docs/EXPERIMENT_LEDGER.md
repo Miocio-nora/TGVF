@@ -5897,3 +5897,121 @@ entry, update this file immediately.
   - Yes, intended to be comparable to legacy Stage2 TGVF-module readout and to
     Stage1 source internal diagnostics, but not to the previous LoRA-loaded
     clean Stage2 internal diagnostic except as a semantic ablation.
+
+### EXP-20260628-001951-clean-qwen3-original-coredev2511-baseline-logged-rerun
+
+- Status: FAILED_SCORING_NO_ROWS.
+- Question:
+  - What is the clean original Qwen3-VL baseline on CoreDev-2511 after fixing
+    the previous no-output benchmark launch by rerunning with persistent
+    per-shard logs and exit-code files?
+- Baseline anchor:
+  - Replaces invalid no-output run:
+    `EXP-20260627-230746-clean-qwen3-original-coredev2511-baseline`.
+- Intended diff:
+  - Same benchmark identity as the invalid run.
+  - Add persistent per-shard `shard_<i>.log` and `exit_code.txt`.
+  - Do not change model, processor, sample set, parser/scorer, mode, max
+    resolution, or runner backend.
+- Diagnostic precheck:
+  - A one-sample side smoke from the same manifest succeeded and wrote
+    `rows.jsonl`, `summary.json`, and `run_config.txt` under
+    `outputs/clean_benchmarks/debug_one_sample_coredev_20260628_0013/run_registered`.
+  - The first failed one-sample attempt used an unregistered debug subset id and
+    failed before model loading; it is unrelated to the original benchmark
+    failure.
+- Code commit / worktree:
+  - `253edac8645dcf2cded44614b41ab8cae0d79bc1`.
+  - Dirty worktree before launch: true only because this ledger entry is being
+    added.
+- Model / processor:
+  - `/nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking`.
+- Checkpoint path:
+  - `/nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking`.
+- Benchmark:
+  - Subset id: `core_balanced_dev_2511_seed20260625`.
+  - Human label: `CoreDev-2511`.
+  - Manifest:
+    `revisit_vlm_clean/benchmark_manifests/core_balanced_dev_2511_seed20260625.json`.
+  - Manifest file sha256:
+    `3a013b2bcc64316054d28239a3cea3f44211cadbfe19787be3b7f285620fa5c1`.
+  - Manifest internal hash:
+    `a461d9b482b7165b42b9bbb0fbf0ea6aff31fde0a838c13d953f070e770b0579`.
+  - Benchmark root:
+    `/home/dredvpn009/Flash_Storage/datasets/benchmarks`.
+  - Sample count: `2511`.
+  - Allocation:
+    `vstar_bench=191`, `blink=420`, `hr_bench_4k=200`,
+    `mmmu_pro=300`, `mathvista=300`, `mathverse=500`,
+    `ocrbench_v2=600`.
+- Output:
+  - `outputs/clean_benchmarks/qwen3_original_coredev2511_4shard_logged_20260628_001951`.
+- Evaluation identity:
+  - Eval family: `project_native_external`.
+  - Mode: `original`.
+  - Runner backend: `qwen3_original`.
+  - Post-TGVF continuation: `natural_continue`.
+  - Post-TGVF forward mode: `kv_cache` (schema-required, not used by original
+    backend).
+  - DeepStack: disabled/noop for original backend.
+  - Parser/scorer: `revisit_vlm_clean.scoring.parse_and_score:v3_external`,
+    scoring backend `auto`.
+  - Max image resolution: `512`.
+  - Max answer tokens: `128`.
+- Script / command:
+  - Four shard commands, one per GPU `0,1,2,3`, each with
+    `CUDA_VISIBLE_DEVICES=<gpu>`, `--device cuda:0`, `--device-map cuda:0`,
+    `--num-shards 4`, and one `--shard-index`.
+  - Each shard writes under `shards/shard_<i>` and logs to
+    `logs/shard_<i>.log`.
+  - Each shard writes process status to `logs/shard_<i>.exit_code.txt`.
+  - Merge command after completion:
+    `PYTHONPATH=revisit_vlm_clean/src:src python -m revisit_vlm_clean.cli.merge_benchmark --output-dir outputs/clean_benchmarks/qwen3_original_coredev2511_4shard_logged_20260628_001951/merged --run-id clean_qwen3_original_coredev2511_4shard_logged_20260628_001951 --expected-num-shards 4 --expected-source-manifest-hash a461d9b482b7165b42b9bbb0fbf0ea6aff31fde0a838c13d953f070e770b0579 outputs/clean_benchmarks/qwen3_original_coredev2511_4shard_logged_20260628_001951/shards/shard_0 outputs/clean_benchmarks/qwen3_original_coredev2511_4shard_logged_20260628_001951/shards/shard_1 outputs/clean_benchmarks/qwen3_original_coredev2511_4shard_logged_20260628_001951/shards/shard_2 outputs/clean_benchmarks/qwen3_original_coredev2511_4shard_logged_20260628_001951/shards/shard_3`.
+- GPUs:
+  - Planned: `0,1,2,3`, one shard per GPU.
+- tmux:
+  - `clean_qwen3_original_coredev2511_logged_20260628_001951_s0`.
+  - `clean_qwen3_original_coredev2511_logged_20260628_001951_s1`.
+  - `clean_qwen3_original_coredev2511_logged_20260628_001951_s2`.
+  - `clean_qwen3_original_coredev2511_logged_20260628_001951_s3`.
+- Started:
+  - 2026-06-28T00:19:51+09:00.
+- Finished:
+  - 2026-06-28T01:00:26+09:00.
+- Metrics:
+  - No valid shard rows were written.
+  - All four shard processes exited with code `1`.
+  - Logs were preserved:
+    - `logs/shard_0.log`.
+    - `logs/shard_1.log`.
+    - `logs/shard_2.log`.
+    - `logs/shard_3.log`.
+  - Each shard completed model inference and reached OCRBench-v2 official
+    scoring before failing.
+- Analysis:
+  - The prior no-output benchmark failure was reproduced with persistent logs.
+  - Root cause was not model loading or generation. The crash happened after
+    inference, inside OCRBench-v2 official scoring.
+  - Shards `0`, `1`, and `3` failed because NLTK `wordnet` was missing for
+    OCRBench-v2 METEOR computation.
+  - Shard `2` additionally exposed a clean adapter bug: OCRBench-v2 parquet
+    rows do not contain an `eval` column, but the official script requires
+    `data_item["eval"]` for `type == "text counting en"`.
+  - The clean runner also had a robustness bug: it only wrote benchmark rows
+    after scoring, so a scoring exception discarded all generated rows.
+  - Fixes implemented after this failed run:
+    - Downloaded NLTK `wordnet` and `omw-1.4` into
+      `/home/dredvpn009/nltk_data`.
+    - Added clean OCRBench-v2 `text counting en` eval-method inference:
+      numeric-only answers use `regression`; mixed textual answers use
+      `exact match`.
+    - Added benchmark runner progress logging.
+    - Added scoring-exception fallback so generated rows survive as
+      non-comparable outputs if scoring fails.
+    - Added targeted tests for OCRBench-v2 text counting and scoring failure
+      row preservation.
+- Conclusion:
+  - Invalid run; excluded from comparison.
+  - A corrected rerun is required from the fixed code commit.
+- Comparable to baseline:
+  - No. It produced no shard rows and is retained only as a failure diagnosis.
