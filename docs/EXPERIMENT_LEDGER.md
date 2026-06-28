@@ -8805,7 +8805,7 @@ entry, update this file immediately.
 
 ### EXP-20260628-224500-stage3-formal-all5-g16-res768-200step
 
-- Status: PLANNED.
+- Status: SIDE_RESULT_STOPPED_FOR_WANDB_ONLINE_RESTART.
 - Question:
   - Relaunch formal Stage3 all-5 GRPO from the clean Stage2 checkpoint using the
     high-VRAM calibrated `G=16`, `res=768` profile.
@@ -8852,3 +8852,70 @@ entry, update this file immediately.
   - This satisfies the requested high-VRAM profile; rollout-only phases still
     drop to about 23GB because rollout generation is serial, while train/replay
     reaches the intended 120GB range.
+- Stop / side-result update:
+  - Stopped after user requested cloud W&B upload for the formal run.
+  - Completed steps before stop: 1-19.
+  - Current checkpoint at stop:
+    `outputs/stage3_grpo/formal_all5_hint_4gpu_g16_res768_200step_20260628/step_000019/checkpoint_step_1.pt`.
+  - State file status:
+    `stopped_for_wandb_online_restart`.
+  - Reason this is a side result:
+    W&B mode was `offline`; it does not satisfy the formal logging requirement.
+
+### EXP-20260629-000300-stage3-formal-all5-g16-res768-200step-wandb-online
+
+- Status: BLOCKED_WAITING_WANDB_AUTH.
+- Question:
+  - Relaunch the formal Stage3 all-5 GRPO 200-step run with W&B cloud upload
+    enabled, while keeping checkpoint artifacts disabled.
+- Repository / code identity:
+  - Git commit: `76378830e48ba6208fda95666ce273bf5b55d137`.
+  - Worktree at plan time: clean.
+- Source checkpoint:
+  - `outputs/clean_training/qwen3_stage2_norm01_stage1_mask075_deepstack_4gpu_20260627_163250/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt`.
+  - SHA256: `50245a11c27ad9755eb815b5f008af50a659fa07a4043f0f9427f5bbea3c0236`.
+- Train data:
+  - `revisit_vlm_clean/data/stage3_rl/v1_direct_20k_20260627_032447/accepted_rl_prompts.jsonl`.
+  - Rows: 20,000.
+  - SHA256: `2e39a1dadcc020001bd3d763635f461d2b7dc6d94bfb3cfecdb9bb20240fa758`.
+- Planned output:
+  - `outputs/stage3_grpo/formal_all5_hint_4gpu_g16_res768_200step_wandb_online_20260629`.
+- Plan / preflight:
+  - Plan:
+    `outputs/stage3_grpo/formal_all5_hint_4gpu_g16_res768_200step_wandb_online_20260629/step_000001/stage3_grpo_training_plan.json`.
+  - Preflight:
+    `outputs/stage3_grpo/formal_all5_hint_4gpu_g16_res768_200step_wandb_online_20260629/step_000001/stage3_grpo_preflight_report.json`.
+  - Preflight status: `passed`.
+- Sample schedule:
+  - `outputs/stage3_grpo/formal_all5_hint_4gpu_g16_res768_200step_wandb_online_20260629/stage3_grpo_sample_schedule.jsonl`.
+  - Rows: 800 = 200 steps x 4 ranks x 1 prompt.
+  - SHA256: `27cbfd4f44715b3f33aeff981327596e22ec9410528e60c0545e99f8d2a7c474`.
+  - Duplicate sample ids: 0.
+  - Duplicate image uids: 0.
+  - Source distribution:
+    chartqa 85, docvqa 153, textvqa 237, visual_genome 325.
+  - Tool bucket distribution:
+    tool_helpful 387, tool_unnecessary 248, uncertain 165.
+- Runtime config:
+  - GPUs: physical 0-3 via `CUDA_VISIBLE_DEVICES=0,1,2,3`.
+  - World size: 4.
+  - Per-device prompt batch size: 1.
+  - Group size: 16.
+  - Global rollouts per step: 64.
+  - `max_image_resolution=768`, `max_new_tokens=256`,
+    `max_action_tokens=128`, `max_answer_tokens=160`.
+  - Reward: answer/tool/focus/ground/protocol all enabled.
+  - Tool decision reward uses teacher hint labels; probe cache is not required
+    for this launch.
+  - Judge mode: `cache_only`; judge cache misses receive configured cache-miss
+    reward and are logged for offline judging.
+- W&B:
+  - Project: `tgvf-stage3`.
+  - Mode: `online`.
+  - Group: `formal_all5_g16_res768_200step_online`.
+  - `log_artifacts=true`.
+  - `log_checkpoint_artifact=false`.
+  - Launch gate currently failed because `wandb status` reports
+    `api_key=null` and the shell has no `WANDB_API_KEY`.
+- Planned command after W&B auth is available:
+  - `CUDA_VISIBLE_DEVICES=0,1,2,3 PYTHONPATH=revisit_vlm_clean/src python -u -m revisit_vlm_clean.cli.stage3_grpo_stepwise --template-plan outputs/stage3_grpo/formal_all5_hint_4gpu_g16_res768_200step_wandb_online_20260629/step_000001/stage3_grpo_training_plan.json --output-root outputs/stage3_grpo/formal_all5_hint_4gpu_g16_res768_200step_wandb_online_20260629 --state-path outputs/stage3_grpo/formal_all5_hint_4gpu_g16_res768_200step_wandb_online_20260629/stage3_grpo_stepwise_state.json --target-step 200 --max-new-steps 200 --judge-devices cuda:0,cuda:1,cuda:2,cuda:3 --judge-max-image-resolution 768 --execute`.
