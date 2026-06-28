@@ -10,7 +10,7 @@ from typing import Any
 from revisit_vlm_clean.cli.common import exit_not_implemented, print_json
 from revisit_vlm_clean.data_generation import file_identity
 from revisit_vlm_clean.defaults import DEFAULT_MAX_IMAGE_RESOLUTION, DEFAULT_MODEL_ID, DEFAULT_PROTOCOL
-from revisit_vlm_clean.stage3_grpo.data import dataset_identity
+from revisit_vlm_clean.stage3_grpo.data import dataset_identity, load_stage3_samples, sample_schedule_identity
 from revisit_vlm_clean.stage3_grpo.schemas import (
     JudgeConfig,
     ProbeConfig,
@@ -38,6 +38,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--rl-data-path", default=DEFAULT_STAGE3_RL_DATA_PATH)
     parser.add_argument("--output-dir")
     parser.add_argument("--policy-checkpoint")
+    parser.add_argument("--sample-schedule-path", default=None)
+    parser.add_argument("--sample-schedule-start-step", type=int, default=1)
     parser.add_argument("--model-id", default=DEFAULT_MODEL_ID)
     parser.add_argument("--processor-id", default=None)
     parser.add_argument("--protocol", choices=SUPPORTED_PROTOCOLS, default=DEFAULT_PROTOCOL)
@@ -170,6 +172,17 @@ def build_stage3_grpo_training_plan(
     checkpoint_identity = file_identity(config.policy_checkpoint).to_dict()
     if not checkpoint_identity["exists"]:
         raise FileNotFoundError(f"policy_checkpoint does not exist: {config.policy_checkpoint}")
+    schedule_identity = None
+    if config.sample_schedule_path:
+        schedule_identity = sample_schedule_identity(
+            config.sample_schedule_path,
+            samples=load_stage3_samples(config.rl_data_path),
+        )
+        if schedule_identity["missing_sample_ids"]:
+            raise ValueError(
+                "sample schedule references missing sample ids: "
+                + ",".join(schedule_identity["missing_sample_ids"][:5])
+            )
     processor_identity = _optional_path_identity(config.processor_id)
     return {
         "schema_version": STAGE3_GRPO_PLAN_SCHEMA_VERSION,
@@ -178,6 +191,7 @@ def build_stage3_grpo_training_plan(
         "dirty_worktree": dirty_worktree,
         "config": config.to_dict(),
         "dataset_identity": data_identity,
+        "sample_schedule_identity": schedule_identity,
         "policy_checkpoint_identity": checkpoint_identity,
         "processor_identity": processor_identity,
         "summary": {
@@ -204,6 +218,8 @@ def build_stage3_grpo_training_plan(
             "will_launch_training": False,
             "plan_only": True,
             "wandb_enabled": bool(config.wandb.project and config.wandb.mode != "disabled"),
+            "sample_schedule_rows": None if schedule_identity is None else schedule_identity["rows"],
+            "sample_schedule_start_step": config.sample_schedule_start_step,
         },
     }
 
@@ -255,6 +271,8 @@ def _config_from_args(args: argparse.Namespace) -> Stage3GRPOConfig:
         rl_data_path=args.rl_data_path,
         output_dir=args.output_dir,
         policy_checkpoint=args.policy_checkpoint,
+        sample_schedule_path=args.sample_schedule_path,
+        sample_schedule_start_step=args.sample_schedule_start_step,
         model_id=args.model_id,
         processor_id=args.processor_id,
         protocol=args.protocol,
@@ -362,6 +380,8 @@ def _plan_text(plan: dict[str, Any]) -> str:
         f"rl_data_path: {config['rl_data_path']}",
         f"rl_sample_count: {summary['rl_sample_count']}",
         f"policy_checkpoint: {config['policy_checkpoint']}",
+        f"sample_schedule_path: {config.get('sample_schedule_path')}",
+        f"sample_schedule_start_step: {config.get('sample_schedule_start_step')}",
         f"model_id: {config['model_id']}",
         f"processor_id: {config.get('processor_id')}",
         f"protocol: {config['protocol']}",

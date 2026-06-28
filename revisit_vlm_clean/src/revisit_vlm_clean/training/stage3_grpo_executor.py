@@ -15,7 +15,12 @@ from typing import Any
 
 from revisit_vlm_clean.cli.common import exit_not_implemented, print_json
 from revisit_vlm_clean.data_generation import file_identity
-from revisit_vlm_clean.stage3_grpo.data import dataset_identity, load_stage3_samples, write_jsonl
+from revisit_vlm_clean.stage3_grpo.data import (
+    dataset_identity,
+    load_stage3_samples,
+    sample_schedule_identity,
+    write_jsonl,
+)
 from revisit_vlm_clean.stage3_grpo.probe import ProbeCache
 from revisit_vlm_clean.stage3_grpo.reward import answer_is_correct
 from revisit_vlm_clean.stage3_grpo.rollout import build_rollout_engine
@@ -146,6 +151,29 @@ def preflight_stage3_grpo_plan(
     warnings.extend(judge_cache_status.get("warnings") or [])
     if config.judge.enabled and config.judge.mode == "cache_only":
         warnings.append("judge cache misses will be logged and receive configured cache-miss reward")
+    schedule_status = None
+    if config.sample_schedule_path:
+        if not Path(config.sample_schedule_path).exists():
+            errors.append(f"sample_schedule_path does not exist: {config.sample_schedule_path}")
+        elif data_id is not None:
+            samples = load_stage3_samples(config.rl_data_path)
+            schedule_status = sample_schedule_identity(
+                config.sample_schedule_path,
+                samples=samples,
+            )
+            if schedule_status["missing_sample_ids"]:
+                errors.append(
+                    "sample schedule references missing sample ids: "
+                    + ",".join(schedule_status["missing_sample_ids"][:5])
+                )
+            if int(schedule_status["duplicate_sample_ids"]) > 0:
+                warnings.append(
+                    f"sample schedule has duplicate sample ids: {schedule_status['duplicate_sample_ids']}"
+                )
+            if int(schedule_status["duplicate_image_uids"]) > 0:
+                warnings.append(
+                    f"sample schedule has duplicate image uids: {schedule_status['duplicate_image_uids']}"
+                )
     return {
         "schema_version": "stage3_grpo_preflight_report_v0",
         "created_at": now_iso(),
@@ -174,6 +202,7 @@ def preflight_stage3_grpo_plan(
         "judge": config.judge.to_dict(),
         "judge_cache_status": judge_cache_status,
         "probe": config.probe.to_dict(),
+        "sample_schedule": schedule_status,
     }
 
 
@@ -284,7 +313,7 @@ def precompute_forced_probes(
 
 def run_rollout_only(config: Stage3GRPOConfig) -> dict[str, Any]:
     trainer = Stage3GRPOTrainer(config)
-    rollouts = trainer.rollout_batch()
+    rollouts = trainer.rollout_batch(global_step=1, accumulation_index=0)
     rewarded, rewards = trainer.reward_rollouts(rollouts)
     out = Path(config.output_dir)
     out.mkdir(parents=True, exist_ok=True)

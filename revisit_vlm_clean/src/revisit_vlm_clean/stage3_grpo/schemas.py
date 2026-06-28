@@ -200,6 +200,8 @@ class Stage3GRPOConfig:
     rl_data_path: str
     output_dir: str
     policy_checkpoint: str
+    sample_schedule_path: str | None = None
+    sample_schedule_start_step: int = 1
     model_id: str = "Qwen/Qwen3-VL-8B-Thinking"
     processor_id: str | None = None
     protocol: str = "protocol_c_tool_observation"
@@ -225,6 +227,8 @@ class Stage3GRPOConfig:
             raise ValueError("output_dir is required")
         if not self.policy_checkpoint:
             raise ValueError("policy_checkpoint is required")
+        if int(self.sample_schedule_start_step) < 1:
+            raise ValueError("sample_schedule_start_step must be >= 1")
         if int(self.max_image_resolution) < 1:
             raise ValueError("max_image_resolution must be >= 1")
         self.rollout.validate()

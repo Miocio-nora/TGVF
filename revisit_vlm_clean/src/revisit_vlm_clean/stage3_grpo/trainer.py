@@ -13,14 +13,14 @@ from typing import Any
 
 from revisit_vlm_clean.data_generation import file_identity
 
-from .data import BalancedPromptSampler, load_stage3_samples, write_jsonl
+from .data import BalancedPromptSampler, load_stage3_sample_schedule, load_stage3_samples, write_jsonl
 from .data import dataset_identity
 from .grpo import attach_group_advantages, grpo_loss_from_tensors, rollout_logprob_tensors
 from .judge import JudgeBundle
 from .probe import ProbeCache
 from .reward import score_rollout_reward
 from .rollout import build_rollout_engine
-from .schemas import RolloutRecord, Stage3GRPOConfig, now_iso, write_json
+from .schemas import RolloutRecord, Stage3GRPOConfig, Stage3Sample, now_iso, write_json
 
 
 class Stage3GRPOTrainer:
@@ -35,6 +35,12 @@ class Stage3GRPOTrainer:
             else self.output_dir / f"rank_{self.distributed['rank']}"
         )
         self.samples = load_stage3_samples(self.config.rl_data_path)
+        self.sample_by_id = {sample.sample_id: sample for sample in self.samples}
+        self.sample_schedule = (
+            load_stage3_sample_schedule(self.config.sample_schedule_path)
+            if self.config.sample_schedule_path
+            else None
+        )
         _seed_stage3_runtime(
             int(self.config.train.seed) + int(self.distributed["rank"]) * 100003
         )
@@ -48,20 +54,73 @@ class Stage3GRPOTrainer:
         self.progress_path = self.rank_output_dir / "progress.jsonl"
         self._wandb_logger = None
 
-    def rollout_batch(self, *, prompt_batch_size: int | None = None) -> list[RolloutRecord]:
-        prompts = self.sampler.next_batch(prompt_batch_size or self.config.train.per_device_prompt_batch_size)
+    def rollout_batch(
+        self,
+        *,
+        prompt_batch_size: int | None = None,
+        global_step: int | None = None,
+        accumulation_index: int = 0,
+    ) -> list[RolloutRecord]:
+        prompts, schedule_by_sample_id = self._scheduled_prompts(
+            prompt_batch_size=prompt_batch_size,
+            global_step=global_step,
+            accumulation_index=accumulation_index,
+        )
         rollouts: list[RolloutRecord] = []
         for sample in prompts:
             for rollout_id in range(self.config.rollout.group_size):
-                rollouts.append(self.engine.free_rollout(sample, rollout_id=rollout_id))
+                rollout = self.engine.free_rollout(sample, rollout_id=rollout_id)
+                schedule_row = schedule_by_sample_id.get(sample.sample_id)
+                if schedule_row:
+                    runtime = dict(rollout.runtime or {})
+                    runtime["sample_schedule"] = dict(schedule_row)
+                    rollouts.append(RolloutRecord(**{**rollout.to_dict(), "runtime": runtime}))
+                else:
+                    rollouts.append(rollout)
         return rollouts
 
+    def _scheduled_prompts(
+        self,
+        *,
+        prompt_batch_size: int | None,
+        global_step: int | None,
+        accumulation_index: int,
+    ) -> tuple[list[Stage3Sample], dict[str, dict[str, Any]]]:
+        expected_batch_size = int(prompt_batch_size or self.config.train.per_device_prompt_batch_size)
+        if not self.sample_schedule:
+            return self.sampler.next_batch(expected_batch_size), {}
+        schedule_step = int(self.config.sample_schedule_start_step) + int(global_step or 1) - 1
+        rank = int(self.distributed["rank"])
+        rows = [
+            row
+            for row in self.sample_schedule
+            if int(row["global_step"]) == schedule_step
+            and int(row["rank"]) == rank
+            and int(row.get("accumulation_index", 0)) == int(accumulation_index)
+        ]
+        rows = sorted(rows, key=lambda row: int(row.get("prompt_index", 0)))
+        if len(rows) != expected_batch_size:
+            raise ValueError(
+                "sample schedule batch size mismatch: "
+                f"step={schedule_step} rank={rank} accumulation={accumulation_index} "
+                f"expected={expected_batch_size} found={len(rows)}"
+            )
+        prompts: list[Stage3Sample] = []
+        schedule_by_sample_id: dict[str, dict[str, Any]] = {}
+        for row in rows:
+            sample_id = str(row["sample_id"])
+            sample = self.sample_by_id.get(sample_id)
+            if sample is None:
+                raise ValueError(f"sample schedule references unknown sample_id: {sample_id}")
+            prompts.append(sample)
+            schedule_by_sample_id[sample_id] = dict(row)
+        return prompts, schedule_by_sample_id
+
     def reward_rollouts(self, rollouts: list[RolloutRecord]) -> tuple[list[RolloutRecord], list[dict[str, Any]]]:
-        sample_by_id = {sample.sample_id: sample for sample in self.samples}
         rewarded: list[RolloutRecord] = []
         rewards: list[dict[str, Any]] = []
         for rollout in rollouts:
-            sample = sample_by_id[rollout.sample_id]
+            sample = self.sample_by_id[rollout.sample_id]
             breakdown = score_rollout_reward(
                 sample=sample,
                 rollout=rollout,
@@ -139,7 +198,7 @@ class Stage3GRPOTrainer:
         if self.config.rollout.runtime_backend != "native_single_focus":
             raise ValueError("native readiness is only for runtime_backend=native_single_focus")
         self.output_dir.mkdir(parents=True, exist_ok=True)
-        rollouts = self.rollout_batch()
+        rollouts = self.rollout_batch(global_step=1, accumulation_index=0)
         rewarded, rewards = self.reward_rollouts(rollouts)
         write_jsonl(self.output_dir / "rollout_debug.jsonl", [item.to_dict() for item in rewarded])
         write_jsonl(self.output_dir / "reward_breakdown.jsonl", rewards)
@@ -310,7 +369,10 @@ class Stage3GRPOTrainer:
         all_rollouts: list[RolloutRecord] = []
         all_rewards: list[dict[str, Any]] = []
         for accumulation_index in range(int(self.config.train.gradient_accumulation_steps)):
-            rollouts = self.rollout_batch()
+            rollouts = self.rollout_batch(
+                global_step=global_step,
+                accumulation_index=accumulation_index,
+            )
             rewarded, rewards = self.reward_rollouts(rollouts)
             rollout_id_map = {
                 (item.sample_id, item.rollout_id): (

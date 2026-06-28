@@ -12,6 +12,8 @@ from revisit_vlm_clean.data_generation import file_identity
 
 from .schemas import Stage3Sample
 
+STAGE3_GRPO_SAMPLE_SCHEDULE_SCHEMA_VERSION = "stage3_grpo_sample_schedule_v0"
+
 
 def read_jsonl(path: str | Path) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
@@ -79,6 +81,81 @@ def dataset_identity(path: str | Path, *, max_rows: int = 5) -> dict[str, Any]:
             for sample in samples[:max_rows]
         ],
     }
+
+
+def load_stage3_sample_schedule(path: str | Path) -> list[dict[str, Any]]:
+    rows = read_jsonl(path)
+    normalized: list[dict[str, Any]] = []
+    seen_slots: set[tuple[int, int, int, int]] = set()
+    for index, row in enumerate(rows):
+        sample_id = str(row.get("sample_id") or "")
+        if not sample_id:
+            raise ValueError(f"sample schedule row {index} missing sample_id")
+        try:
+            global_step = int(row.get("global_step"))
+            rank = int(row.get("rank"))
+            accumulation_index = int(row.get("accumulation_index", 0))
+            prompt_index = int(row.get("prompt_index", 0))
+        except Exception as exc:
+            raise ValueError(f"sample schedule row {index} has invalid integer fields") from exc
+        if global_step < 1:
+            raise ValueError(f"sample schedule row {index} global_step must be >= 1")
+        if rank < 0 or accumulation_index < 0 or prompt_index < 0:
+            raise ValueError(f"sample schedule row {index} rank/accumulation/prompt must be >= 0")
+        slot = (global_step, rank, accumulation_index, prompt_index)
+        if slot in seen_slots:
+            raise ValueError(f"sample schedule has duplicate slot: {slot}")
+        seen_slots.add(slot)
+        normalized.append(
+            {
+                **row,
+                "schema_version": str(
+                    row.get("schema_version") or STAGE3_GRPO_SAMPLE_SCHEDULE_SCHEMA_VERSION
+                ),
+                "global_step": global_step,
+                "rank": rank,
+                "accumulation_index": accumulation_index,
+                "prompt_index": prompt_index,
+                "sample_id": sample_id,
+            }
+        )
+    return normalized
+
+
+def sample_schedule_identity(
+    path: str | Path,
+    *,
+    samples: list[Stage3Sample] | None = None,
+    max_rows: int = 5,
+) -> dict[str, Any]:
+    rows = load_stage3_sample_schedule(path)
+    sample_ids = [str(row["sample_id"]) for row in rows]
+    image_uids = [str(row.get("stable_image_uid") or "") for row in rows if row.get("stable_image_uid")]
+    known_sample_ids = {sample.sample_id for sample in samples or []}
+    missing_sample_ids = (
+        sorted(set(sample_ids) - known_sample_ids)[:20]
+        if samples is not None
+        else []
+    )
+    return {
+        "path": str(path),
+        "file": file_identity(path).to_dict(),
+        "rows": len(rows),
+        "step_count": len({int(row["global_step"]) for row in rows}),
+        "rank_count": len({int(row["rank"]) for row in rows}),
+        "duplicate_sample_ids": _duplicate_count(sample_ids),
+        "duplicate_image_uids": _duplicate_count(image_uids),
+        "missing_sample_ids": missing_sample_ids,
+        "source_dataset": dict(Counter(str(row.get("source_dataset") or "unknown") for row in rows)),
+        "tool_bucket": dict(Counter(str(row.get("tool_bucket") or "unknown") for row in rows)),
+        "tool_need_hint": dict(Counter(str(row.get("tool_need_hint") or "unknown") for row in rows)),
+        "examples": rows[:max_rows],
+    }
+
+
+def _duplicate_count(values: list[str]) -> int:
+    counts = Counter(value for value in values if value)
+    return sum(count - 1 for count in counts.values() if count > 1)
 
 
 class BalancedPromptSampler:

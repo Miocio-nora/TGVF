@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 from revisit_vlm_clean.cli.train_stage3_grpo import main as plan_main
+from revisit_vlm_clean.cli.stage3_grpo_schedule import main as schedule_main
 from revisit_vlm_clean.cli.stage3_grpo_judge import main as judge_main
 from revisit_vlm_clean.cli.stage3_grpo_prepare_judge_models import main as prepare_judge_main
 from revisit_vlm_clean.stage3_grpo.data import BalancedPromptSampler, load_stage3_samples
@@ -596,6 +597,91 @@ def test_stage3_cli_plan_records_wandb_config(tmp_path: Path) -> None:
     text = (output_dir / "stage3_grpo_training_plan.txt").read_text(encoding="utf-8")
     assert "wandb_project: tgvf-stage3" in text
     assert "wandb_mode: disabled" in text
+
+
+def test_stage3_sample_schedule_controls_rollout_prompts(tmp_path: Path) -> None:
+    data = _write_rl_fixture(tmp_path)
+    schedule_dir = tmp_path / "schedule"
+    assert (
+        schedule_main(
+            [
+                "--write-schedule",
+                "--run-id",
+                "stage3_schedule_unit",
+                "--rl-data-path",
+                str(data),
+                "--output-dir",
+                str(schedule_dir),
+                "--steps",
+                "2",
+                "--world-size",
+                "1",
+                "--per-device-prompt-batch-size",
+                "1",
+                "--gradient-accumulation-steps",
+                "1",
+                "--seed",
+                "11",
+            ]
+        )
+        == 0
+    )
+    schedule_path = schedule_dir / "stage3_grpo_sample_schedule.jsonl"
+    rows = [
+        json.loads(line)
+        for line in schedule_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    assert len(rows) == 2
+    assert len({row["sample_id"] for row in rows}) == 2
+    assert len({row["stable_image_uid"] for row in rows}) == 2
+
+    checkpoint = tmp_path / "stage2_checkpoint.pt"
+    checkpoint.write_text("fake checkpoint", encoding="utf-8")
+    output_dir = tmp_path / "stage3_grpo_scheduled"
+    assert (
+        plan_main(
+            [
+                "--write-plan",
+                "--run-id",
+                "stage3_grpo_scheduled",
+                "--rl-data-path",
+                str(data),
+                "--policy-checkpoint",
+                str(checkpoint),
+                "--output-dir",
+                str(output_dir),
+                "--sample-schedule-path",
+                str(schedule_path),
+                "--sample-schedule-start-step",
+                "2",
+                "--runtime-backend",
+                "fake",
+                "--group-size",
+                "2",
+                "--per-device-prompt-batch-size",
+                "1",
+                "--max-steps",
+                "1",
+                "--no-judge-enabled",
+            ]
+        )
+        == 0
+    )
+    plan = json.loads((output_dir / "stage3_grpo_training_plan.json").read_text(encoding="utf-8"))
+    assert plan["sample_schedule_identity"]["rows"] == 2
+    assert plan["summary"]["sample_schedule_start_step"] == 2
+    assert executor_main(["--plan", str(output_dir / "stage3_grpo_training_plan.json"), "--rollout-only"]) == 0
+    rollout_rows = [
+        json.loads(line)
+        for line in (output_dir / "rollout_debug.jsonl").read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    assert {row["sample_id"] for row in rollout_rows} == {rows[1]["sample_id"]}
+    assert all(
+        row["runtime"]["sample_schedule"]["global_step"] == 2
+        for row in rollout_rows
+    )
 
 
 def test_stage3_native_rollout_backend_constructs_without_loading(tmp_path: Path) -> None:

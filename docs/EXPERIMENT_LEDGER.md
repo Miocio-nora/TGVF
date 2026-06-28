@@ -8684,3 +8684,68 @@ entry, update this file immediately.
     committing to 500-1000 steps.
   - Add or run a stepwise launcher that updates policy checkpoint and seed after
     each one-step update.
+
+### EXP-20260628-213900-stage3-formal-all5-hint-200step
+
+- Status: RUNNING.
+- Question:
+  - Run the first formal Stage3 all-5 GRPO training for 200 optimizer steps with
+    resume-safe, non-repeating RL prompts.
+- Baseline anchor:
+  - `EXP-20260628-205812-stage3-formal-all5-hint-stepwise`.
+- Intended diff:
+  - Add a deterministic global sample schedule and stepwise runner.
+  - Bind 200 steps x 4 ranks x 1 prompt/rank = 800 unique training prompts.
+  - Require no repeated `sample_id` and no repeated `stable_image_uid` within
+    this 200-step schedule.
+  - Run each step as rollout-only -> 32B judge cache fill -> one 4GPU GRPO
+    update -> state/checkpoint update.
+- Code commit / worktree:
+  - Base commit before local launch changes: `ca79aed`.
+  - Launch uses the committed Stage3 schedule/stepwise-runner code from this
+    ledger update; the regenerated step plan records the exact git commit.
+- Source checkpoint:
+  - `outputs/clean_training/qwen3_stage2_norm01_stage1_mask075_deepstack_4gpu_20260627_163250/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt`.
+  - SHA256: `50245a11c27ad9755eb815b5f008af50a659fa07a4043f0f9427f5bbea3c0236`.
+- Train data:
+  - `revisit_vlm_clean/data/stage3_rl/v1_direct_20k_20260627_032447/accepted_rl_prompts.jsonl`.
+  - Rows: 20,000.
+  - SHA256: `2e39a1dadcc020001bd3d763635f461d2b7dc6d94bfb3cfecdb9bb20240fa758`.
+- Sample schedule:
+  - `outputs/stage3_grpo/formal_all5_hint_4gpu_g8pb1_200step_20260628/stage3_grpo_sample_schedule.jsonl`.
+  - Rows: 800.
+  - SHA256: `603a0e2900185a054b910121c595447a9bf56c393f0bcedc5dced72f944de89c`.
+  - Duplicate sample ids: 0.
+  - Duplicate image uids: 0.
+  - Tool buckets: `tool_helpful=392`, `tool_unnecessary=256`,
+    `uncertain=152`.
+- Stepwise state:
+  - `outputs/stage3_grpo/formal_all5_hint_4gpu_g8pb1_200step_20260628/stage3_grpo_stepwise_state.json`.
+  - Resume rule: use `current_checkpoint` and `next_step`; failed steps rerun
+    the same scheduled sample ids and do not advance state.
+- Reward / rollout:
+  - Group size: 8.
+  - Global prompts per step: 4.
+  - Global rollouts per step: 32.
+  - `max_tool_calls=1`.
+  - Reward weights: answer=2.0, tool=1.0, focus=1.0, ground=1.0,
+    protocol gate=-1.0.
+  - Probe labels: forced probes disabled for this run; use teacher hint with
+    `hint_label_weight=1.0`.
+  - Judge: local Qwen3-VL-32B-Thinking, no-thinking JSON mode, 4 shards on
+    GPUs 0,1,2,3.
+- W&B:
+  - Project: `tgvf-stage3`.
+  - Mode: offline.
+  - Group: `formal_all5_hint_200step`.
+  - Checkpoint artifact upload: disabled by default due checkpoint size.
+- Planned command:
+  - `PYTHONPATH=revisit_vlm_clean/src python -m revisit_vlm_clean.cli.stage3_grpo_stepwise --template-plan outputs/stage3_grpo/formal_all5_hint_4gpu_g8pb1_200step_20260628/step_000001/stage3_grpo_training_plan.json --output-root outputs/stage3_grpo/formal_all5_hint_4gpu_g8pb1_200step_20260628 --state-path outputs/stage3_grpo/formal_all5_hint_4gpu_g8pb1_200step_20260628/stage3_grpo_stepwise_state.json --target-step 200 --max-new-steps 200 --judge-devices cuda:0,cuda:1,cuda:2,cuda:3 --execute`
+- Started:
+  - 2026-06-28 JST, pending background launch after ledger update.
+- Finished:
+  - Pending.
+- Metrics:
+  - Preflight status: passed.
+  - Expected runtime from current pilot: roughly 20-25 hours depending on judge
+    shard utilization and rollout/replay variance.
