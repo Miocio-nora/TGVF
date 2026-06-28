@@ -342,13 +342,18 @@ class Stage3GRPOTrainer:
     def _save_checkpoint(self, global_step: int, update: dict[str, Any]) -> Path:
         checkpoint_path = self.output_dir / f"checkpoint_step_{int(global_step)}.pt"
         if self.config.rollout.runtime_backend == "native_single_focus":
+            optimizer_state = (
+                getattr(self, "_native_optimizer", None).state_dict()
+                if hasattr(self, "_native_optimizer")
+                else None
+            )
             _save_native_checkpoint(
                 checkpoint_path,
                 self.config,
                 self.engine,
                 update,
                 global_step=global_step,
-                optimizer_state=getattr(self, "_last_native_optimizer_state", None),
+                optimizer_state=optimizer_state,
             )
         else:
             _save_fake_checkpoint(
@@ -513,7 +518,7 @@ class Stage3GRPOTrainer:
         grad_norm = float(torch.nn.utils.clip_grad_norm_(params, self.config.train.max_grad_norm))
         self._progress("optimizer_step_start", global_step=global_step, grad_norm=grad_norm)
         optimizer.step()
-        self._last_native_optimizer_state = optimizer.state_dict()
+        self._progress("optimizer_step_torch_done", global_step=global_step)
         optimizer.zero_grad(set_to_none=True)
         update = {
             **stats,

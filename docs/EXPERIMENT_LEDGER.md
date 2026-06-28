@@ -7520,3 +7520,46 @@ entry, update this file immediately.
     before it can be used as the formal run.
 - Comparable to baseline:
   - No. This is a distributed code-path smoke.
+
+### EXP-20260628-1336-stage3-grpo-native-dist-4gpu-1step-debug
+
+- Status:
+  - STOPPED.
+- Question:
+  - With per-rank progress instrumentation, where does the Stage3 native
+    distributed path spend time during the first optimizer step?
+- Baseline anchor:
+  - Follows stopped `EXP-20260628-1319-stage3-grpo-native-dist-4gpu-2step-smoke`.
+- Intended diff:
+  - Same 4-GPU torchrun native path, reduced to `max_steps=1`.
+  - Progress events written to each rank's `progress.jsonl`.
+- Code commit / worktree:
+  - Commit: `518e8a6bcb2911dae4a5b829a90250186e939b16`
+    (`518e8a6 Instrument distributed Stage3 GRPO progress`).
+- Stage2 checkpoint/output:
+  - `outputs/clean_training/qwen3_stage2_norm01_stage1_mask075_deepstack_4gpu_20260627_163250/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt`.
+- Train data:
+  - `revisit_vlm_clean/data/stage3_rl/v1_direct_20k_20260627_032447/accepted_rl_prompts.jsonl`.
+- Script / command:
+  - Launch:
+    `CUDA_VISIBLE_DEVICES=0,1,2,3 PYTHONPATH=revisit_vlm_clean/src:src torchrun --standalone --nproc_per_node=4 -m revisit_vlm_clean.training.stage3_grpo_executor --plan outputs/stage3_grpo/native_dist_4gpu_1step_debug_clean_stage2_step1200_20260628/stage3_grpo_training_plan.json --launch-training`.
+- GPUs:
+  - `CUDA_VISIBLE_DEVICES=0,1,2,3`.
+- Started:
+  - 2026-06-28 13:36:08 JST.
+- Finished:
+  - 2026-06-28 13:39 JST.
+- Metrics:
+  - Stopped before optimizer metric after instrumentation identified the slow
+    region.
+  - Progress showed rollout, replay, backward, and gradient all-reduce all
+    completed on all ranks.
+- Analysis:
+  - The slow point was after `gradient_allreduce_done` and after
+    `optimizer_step_start`.
+  - The trainer was building `optimizer.state_dict()` on every rank every step
+    immediately after `optimizer.step`; this is unnecessary except when rank0
+    saves a checkpoint.
+- Conclusion:
+  - Patch Stage3 to collect optimizer state only during checkpoint saving, then
+    rerun distributed native smoke.
