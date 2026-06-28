@@ -7262,3 +7262,100 @@ entry, update this file immediately.
     short run after deciding the judge/probe cache policy.
 - Comparable to baseline:
   - No. This is a code-path smoke.
+
+### EXP-20260628-1249-stage3-grpo-formal-answer-tool-100step
+
+- Status:
+  - STOPPED.
+- Question:
+  - Can the clean Stage3 GRPO native training path run a first formal
+    non-smoke RL job from the latest clean Stage2 checkpoint with tracked
+    artifacts, checkpoints, and W&B-compatible logging?
+- Baseline anchor:
+  - Implementation/operation run, not a benchmark comparison.
+  - Builds on `EXP-20260628-1226-stage3-grpo-native-2step-smoke`.
+- Intended diff:
+  - Run `max_steps=100`, `save_steps=25`, `group_size=4`,
+    `per_device_prompt_batch_size=1`, `gradient_accumulation_steps=1`.
+  - Use answer correctness and tool-decision reward for the active optimizer
+    signal: `w_answer=2.0`, `w_tool=1.0`, `w_focus=0.0`, `w_ground=0.0`.
+  - Keep judge cache/pending enabled with `judge_model=qwen3_vl_32b_thinking`;
+    focus/ground rewards are intentionally zero-weighted for this first formal
+    run because online/local judge reward is not yet in the train loop.
+  - Use W&B offline mode because this machine has no configured W&B API key;
+    the run still writes W&B-compatible local logs/artifacts for later sync.
+- Allowed changed variables:
+  - Stage3 GRPO output directory.
+  - Stage3 RL optimizer steps and save cadence.
+  - Reward weights for this first formal answer/tool run.
+  - W&B mode: `offline`.
+- Not allowed to change:
+  - RL data file.
+  - Stage2 source checkpoint.
+  - Protocol-C tool-observation contract.
+  - Stage1/Stage2 training code or data.
+  - Benchmark eval data.
+- Code commit / worktree:
+  - Commit: `ba1da3ab36fad601b5f725eb5632fc83e62b2721`
+    (`ba1da3a Implement multi-step Stage3 GRPO training loop`).
+  - Worktree before launch: clean.
+- Stage1 checkpoint:
+  - Indirectly from the Stage2 checkpoint config.
+- Stage1 processor:
+  - Indirectly from the Stage2 checkpoint config.
+- Stage2 checkpoint/output:
+  - `outputs/clean_training/qwen3_stage2_norm01_stage1_mask075_deepstack_4gpu_20260627_163250/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt`.
+  - sha256:
+    `50245a11c27ad9755eb815b5f008af50a659fa07a4043f0f9427f5bbea3c0236`.
+  - Preflight status: `passed`; checkpoint `global_step=1200`;
+    protocol `protocol_c_tool_observation`.
+- Train data:
+  - `revisit_vlm_clean/data/stage3_rl/v1_direct_20k_20260627_032447/accepted_rl_prompts.jsonl`.
+  - Rows: `20000`.
+  - sha256:
+    `2e39a1dadcc020001bd3d763635f461d2b7dc6d94bfb3cfecdb9bb20240fa758`.
+  - Source distribution: `visual_genome=8000`, `textvqa=6000`,
+    `docvqa=4000`, `chartqa=2000`.
+- Validation data:
+  - Not used in this training launch.
+- Benchmark output:
+  - Not used in this training launch.
+- Judge model:
+  - `qwen3_vl_32b_thinking`.
+  - Local path ready:
+    `/nvmesv/dredvpn009/models/hf/Qwen3-VL-32B-Thinking`.
+- Script / command:
+  - Plan:
+    `PYTHONPATH=revisit_vlm_clean/src:src python -m revisit_vlm_clean.cli.train_stage3_grpo --write-plan --run-id stage3_grpo_formal_answer_tool_100step_clean_stage2_step1200_20260628 --rl-data-path revisit_vlm_clean/data/stage3_rl/v1_direct_20k_20260627_032447/accepted_rl_prompts.jsonl --policy-checkpoint outputs/clean_training/qwen3_stage2_norm01_stage1_mask075_deepstack_4gpu_20260627_163250/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt --model-id /nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking --processor-id /nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking --output-dir outputs/stage3_grpo/formal_answer_tool_100step_clean_stage2_step1200_20260628 --runtime-backend native_single_focus --group-size 4 --per-device-prompt-batch-size 1 --gradient-accumulation-steps 1 --max-steps 100 --save-steps 25 --max-tool-calls 1 --max-image-resolution 512 --max-action-tokens 64 --max-answer-tokens 96 --max-new-tokens 160 --temperature 1.0 --top-p 0.95 --probe-enabled --missing-probe-policy teacher_hint --hint-label-weight 0.5 --w-answer 2.0 --w-tool 1.0 --w-focus 0.0 --w-ground 0.0 --lambda-call 0.05 --judge-enabled --judge-mode cache_only --judge-model qwen3_vl_32b_thinking --judge-cache-miss-reward 0.0 --learning-rate 5e-7 --kl-coef 0.02 --clip-range 0.2 --max-grad-norm 1.0 --seed 20260628 --wandb-project tgvf-stage3-grpo --wandb-mode offline --wandb-run-name stage3_grpo_formal_answer_tool_100step_clean_stage2_step1200_20260628 --wandb-group stage3-grpo-formal --wandb-tags stage3,grpo,formal,answer-tool,cache-only,clean-stage2-step1200 --no-wandb-log-checkpoint-artifact`.
+  - Preflight:
+    `PYTHONPATH=revisit_vlm_clean/src:src python -m revisit_vlm_clean.training.stage3_grpo_executor --plan outputs/stage3_grpo/formal_answer_tool_100step_clean_stage2_step1200_20260628/stage3_grpo_training_plan.json --preflight-only`.
+  - Launch:
+    `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=revisit_vlm_clean/src:src python -m revisit_vlm_clean.training.stage3_grpo_executor --plan outputs/stage3_grpo/formal_answer_tool_100step_clean_stage2_step1200_20260628/stage3_grpo_training_plan.json --launch-training`.
+- GPUs:
+  - Planned: `CUDA_VISIBLE_DEVICES=0` on NVIDIA B200.
+  - Other B200 GPUs were idle at preflight.
+- tmux:
+  - `stage3_grpo_formal_answer_tool_100step`.
+- Started:
+  - 2026-06-28 12:49:10 JST.
+- Finished:
+  - 2026-06-28 12:55:11 JST.
+- Metrics:
+  - Stopped at `global_step=3`.
+  - `train_metrics.jsonl`: `3` rows.
+  - `reward_breakdown.jsonl`: `12` rows.
+  - `rollout_debug.jsonl`: `12` rows.
+  - `judge_pending.jsonl`: `8` rows.
+  - Latest metrics: `loss=0.07115457206964493`,
+    `kl=3.5577285289764404`, `grad_norm=0.21515274047851562`,
+    `replayed_tokens=99.0`, `mean_reward=-0.5`.
+- Analysis:
+  - This single-GPU launch was intentionally stopped after user correction:
+    formal RL should use GPUs `0-3` and larger per-step rollout volume to avoid
+    wasting B200 capacity.
+  - It is retained only as a side operational trace; it should not be treated
+    as the formal run result.
+- Conclusion:
+  - Replaced by a 4-GPU launch plan.
+- Comparable to baseline:
+  - No. This is the first formal Stage3 GRPO training run, not benchmark eval.

@@ -646,6 +646,8 @@ def _create_stage3_wandb_logger(config: Stage3GRPOConfig, output_dir: Path) -> A
     wandb_config = config.wandb
     if not wandb_config.project or wandb_config.mode == "disabled":
         return None
+    wandb_dir = output_dir / "wandb"
+    wandb_dir.mkdir(parents=True, exist_ok=True)
     from revisit_vlm.wandb_logging import WandbLogger
 
     return WandbLogger(
@@ -656,13 +658,13 @@ def _create_stage3_wandb_logger(config: Stage3GRPOConfig, output_dir: Path) -> A
         job_type=wandb_config.job_type,
         mode=wandb_config.mode,
         config=_stage3_wandb_config(config, output_dir),
-        directory=output_dir / "wandb",
         tags=[
             "stage3-grpo",
             str(config.rollout.runtime_backend),
             str(config.protocol),
             *list(wandb_config.tags),
         ],
+        directory=wandb_dir,
     )
 
 
