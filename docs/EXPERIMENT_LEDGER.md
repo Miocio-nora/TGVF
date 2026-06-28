@@ -7789,3 +7789,44 @@ entry, update this file immediately.
   - Audit native model preparation / `requires_grad` selection, log trainable
     parameter counts, freeze unintended base-model parameters, then rerun a
     4-GPU smoke.
+
+### EXP-20260628-1433-stage3-grpo-native-dist-4gpu-1step-debug7-lora-only
+
+- Status:
+  - PLANNED.
+- Question:
+  - Does the 4-GPU native distributed Stage3 path complete one optimizer step
+    and write metrics/checkpoint when Stage3 trains only policy LoRA/adapter
+    parameters and freezes the foveal/TGVF module?
+- Baseline anchor:
+  - Follows `EXP-20260628-1423-stage3-grpo-native-dist-4gpu-1step-debug6-manual-sgd`.
+- Intended diff:
+  - Use commit `7be02a1`; Stage3 native update restricts trainables to policy
+    LoRA/adapter markers and freezes foveal/TGVF parameters.
+  - Keep `--optimizer manual_sgd`, `--max-grad-norm 0`, and the same 4-GPU
+    one-step debug shape.
+- Code commit / worktree:
+  - Commit: `7be02a1 Restrict Stage3 native trainable parameters`.
+  - Worktree expected clean before plan/launch except future ledger status
+    updates.
+- Stage2 checkpoint/output:
+  - `outputs/clean_training/qwen3_stage2_norm01_stage1_mask075_deepstack_4gpu_20260627_163250/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt`.
+- Train data:
+  - `revisit_vlm_clean/data/stage3_rl/v1_direct_20k_20260627_032447/accepted_rl_prompts.jsonl`.
+- Script / command:
+  - Plan:
+    `PYTHONPATH=revisit_vlm_clean/src:src python -m revisit_vlm_clean.cli.train_stage3_grpo --write-plan --run-id stage3_grpo_native_dist_4gpu_1step_debug7_lora_only_clean_stage2_step1200_20260628 --rl-data-path revisit_vlm_clean/data/stage3_rl/v1_direct_20k_20260627_032447/accepted_rl_prompts.jsonl --policy-checkpoint outputs/clean_training/qwen3_stage2_norm01_stage1_mask075_deepstack_4gpu_20260627_163250/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt --output-dir outputs/stage3_grpo/native_dist_4gpu_1step_debug7_lora_only_clean_stage2_step1200_20260628 --runtime-backend native_single_focus --optimizer manual_sgd --world-size 4 --group-size 2 --per-device-prompt-batch-size 1 --gradient-accumulation-steps 1 --max-steps 1 --save-steps 1 --max-grad-norm 0 --max-tool-calls 1 --w-focus 0 --w-ground 0 --judge-mode cache_only --judge-model qwen3_vl_32b_thinking --wandb-mode disabled`.
+  - Launch:
+    `CUDA_VISIBLE_DEVICES=0,1,2,3 PYTHONPATH=revisit_vlm_clean/src:src torchrun --standalone --nproc_per_node=4 -m revisit_vlm_clean.training.stage3_grpo_executor --plan outputs/stage3_grpo/native_dist_4gpu_1step_debug7_lora_only_clean_stage2_step1200_20260628/stage3_grpo_training_plan.json --launch-training`.
+- GPUs:
+  - `CUDA_VISIBLE_DEVICES=0,1,2,3`.
+- Started:
+  - Pending.
+- Finished:
+  - Pending.
+- Metrics:
+  - Pending.
+- Analysis:
+  - Pending.
+- Conclusion:
+  - Pending.
