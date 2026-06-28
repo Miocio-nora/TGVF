@@ -7563,3 +7563,40 @@ entry, update this file immediately.
 - Conclusion:
   - Patch Stage3 to collect optimizer state only during checkpoint saving, then
     rerun distributed native smoke.
+
+### EXP-20260628-1342-stage3-grpo-native-dist-4gpu-1step-debug2
+
+- Status:
+  - STOPPED.
+- Question:
+  - After removing per-step optimizer state materialization, does the 4-GPU
+    native distributed Stage3 path complete one optimizer step and rank0
+    checkpoint writing?
+- Baseline anchor:
+  - Follows `EXP-20260628-1336-stage3-grpo-native-dist-4gpu-1step-debug`.
+- Intended diff:
+  - Same 4-GPU native distributed debug, with code commit `9e58147`.
+  - `max_steps=1`, `world_size=4`, global rollouts per step `8`.
+- Code commit / worktree:
+  - Commit: `9e581479dab17d4378ab6f0ebc4f50bf19555557`
+    (`9e58147 Avoid per-step Stage3 optimizer state materialization`).
+- Script / command:
+  - Launch:
+    `CUDA_VISIBLE_DEVICES=0,1,2,3 PYTHONPATH=revisit_vlm_clean/src:src torchrun --standalone --nproc_per_node=4 -m revisit_vlm_clean.training.stage3_grpo_executor --plan outputs/stage3_grpo/native_dist_4gpu_1step_debug2_clean_stage2_step1200_20260628/stage3_grpo_training_plan.json --launch-training`.
+- GPUs:
+  - `CUDA_VISIBLE_DEVICES=0,1,2,3`.
+- Started:
+  - 2026-06-28 13:42:01 JST.
+- Finished:
+  - 2026-06-28 13:50 JST.
+- Metrics:
+  - Stopped before first optimizer metric.
+  - Progress showed optimizer.step itself finished on ranks 0/2/3 after the
+    previous optimizer-state fix.
+- Analysis:
+  - Rank1 reached `gradient_allreduce_done` but did not reach
+    `optimizer_step_start`, so the remaining stall is in the PyTorch
+    `clip_grad_norm_` call between all-reduce and optimizer.step.
+- Conclusion:
+  - Replace `torch.nn.utils.clip_grad_norm_` with a simple local grad-norm/clip
+    helper and rerun.

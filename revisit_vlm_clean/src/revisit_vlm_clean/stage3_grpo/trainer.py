@@ -515,7 +515,9 @@ class Stage3GRPOTrainer:
         self._progress("gradient_allreduce_start", global_step=global_step)
         _stage3_distributed_average_gradients(params, self.distributed)
         self._progress("gradient_allreduce_done", global_step=global_step)
-        grad_norm = float(torch.nn.utils.clip_grad_norm_(params, self.config.train.max_grad_norm))
+        self._progress("grad_clip_start", global_step=global_step)
+        grad_norm = _stage3_clip_grad_norm(params, float(self.config.train.max_grad_norm))
+        self._progress("grad_clip_done", global_step=global_step, grad_norm=grad_norm)
         self._progress("optimizer_step_start", global_step=global_step, grad_norm=grad_norm)
         optimizer.step()
         self._progress("optimizer_step_torch_done", global_step=global_step)
@@ -660,6 +662,23 @@ def _stage3_distributed_metric_summary(
         "distributed_replayed_tokens": float(values[8].item()),
         "distributed_token_count": float(values[9].item()),
     }
+
+
+def _stage3_clip_grad_norm(params: list[Any], max_norm: float) -> float:
+    import torch
+
+    grads = [param.grad for param in params if getattr(param, "grad", None) is not None]
+    if not grads:
+        return 0.0
+    device = grads[0].device
+    norms = torch.stack([grad.detach().float().norm(2).to(device) for grad in grads])
+    total_norm = torch.linalg.vector_norm(norms, ord=2)
+    if max_norm > 0:
+        clip_coef = torch.tensor(float(max_norm), device=device) / (total_norm + 1e-6)
+        if float(clip_coef.detach().cpu()) < 1.0:
+            for grad in grads:
+                grad.mul_(clip_coef.to(grad.device, dtype=grad.dtype))
+    return float(total_norm.detach().cpu())
 
 
 def _stage3_distributed_barrier(context: dict[str, Any]) -> None:
