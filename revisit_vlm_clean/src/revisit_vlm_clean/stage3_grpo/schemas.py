@@ -134,6 +134,7 @@ class JudgeConfig:
 class TrainConfig:
     algorithm: str = "grpo"
     max_steps: int = 1
+    world_size: int = 1
     per_device_prompt_batch_size: int = 1
     gradient_accumulation_steps: int = 1
     learning_rate: float = 1e-6
@@ -149,7 +150,13 @@ class TrainConfig:
     def validate(self) -> None:
         if self.algorithm != "grpo":
             raise ValueError("train.algorithm must be grpo")
-        for name in ("max_steps", "per_device_prompt_batch_size", "gradient_accumulation_steps", "save_steps"):
+        for name in (
+            "max_steps",
+            "world_size",
+            "per_device_prompt_batch_size",
+            "gradient_accumulation_steps",
+            "save_steps",
+        ):
             if int(getattr(self, name)) < 1:
                 raise ValueError(f"train.{name} must be >= 1")
         if int(self.eval_steps) < 0:

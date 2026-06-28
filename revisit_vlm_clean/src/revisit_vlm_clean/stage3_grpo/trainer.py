@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import subprocess
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -23,13 +25,22 @@ from .schemas import RolloutRecord, Stage3GRPOConfig, write_json
 class Stage3GRPOTrainer:
     def __init__(self, config: Stage3GRPOConfig) -> None:
         config.validate()
-        self.config = config
+        self.distributed = _setup_stage3_distributed_context(config)
+        self.config = _config_with_distributed_device(config, self.distributed)
         self.output_dir = Path(config.output_dir)
-        self.samples = load_stage3_samples(config.rl_data_path)
-        self.sampler = BalancedPromptSampler(self.samples, seed=config.train.seed)
-        self.probe_cache = ProbeCache(config.probe.cache_path)
-        self.judge_bundle = JudgeBundle(config.judge, output_dir=self.output_dir)
-        self.engine = build_rollout_engine(config)
+        self.rank_output_dir = (
+            self.output_dir
+            if self.distributed["is_main"]
+            else self.output_dir / f"rank_{self.distributed['rank']}"
+        )
+        self.samples = load_stage3_samples(self.config.rl_data_path)
+        self.sampler = BalancedPromptSampler(
+            self.samples,
+            seed=int(self.config.train.seed) + int(self.distributed["rank"]) * 100003,
+        )
+        self.probe_cache = ProbeCache(self.config.probe.cache_path)
+        self.judge_bundle = JudgeBundle(self.config.judge, output_dir=self.rank_output_dir)
+        self.engine = build_rollout_engine(self.config)
         self._wandb_logger = None
 
     def rollout_batch(self, *, prompt_batch_size: int | None = None) -> list[RolloutRecord]:
@@ -141,12 +152,17 @@ class Stage3GRPOTrainer:
 
     def run_training(self) -> dict[str, Any]:
         self.output_dir.mkdir(parents=True, exist_ok=True)
-        rollout_path = self.output_dir / "rollout_debug.jsonl"
-        reward_path = self.output_dir / "reward_breakdown.jsonl"
-        metrics_path = self.output_dir / "train_metrics.jsonl"
+        self.rank_output_dir.mkdir(parents=True, exist_ok=True)
+        rollout_path = self.rank_output_dir / "rollout_debug.jsonl"
+        reward_path = self.rank_output_dir / "reward_breakdown.jsonl"
+        metrics_path = self.rank_output_dir / "train_metrics.jsonl"
         for path in (rollout_path, reward_path, metrics_path):
             path.write_text("", encoding="utf-8")
-        logger = _create_stage3_wandb_logger(self.config, self.output_dir)
+        logger = (
+            _create_stage3_wandb_logger(self.config, self.output_dir)
+            if self.distributed["is_main"]
+            else None
+        )
         step_summaries: list[dict[str, Any]] = []
         latest_checkpoint: str | None = None
         latest_metrics: dict[str, Any] = {}
@@ -192,8 +208,11 @@ class Stage3GRPOTrainer:
                 aggregate.update(rollouts=rewarded, rewards=rewards, metrics=latest_metrics)
                 checkpoint_path = None
                 if (
-                    global_step % int(self.config.train.save_steps) == 0
-                    or global_step == int(self.config.train.max_steps)
+                    self.distributed["is_main"]
+                    and (
+                        global_step % int(self.config.train.save_steps) == 0
+                        or global_step == int(self.config.train.max_steps)
+                    )
                 ):
                     checkpoint_path = self._save_checkpoint(global_step, latest_metrics)
                     latest_checkpoint = str(checkpoint_path)
@@ -221,6 +240,8 @@ class Stage3GRPOTrainer:
             result = {
                 "status": "stage3_grpo_training_completed",
                 "output_dir": str(self.output_dir),
+                "rank_output_dir": str(self.rank_output_dir),
+                "distributed": dict(self.distributed),
                 "runtime_backend": self.config.rollout.runtime_backend,
                 "global_step": int(self.config.train.max_steps),
                 "optimizer_step": int(self.config.train.max_steps),
@@ -234,7 +255,10 @@ class Stage3GRPOTrainer:
                 "metrics": latest_metrics,
                 "aggregate": aggregate.summary(),
             }
-            write_json(self.output_dir / "stage3_grpo_launch_result.json", result)
+            if self.distributed["is_main"]:
+                write_json(self.output_dir / "stage3_grpo_launch_result.json", result)
+            else:
+                write_json(self.rank_output_dir / "stage3_grpo_launch_result.json", result)
             if logger is not None:
                 logger.update_summary(
                     _stage3_wandb_summary_from_aggregate(self.config, result)
@@ -260,6 +284,8 @@ class Stage3GRPOTrainer:
         finally:
             if logger is not None:
                 logger.finish()
+            _stage3_distributed_barrier(self.distributed)
+            _destroy_stage3_distributed_context(self.distributed)
 
     def _rollout_and_reward_training_step(
         self,
@@ -417,11 +443,12 @@ class Stage3GRPOTrainer:
             kl_coef=self.config.train.kl_coef,
         )
         loss.backward()
+        _stage3_distributed_average_gradients(params, self.distributed)
         grad_norm = float(torch.nn.utils.clip_grad_norm_(params, self.config.train.max_grad_norm))
         optimizer.step()
         self._last_native_optimizer_state = optimizer.state_dict()
         optimizer.zero_grad(set_to_none=True)
-        return {
+        update = {
             **stats,
             "status": "native_grpo_update_completed",
             "global_step": int(global_step),
@@ -432,7 +459,12 @@ class Stage3GRPOTrainer:
             "mean_reward": sum(reward_map.values()) / max(len(reward_map), 1),
             "replayed_tokens": float(mask_tensor.sum().detach().cpu()),
             "gradient_accumulation_steps": int(self.config.train.gradient_accumulation_steps),
+            "rank": int(self.distributed["rank"]),
+            "world_size": int(self.distributed["world_size"]),
         }
+        update.update(_stage3_distributed_metric_summary(update, self.distributed))
+        _stage3_distributed_barrier(self.distributed)
+        return update
 
 
 def _append_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
@@ -440,6 +472,139 @@ def _append_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
     with path.open("a", encoding="utf-8") as handle:
         for row in rows:
             handle.write(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n")
+
+
+def _setup_stage3_distributed_context(config: Stage3GRPOConfig) -> dict[str, Any]:
+    planned_world_size = int(config.train.world_size)
+    env_world_size = int(os.environ.get("WORLD_SIZE", "1"))
+    env_rank = int(os.environ.get("RANK", "0"))
+    env_local_rank = int(os.environ.get("LOCAL_RANK", "0"))
+    if planned_world_size > 1 and env_world_size != planned_world_size:
+        raise ValueError(
+            "Stage3 distributed launch requires torchrun WORLD_SIZE to match "
+            f"train.world_size ({env_world_size} != {planned_world_size})"
+        )
+    if planned_world_size == 1 and env_world_size > 1:
+        raise ValueError("Stage3 single-process launch cannot run under WORLD_SIZE>1")
+    context: dict[str, Any] = {
+        "distributed": planned_world_size > 1,
+        "rank": env_rank if planned_world_size > 1 else 0,
+        "local_rank": env_local_rank if planned_world_size > 1 else 0,
+        "world_size": planned_world_size,
+        "is_main": (env_rank if planned_world_size > 1 else 0) == 0,
+        "device": None,
+        "device_map": None,
+        "backend": None,
+        "process_group_initialized_by_stage3": False,
+    }
+    if planned_world_size <= 1:
+        return context
+    import torch
+    import torch.distributed as dist
+
+    if torch.cuda.is_available():
+        torch.cuda.set_device(env_local_rank)
+        context["device"] = f"cuda:{env_local_rank}"
+        context["device_map"] = f"cuda:{env_local_rank}"
+        context["backend"] = "nccl"
+    else:
+        context["device"] = "cpu"
+        context["device_map"] = None
+        context["backend"] = "gloo"
+    if not dist.is_initialized():
+        dist.init_process_group(backend=str(context["backend"]))
+        context["process_group_initialized_by_stage3"] = True
+    return context
+
+
+def _config_with_distributed_device(
+    config: Stage3GRPOConfig,
+    context: dict[str, Any],
+) -> Stage3GRPOConfig:
+    if not context.get("distributed"):
+        return config
+    return replace(
+        config,
+        device=str(context["device"]),
+        device_map=str(context["device_map"]) if context.get("device_map") else None,
+    )
+
+
+def _stage3_distributed_average_gradients(
+    params: list[Any],
+    context: dict[str, Any],
+) -> None:
+    if not context.get("distributed"):
+        return
+    import torch.distributed as dist
+
+    world_size = float(context["world_size"])
+    for param in params:
+        grad = getattr(param, "grad", None)
+        if grad is None:
+            continue
+        dist.all_reduce(grad, op=dist.ReduceOp.SUM)
+        grad.div_(world_size)
+
+
+def _stage3_distributed_metric_summary(
+    update: dict[str, Any],
+    context: dict[str, Any],
+) -> dict[str, Any]:
+    if not context.get("distributed"):
+        return {}
+    import torch
+    import torch.distributed as dist
+
+    device = torch.device(str(context["device"] or "cpu"))
+    values = torch.tensor(
+        [
+            float(update.get("loss") or 0.0),
+            float(update.get("policy_loss") or 0.0),
+            float(update.get("kl") or 0.0),
+            float(update.get("clip_fraction") or 0.0),
+            float(update.get("grad_norm") or 0.0),
+            float(update.get("mean_reward") or 0.0),
+            float(update.get("rollout_count") or 0.0),
+            float(update.get("group_count") or 0.0),
+            float(update.get("replayed_tokens") or 0.0),
+            float(update.get("token_count") or 0.0),
+        ],
+        dtype=torch.float64,
+        device=device,
+    )
+    dist.all_reduce(values, op=dist.ReduceOp.SUM)
+    world_size = float(context["world_size"])
+    return {
+        "distributed_loss_mean": float(values[0].item() / world_size),
+        "distributed_policy_loss_mean": float(values[1].item() / world_size),
+        "distributed_kl_mean": float(values[2].item() / world_size),
+        "distributed_clip_fraction_mean": float(values[3].item() / world_size),
+        "distributed_grad_norm_mean": float(values[4].item() / world_size),
+        "distributed_mean_reward": float(values[5].item() / world_size),
+        "distributed_rollout_count": int(values[6].item()),
+        "distributed_group_count": int(values[7].item()),
+        "distributed_replayed_tokens": float(values[8].item()),
+        "distributed_token_count": float(values[9].item()),
+    }
+
+
+def _stage3_distributed_barrier(context: dict[str, Any]) -> None:
+    if not context.get("distributed"):
+        return
+    import torch.distributed as dist
+
+    if dist.is_available() and dist.is_initialized():
+        dist.barrier()
+
+
+def _destroy_stage3_distributed_context(context: dict[str, Any]) -> None:
+    if not context.get("process_group_initialized_by_stage3"):
+        return
+    import torch.distributed as dist
+
+    if dist.is_available() and dist.is_initialized():
+        dist.destroy_process_group()
 
 
 def _save_fake_checkpoint(

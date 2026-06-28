@@ -9,6 +9,7 @@ training updates.
 from __future__ import annotations
 
 import argparse
+import os
 from pathlib import Path
 from typing import Any
 
@@ -135,6 +136,12 @@ def preflight_stage3_grpo_plan(
         warnings.append(
             "native_single_focus launch will load the Stage2 checkpoint and run real sampled rollouts"
         )
+    env_world_size = int(os.environ.get("WORLD_SIZE", "1"))
+    if int(config.train.world_size) > 1 and env_world_size not in {1, int(config.train.world_size)}:
+        errors.append(
+            "train.world_size does not match torchrun WORLD_SIZE: "
+            f"{config.train.world_size} != {env_world_size}"
+        )
     judge_cache_status = _judge_cache_preflight(config)
     warnings.extend(judge_cache_status.get("warnings") or [])
     if config.judge.enabled and config.judge.mode == "cache_only":
@@ -156,6 +163,13 @@ def preflight_stage3_grpo_plan(
         "processor_id": config.processor_id,
         "output_dir": config.output_dir,
         "group_size": config.rollout.group_size,
+        "world_size": config.train.world_size,
+        "global_rollouts_per_step": (
+            int(config.train.world_size)
+            * int(config.train.per_device_prompt_batch_size)
+            * int(config.train.gradient_accumulation_steps)
+            * int(config.rollout.group_size)
+        ),
         "max_tool_calls": config.rollout.max_tool_calls,
         "judge": config.judge.to_dict(),
         "judge_cache_status": judge_cache_status,
@@ -296,7 +310,11 @@ def launch_stage3_grpo_training(
 ) -> dict[str, Any]:
     trainer = Stage3GRPOTrainer(config)
     result = trainer.run_training()
-    launch_path = Path(report_path or Path(config.output_dir) / "stage3_grpo_launch_result.json")
+    distributed = dict(result.get("distributed") or {})
+    if distributed and not distributed.get("is_main", True):
+        launch_path = Path(str(result.get("rank_output_dir") or config.output_dir)) / "stage3_grpo_launch_result.json"
+    else:
+        launch_path = Path(report_path or Path(config.output_dir) / "stage3_grpo_launch_result.json")
     result["launch_report"] = str(launch_path)
     write_json(launch_path, result)
     return result

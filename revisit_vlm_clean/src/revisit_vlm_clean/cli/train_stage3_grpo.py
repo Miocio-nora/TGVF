@@ -102,6 +102,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--judge-cache-miss-reward", type=float, default=0.0)
 
     parser.add_argument("--max-steps", type=int, default=1)
+    parser.add_argument("--world-size", type=int, default=1)
     parser.add_argument("--per-device-prompt-batch-size", type=int, default=1)
     parser.add_argument("--gradient-accumulation-steps", type=int, default=1)
     parser.add_argument("--learning-rate", type=float, default=1e-6)
@@ -184,6 +185,13 @@ def build_stage3_grpo_training_plan(
             "rl_sample_count": data_identity["rows"],
             "group_size": config.rollout.group_size,
             "rollouts_per_prompt": config.rollout.group_size,
+            "world_size": config.train.world_size,
+            "global_rollouts_per_step": (
+                config.train.world_size
+                * config.train.per_device_prompt_batch_size
+                * config.train.gradient_accumulation_steps
+                * config.rollout.group_size
+            ),
             "max_tool_calls": config.rollout.max_tool_calls,
             "reward_weights": {
                 "answer": config.reward.w_answer,
@@ -298,6 +306,7 @@ def _config_from_args(args: argparse.Namespace) -> Stage3GRPOConfig:
         ),
         train=TrainConfig(
             max_steps=args.max_steps,
+            world_size=args.world_size,
             per_device_prompt_batch_size=args.per_device_prompt_batch_size,
             gradient_accumulation_steps=args.gradient_accumulation_steps,
             learning_rate=args.learning_rate,
@@ -357,7 +366,9 @@ def _plan_text(plan: dict[str, Any]) -> str:
         f"device: {config['device']}",
         f"device_map: {config.get('device_map')}",
         f"runtime_backend: {summary['runtime_backend']}",
+        f"world_size: {config['train']['world_size']}",
         f"group_size: {summary['group_size']}",
+        f"global_rollouts_per_step: {summary['global_rollouts_per_step']}",
         f"max_tool_calls: {summary['max_tool_calls']}",
         "reward_weights: "
         f"answer={weights['answer']} tool={weights['tool']} focus={weights['focus']} "

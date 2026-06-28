@@ -285,7 +285,7 @@ class NativeSingleFocusRolloutEngine:
             backend_options={
                 "dtype": self.config.dtype,
                 "device": self.config.device,
-                "device_map": self.config.device_map,
+                "device_map": _resolve_native_device_map(self.config.device_map),
                 "attn_implementation": self.config.attn_implementation,
                 "do_sample": True,
                 "temperature": self.config.rollout.temperature,
@@ -464,6 +464,14 @@ def build_rollout_engine(config: Stage3GRPOConfig | RolloutConfig) -> RolloutEng
     if not isinstance(config, Stage3GRPOConfig):
         raise ValueError("native_single_focus rollout requires the full Stage3GRPOConfig")
     return NativeSingleFocusRolloutEngine(config)
+
+
+def _resolve_native_device_map(device_map: object) -> object:
+    if isinstance(device_map, str) and (
+        device_map.startswith("cuda") or device_map == "cpu"
+    ):
+        return {"": device_map}
+    return device_map
 
 
 def _fake_tokens_and_logprobs(sample_id: str, rollout_id: int, text: str) -> tuple[list[int], list[float]]:

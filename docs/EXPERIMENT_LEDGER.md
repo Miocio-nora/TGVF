@@ -7359,3 +7359,97 @@ entry, update this file immediately.
   - Replaced by a 4-GPU launch plan.
 - Comparable to baseline:
   - No. This is the first formal Stage3 GRPO training run, not benchmark eval.
+
+### EXP-20260628-1259-stage3-grpo-formal-answer-tool-4gpu-g8pb2ga2
+
+- Status:
+  - STOPPED.
+- Question:
+  - Can the first formal Stage3 answer/tool GRPO run use GPUs `0-3` together
+    and increase per-step rollout volume enough to better use B200 memory?
+- Baseline anchor:
+  - Replaces stopped single-GPU launch
+    `EXP-20260628-1249-stage3-grpo-formal-answer-tool-100step`.
+- Intended diff:
+  - Use `CUDA_VISIBLE_DEVICES=0,1,2,3`.
+  - Increase per-step rollout volume to `group_size=8`,
+    `per_device_prompt_batch_size=2`, `gradient_accumulation_steps=2`
+    (`32` free rollouts per optimizer step).
+  - Run `max_steps=100`, `save_steps=20`.
+  - Active reward remains answer/tool only:
+    `w_answer=2.0`, `w_tool=1.0`, `w_focus=0.0`, `w_ground=0.0`.
+  - Keep `judge_model=qwen3_vl_32b_thinking` and judge pending output for
+    later 32B offline scoring.
+- Allowed changed variables:
+  - GPU visibility and auto device map placement.
+  - Per-step rollout volume.
+  - Output directory and W&B offline run name.
+- Not allowed to change:
+  - RL data file.
+  - Stage2 source checkpoint.
+  - Protocol-C tool-observation contract.
+  - Stage1/Stage2 training code or data.
+  - Benchmark eval data.
+- Code commit / worktree:
+  - Commit: `ae22922dc8816435b82f4ef7b33b19f4e1368262`
+    (`ae22922 Prepare Stage3 formal GRPO launch`).
+  - Plan was generated from a clean tracked worktree.
+- Stage1 checkpoint:
+  - Indirectly from the Stage2 checkpoint config.
+- Stage1 processor:
+  - Indirectly from the Stage2 checkpoint config.
+- Stage2 checkpoint/output:
+  - `outputs/clean_training/qwen3_stage2_norm01_stage1_mask075_deepstack_4gpu_20260627_163250/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt`.
+  - sha256:
+    `50245a11c27ad9755eb815b5f008af50a659fa07a4043f0f9427f5bbea3c0236`.
+  - Preflight status: `passed`; checkpoint `global_step=1200`;
+    protocol `protocol_c_tool_observation`.
+- Train data:
+  - `revisit_vlm_clean/data/stage3_rl/v1_direct_20k_20260627_032447/accepted_rl_prompts.jsonl`.
+  - Rows: `20000`.
+  - sha256:
+    `2e39a1dadcc020001bd3d763635f461d2b7dc6d94bfb3cfecdb9bb20240fa758`.
+- Validation data:
+  - Not used in this training launch.
+- Benchmark output:
+  - Not used in this training launch.
+- Judge model:
+  - `qwen3_vl_32b_thinking`.
+  - Local path ready:
+    `/nvmesv/dredvpn009/models/hf/Qwen3-VL-32B-Thinking`.
+- Script / command:
+  - Plan:
+    `PYTHONPATH=revisit_vlm_clean/src:src python -m revisit_vlm_clean.cli.train_stage3_grpo --write-plan --run-id stage3_grpo_formal_answer_tool_4gpu_g8pb2ga2_100step_clean_stage2_step1200_20260628 --rl-data-path revisit_vlm_clean/data/stage3_rl/v1_direct_20k_20260627_032447/accepted_rl_prompts.jsonl --policy-checkpoint outputs/clean_training/qwen3_stage2_norm01_stage1_mask075_deepstack_4gpu_20260627_163250/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt --model-id /nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking --processor-id /nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking --output-dir outputs/stage3_grpo/formal_answer_tool_4gpu_g8pb2ga2_100step_clean_stage2_step1200_20260628 --runtime-backend native_single_focus --group-size 8 --per-device-prompt-batch-size 2 --gradient-accumulation-steps 2 --max-steps 100 --save-steps 20 --max-tool-calls 1 --max-image-resolution 512 --max-action-tokens 64 --max-answer-tokens 96 --max-new-tokens 160 --temperature 1.0 --top-p 0.95 --probe-enabled --missing-probe-policy teacher_hint --hint-label-weight 0.5 --w-answer 2.0 --w-tool 1.0 --w-focus 0.0 --w-ground 0.0 --lambda-call 0.05 --judge-enabled --judge-mode cache_only --judge-model qwen3_vl_32b_thinking --judge-cache-miss-reward 0.0 --learning-rate 5e-7 --kl-coef 0.02 --clip-range 0.2 --max-grad-norm 1.0 --seed 20260628 --wandb-project tgvf-stage3-grpo --wandb-mode offline --wandb-run-name stage3_grpo_formal_answer_tool_4gpu_g8pb2ga2_100step_clean_stage2_step1200_20260628 --wandb-group stage3-grpo-formal --wandb-tags stage3,grpo,formal,answer-tool,cache-only,clean-stage2-step1200,4gpu,g8,pb2,ga2 --no-wandb-log-checkpoint-artifact`.
+  - Preflight:
+    `PYTHONPATH=revisit_vlm_clean/src:src python -m revisit_vlm_clean.training.stage3_grpo_executor --plan outputs/stage3_grpo/formal_answer_tool_4gpu_g8pb2ga2_100step_clean_stage2_step1200_20260628/stage3_grpo_training_plan.json --preflight-only`.
+  - Launch:
+    `CUDA_VISIBLE_DEVICES=0,1,2,3 PYTHONPATH=revisit_vlm_clean/src:src python -m revisit_vlm_clean.training.stage3_grpo_executor --plan outputs/stage3_grpo/formal_answer_tool_4gpu_g8pb2ga2_100step_clean_stage2_step1200_20260628/stage3_grpo_training_plan.json --launch-training`.
+- GPUs:
+  - Planned: `CUDA_VISIBLE_DEVICES=0,1,2,3` on NVIDIA B200.
+- tmux:
+  - `stage3_grpo_formal_4gpu_g8pb2ga2`.
+- Started:
+  - 2026-06-28 12:59:23 JST.
+- Finished:
+  - 2026-06-28 13:08 JST.
+- Metrics:
+  - Stopped before first optimizer metric.
+  - `reward_breakdown.jsonl`: `32` rows.
+  - `rollout_debug.jsonl`: `32` rows.
+  - `judge_pending.jsonl`: `24` rows.
+  - `train_metrics.jsonl`: `0` rows.
+- Analysis:
+  - `CUDA_VISIBLE_DEVICES=0,1,2,3` with `device_map=auto` did place the model
+    across GPUs `0-3`, but it did not increase useful memory pressure: static
+    memory stayed around `8-10GB` per GPU and utilization was low after rollout
+    generation.
+  - The larger `32`-rollout step produced rollout/reward rows, then spent too
+    long before the first optimizer metric. This is not the desired formal
+    configuration.
+  - Conclusion: Stage3 needs a real multi-process/data-parallel or rollout
+    parallel launch path rather than relying on single-process auto-sharding.
+- Conclusion:
+  - Stopped and replaced by engineering work toward a proper GPUs `0-3`
+    training launch.
+- Comparable to baseline:
+  - No. This is a Stage3 training launch, not benchmark eval.
