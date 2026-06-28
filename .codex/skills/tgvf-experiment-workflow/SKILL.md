@@ -143,6 +143,9 @@ For external benchmark tables:
 
 - compare only rows with the same sample set;
 - include n, accuracy, parse rate, trigger rate, focus-valid rate, scoring backend, and output path;
+- when a method table is intended to compare TGVF behavior, include original,
+  `tgvf_free`, and `tgvf_softforce` columns by default, and report trigger rate
+  for each mode in the same table;
 - inspect row examples before giving mechanism conclusions.
 
 ## Cleanup Rules

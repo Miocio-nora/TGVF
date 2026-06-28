@@ -7037,3 +7037,76 @@ entry, update this file immediately.
   - The current Qwen3 Stage2 checkpoint is better than original baseline on
     this balanced subset overall, but not uniformly; MMMU-Pro and V* need
     row-level mechanism analysis before treating the method as broadly solved.
+
+### EXP-20260628-1027-clean-qwen3-stage2-norm01-softforce-coredev2511
+
+- Status: PLANNED.
+- Question:
+  - Complete the paired soft-force benchmark for the same clean Qwen3 Stage2
+    checkpoint and CoreDev-2511 manifest, so the comparison table contains
+    original, `tgvf_free`, and `tgvf_softforce` with trigger rates.
+- Baseline anchors:
+  - Original baseline:
+    `EXP-20260628-0216-clean-qwen3-original-coredev2511-maxans512`.
+  - Free paired run:
+    `EXP-20260628-0615-clean-qwen3-stage2-norm01-free-coredev2511-recovery`.
+- Intended diff:
+  - Change mode from `tgvf_free` to `tgvf_softforce`.
+  - Add clean soft-force prompt text: `Use focus tool.`
+  - Keep checkpoint, model/processor, manifest/order, parser/scorer,
+    DeepStack state, max resolution/tokens, Stage2 D condition, forward mode,
+    attention implementation, and shard rule fixed.
+- Code / worktree:
+  - Launch from current clean branch
+    `clean/tgvf-clean-project-20260625` after this PLANNED entry is committed.
+  - No executable code change in this entry; workflow rule updated so future
+    method tables include original/free/softforce trigger rates.
+- Model / processor:
+  - `/nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking`.
+- Stage2 checkpoint:
+  - `outputs/clean_training/qwen3_stage2_norm01_stage1_mask075_deepstack_4gpu_20260627_163250/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt`.
+  - sha256:
+    `50245a11c27ad9755eb815b5f008af50a659fa07a4043f0f9427f5bbea3c0236`.
+- Stage2 runtime eval JSONL:
+  - `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend_open_answer/splits/tgvf_v4_teacher_stage2_protocol_c.test.jsonl`.
+  - sha256:
+    `3b719e1bd03a09741cc05dac3ed85e423a9b2c29209b07546792a6795cdbbfc5`.
+- Benchmark:
+  - Subset id: `core_balanced_dev_2511_seed20260625`.
+  - Manifest:
+    `revisit_vlm_clean/benchmark_manifests/core_balanced_dev_2511_seed20260625.json`.
+  - Manifest internal hash:
+    `a461d9b482b7165b42b9bbb0fbf0ea6aff31fde0a838c13d953f070e770b0579`.
+  - Benchmark root:
+    `/home/dredvpn009/Flash_Storage/datasets/benchmarks`.
+  - Sample count/order: `2511`, same manifest as original and free runs.
+  - Shard rule: fixed manifest order, `row_index % 4`.
+- Output:
+  - Full:
+    `outputs/clean_benchmarks/qwen3_stage2_norm01_softforce_coredev2511_deepstack512_recovery_4shard_20260628_102713`.
+- Evaluation identity:
+  - Eval family: `project_native_external`.
+  - Mode: `tgvf_softforce`.
+  - Soft-force prompt text: `Use focus tool.`
+  - Runner backend: `tgvf_stage2_qwen3_native`.
+  - Post-TGVF continuation: `natural_continue`.
+  - Post-TGVF forward mode: `no_kv_full_sequence`.
+  - DeepStack: enabled; `original_image_scope=through_answer`;
+    D DeepStack-like features disabled.
+  - Stage2 D condition: `correct_D`.
+  - Max image resolution: `512`.
+  - Max action tokens: `64`.
+  - Max answer tokens: `512`.
+  - Attention implementation: `sdpa`.
+- GPUs:
+  - Planned: `0,1,2,3`, one shard per GPU.
+- Started:
+  - Pending.
+- Finished:
+  - Pending.
+- Metrics:
+  - Pending.
+- Analysis:
+  - Pending.
+- Conclusion:
+  - Pending.
