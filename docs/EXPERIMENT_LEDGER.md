@@ -8949,8 +8949,8 @@ entry, update this file immediately.
 
 ### EXP-20260629-002900-stage3-formal-all5-g12-res768-200step-wandb-online
 
-- Status: PAUSED_FOR_STEPWISE_LOGGING_FIX at step 30; resume planned from step
-  31 with one parent W&B run and checkpoint retention.
+- Status: RUNNING_RESUME2 from step 31 with one parent W&B run and checkpoint
+  retention.
 - Question:
   - Relaunch formal Stage3 all-5 GRPO after the G16/res768 online run OOMed
     before metrics, keeping W&B online upload and checkpoint artifact exclusion.
@@ -9052,6 +9052,9 @@ entry, update this file immediately.
     - Verification:
       `PYTHONPATH=revisit_vlm_clean/src pytest -q revisit_vlm_clean/tests/test_stage3_grpo.py`
       passed, 35 tests.
+    - Fix commit: `5e3b725`.
+    - Resume2 launch command:
+      `CUDA_VISIBLE_DEVICES=0,1,2,3 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True PYTHONPATH=/nvmesv/dredvpn009/projects/r-vlm/revisit_vlm/revisit_vlm_clean/src:/nvmesv/dredvpn009/projects/r-vlm/revisit_vlm/src python -u -m revisit_vlm_clean.cli.stage3_grpo_stepwise --template-plan outputs/stage3_grpo/formal_all5_hint_4gpu_g12_res768_200step_wandb_online_20260629/step_000001/stage3_grpo_training_plan.json --output-root outputs/stage3_grpo/formal_all5_hint_4gpu_g12_res768_200step_wandb_online_20260629 --state-path outputs/stage3_grpo/formal_all5_hint_4gpu_g12_res768_200step_wandb_online_20260629/stage3_grpo_stepwise_state.json --start-step 31 --target-step 200 --max-new-steps 170 --checkpoint-keep-last 2 --checkpoint-keep-every 25 --judge-devices cuda:0,cuda:1,cuda:2,cuda:3 --judge-max-image-resolution 768 --execute`.
   - Stage3 RL 20k train data direct/focus distribution:
     - `tool_need_hint`: useful_tool 10,510; likely_required 1,744;
       optional_tool 4,668; no_tool 3,078.
