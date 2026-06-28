@@ -7854,3 +7854,53 @@ entry, update this file immediately.
 - Conclusion:
   - 4-GPU native Stage3 GRPO smoke is operational. Next run can scale group size
     and/or prompt batch to improve VRAM utilization for a formal training run.
+
+### EXP-20260628-1444-stage3-grpo-formal-4gpu-g8pb2-lora-only
+
+- Status:
+  - PLANNED.
+- Question:
+  - Run the first formal 4-GPU Stage3 GRPO training job from the latest Stage2
+    checkpoint on the 20k RL QA data, using a higher per-rank workload to use
+    more GPU memory.
+- Baseline anchor:
+  - Follows successful smoke `EXP-20260628-1433-stage3-grpo-native-dist-4gpu-1step-debug7-lora-only`.
+- Intended diff:
+  - Scale from debug `group_size=2`, `per_device_prompt_batch_size=1`,
+    `max_steps=1` to formal `group_size=8`,
+    `per_device_prompt_batch_size=2`, `max_steps=20`.
+  - Keep `world_size=4`, LoRA-only trainables, frozen foveal/TGVF module,
+    `optimizer=manual_sgd`, and `max_grad_norm=0`.
+  - Enable W&B offline logging with full config/artifact metadata; checkpoint
+    artifact upload remains disabled because checkpoints are large.
+- Code commit / worktree:
+  - Commit: `34a5fbc Record Stage3 debug7 success`.
+  - Training code commit includes `7be02a1 Restrict Stage3 native trainable parameters`.
+  - Worktree expected clean before plan/launch except future ledger status
+    updates.
+- Stage2 checkpoint/output:
+  - `outputs/clean_training/qwen3_stage2_norm01_stage1_mask075_deepstack_4gpu_20260627_163250/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt`.
+  - SHA256: `50245a11c27ad9755eb815b5f008af50a659fa07a4043f0f9427f5bbea3c0236`.
+- Train data:
+  - `revisit_vlm_clean/data/stage3_rl/v1_direct_20k_20260627_032447/accepted_rl_prompts.jsonl`.
+  - Rows: 20,000.
+  - SHA256: `2e39a1dadcc020001bd3d763635f461d2b7dc6d94bfb3cfecdb9bb20240fa758`.
+- Script / command:
+  - Plan:
+    `PYTHONPATH=revisit_vlm_clean/src:src python -m revisit_vlm_clean.cli.train_stage3_grpo --write-plan --run-id stage3_grpo_formal_4gpu_g8pb2_manualsgd_loraonly_step1200_20260628 --rl-data-path revisit_vlm_clean/data/stage3_rl/v1_direct_20k_20260627_032447/accepted_rl_prompts.jsonl --policy-checkpoint outputs/clean_training/qwen3_stage2_norm01_stage1_mask075_deepstack_4gpu_20260627_163250/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt --output-dir outputs/stage3_grpo/formal_4gpu_g8pb2_manualsgd_loraonly_clean_stage2_step1200_20260628 --runtime-backend native_single_focus --optimizer manual_sgd --world-size 4 --group-size 8 --per-device-prompt-batch-size 2 --gradient-accumulation-steps 1 --max-steps 20 --save-steps 5 --max-grad-norm 0 --max-tool-calls 1 --w-answer 2 --w-tool 1 --w-focus 0 --w-ground 0 --judge-mode cache_only --judge-model qwen3_vl_32b_thinking --wandb-project tgvf-stage3 --wandb-mode offline --wandb-run-name stage3_grpo_formal_4gpu_g8pb2_manualsgd_loraonly_step1200_20260628 --wandb-group stage3-formal --wandb-tags stage3,grpo,formal,4gpu,manual-sgd,lora-only --no-wandb-log-checkpoint-artifact`.
+  - Launch:
+    `tmux new-session -d -s stage3_grpo_formal_4gpu_g8pb2 -- bash -lc 'cd /nvmesv/dredvpn009/projects/r-vlm/revisit_vlm && CUDA_VISIBLE_DEVICES=0,1,2,3 PYTHONPATH=revisit_vlm_clean/src:src torchrun --standalone --nproc_per_node=4 -m revisit_vlm_clean.training.stage3_grpo_executor --plan outputs/stage3_grpo/formal_4gpu_g8pb2_manualsgd_loraonly_clean_stage2_step1200_20260628/stage3_grpo_training_plan.json --launch-training 2>&1 | tee outputs/stage3_grpo/formal_4gpu_g8pb2_manualsgd_loraonly_clean_stage2_step1200_20260628/torchrun_stdout.log'`.
+- GPUs:
+  - `CUDA_VISIBLE_DEVICES=0,1,2,3`.
+- tmux:
+  - Planned session: `stage3_grpo_formal_4gpu_g8pb2`.
+- Started:
+  - Pending.
+- Finished:
+  - Pending.
+- Metrics:
+  - Pending.
+- Analysis:
+  - Pending.
+- Conclusion:
+  - Pending.
