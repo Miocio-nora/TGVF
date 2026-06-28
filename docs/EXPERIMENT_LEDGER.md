@@ -8596,3 +8596,91 @@ entry, update this file immediately.
   - For the immediate next pilot, force a small `delta_tool=1.0` subset to
     verify nonzero ToolDecision classification reward, not just efficiency
     penalty.
+
+### EXP-20260628-205812-stage3-formal-all5-hint-stepwise
+
+- Status: PLANNED.
+- Question:
+  - Prepare formal Stage3 all-5 GRPO training using dataset `tool_need_hint` for
+    ToolDecision labels instead of forced-probe `Delta_tool`.
+- Baseline anchor:
+  - `EXP-20260628-203232-stage3-all5-32bjudge-trigger-pilot`.
+- Intended diff:
+  - Disable forced probes for reward labels.
+  - Use `missing_probe_policy=teacher_hint` with `hint_label_weight=1.0`.
+  - Keep Answer, ProtocolGate, FocusEvidence, and GroundedReasoning active.
+  - Use production-intended 32B judge cache generation.
+  - Use full 20k RL prompt pool instead of the 4-prompt trigger subset.
+- Allowed changed variables:
+  - ToolDecision label source, train data size, seed, and per-step output/cache
+    directory.
+- Not allowed to change:
+  - Stage2 source checkpoint, protocol, world size, group size, reward weights,
+    optimizer, LoRA-only trainable scope, D generation path, and 32B judge model.
+- Code commit / worktree:
+  - `026a711`; worktree clean before plan generation.
+- Stage1 checkpoint:
+  - Encoded in the Stage2 checkpoint lineage.
+- Stage1 processor:
+  - Encoded in the Stage2 checkpoint lineage.
+- Stage2 checkpoint/output:
+  - `outputs/clean_training/qwen3_stage2_norm01_stage1_mask075_deepstack_4gpu_20260627_163250/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt`.
+- Train data:
+  - `revisit_vlm_clean/data/stage3_rl/v1_direct_20k_20260627_032447/accepted_rl_prompts.jsonl`.
+  - Rows: 20,000.
+  - SHA256: `2e39a1dadcc020001bd3d763635f461d2b7dc6d94bfb3cfecdb9bb20240fa758`.
+  - Hint distribution:
+    - `useful_tool`: 10,510.
+    - `likely_required`: 1,744.
+    - `no_tool`: 3,078.
+    - `optional_tool`: 4,668.
+- Validation data:
+  - None for the training launch itself; eval must be a separate ledger entry.
+- Benchmark output:
+  - None.
+- Script / command:
+  - Prepared step-000001 plan:
+    `outputs/stage3_grpo/formal_all5_hint_4gpu_g8pb1_stepwise_20260628/step_000001/stage3_grpo_training_plan.json`.
+  - Prepared preflight:
+    `outputs/stage3_grpo/formal_all5_hint_4gpu_g8pb1_stepwise_20260628/step_000001/stage3_grpo_preflight_report.json`.
+- GPUs:
+  - Planned training: GPUs 0,1,2,3.
+  - Planned 32B judge: one B200 GPU per judge shard; current prepared command
+    assumes one shard.
+- tmux:
+  - Not launched.
+- Started:
+  - Pending launch.
+- Finished:
+  - Pending.
+- Metrics:
+  - Prepared plan passed preflight.
+  - Global rollouts per step: 32.
+  - Probe config: `enabled=false`, `missing_policy=teacher_hint`,
+    `hint_label_weight=1.0`.
+  - Judge cache status before rollout/judge fill: expected `cache_missing`.
+- Analysis:
+  - This config will produce ToolDecision labels from hints:
+    `useful_tool` and `likely_required` -> `tool_needed`;
+    `no_tool` -> `tool_unnecessary`; `optional_tool` -> `unknown`.
+  - With the current cache-only judge design, formal multi-step all-5 training
+    should run stepwise: rollout-only -> 32B judge cache fill -> one training
+    update -> next checkpoint/seed/step directory.
+  - Measured pilot timings for 32 rollouts/step:
+    - rollout-only pending generation: about 108s.
+    - 32B judge for 62 rows: about 115s.
+    - one 4GPU train update: about 226s.
+    - total current single-shard estimate: about 7.5 minutes per step.
+  - If judge pending rows are sharded across 4 available B200 GPUs, expected
+    per-step wall time is roughly 6-6.5 minutes, dominated by rollout/replay.
+- Conclusion:
+  - Formal training is ready at the one-step plan/preflight level, but launch
+    should use a stepwise driver or manual loop so every step gets fresh 32B
+    judge caches before reward computation.
+- Comparable to baseline:
+  - Not launched yet.
+- Follow-up:
+  - Decide step count for first formal run: recommended 100-step run before
+    committing to 500-1000 steps.
+  - Add or run a stepwise launcher that updates policy checkpoint and seed after
+    each one-step update.
