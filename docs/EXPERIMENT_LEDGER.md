@@ -8949,7 +8949,8 @@ entry, update this file immediately.
 
 ### EXP-20260629-002900-stage3-formal-all5-g12-res768-200step-wandb-online
 
-- Status: RUNNING.
+- Status: PAUSED_FOR_FIX after step-14 crash; resume planned from step 14 with
+  the same sample schedule and current checkpoint.
 - Question:
   - Relaunch formal Stage3 all-5 GRPO after the G16/res768 online run OOMed
     before metrics, keeping W&B online upload and checkpoint artifact exclusion.
@@ -9001,3 +9002,22 @@ entry, update this file immediately.
     `outputs/stage3_grpo/formal_all5_hint_4gpu_g12_res768_200step_wandb_online_20260629/stepwise_runner_stdout.log`.
   - GPU memory trace:
     `outputs/stage3_grpo/formal_all5_hint_4gpu_g12_res768_200step_wandb_online_20260629/gpu_mem_trace.csv`.
+- Crash / recovery:
+  - Failed at global step 14 on 2026-06-29 01:33 JST.
+  - Completed steps before crash: 13.
+  - Last good checkpoint:
+    `outputs/stage3_grpo/formal_all5_hint_4gpu_g12_res768_200step_wandb_online_20260629/step_000013/checkpoint_step_1.pt`.
+  - Step 14 wrote no `train_metrics.jsonl` rows and uploaded no loss metrics.
+  - Root cause from logs: not an OOM. Rank0/1/2 entered gradient
+    all-reduce, while rank3 hit the trainer failure path before
+    `rollout_reward_done` and then entered the final barrier in `finally`.
+    NCCL timed out because ranks were in different collectives.
+  - Code recovery patch:
+    - log `free_rollout_failed` / `run_training_failed` with traceback;
+    - do not enter the final distributed barrier when a rank is unwinding from
+      an exception;
+    - all-reduce zero gradients for trainable params with missing `grad` so all
+      ranks execute the same collective sequence.
+  - Verification before resume:
+    `PYTHONPATH=revisit_vlm_clean/src pytest -q revisit_vlm_clean/tests/test_stage3_grpo.py`
+    passed, 33 tests.

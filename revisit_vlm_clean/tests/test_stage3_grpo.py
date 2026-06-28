@@ -33,6 +33,7 @@ from revisit_vlm_clean.stage3_grpo.schemas import (
 )
 from revisit_vlm_clean.stage3_grpo.trainer import (
     _stage3_configure_native_trainables,
+    _stage3_distributed_average_gradients,
     _stage3_manual_sgd_step,
     _stage3_native_adamw,
     _stage3_clip_grad_norm,
@@ -180,6 +181,33 @@ def test_stage3_clip_grad_norm_zero_disables_norm_and_clip() -> None:
 
     assert grad_norm == 0.0
     assert param.grad.tolist() == [3.0, 4.0]
+
+
+def test_stage3_distributed_average_gradients_allreduces_missing_grads(monkeypatch) -> None:
+    import torch
+    import torch.distributed as dist
+
+    calls: list[tuple[tuple[int, ...], float]] = []
+
+    def fake_all_reduce(tensor, op=None):
+        calls.append((tuple(tensor.shape), float(tensor.detach().sum().cpu())))
+        tensor.add_(2.0)
+
+    monkeypatch.setattr(dist, "all_reduce", fake_all_reduce)
+    with_grad = torch.nn.Parameter(torch.ones(2))
+    with_grad.grad = torch.tensor([1.0, 3.0])
+    missing_grad = torch.nn.Parameter(torch.ones(3))
+    missing_grad.grad = None
+
+    _stage3_distributed_average_gradients(
+        [with_grad, missing_grad],
+        {"distributed": True, "world_size": 2},
+    )
+
+    assert calls == [((2,), 4.0), ((3,), 0.0)]
+    assert torch.allclose(with_grad.grad, torch.tensor([1.5, 2.5]))
+    assert missing_grad.grad is not None
+    assert torch.allclose(missing_grad.grad, torch.ones(3))
 
 
 def test_stage3_native_adamw_uses_non_foreach_non_fused_path() -> None:

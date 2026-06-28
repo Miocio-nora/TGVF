@@ -7,6 +7,7 @@ import math
 import os
 import random
 import subprocess
+import traceback
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -66,10 +67,49 @@ class Stage3GRPOTrainer:
             global_step=global_step,
             accumulation_index=accumulation_index,
         )
+        if global_step is not None:
+            self._progress(
+                "rollout_batch_selected",
+                global_step=global_step,
+                accumulation_index=accumulation_index,
+                prompt_count=len(prompts),
+                sample_ids=[sample.sample_id for sample in prompts],
+            )
         rollouts: list[RolloutRecord] = []
         for sample in prompts:
             for rollout_id in range(self.config.rollout.group_size):
-                rollout = self.engine.free_rollout(sample, rollout_id=rollout_id)
+                if global_step is not None:
+                    self._progress(
+                        "free_rollout_start",
+                        global_step=global_step,
+                        accumulation_index=accumulation_index,
+                        sample_id=sample.sample_id,
+                        rollout_id=rollout_id,
+                    )
+                try:
+                    rollout = self.engine.free_rollout(sample, rollout_id=rollout_id)
+                except BaseException as exc:
+                    if global_step is not None:
+                        self._progress(
+                            "free_rollout_failed",
+                            global_step=global_step,
+                            accumulation_index=accumulation_index,
+                            sample_id=sample.sample_id,
+                            rollout_id=rollout_id,
+                            **_stage3_exception_payload(exc),
+                        )
+                    raise
+                if global_step is not None:
+                    self._progress(
+                        "free_rollout_done",
+                        global_step=global_step,
+                        accumulation_index=accumulation_index,
+                        sample_id=sample.sample_id,
+                        rollout_id=rollout_id,
+                        used_tool=bool(rollout.used_tool),
+                        token_count=len(rollout.token_ids or ()),
+                        old_logprob_count=len(rollout.old_logprobs or ()),
+                    )
                 schedule_row = schedule_by_sample_id.get(sample.sample_id)
                 if schedule_row:
                     runtime = dict(rollout.runtime or {})
@@ -231,6 +271,7 @@ class Stage3GRPOTrainer:
         latest_checkpoint: str | None = None
         latest_metrics: dict[str, Any] = {}
         aggregate = _Stage3Aggregate()
+        completed_successfully = False
         try:
             for global_step in range(1, int(self.config.train.max_steps) + 1):
                 self._progress("step_start", global_step=global_step)
@@ -355,11 +396,16 @@ class Stage3GRPOTrainer:
                         paths=[latest_checkpoint],
                         aliases=["latest", f"step_{int(self.config.train.max_steps)}"],
                     )
+            completed_successfully = True
             return result
+        except BaseException as exc:
+            self._progress("run_training_failed", **_stage3_exception_payload(exc))
+            raise
         finally:
             if logger is not None:
                 logger.finish()
-            _stage3_distributed_barrier(self.distributed)
+            if completed_successfully:
+                _stage3_distributed_barrier(self.distributed)
             _destroy_stage3_distributed_context(self.distributed)
 
     def _rollout_and_reward_training_step(
@@ -692,15 +738,25 @@ def _stage3_distributed_average_gradients(
 ) -> None:
     if not context.get("distributed"):
         return
+    import torch
     import torch.distributed as dist
 
     world_size = float(context["world_size"])
     for param in params:
         grad = getattr(param, "grad", None)
         if grad is None:
-            continue
+            grad = torch.zeros_like(param.detach(), memory_format=torch.preserve_format)
+            param.grad = grad
         dist.all_reduce(grad, op=dist.ReduceOp.SUM)
         grad.div_(world_size)
+
+
+def _stage3_exception_payload(exc: BaseException) -> dict[str, Any]:
+    return {
+        "error_type": type(exc).__name__,
+        "error": str(exc),
+        "traceback": "".join(traceback.format_exception(type(exc), exc, exc.__traceback__)),
+    }
 
 
 def _stage3_distributed_metric_summary(
