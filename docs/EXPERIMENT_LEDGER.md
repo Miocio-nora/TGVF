@@ -8949,8 +8949,8 @@ entry, update this file immediately.
 
 ### EXP-20260629-002900-stage3-formal-all5-g12-res768-200step-wandb-online
 
-- Status: PAUSED_FOR_FIX after step-14 crash; resume planned from step 14 with
-  the same sample schedule and current checkpoint.
+- Status: RUNNING_RESUME from step 14 with the same sample schedule and current
+  checkpoint.
 - Question:
   - Relaunch formal Stage3 all-5 GRPO after the G16/res768 online run OOMed
     before metrics, keeping W&B online upload and checkpoint artifact exclusion.
@@ -9021,3 +9021,6 @@ entry, update this file immediately.
   - Verification before resume:
     `PYTHONPATH=revisit_vlm_clean/src pytest -q revisit_vlm_clean/tests/test_stage3_grpo.py`
     passed, 33 tests.
+  - Recovery commit: `eb047d8`.
+  - Failed step directory will be preserved as
+    `step_000014_failed_nccl_20260629_013341` before retrying step 14.
