@@ -7453,3 +7453,70 @@ entry, update this file immediately.
     training launch.
 - Comparable to baseline:
   - No. This is a Stage3 training launch, not benchmark eval.
+
+### EXP-20260628-1319-stage3-grpo-native-dist-4gpu-2step-smoke
+
+- Status:
+  - STOPPED.
+- Question:
+  - Does the new Stage3 torchrun distributed native path run on GPUs `0-3`
+    with one full model per rank, manual gradient all-reduce, rank0 checkpoint
+    writing, and per-rank debug outputs?
+- Baseline anchor:
+  - Replaces failed single-process auto-shard attempt
+    `EXP-20260628-1259-stage3-grpo-formal-answer-tool-4gpu-g8pb2ga2`.
+- Intended diff:
+  - Use `torchrun --nproc_per_node=4`.
+  - Use `train.world_size=4`.
+  - Run `max_steps=2`, `save_steps=1`, `group_size=2`,
+    `per_device_prompt_batch_size=1`, `gradient_accumulation_steps=1`.
+  - Expected global free rollouts per optimizer step: `8`.
+- Allowed changed variables:
+  - Stage3 distributed execution path and output directory.
+- Not allowed to change:
+  - RL data file.
+  - Stage2 source checkpoint.
+  - Protocol-C tool-observation contract.
+- Code commit / worktree:
+  - Commit: `a254987b2a7576c0ae5eb36a3754358355d4f4bb`
+    (`a254987 Add distributed Stage3 GRPO launch support`).
+- Stage2 checkpoint/output:
+  - `outputs/clean_training/qwen3_stage2_norm01_stage1_mask075_deepstack_4gpu_20260627_163250/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt`.
+  - sha256:
+    `50245a11c27ad9755eb815b5f008af50a659fa07a4043f0f9427f5bbea3c0236`.
+- Train data:
+  - `revisit_vlm_clean/data/stage3_rl/v1_direct_20k_20260627_032447/accepted_rl_prompts.jsonl`.
+  - Rows: `20000`.
+  - sha256:
+    `2e39a1dadcc020001bd3d763635f461d2b7dc6d94bfb3cfecdb9bb20240fa758`.
+- Script / command:
+  - Plan:
+    `PYTHONPATH=revisit_vlm_clean/src:src python -m revisit_vlm_clean.cli.train_stage3_grpo --write-plan --run-id stage3_grpo_native_dist_4gpu_2step_smoke_clean_stage2_step1200_20260628 --rl-data-path revisit_vlm_clean/data/stage3_rl/v1_direct_20k_20260627_032447/accepted_rl_prompts.jsonl --policy-checkpoint outputs/clean_training/qwen3_stage2_norm01_stage1_mask075_deepstack_4gpu_20260627_163250/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt --model-id /nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking --processor-id /nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking --output-dir outputs/stage3_grpo/native_dist_4gpu_2step_smoke_clean_stage2_step1200_20260628 --runtime-backend native_single_focus --world-size 4 --group-size 2 --per-device-prompt-batch-size 1 --gradient-accumulation-steps 1 --max-steps 2 --save-steps 1 --max-tool-calls 1 --max-image-resolution 512 --max-action-tokens 64 --max-answer-tokens 96 --max-new-tokens 160 --temperature 0.8 --top-p 0.95 --probe-enabled --missing-probe-policy teacher_hint --hint-label-weight 0.5 --w-answer 2.0 --w-tool 1.0 --w-focus 0.0 --w-ground 0.0 --judge-enabled --judge-mode cache_only --judge-model qwen3_vl_32b_thinking --learning-rate 5e-7 --wandb-mode disabled`.
+  - Preflight:
+    `PYTHONPATH=revisit_vlm_clean/src:src python -m revisit_vlm_clean.training.stage3_grpo_executor --plan outputs/stage3_grpo/native_dist_4gpu_2step_smoke_clean_stage2_step1200_20260628/stage3_grpo_training_plan.json --preflight-only`.
+  - Launch:
+    `CUDA_VISIBLE_DEVICES=0,1,2,3 PYTHONPATH=revisit_vlm_clean/src:src torchrun --standalone --nproc_per_node=4 -m revisit_vlm_clean.training.stage3_grpo_executor --plan outputs/stage3_grpo/native_dist_4gpu_2step_smoke_clean_stage2_step1200_20260628/stage3_grpo_training_plan.json --launch-training`.
+- GPUs:
+  - `CUDA_VISIBLE_DEVICES=0,1,2,3`.
+- tmux:
+  - Direct command, no tmux.
+- Started:
+  - 2026-06-28 13:19:54 JST.
+- Finished:
+  - 2026-06-28 13:33:00 JST.
+- Metrics:
+  - Stopped before first optimizer metric.
+  - Per-rank reward rows: rank0=`2`, rank1=`2`, rank2=`2`, rank3=`2`.
+  - `train_metrics.jsonl`: `0` rows.
+- Analysis:
+  - The distributed launch did use GPUs `0-3` with one process per GPU:
+    pmon showed each GPU at approximately `99-100%` SM utilization and about
+    `25-28GB` memory per GPU.
+  - The run reached reward writing on all ranks, then spent too long before
+    first optimizer metrics. It was stopped so the Stage3 distributed path can
+    add per-rank progress instrumentation around replay/backward/all-reduce.
+- Conclusion:
+  - Distributed GPU placement works, but the update path needs instrumentation
+    before it can be used as the formal run.
+- Comparable to baseline:
+  - No. This is a distributed code-path smoke.

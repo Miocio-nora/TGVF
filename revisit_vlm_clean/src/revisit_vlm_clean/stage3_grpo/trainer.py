@@ -19,7 +19,7 @@ from .judge import JudgeBundle
 from .probe import ProbeCache
 from .reward import score_rollout_reward
 from .rollout import build_rollout_engine
-from .schemas import RolloutRecord, Stage3GRPOConfig, write_json
+from .schemas import RolloutRecord, Stage3GRPOConfig, now_iso, write_json
 
 
 class Stage3GRPOTrainer:
@@ -41,6 +41,7 @@ class Stage3GRPOTrainer:
         self.probe_cache = ProbeCache(self.config.probe.cache_path)
         self.judge_bundle = JudgeBundle(self.config.judge, output_dir=self.rank_output_dir)
         self.engine = build_rollout_engine(self.config)
+        self.progress_path = self.rank_output_dir / "progress.jsonl"
         self._wandb_logger = None
 
     def rollout_batch(self, *, prompt_batch_size: int | None = None) -> list[RolloutRecord]:
@@ -156,7 +157,7 @@ class Stage3GRPOTrainer:
         rollout_path = self.rank_output_dir / "rollout_debug.jsonl"
         reward_path = self.rank_output_dir / "reward_breakdown.jsonl"
         metrics_path = self.rank_output_dir / "train_metrics.jsonl"
-        for path in (rollout_path, reward_path, metrics_path):
+        for path in (rollout_path, reward_path, metrics_path, self.progress_path):
             path.write_text("", encoding="utf-8")
         logger = (
             _create_stage3_wandb_logger(self.config, self.output_dir)
@@ -169,7 +170,14 @@ class Stage3GRPOTrainer:
         aggregate = _Stage3Aggregate()
         try:
             for global_step in range(1, int(self.config.train.max_steps) + 1):
+                self._progress("step_start", global_step=global_step)
                 rewarded, rewards = self._rollout_and_reward_training_step(global_step)
+                self._progress(
+                    "rollout_reward_done",
+                    global_step=global_step,
+                    rollout_count=len(rewarded),
+                    reward_count=len(rewards),
+                )
                 _append_jsonl(
                     rollout_path,
                     [
@@ -191,17 +199,20 @@ class Stage3GRPOTrainer:
                     ],
                 )
                 if self.config.rollout.runtime_backend == "native_single_focus":
+                    self._progress("update_start", global_step=global_step)
                     update = self.native_grpo_update(
                         rewarded,
                         rewards,
                         global_step=global_step,
                     )
                 else:
+                    self._progress("update_start", global_step=global_step)
                     update = self.fake_grpo_update(
                         rewarded,
                         rewards,
                         global_step=global_step,
                     )
+                self._progress("update_done", global_step=global_step, metrics=dict(update))
                 latest_metrics = dict(update)
                 _append_jsonl(metrics_path, [latest_metrics])
                 write_json(self.output_dir / "train_metrics.json", latest_metrics)
@@ -237,6 +248,7 @@ class Stage3GRPOTrainer:
                         ),
                         step=global_step,
                     )
+                self._progress("step_done", global_step=global_step)
             result = {
                 "status": "stage3_grpo_training_completed",
                 "output_dir": str(self.output_dir),
@@ -352,6 +364,21 @@ class Stage3GRPOTrainer:
             )
         return checkpoint_path
 
+    def _progress(self, event: str, **payload: Any) -> None:
+        _append_jsonl(
+            self.progress_path,
+            [
+                {
+                    "created_at": now_iso(),
+                    "event": event,
+                    "rank": int(self.distributed["rank"]),
+                    "local_rank": int(self.distributed["local_rank"]),
+                    "world_size": int(self.distributed["world_size"]),
+                    **payload,
+                }
+            ],
+        )
+
     def native_grpo_update(
         self,
         rollouts: list[RolloutRecord],
@@ -380,12 +407,34 @@ class Stage3GRPOTrainer:
         new_rows = []
         old_rows = []
         ref_rows = []
-        for rollout in rollouts:
+        for rollout_index, rollout in enumerate(rollouts):
             sample = sample_by_id[rollout.sample_id]
+            self._progress(
+                "replay_policy_start",
+                global_step=global_step,
+                rollout_index=rollout_index,
+                sample_id=rollout.sample_id,
+                rollout_id=rollout.rollout_id,
+            )
             new_logprobs = self.engine.replay_rollout_logprobs(  # type: ignore[attr-defined]
                 sample,
                 rollout,
                 reference=False,
+            )
+            self._progress(
+                "replay_policy_done",
+                global_step=global_step,
+                rollout_index=rollout_index,
+                sample_id=rollout.sample_id,
+                rollout_id=rollout.rollout_id,
+                token_count=int(new_logprobs.numel()),
+            )
+            self._progress(
+                "replay_reference_start",
+                global_step=global_step,
+                rollout_index=rollout_index,
+                sample_id=rollout.sample_id,
+                rollout_id=rollout.rollout_id,
             )
             with torch.no_grad():
                 ref_logprobs = self.engine.replay_rollout_logprobs(  # type: ignore[attr-defined]
@@ -393,6 +442,14 @@ class Stage3GRPOTrainer:
                     rollout,
                     reference=True,
                 ).detach()
+            self._progress(
+                "replay_reference_done",
+                global_step=global_step,
+                rollout_index=rollout_index,
+                sample_id=rollout.sample_id,
+                rollout_id=rollout.rollout_id,
+                token_count=int(ref_logprobs.numel()),
+            )
             old_logprobs = torch.tensor(
                 list(rollout.old_logprobs),
                 dtype=torch.float32,
@@ -442,9 +499,19 @@ class Stage3GRPOTrainer:
             clip_range=self.config.train.clip_range,
             kl_coef=self.config.train.kl_coef,
         )
+        self._progress(
+            "backward_start",
+            global_step=global_step,
+            rollout_count=len(rollouts),
+            token_count=float(mask_tensor.sum().detach().cpu()),
+        )
         loss.backward()
+        self._progress("backward_done", global_step=global_step)
+        self._progress("gradient_allreduce_start", global_step=global_step)
         _stage3_distributed_average_gradients(params, self.distributed)
+        self._progress("gradient_allreduce_done", global_step=global_step)
         grad_norm = float(torch.nn.utils.clip_grad_norm_(params, self.config.train.max_grad_norm))
+        self._progress("optimizer_step_start", global_step=global_step, grad_norm=grad_norm)
         optimizer.step()
         self._last_native_optimizer_state = optimizer.state_dict()
         optimizer.zero_grad(set_to_none=True)
@@ -463,6 +530,7 @@ class Stage3GRPOTrainer:
             "world_size": int(self.distributed["world_size"]),
         }
         update.update(_stage3_distributed_metric_summary(update, self.distributed))
+        self._progress("optimizer_step_done", global_step=global_step, metrics=dict(update))
         _stage3_distributed_barrier(self.distributed)
         return update
 
