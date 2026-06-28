@@ -8006,7 +8006,7 @@ entry, update this file immediately.
 ### EXP-20260628-1530-stage3-grpo-formal-4gpu-g8pb3-lora-only
 
 - Status:
-  - RUNNING.
+  - STOPPED_SIDE_RESULT.
 - Question:
   - Run the formal 4-GPU Stage3 GRPO job from the latest Stage2 checkpoint on
     the 20k RL QA data with a stable high-utilization workload.
@@ -8050,6 +8050,86 @@ entry, update this file immediately.
   - Planned session: `stage3_grpo_formal_4gpu_g8pb3`.
 - Started:
   - 2026-06-28 15:30 JST.
+- Finished:
+  - 2026-06-28 15:52 JST, intentionally stopped after step 6 showed the same
+    near-full-memory stall pattern as `g8pb4`.
+- Metrics:
+  - Completed 5 optimizer steps before stop.
+  - Checkpoint:
+    `outputs/stage3_grpo/formal_4gpu_g8pb3_manualsgd_loraonly_clean_stage2_step1200_20260628/checkpoint_step_5.pt`
+    (734,585,995 bytes).
+  - Train metrics: 5 rows per rank.
+  - Distributed metrics at step 5 from rank0:
+    - `distributed_rollout_count=96`.
+    - `distributed_group_count=12`.
+    - `distributed_mean_reward=0.78125`.
+    - `distributed_loss_mean=-0.019163240678608418`.
+    - `distributed_policy_loss_mean=-0.08346463227644563`.
+    - `distributed_kl_mean=3.2150697112083435`.
+    - `distributed_replayed_tokens=3554`.
+  - Peak observed GPU memory:
+    - GPU0 about 125 GiB.
+    - GPU1 about 128 GiB.
+    - GPU2 about 142 GiB.
+    - GPU3 reached about 182.6 GiB at step 6.
+- Analysis:
+  - `g8pb3` is better than `g8pb4` and successfully wrote the step-5
+    checkpoint, but random long rollout/replay groups can still push a rank to
+    the memory limit.
+  - At step 6 GPU3 reached near-full memory and the job stopped making progress
+    in optimizer/update synchronization.
+- Conclusion:
+  - Treat as a capacity side result. The stable formal 20-step run should use
+    `g8pb2` unless token-budget batching or stricter rollout length caps are
+    added.
+
+### EXP-20260628-1553-stage3-grpo-formal-4gpu-g8pb2-stable20-lora-only
+
+- Status:
+  - RUNNING.
+- Question:
+  - Complete a stable formal 20-step 4-GPU Stage3 GRPO run from the latest
+    Stage2 checkpoint on the 20k RL QA data.
+- Baseline anchor:
+  - Uses the highest workload that proved stable through checkpoint writing:
+    `g8pb2`, after `g8pb3` and `g8pb4` capacity probes showed near-full-memory
+    stalls on long sampled groups.
+- Intended diff:
+  - Use `per_device_prompt_batch_size=2` with `group_size=8` and
+    `world_size=4`, giving 64 global rollouts per update step.
+  - Keep `max_steps=20`, `save_steps=5`, LoRA-only trainables, frozen
+    foveal/TGVF module, `optimizer=manual_sgd`, and `max_grad_norm=0`.
+  - Keep W&B offline logging enabled with full config/artifact metadata;
+    checkpoint artifact upload remains disabled because checkpoints are large.
+- Code commit / worktree:
+  - Plan generated from commit `7f28b9c`.
+  - Training code commit includes `7be02a1 Restrict Stage3 native trainable parameters`.
+  - Worktree dirty only for this RUNNING ledger update at launch.
+- Stage2 checkpoint/output:
+  - `outputs/clean_training/qwen3_stage2_norm01_stage1_mask075_deepstack_4gpu_20260627_163250/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt`.
+  - SHA256: `50245a11c27ad9755eb815b5f008af50a659fa07a4043f0f9427f5bbea3c0236`.
+- Train data:
+  - `revisit_vlm_clean/data/stage3_rl/v1_direct_20k_20260627_032447/accepted_rl_prompts.jsonl`.
+  - Rows: 20,000.
+  - SHA256: `2e39a1dadcc020001bd3d763635f461d2b7dc6d94bfb3cfecdb9bb20240fa758`.
+- Preflight:
+  - Report:
+    `outputs/stage3_grpo/formal_4gpu_g8pb2_stable20_manualsgd_loraonly_clean_stage2_step1200_20260628/stage3_grpo_preflight_report.json`.
+  - Status: `passed`.
+  - Plan SHA256:
+    `e5bfac3f8c73a3a6f0b6d31f0e473b54e0b4840f5350a0276a18c4c74222cae0`.
+  - Global rollouts per step: 64.
+- Script / command:
+  - Plan:
+    `PYTHONPATH=revisit_vlm_clean/src:src python -m revisit_vlm_clean.cli.train_stage3_grpo --write-plan --run-id stage3_grpo_formal_4gpu_g8pb2_stable20_manualsgd_loraonly_step1200_20260628 --rl-data-path revisit_vlm_clean/data/stage3_rl/v1_direct_20k_20260627_032447/accepted_rl_prompts.jsonl --policy-checkpoint outputs/clean_training/qwen3_stage2_norm01_stage1_mask075_deepstack_4gpu_20260627_163250/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt --output-dir outputs/stage3_grpo/formal_4gpu_g8pb2_stable20_manualsgd_loraonly_clean_stage2_step1200_20260628 --runtime-backend native_single_focus --optimizer manual_sgd --world-size 4 --group-size 8 --per-device-prompt-batch-size 2 --gradient-accumulation-steps 1 --max-steps 20 --save-steps 5 --max-grad-norm 0 --max-tool-calls 1 --w-answer 2 --w-tool 1 --w-focus 0 --w-ground 0 --judge-mode cache_only --judge-model qwen3_vl_32b_thinking --wandb-project tgvf-stage3 --wandb-mode offline --wandb-run-name stage3_grpo_formal_4gpu_g8pb2_stable20_manualsgd_loraonly_step1200_20260628 --wandb-group stage3-formal --wandb-tags stage3,grpo,formal,4gpu,manual-sgd,lora-only,pb2,stable20 --no-wandb-log-checkpoint-artifact`.
+  - Launch:
+    `tmux new-session -d -s stage3_grpo_formal_4gpu_g8pb2_stable20 -- bash -lc 'cd /nvmesv/dredvpn009/projects/r-vlm/revisit_vlm && CUDA_VISIBLE_DEVICES=0,1,2,3 PYTHONPATH=revisit_vlm_clean/src:src torchrun --standalone --nproc_per_node=4 -m revisit_vlm_clean.training.stage3_grpo_executor --plan outputs/stage3_grpo/formal_4gpu_g8pb2_stable20_manualsgd_loraonly_clean_stage2_step1200_20260628/stage3_grpo_training_plan.json --launch-training 2>&1 | tee outputs/stage3_grpo/formal_4gpu_g8pb2_stable20_manualsgd_loraonly_clean_stage2_step1200_20260628/torchrun_stdout.log'`.
+- GPUs:
+  - `CUDA_VISIBLE_DEVICES=0,1,2,3`.
+- tmux:
+  - Planned session: `stage3_grpo_formal_4gpu_g8pb2_stable20`.
+- Started:
+  - 2026-06-28 15:53 JST.
 - Finished:
   - Pending.
 - Metrics:
