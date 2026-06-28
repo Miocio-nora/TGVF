@@ -8687,7 +8687,7 @@ entry, update this file immediately.
 
 ### EXP-20260628-213900-stage3-formal-all5-hint-200step
 
-- Status: RUNNING.
+- Status: SIDE_RESULT_STOPPED_FOR_RECONFIG.
 - Question:
   - Run the first formal Stage3 all-5 GRPO training for 200 optimizer steps with
     resume-safe, non-repeating RL prompts.
@@ -8747,8 +8747,80 @@ entry, update this file immediately.
   - Runner log:
     `outputs/stage3_grpo/formal_all5_hint_4gpu_g8pb1_200step_20260628/stepwise_runner_stdout.log`.
 - Finished:
-  - Pending.
+  - Stopped at 2026-06-28 JST after user rejected the low-VRAM conservative
+    configuration.
 - Metrics:
   - Preflight status: passed.
   - Expected runtime from current pilot: roughly 20-25 hours depending on judge
     shard utilization and rollout/replay variance.
+  - Stopped after 13 completed stepwise updates.
+  - Last checkpoint before stop:
+    `outputs/stage3_grpo/formal_all5_hint_4gpu_g8pb1_200step_20260628/step_000013/checkpoint_step_1.pt`.
+  - Reason:
+    - The launch used `group_size=8`, `max_image_resolution=512`,
+      LoRA-only policy training, and serial rollout/replay. Policy stages used
+      far below the desired B200 memory target; user requested a higher-throughput
+      configuration closer to 120GB/GPU rather than a conservative ~30-50GB/GPU
+      profile.
+  - Conclusion:
+    - Do not treat this as the formal Stage3 checkpoint lineage.
+    - Next run should be a VRAM calibration and then a fresh formal schedule.
+
+### EXP-20260628-223500-stage3-vram-calib-g16-res768
+
+- Status: COMPLETED.
+- Question:
+  - Calibrate a less conservative Stage3 GRPO configuration that uses B200
+    memory more effectively than the stopped `G=8`, `res=512` run.
+- Intended diff:
+  - `group_size=16`.
+  - `max_image_resolution=768`.
+  - `max_new_tokens=256`, `max_action_tokens=128`, `max_answer_tokens=160`.
+  - Keep 4GPU, manual SGD, LoRA-only, all-5 reward plumbing, and teacher-hint
+    ToolDecision.
+- Output:
+  - `outputs/stage3_grpo/vram_calib_g16_res768_4gpu_step014_20260628`.
+- Source checkpoint:
+  - Side-result checkpoint from stopped run:
+    `outputs/stage3_grpo/formal_all5_hint_4gpu_g8pb1_200step_20260628/step_000013/checkpoint_step_1.pt`.
+  - This checkpoint was used only for VRAM calibration, not as a formal lineage.
+- Metrics:
+  - One step completed successfully.
+  - Global rollouts per step: 64.
+  - Distributed rollout count: 64.
+  - Distributed replayed tokens: 2515.
+  - GPU memory trace peak on physical GPUs 0-3:
+    - GPU0: 117,878 MiB.
+    - GPU1: 124,642 MiB.
+    - GPU2: 62,756 MiB.
+    - GPU3: 119,672 MiB.
+  - The low GPU2 peak appears sample/trajectory-length driven; rollout-only
+    still uses about 23GB because rollout generation remains serial.
+- Conclusion:
+  - `G=16`, `res=768` is the first acceptable high-VRAM configuration. It
+    reaches the requested ~120GB/GPU profile during train/replay on ranks with
+    nontrivial trajectory length, while staying well under B200 capacity.
+  - For an even stricter all-rank floor, consider `G=20` or `res=896`, but that
+    likely pushes long-rank peaks toward 150GB+.
+
+### EXP-20260628-224500-stage3-formal-all5-g16-res768-200step
+
+- Status: PLANNED.
+- Question:
+  - Relaunch formal Stage3 all-5 GRPO from the clean Stage2 checkpoint using the
+    high-VRAM calibrated `G=16`, `res=768` profile.
+- Intended diff from stopped run:
+  - Start again from the original Stage2 step-1200 checkpoint, not the stopped
+    side-result checkpoint.
+  - Use a fresh deterministic 200-step schedule.
+  - Use `group_size=16`, `max_image_resolution=768`,
+    `max_new_tokens=256`, `max_action_tokens=128`,
+    `max_answer_tokens=160`.
+- Source checkpoint:
+  - `outputs/clean_training/qwen3_stage2_norm01_stage1_mask075_deepstack_4gpu_20260627_163250/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt`.
+  - SHA256: `50245a11c27ad9755eb815b5f008af50a659fa07a4043f0f9427f5bbea3c0236`.
+- Train data:
+  - `revisit_vlm_clean/data/stage3_rl/v1_direct_20k_20260627_032447/accepted_rl_prompts.jsonl`.
+  - SHA256: `2e39a1dadcc020001bd3d763635f461d2b7dc6d94bfb3cfecdb9bb20240fa758`.
+- Planned output:
+  - `outputs/stage3_grpo/formal_all5_hint_4gpu_g16_res768_200step_20260628`.
