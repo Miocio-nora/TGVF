@@ -8949,8 +8949,8 @@ entry, update this file immediately.
 
 ### EXP-20260629-002900-stage3-formal-all5-g12-res768-200step-wandb-online
 
-- Status: RUNNING_RESUME3 from step 32 with one parent W&B run and checkpoint
-  retention.
+- Status: RUNNING_RESUME4 from step 33 with HuggingFace offline cache and
+  checkpoint retention.
 - Question:
   - Relaunch formal Stage3 all-5 GRPO after the G16/res768 online run OOMed
     before metrics, keeping W&B online upload and checkpoint artifact exclusion.
@@ -9067,6 +9067,18 @@ entry, update this file immediately.
     - Step 31 completed successfully and advanced state to `next_step=32`.
     - After step 31 retention kept steps 25, 30, 31 and deleted the prior
       non-milestone step 29 checkpoint.
+    - Resume3 completed through step 32, then failed at step 33 during model
+      load on rank 1. It was not an OOM and not a W&B/ckpt failure. The error
+      was a transformers/hub lookup for
+      `Qwen/Qwen3-VL-8B-Thinking/model-00002-of-00004.safetensors` even though
+      the shard exists in the local HuggingFace cache.
+    - Local-only cache validation succeeded for config, processor,
+      `model.safetensors.index.json`, and
+      `model-00002-of-00004.safetensors`.
+    - Resume4 plan: continue from step 33 using checkpoint
+      `step_000032/checkpoint_step_1.pt`, with
+      `HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1` to avoid hub/cache false
+      negatives during repeated multi-process model loads.
   - Stage3 RL 20k train data direct/focus distribution:
     - `tool_need_hint`: useful_tool 10,510; likely_required 1,744;
       optional_tool 4,668; no_tool 3,078.
