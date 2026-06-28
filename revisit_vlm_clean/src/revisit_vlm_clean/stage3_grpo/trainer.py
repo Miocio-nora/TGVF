@@ -400,9 +400,15 @@ class Stage3GRPOTrainer:
             raise RuntimeError("native runtime is not loaded; run rollouts before native update")
         model = native_runtime.model
         foveal_module = getattr(native_runtime, "foveal_module", None)
+        trainable_summary = _stage3_configure_native_trainables(model, foveal_module)
+        self._progress(
+            "trainable_parameters",
+            global_step=global_step,
+            summary=trainable_summary,
+        )
         model.train()
         if foveal_module is not None:
-            foveal_module.train()
+            foveal_module.eval()
         reward_map = {
             (str(row["sample_id"]), int(row["rollout_id"])): float(row["reward_total"])
             for row in rewards
@@ -481,12 +487,6 @@ class Stage3GRPOTrainer:
             device=new_tensor.device,
         )
         params = [param for param in model.parameters() if getattr(param, "requires_grad", False)]
-        if foveal_module is not None:
-            params.extend(
-                param
-                for param in foveal_module.parameters()
-                if getattr(param, "requires_grad", False)
-            )
         if not params:
             raise RuntimeError("native GRPO update found no trainable parameters")
         optimizer = None
@@ -702,6 +702,54 @@ def _stage3_native_adamw(params: list[Any], *, lr: float) -> Any:
     import torch
 
     return torch.optim.AdamW(params, lr=lr, foreach=False, fused=False)
+
+
+def _stage3_configure_native_trainables(model: Any, foveal_module: Any | None) -> dict[str, Any]:
+    policy_summary = _stage3_restrict_policy_trainables(model)
+    foveal_summary = _stage3_freeze_module(foveal_module) if foveal_module is not None else {}
+    return {
+        "policy": policy_summary,
+        "foveal_module": foveal_summary,
+        "total_trainable_parameters": int(policy_summary.get("trainable_parameters", 0)),
+    }
+
+
+def _stage3_restrict_policy_trainables(model: Any) -> dict[str, Any]:
+    markers = ("lora_", "modules_to_save", "trainable_tokens", "token_adapter")
+    total_parameters = 0
+    trainable_parameters = 0
+    trainable_tensors = 0
+    sample_names: list[str] = []
+    for name, param in model.named_parameters():
+        count = int(param.numel())
+        total_parameters += count
+        trainable = any(marker in name for marker in markers)
+        param.requires_grad_(trainable)
+        if trainable:
+            trainable_parameters += count
+            trainable_tensors += 1
+            if len(sample_names) < 8:
+                sample_names.append(name)
+    return {
+        "total_parameters": total_parameters,
+        "trainable_parameters": trainable_parameters,
+        "trainable_tensors": trainable_tensors,
+        "trainable_name_samples": sample_names,
+        "trainable_markers": list(markers),
+    }
+
+
+def _stage3_freeze_module(module: Any) -> dict[str, Any]:
+    total_parameters = 0
+    for param in module.parameters():
+        total_parameters += int(param.numel())
+        param.requires_grad_(False)
+    return {
+        "total_parameters": total_parameters,
+        "trainable_parameters": 0,
+        "trainable_tensors": 0,
+        "frozen": True,
+    }
 
 
 def _stage3_manual_sgd_step(params: list[Any], *, lr: float) -> None:

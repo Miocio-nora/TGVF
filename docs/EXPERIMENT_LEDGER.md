@@ -7742,7 +7742,7 @@ entry, update this file immediately.
 ### EXP-20260628-1423-stage3-grpo-native-dist-4gpu-1step-debug6-manual-sgd
 
 - Status:
-  - PLANNED.
+  - STOPPED.
 - Question:
   - Does the 4-GPU native distributed Stage3 path complete one optimizer step
     and write metrics/checkpoint using manual SGD updates?
@@ -7752,9 +7752,9 @@ entry, update this file immediately.
   - Use commit `ad0b7c1`; set `--optimizer manual_sgd`.
   - Keep `--max-grad-norm 0` and the same 4-GPU one-step debug shape.
 - Code commit / worktree:
-  - Commit: `ad0b7c1 Add manual Stage3 native optimizer path`.
-  - Worktree expected clean before plan/launch except future ledger status
-    updates.
+  - Commit: `672c96d Record Stage3 debug6 manual SGD plan`.
+  - Training code commit includes `ad0b7c1 Add manual Stage3 native optimizer path`.
+  - Worktree dirty only for this RUNNING ledger update at launch.
 - Stage2 checkpoint/output:
   - `outputs/clean_training/qwen3_stage2_norm01_stage1_mask075_deepstack_4gpu_20260627_163250/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt`.
 - Train data:
@@ -7767,12 +7767,25 @@ entry, update this file immediately.
 - GPUs:
   - `CUDA_VISIBLE_DEVICES=0,1,2,3`.
 - Started:
-  - Pending.
+  - 2026-06-28 14:24:32 JST.
 - Finished:
-  - Pending.
+  - 2026-06-28 14:30 JST, stopped manually after post-step CUDA stall.
 - Metrics:
-  - Pending.
+  - No optimizer metric written.
+  - All ranks passed `gradient_allreduce_done`, `grad_clip_done`,
+    `optimizer_step_start`, and `optimizer_step_torch_done`.
+  - No rank reached `optimizer_step_done`; the next code path is distributed
+    metric summary.
+  - GPUs 0-3 remained at 100% utilization for several minutes after manual SGD
+    step events were written.
 - Analysis:
-  - Pending.
+  - `manual_sgd` removed the previous optimizer API stall.
+  - The sustained post-step GPU work suggests the Stage3 native trainable
+    parameter set is too large, likely because the loaded policy model has many
+    parameters still marked `requires_grad=True`.
+  - Before scaling, inspect and constrain trainable parameters to the intended
+    LoRA/TGVF surface.
 - Conclusion:
-  - Pending.
+  - Audit native model preparation / `requires_grad` selection, log trainable
+    parameter counts, freeze unintended base-model parameters, then rerun a
+    4-GPU smoke.

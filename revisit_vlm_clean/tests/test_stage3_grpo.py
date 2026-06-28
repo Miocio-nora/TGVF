@@ -31,6 +31,7 @@ from revisit_vlm_clean.stage3_grpo.schemas import (
     TrainConfig,
 )
 from revisit_vlm_clean.stage3_grpo.trainer import (
+    _stage3_configure_native_trainables,
     _stage3_manual_sgd_step,
     _stage3_native_adamw,
     _stage3_clip_grad_norm,
@@ -157,6 +158,27 @@ def test_stage3_manual_sgd_step_updates_and_zeroes_grads() -> None:
 
 def test_stage3_train_config_accepts_manual_sgd() -> None:
     TrainConfig(optimizer="manual_sgd").validate()
+
+
+def test_stage3_configure_native_trainables_keeps_policy_adapters_only() -> None:
+    import torch
+
+    class TinyPolicy(torch.nn.Module):
+        def __init__(self) -> None:
+            super().__init__()
+            self.base = torch.nn.Linear(2, 2)
+            self.register_parameter("lora_adapter", torch.nn.Parameter(torch.ones(2)))
+
+    policy = TinyPolicy()
+    foveal = torch.nn.Linear(2, 2)
+
+    summary = _stage3_configure_native_trainables(policy, foveal)
+
+    assert policy.base.weight.requires_grad is False
+    assert policy.lora_adapter.requires_grad is True
+    assert all(param.requires_grad is False for param in foveal.parameters())
+    assert summary["policy"]["trainable_parameters"] == 2
+    assert summary["foveal_module"]["trainable_parameters"] == 0
 
 
 def test_stage3_native_replay_gathers_next_token_logprobs() -> None:
