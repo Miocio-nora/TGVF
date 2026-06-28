@@ -8949,7 +8949,7 @@ entry, update this file immediately.
 
 ### EXP-20260629-002900-stage3-formal-all5-g12-res768-200step-wandb-online
 
-- Status: RUNNING_RESUME4 from step 33 with HuggingFace offline cache and
+- Status: RUNNING_RESUME4 from step 34 with HuggingFace offline cache and
   checkpoint retention.
 - Question:
   - Relaunch formal Stage3 all-5 GRPO after the G16/res768 online run OOMed
@@ -9079,6 +9079,15 @@ entry, update this file immediately.
       `step_000032/checkpoint_step_1.pt`, with
       `HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1` to avoid hub/cache false
       negatives during repeated multi-process model loads.
+    - Failed step 33 directory archived as
+      `step_000033_failed_hf_cache_20260629_031927`.
+    - Resume4 tmux session:
+      `stage3_g12_res768_wandb_online_200step_resume4`.
+    - Resume4 parent W&B run:
+      `https://wandb.ai/mio_nora/tgvf-stage3/runs/48tqt1mk`.
+    - Step 33 retry succeeded with HF offline cache, wrote
+      `step_000033/checkpoint_step_1.pt`, and advanced state to
+      `next_step=34`.
   - Stage3 RL 20k train data direct/focus distribution:
     - `tool_need_hint`: useful_tool 10,510; likely_required 1,744;
       optional_tool 4,668; no_tool 3,078.
