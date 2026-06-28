@@ -9024,3 +9024,15 @@ entry, update this file immediately.
   - Recovery commit: `eb047d8`.
   - Failed step directory will be preserved as
     `step_000014_failed_nccl_20260629_013341` before retrying step 14.
+  - Resume note:
+    - A first resume shell command exited before training because `PYTHONPATH`
+      was scoped only to the background memory tracer; it consumed no step and
+      did not change the state file.
+    - Corrected resume session: `stage3_g12_res768_wandb_online_200step_resume2`.
+    - Step 14 retry succeeded and advanced state to `next_step=15`.
+    - Step 14 checkpoint:
+      `outputs/stage3_grpo/formal_all5_hint_4gpu_g12_res768_200step_wandb_online_20260629/step_000014/checkpoint_step_1.pt`.
+    - Step 14 W&B online run:
+      `https://wandb.ai/mio_nora/tgvf-stage3/runs/2aykbhba`.
+    - Step 14 rank0 loss: `0.09086516499519348`;
+      distributed mean loss: `0.15043716318905354`.
