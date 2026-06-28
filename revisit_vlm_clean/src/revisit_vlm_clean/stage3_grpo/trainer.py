@@ -489,12 +489,14 @@ class Stage3GRPOTrainer:
             )
         if not params:
             raise RuntimeError("native GRPO update found no trainable parameters")
-        if not hasattr(self, "_native_optimizer"):
-            self._native_optimizer = _stage3_native_adamw(
-                params,
-                lr=self.config.train.learning_rate,
-            )
-        optimizer = self._native_optimizer
+        optimizer = None
+        if self.config.train.optimizer == "adamw":
+            if not hasattr(self, "_native_optimizer"):
+                self._native_optimizer = _stage3_native_adamw(
+                    params,
+                    lr=self.config.train.learning_rate,
+                )
+            optimizer = self._native_optimizer
         loss, stats = grpo_loss_from_tensors(
             new_logprobs=new_tensor,
             old_logprobs=old_tensor,
@@ -518,13 +520,26 @@ class Stage3GRPOTrainer:
         self._progress("grad_clip_start", global_step=global_step)
         grad_norm = _stage3_clip_grad_norm(params, float(self.config.train.max_grad_norm))
         self._progress("grad_clip_done", global_step=global_step, grad_norm=grad_norm)
-        self._progress("optimizer_step_start", global_step=global_step, grad_norm=grad_norm)
-        optimizer.step()
-        self._progress("optimizer_step_torch_done", global_step=global_step)
-        optimizer.zero_grad(set_to_none=True)
+        self._progress(
+            "optimizer_step_start",
+            global_step=global_step,
+            grad_norm=grad_norm,
+            optimizer=self.config.train.optimizer,
+        )
+        if self.config.train.optimizer == "manual_sgd":
+            _stage3_manual_sgd_step(params, lr=float(self.config.train.learning_rate))
+            self._progress("optimizer_step_torch_done", global_step=global_step)
+            _stage3_zero_grad(params)
+        elif optimizer is not None:
+            optimizer.step()
+            self._progress("optimizer_step_torch_done", global_step=global_step)
+            optimizer.zero_grad(set_to_none=True)
+        else:
+            raise RuntimeError(f"unsupported Stage3 optimizer: {self.config.train.optimizer}")
         update = {
             **stats,
             "status": "native_grpo_update_completed",
+            "optimizer": self.config.train.optimizer,
             "global_step": int(global_step),
             "optimizer_step": int(global_step),
             "grad_norm": grad_norm,
@@ -687,6 +702,22 @@ def _stage3_native_adamw(params: list[Any], *, lr: float) -> Any:
     import torch
 
     return torch.optim.AdamW(params, lr=lr, foreach=False, fused=False)
+
+
+def _stage3_manual_sgd_step(params: list[Any], *, lr: float) -> None:
+    import torch
+
+    with torch.no_grad():
+        for param in params:
+            grad = getattr(param, "grad", None)
+            if grad is None:
+                continue
+            param.add_(grad.to(device=param.device, dtype=param.dtype), alpha=-lr)
+
+
+def _stage3_zero_grad(params: list[Any]) -> None:
+    for param in params:
+        param.grad = None
 
 
 def _stage3_distributed_barrier(context: dict[str, Any]) -> None:

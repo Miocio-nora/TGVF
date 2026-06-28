@@ -133,6 +133,7 @@ class JudgeConfig:
 @dataclass(frozen=True)
 class TrainConfig:
     algorithm: str = "grpo"
+    optimizer: str = "adamw"
     max_steps: int = 1
     world_size: int = 1
     per_device_prompt_batch_size: int = 1
@@ -150,6 +151,8 @@ class TrainConfig:
     def validate(self) -> None:
         if self.algorithm != "grpo":
             raise ValueError("train.algorithm must be grpo")
+        if self.optimizer not in {"adamw", "manual_sgd"}:
+            raise ValueError("train.optimizer must be adamw or manual_sgd")
         for name in (
             "max_steps",
             "world_size",

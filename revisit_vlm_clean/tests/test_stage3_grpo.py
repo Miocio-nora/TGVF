@@ -28,10 +28,13 @@ from revisit_vlm_clean.stage3_grpo.schemas import (
     STAGE3_GRPO_PLAN_SCHEMA_VERSION,
     Stage3Sample,
     Stage3GRPOConfig,
+    TrainConfig,
 )
 from revisit_vlm_clean.stage3_grpo.trainer import (
+    _stage3_manual_sgd_step,
     _stage3_native_adamw,
     _stage3_clip_grad_norm,
+    _stage3_zero_grad,
     native_grpo_readiness_report,
 )
 from revisit_vlm_clean.stage3_grpo.judge import JudgeBundle
@@ -137,6 +140,23 @@ def test_stage3_native_adamw_uses_non_foreach_non_fused_path() -> None:
 
     assert optimizer.param_groups[0]["foreach"] is False
     assert optimizer.param_groups[0]["fused"] is False
+
+
+def test_stage3_manual_sgd_step_updates_and_zeroes_grads() -> None:
+    import torch
+
+    param = torch.nn.Parameter(torch.tensor([1.0, -1.0]))
+    param.grad = torch.tensor([0.25, -0.5])
+
+    _stage3_manual_sgd_step([param], lr=0.1)
+    _stage3_zero_grad([param])
+
+    assert torch.allclose(param.detach(), torch.tensor([0.975, -0.95]))
+    assert param.grad is None
+
+
+def test_stage3_train_config_accepts_manual_sgd() -> None:
+    TrainConfig(optimizer="manual_sgd").validate()
 
 
 def test_stage3_native_replay_gathers_next_token_logprobs() -> None:
@@ -553,6 +573,8 @@ def test_stage3_cli_plan_preflight_rollout_and_launch(tmp_path: Path) -> None:
                 str(output_dir),
                 "--runtime-backend",
                 "fake",
+                "--optimizer",
+                "manual_sgd",
                 "--group-size",
                 "4",
                 "--per-device-prompt-batch-size",
@@ -572,6 +594,7 @@ def test_stage3_cli_plan_preflight_rollout_and_launch(tmp_path: Path) -> None:
     assert plan_path.exists()
     plan = json.loads(plan_path.read_text(encoding="utf-8"))
     assert plan["summary"]["rl_sample_count"] == 3
+    assert plan["config"]["train"]["optimizer"] == "manual_sgd"
 
     assert executor_main(["--plan", str(plan_path), "--preflight-only"]) == 0
     assert executor_main(["--plan", str(plan_path), "--prepare-execution"]) == 0

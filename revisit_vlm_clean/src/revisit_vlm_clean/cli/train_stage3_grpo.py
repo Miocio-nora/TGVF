@@ -102,6 +102,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--judge-cache-miss-reward", type=float, default=0.0)
 
     parser.add_argument("--max-steps", type=int, default=1)
+    parser.add_argument("--optimizer", choices=("adamw", "manual_sgd"), default="adamw")
     parser.add_argument("--world-size", type=int, default=1)
     parser.add_argument("--per-device-prompt-batch-size", type=int, default=1)
     parser.add_argument("--gradient-accumulation-steps", type=int, default=1)
@@ -305,6 +306,7 @@ def _config_from_args(args: argparse.Namespace) -> Stage3GRPOConfig:
             cache_miss_reward=args.judge_cache_miss_reward,
         ),
         train=TrainConfig(
+            optimizer=args.optimizer,
             max_steps=args.max_steps,
             world_size=args.world_size,
             per_device_prompt_batch_size=args.per_device_prompt_batch_size,
@@ -367,6 +369,7 @@ def _plan_text(plan: dict[str, Any]) -> str:
         f"device_map: {config.get('device_map')}",
         f"runtime_backend: {summary['runtime_backend']}",
         f"world_size: {config['train']['world_size']}",
+        f"optimizer: {config['train'].get('optimizer')}",
         f"group_size: {summary['group_size']}",
         f"global_rollouts_per_step: {summary['global_rollouts_per_step']}",
         f"max_tool_calls: {summary['max_tool_calls']}",
