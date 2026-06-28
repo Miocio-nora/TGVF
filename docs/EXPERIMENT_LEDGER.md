@@ -7793,7 +7793,7 @@ entry, update this file immediately.
 ### EXP-20260628-1433-stage3-grpo-native-dist-4gpu-1step-debug7-lora-only
 
 - Status:
-  - PLANNED.
+  - DONE.
 - Question:
   - Does the 4-GPU native distributed Stage3 path complete one optimizer step
     and write metrics/checkpoint when Stage3 trains only policy LoRA/adapter
@@ -7806,9 +7806,9 @@ entry, update this file immediately.
   - Keep `--optimizer manual_sgd`, `--max-grad-norm 0`, and the same 4-GPU
     one-step debug shape.
 - Code commit / worktree:
-  - Commit: `7be02a1 Restrict Stage3 native trainable parameters`.
-  - Worktree expected clean before plan/launch except future ledger status
-    updates.
+  - Commit: `9dca809 Record Stage3 debug7 LoRA-only plan`.
+  - Training code commit includes `7be02a1 Restrict Stage3 native trainable parameters`.
+  - Worktree dirty only for this RUNNING ledger update at launch.
 - Stage2 checkpoint/output:
   - `outputs/clean_training/qwen3_stage2_norm01_stage1_mask075_deepstack_4gpu_20260627_163250/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt`.
 - Train data:
@@ -7821,12 +7821,36 @@ entry, update this file immediately.
 - GPUs:
   - `CUDA_VISIBLE_DEVICES=0,1,2,3`.
 - Started:
-  - Pending.
+  - 2026-06-28 14:36:46 JST.
 - Finished:
-  - Pending.
+  - 2026-06-28 14:39 JST.
 - Metrics:
-  - Pending.
+  - Status: `stage3_grpo_training_completed`.
+  - Checkpoint: `outputs/stage3_grpo/native_dist_4gpu_1step_debug7_lora_only_clean_stage2_step1200_20260628/checkpoint_step_1.pt`
+    (701 MiB).
+  - Train metrics: one row per rank.
+  - Reward rows: 2 per rank, 8 global rollouts total.
+  - Distributed metrics from rank0:
+    - `distributed_rollout_count=8`.
+    - `distributed_group_count=4`.
+    - `distributed_mean_reward=0.74375`.
+    - `distributed_loss_mean=0.18225767649710178`.
+    - `distributed_policy_loss_mean=0.10812820494174957`.
+    - `distributed_kl_mean=3.7064733803272247`.
+    - `distributed_replayed_tokens=335`.
+  - Trainable summary:
+    - Policy total parameters: 8,939,557,104.
+    - Policy trainable LoRA/adapter parameters: 174,587,904 across 504 tensors.
+    - Foveal/TGVF module parameters: 18,013,952 total, 0 trainable.
+  - Peak observed small-smoke GPU memory: about 24-27 GiB per GPU during update.
 - Analysis:
-  - Pending.
+  - Restricting Stage3 trainables to policy LoRA/adapter parameters fixed the
+    previous post-step stall.
+  - The one-step native distributed path now completes rollout, reward, replay,
+    GRPO loss, gradient all-reduce, update, metric summary, checkpoint, and
+    process-group teardown on GPUs 0-3.
+  - Foveal/TGVF remains frozen, matching the Stage3 non-goal of not retraining
+    the D extractor / visual focusing module.
 - Conclusion:
-  - Pending.
+  - 4-GPU native Stage3 GRPO smoke is operational. Next run can scale group size
+    and/or prompt batch to improve VRAM utilization for a formal training run.
