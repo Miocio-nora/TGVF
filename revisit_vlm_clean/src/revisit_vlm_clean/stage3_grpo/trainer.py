@@ -667,6 +667,8 @@ def _stage3_distributed_metric_summary(
 def _stage3_clip_grad_norm(params: list[Any], max_norm: float) -> float:
     import torch
 
+    if max_norm <= 0:
+        return 0.0
     grads = [param.grad for param in params if getattr(param, "grad", None) is not None]
     if not grads:
         return 0.0

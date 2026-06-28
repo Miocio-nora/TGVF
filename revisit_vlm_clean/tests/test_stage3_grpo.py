@@ -29,7 +29,10 @@ from revisit_vlm_clean.stage3_grpo.schemas import (
     Stage3Sample,
     Stage3GRPOConfig,
 )
-from revisit_vlm_clean.stage3_grpo.trainer import native_grpo_readiness_report
+from revisit_vlm_clean.stage3_grpo.trainer import (
+    _stage3_clip_grad_norm,
+    native_grpo_readiness_report,
+)
 from revisit_vlm_clean.stage3_grpo.judge import JudgeBundle
 from revisit_vlm_clean.stage3_grpo.judge_runner import (
     OfflineJudgeConfig,
@@ -111,6 +114,18 @@ def test_stage3_grpo_math_smoke() -> None:
     )
     assert float(loss.detach().cpu()) == stats["loss"]
     assert stats["token_count"] == 3.0
+
+
+def test_stage3_clip_grad_norm_zero_disables_norm_and_clip() -> None:
+    import torch
+
+    param = torch.nn.Parameter(torch.ones(2))
+    param.grad = torch.tensor([3.0, 4.0])
+
+    grad_norm = _stage3_clip_grad_norm([param], 0.0)
+
+    assert grad_norm == 0.0
+    assert param.grad.tolist() == [3.0, 4.0]
 
 
 def test_stage3_native_replay_gathers_next_token_logprobs() -> None:

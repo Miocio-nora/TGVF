@@ -7600,3 +7600,43 @@ entry, update this file immediately.
 - Conclusion:
   - Replace `torch.nn.utils.clip_grad_norm_` with a simple local grad-norm/clip
     helper and rerun.
+
+### EXP-20260628-1353-stage3-grpo-native-dist-4gpu-1step-debug3
+
+- Status:
+  - STOPPED.
+- Question:
+  - Does the 4-GPU native distributed Stage3 path complete one optimizer step
+    after replacing PyTorch `clip_grad_norm_` with explicit local clipping?
+- Baseline anchor:
+  - Follows `EXP-20260628-1342-stage3-grpo-native-dist-4gpu-1step-debug2`.
+- Intended diff:
+  - Same 4-GPU native distributed debug, with code commit `89e34c9`.
+- Code commit / worktree:
+  - Commit: `89e34c95845a064e7e9bfddfa78d0f113c76e1c2`
+    (`89e34c9 Use explicit Stage3 gradient clipping`).
+- Script / command:
+  - Launch:
+    `CUDA_VISIBLE_DEVICES=0,1,2,3 PYTHONPATH=revisit_vlm_clean/src:src torchrun --standalone --nproc_per_node=4 -m revisit_vlm_clean.training.stage3_grpo_executor --plan outputs/stage3_grpo/native_dist_4gpu_1step_debug3_clean_stage2_step1200_20260628/stage3_grpo_training_plan.json --launch-training`.
+- GPUs:
+  - `CUDA_VISIBLE_DEVICES=0,1,2,3`.
+- Started:
+  - 2026-06-28 13:53:06 JST.
+- Finished:
+  - 2026-06-28 14:01 JST, stopped manually after repeated rank1 clip stall.
+- Metrics:
+  - No optimizer metric written.
+  - Rollout/reward files were written on all ranks.
+  - Rank0/2/3 reached `optimizer_step_torch_done`.
+  - Rank1 reached `gradient_allreduce_done` and `grad_clip_start`, but did not
+    reach `grad_clip_done`.
+  - Observed GPU use before stop: GPUs 0-3 active, about 25-32 GiB each and
+    100% utilization during the stall.
+- Analysis:
+  - Explicit local clipping still forces per-gradient norm computation and a
+    CUDA synchronization. Rank1 reproducibly stalls in that local norm path.
+  - `train.max_grad_norm=0` was already accepted by schema but still computed
+    the norm, so it did not truly disable clipping.
+- Conclusion:
+  - Patch `_stage3_clip_grad_norm` so `max_grad_norm <= 0` fully skips norm and
+    clip, then rerun a 4-GPU one-step smoke with `--max-grad-norm 0`.
