@@ -8920,6 +8920,10 @@ entry, update this file immediately.
     confirmed the machine is logged in, so the online launch is proceeding.
   - If W&B auth is still not visible to the training subprocess, this run should
     fail fast in step 1 rather than silently becoming offline.
+  - Online auth confirmed in step 1 training log:
+    logged in as `mio_mi0 (mio_nora)`.
+  - Step 1 W&B run:
+    `https://wandb.ai/mio_nora/tgvf-stage3/runs/0rwxtdpl`.
 - Runtime:
   - Started: 2026-06-29 00:13 JST.
   - tmux session: `stage3_g16_res768_wandb_online_200step`.
