@@ -30,6 +30,7 @@ from revisit_vlm_clean.stage3_grpo.schemas import (
     Stage3GRPOConfig,
 )
 from revisit_vlm_clean.stage3_grpo.trainer import (
+    _stage3_native_adamw,
     _stage3_clip_grad_norm,
     native_grpo_readiness_report,
 )
@@ -126,6 +127,16 @@ def test_stage3_clip_grad_norm_zero_disables_norm_and_clip() -> None:
 
     assert grad_norm == 0.0
     assert param.grad.tolist() == [3.0, 4.0]
+
+
+def test_stage3_native_adamw_uses_non_foreach_non_fused_path() -> None:
+    import torch
+
+    param = torch.nn.Parameter(torch.ones(2))
+    optimizer = _stage3_native_adamw([param], lr=1e-6)
+
+    assert optimizer.param_groups[0]["foreach"] is False
+    assert optimizer.param_groups[0]["fused"] is False
 
 
 def test_stage3_native_replay_gathers_next_token_logprobs() -> None:

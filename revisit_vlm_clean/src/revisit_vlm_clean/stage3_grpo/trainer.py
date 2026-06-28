@@ -490,7 +490,7 @@ class Stage3GRPOTrainer:
         if not params:
             raise RuntimeError("native GRPO update found no trainable parameters")
         if not hasattr(self, "_native_optimizer"):
-            self._native_optimizer = torch.optim.AdamW(
+            self._native_optimizer = _stage3_native_adamw(
                 params,
                 lr=self.config.train.learning_rate,
             )
@@ -681,6 +681,12 @@ def _stage3_clip_grad_norm(params: list[Any], max_norm: float) -> float:
             for grad in grads:
                 grad.mul_(clip_coef.to(grad.device, dtype=grad.dtype))
     return float(total_norm.detach().cpu())
+
+
+def _stage3_native_adamw(params: list[Any], *, lr: float) -> Any:
+    import torch
+
+    return torch.optim.AdamW(params, lr=lr, foreach=False, fused=False)
 
 
 def _stage3_distributed_barrier(context: dict[str, Any]) -> None:

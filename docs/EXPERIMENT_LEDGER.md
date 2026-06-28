@@ -7644,7 +7644,7 @@ entry, update this file immediately.
 ### EXP-20260628-1404-stage3-grpo-native-dist-4gpu-1step-debug4-noclip
 
 - Status:
-  - PLANNED.
+  - STOPPED.
 - Question:
   - Does the 4-GPU native distributed Stage3 path complete one optimizer step
     and write metrics/checkpoint when gradient clipping is explicitly disabled?
@@ -7654,9 +7654,9 @@ entry, update this file immediately.
   - Use commit `63f70a6` and `--max-grad-norm 0`; otherwise keep the same
     4-GPU one-step native distributed debug shape.
 - Code commit / worktree:
-  - Commit: `63f70a6 Allow disabling Stage3 gradient clipping`.
-  - Worktree expected clean before launch except this ledger entry until it is
-    committed after the run status update.
+  - Commit: `f314830 Record Stage3 debug4 noclip plan`.
+  - Training code commit includes `63f70a6 Allow disabling Stage3 gradient clipping`.
+  - Worktree dirty only for this RUNNING ledger update at launch.
 - Stage2 checkpoint/output:
   - `outputs/clean_training/qwen3_stage2_norm01_stage1_mask075_deepstack_4gpu_20260627_163250/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt`.
 - Train data:
@@ -7669,12 +7669,23 @@ entry, update this file immediately.
 - GPUs:
   - `CUDA_VISIBLE_DEVICES=0,1,2,3`.
 - Started:
-  - Pending.
+  - 2026-06-28 14:06:30 JST.
 - Finished:
-  - Pending.
+  - 2026-06-28 14:12 JST, stopped manually after rank2 optimizer step stall.
 - Metrics:
-  - Pending.
+  - No optimizer metric written.
+  - All ranks passed `gradient_allreduce_done`, `grad_clip_done`, and entered
+    `optimizer_step_start`.
+  - Rank0/1/3 reached `optimizer_step_torch_done`.
+  - Rank2 remained at `optimizer_step_start`.
+  - Observed GPU use during stall: GPUs 0-3 active, about 25-28 GiB each and
+    100% utilization.
 - Analysis:
-  - Pending.
+  - The `max_grad_norm=0` patch successfully bypassed the previous clip/norm
+    stall.
+  - The next bottleneck is inside default `torch.optim.AdamW.step()` on one rank,
+    likely the default foreach/fused CUDA optimizer path or a similar
+    multi-tensor kernel.
 - Conclusion:
-  - Pending.
+  - Switch native Stage3 AdamW construction to explicit non-foreach/non-fused
+    mode and rerun a 4-GPU one-step smoke.
