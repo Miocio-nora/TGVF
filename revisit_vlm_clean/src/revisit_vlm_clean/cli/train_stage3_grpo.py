@@ -19,6 +19,7 @@ from revisit_vlm_clean.stage3_grpo.schemas import (
     STAGE3_GRPO_PLAN_SCHEMA_VERSION,
     Stage3GRPOConfig,
     TrainConfig,
+    WandbConfig,
     now_iso,
     write_json,
 )
@@ -113,6 +114,21 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-grad-norm", type=float, default=1.0)
     parser.add_argument("--seed", type=int, default=20260627)
 
+    parser.add_argument("--wandb-project", default=None)
+    parser.add_argument("--wandb-entity", default=None)
+    parser.add_argument("--wandb-mode", choices=("online", "offline", "disabled"), default=None)
+    parser.add_argument("--wandb-run-name", default=None)
+    parser.add_argument("--wandb-group", default=None)
+    parser.add_argument("--wandb-job-type", default="stage3_grpo")
+    parser.add_argument("--wandb-tags", default=None, help="Comma-separated W&B tags.")
+    parser.add_argument("--wandb-log-artifacts", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument(
+        "--wandb-log-checkpoint-artifact",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Upload Stage3 checkpoint as a W&B artifact. Disabled by default for large checkpoints.",
+    )
+
     parser.add_argument("--dry-run", action="store_true", help="Print the resolved Stage3 plan.")
     parser.add_argument("--write-plan", action="store_true", help="Write Stage3 plan artifacts.")
     return parser
@@ -178,6 +194,7 @@ def build_stage3_grpo_training_plan(
             },
             "will_launch_training": False,
             "plan_only": True,
+            "wandb_enabled": bool(config.wandb.project and config.wandb.mode != "disabled"),
         },
     }
 
@@ -293,6 +310,17 @@ def _config_from_args(args: argparse.Namespace) -> Stage3GRPOConfig:
             max_grad_norm=args.max_grad_norm,
             seed=args.seed,
         ),
+        wandb=WandbConfig(
+            project=args.wandb_project,
+            entity=args.wandb_entity,
+            mode=args.wandb_mode,
+            name=args.wandb_run_name,
+            group=args.wandb_group,
+            job_type=args.wandb_job_type,
+            tags=_parse_csv(args.wandb_tags),
+            log_artifacts=args.wandb_log_artifacts,
+            log_checkpoint_artifact=args.wandb_log_checkpoint_artifact,
+        ),
     )
 
 
@@ -336,10 +364,20 @@ def _plan_text(plan: dict[str, Any]) -> str:
         f"ground={weights['ground']}",
         f"judge_mode: {config['judge']['mode']}",
         f"probe_enabled: {config['probe']['enabled']}",
+        f"wandb_project: {config['wandb'].get('project')}",
+        f"wandb_mode: {config['wandb'].get('mode')}",
+        f"wandb_log_artifacts: {config['wandb'].get('log_artifacts')}",
+        f"wandb_log_checkpoint_artifact: {config['wandb'].get('log_checkpoint_artifact')}",
         f"git_commit: {plan.get('git_commit')}",
         f"dirty_worktree: {plan.get('dirty_worktree')}",
     ]
     return "\n".join(lines) + "\n"
+
+
+def _parse_csv(value: str | None) -> tuple[str, ...]:
+    if not value:
+        return ()
+    return tuple(item.strip() for item in value.split(",") if item.strip())
 
 
 def _git_identity() -> tuple[str | None, bool | None]:

@@ -163,6 +163,28 @@ class TrainConfig:
 
 
 @dataclass(frozen=True)
+class WandbConfig:
+    project: str | None = None
+    entity: str | None = None
+    mode: str | None = None
+    name: str | None = None
+    group: str | None = None
+    job_type: str = "stage3_grpo"
+    tags: tuple[str, ...] = ()
+    log_artifacts: bool = True
+    log_checkpoint_artifact: bool = False
+
+    def validate(self) -> None:
+        if self.mode is not None and self.mode not in {"online", "offline", "disabled"}:
+            raise ValueError("wandb.mode must be online, offline, disabled, or null")
+        if not self.job_type:
+            raise ValueError("wandb.job_type is required")
+
+    def to_dict(self) -> dict[str, Any]:
+        return _to_jsonable(self)
+
+
+@dataclass(frozen=True)
 class Stage3GRPOConfig:
     run_id: str
     rl_data_path: str
@@ -181,6 +203,7 @@ class Stage3GRPOConfig:
     reward: RewardConfig = field(default_factory=RewardConfig)
     judge: JudgeConfig = field(default_factory=JudgeConfig)
     train: TrainConfig = field(default_factory=TrainConfig)
+    wandb: WandbConfig = field(default_factory=WandbConfig)
     schema_version: str = STAGE3_GRPO_PLAN_SCHEMA_VERSION
 
     def validate(self) -> None:
@@ -199,6 +222,7 @@ class Stage3GRPOConfig:
         self.reward.validate()
         self.judge.validate()
         self.train.validate()
+        self.wandb.validate()
 
     def to_dict(self) -> dict[str, Any]:
         return _to_jsonable(self)
@@ -211,6 +235,7 @@ class Stage3GRPOConfig:
         data["reward"] = RewardConfig(**dict(data.get("reward") or {}))
         data["judge"] = JudgeConfig(**dict(data.get("judge") or {}))
         data["train"] = TrainConfig(**dict(data.get("train") or {}))
+        data["wandb"] = WandbConfig(**dict(data.get("wandb") or {}))
         config = cls(**data)
         config.validate()
         return config

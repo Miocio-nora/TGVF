@@ -71,6 +71,33 @@ This writes:
 - `stage3_grpo_training_plan.txt`
 - `stage3_grpo_dataset_identity.json`
 
+Add W&B logging at plan time when launching real runs:
+
+```bash
+PYTHONPATH=revisit_vlm_clean/src python -m revisit_vlm_clean.cli.train_stage3_grpo \
+  --write-plan \
+  --run-id stage3_grpo_native_run \
+  --rl-data-path revisit_vlm_clean/data/stage3_rl/v1_direct_20k_20260627_032447/accepted_rl_prompts.jsonl \
+  --policy-checkpoint outputs/clean_training/qwen3_stage2_norm01_stage1_mask075_deepstack_4gpu_20260627_163250/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt \
+  --model-id /nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking \
+  --processor-id /nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking \
+  --output-dir outputs/stage3_grpo/stage3_grpo_native_run \
+  --runtime-backend native_single_focus \
+  --wandb-project tgvf-stage3-grpo \
+  --wandb-mode online \
+  --wandb-tags stage3,grpo,native
+```
+
+W&B receives the Stage3 config, rollout/reward/probe/judge/train parameters,
+RL dataset identity, Stage2 checkpoint identity, scalar train/reward metrics,
+and an output artifact containing plan, preflight, launch result, train metrics,
+rollout debug, and reward breakdown. Checkpoint upload is intentionally separate
+because native checkpoints are large; enable it only when needed:
+
+```bash
+--wandb-log-checkpoint-artifact
+```
+
 ## Preflight
 
 ```bash

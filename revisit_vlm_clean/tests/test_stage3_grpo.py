@@ -334,6 +334,56 @@ def test_stage3_cli_plan_accepts_processor_directory(tmp_path: Path) -> None:
     assert plan["processor_identity"]["child_count"] == 1
 
 
+def test_stage3_cli_plan_records_wandb_config(tmp_path: Path) -> None:
+    data = _write_rl_fixture(tmp_path)
+    checkpoint = tmp_path / "stage2_checkpoint.pt"
+    checkpoint.write_text("fake checkpoint", encoding="utf-8")
+    output_dir = tmp_path / "stage3_grpo_wandb_plan"
+
+    assert (
+        plan_main(
+            [
+                "--write-plan",
+                "--run-id",
+                "stage3_grpo_wandb",
+                "--rl-data-path",
+                str(data),
+                "--policy-checkpoint",
+                str(checkpoint),
+                "--output-dir",
+                str(output_dir),
+                "--runtime-backend",
+                "fake",
+                "--wandb-project",
+                "tgvf-stage3",
+                "--wandb-mode",
+                "disabled",
+                "--wandb-run-name",
+                "unit-wandb",
+                "--wandb-group",
+                "stage3-smoke",
+                "--wandb-tags",
+                "stage3,grpo,unit",
+                "--wandb-log-checkpoint-artifact",
+            ]
+        )
+        == 0
+    )
+
+    plan = json.loads((output_dir / "stage3_grpo_training_plan.json").read_text(encoding="utf-8"))
+    assert plan["config"]["wandb"]["project"] == "tgvf-stage3"
+    assert plan["config"]["wandb"]["mode"] == "disabled"
+    assert plan["config"]["wandb"]["name"] == "unit-wandb"
+    assert plan["config"]["wandb"]["group"] == "stage3-smoke"
+    assert plan["config"]["wandb"]["tags"] == ["stage3", "grpo", "unit"]
+    assert plan["config"]["wandb"]["log_artifacts"] is True
+    assert plan["config"]["wandb"]["log_checkpoint_artifact"] is True
+    assert plan["summary"]["wandb_enabled"] is False
+    text = (output_dir / "stage3_grpo_training_plan.txt").read_text(encoding="utf-8")
+    assert "wandb_project: tgvf-stage3" in text
+    assert "wandb_mode: disabled" in text
+
+
 def test_stage3_native_rollout_backend_constructs_without_loading(tmp_path: Path) -> None:
     data = _write_rl_fixture(tmp_path)
     config = Stage3GRPOConfig(
