@@ -7176,3 +7176,89 @@ entry, update this file immediately.
     soft-force `31.38`.
   - Soft-force is still useful diagnostically because it stresses router/focus
     behavior, but it should not be reported alone as the method score.
+
+### EXP-20260628-1226-stage3-grpo-native-2step-smoke
+
+- Status:
+  - DONE.
+- Question:
+  - Does the Stage3 GRPO `native_single_focus` launch path now run more than one
+    configured optimizer step against the latest clean Stage2 checkpoint?
+- Baseline anchor:
+  - Implementation smoke, not a benchmark comparison.
+- Intended diff:
+  - Use the Stage3 GRPO multi-step launch code added after one-step smoke.
+  - Run `max_steps=2`, `save_steps=1`, `group_size=2`,
+    `per_device_prompt_batch_size=1`, `gradient_accumulation_steps=1`.
+- Allowed changed variables:
+  - Stage3 GRPO code path and smoke output directory.
+- Not allowed to change:
+  - RL data file.
+  - Stage2 source checkpoint.
+  - Protocol-C tool-observation contract.
+- Code commit / worktree:
+  - Base commit: `0da19d0`.
+  - Dirty worktree: Stage3 multi-step GRPO loop implementation in progress.
+- Stage1 checkpoint:
+  - Indirectly from the Stage2 checkpoint config.
+- Stage1 processor:
+  - Indirectly from the Stage2 checkpoint config.
+- Stage2 checkpoint/output:
+  - `outputs/clean_training/qwen3_stage2_norm01_stage1_mask075_deepstack_4gpu_20260627_163250/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt`.
+  - sha256:
+    `50245a11c27ad9755eb815b5f008af50a659fa07a4043f0f9427f5bbea3c0236`.
+- Train data:
+  - `revisit_vlm_clean/data/stage3_rl/v1_direct_20k_20260627_032447/accepted_rl_prompts.jsonl`.
+  - Rows: `20000`.
+  - sha256:
+    `2e39a1dadcc020001bd3d763635f461d2b7dc6d94bfb3cfecdb9bb20240fa758`.
+- Validation data:
+  - Not used in this smoke.
+- Benchmark output:
+  - Not used in this smoke.
+- Script / command:
+  - Plan:
+    `PYTHONPATH=revisit_vlm_clean/src:src python -m revisit_vlm_clean.cli.train_stage3_grpo --write-plan --run-id stage3_grpo_native_2step_smoke_clean_stage2_step1200_20260628 --rl-data-path revisit_vlm_clean/data/stage3_rl/v1_direct_20k_20260627_032447/accepted_rl_prompts.jsonl --policy-checkpoint outputs/clean_training/qwen3_stage2_norm01_stage1_mask075_deepstack_4gpu_20260627_163250/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt --model-id /nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking --processor-id /nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking --output-dir outputs/stage3_grpo/native_2step_smoke_clean_stage2_step1200_20260628 --runtime-backend native_single_focus --group-size 2 --per-device-prompt-batch-size 1 --gradient-accumulation-steps 1 --max-steps 2 --save-steps 1 --max-tool-calls 1 --max-image-resolution 512 --max-action-tokens 64 --max-answer-tokens 96 --max-new-tokens 160 --temperature 0.8 --top-p 0.95 --judge-mode cache_only --learning-rate 1e-6 --wandb-mode disabled`.
+  - Preflight:
+    `PYTHONPATH=revisit_vlm_clean/src:src python -m revisit_vlm_clean.training.stage3_grpo_executor --plan outputs/stage3_grpo/native_2step_smoke_clean_stage2_step1200_20260628/stage3_grpo_training_plan.json --preflight-only`.
+  - Launch:
+    `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=revisit_vlm_clean/src:src python -m revisit_vlm_clean.training.stage3_grpo_executor --plan outputs/stage3_grpo/native_2step_smoke_clean_stage2_step1200_20260628/stage3_grpo_training_plan.json --launch-training`.
+- GPUs:
+  - Planned: `CUDA_VISIBLE_DEVICES=0`.
+- tmux:
+  - None. Direct smoke command.
+- Started:
+  - 2026-06-28 12:31:54 JST.
+- Finished:
+  - 2026-06-28 12:35:39 JST.
+- Metrics:
+  - Status: `stage3_grpo_training_completed`.
+  - Output:
+    `outputs/stage3_grpo/native_2step_smoke_clean_stage2_step1200_20260628`.
+  - Global steps: `2`.
+  - Checkpoints:
+    `checkpoint_step_1.pt`, `checkpoint_step_2.pt`.
+  - Latest checkpoint:
+    `outputs/stage3_grpo/native_2step_smoke_clean_stage2_step1200_20260628/checkpoint_step_2.pt`.
+  - Rollout rows: `4`.
+  - Reward rows: `4`.
+  - Train metric rows: `2`.
+  - Latest step metrics: `loss=0.0410798005759716`,
+    `kl=2.053990125656128`, `grad_norm=0.16426536440849304`,
+    `replayed_tokens=115.0`, `mean_reward=1.5`.
+  - Aggregate: `answer_accuracy=0.5`, `tool_trigger_rate=0.0`,
+    `malformed_rate=0.0`, `avg_tool_calls=0.0`.
+  - Checkpoint inspection: native checkpoints include `qwen_lora`
+    (`504` keys), `tgvf_module` (`26` keys), and optimizer state.
+- Analysis:
+  - The clean Stage3 GRPO `native_single_focus` path successfully loaded the
+    latest Stage2 checkpoint, sampled real rollouts, replayed policy/reference
+    logprobs, ran two optimizer steps, and saved native Stage3 checkpoints.
+  - Judge was `cache_only`; missing judge scores used the configured cache-miss
+    behavior, so this smoke verifies training plumbing rather than reward
+    quality.
+- Conclusion:
+  - Stage3 GRPO is ready for a larger controlled native smoke or first formal
+    short run after deciding the judge/probe cache policy.
+- Comparable to baseline:
+  - No. This is a code-path smoke.

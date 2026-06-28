@@ -18,8 +18,8 @@ The clean Stage3 framework currently provides:
 - Stage3 GRPO config, sample, rollout, reward, probe, and judge-cache schemas.
 - A balanced prompt sampler using tool-need buckets.
 - A rollout engine interface with a deterministic `fake` backend for smoke.
-- A `native_single_focus` backend for real Stage2/TGVF rollout and bounded GRPO
-  smoke updates.
+- A `native_single_focus` backend for real Stage2/TGVF rollout and GRPO
+  training updates.
 - Forced OFF / forced ON-clean probe cache generation.
 - Offline local Qwen-VL judge runner for FocusEvidence and GroundedReasoning
   cache construction.
@@ -37,17 +37,22 @@ The clean Stage3 framework currently provides:
 - Cache-first judge wrapper that writes pending judge requests instead of
   blocking training.
 - GRPO group advantage and clipped policy-loss math.
-- A bounded fake GRPO update that writes rollout debug rows, reward breakdown,
-  metrics, and a smoke checkpoint.
-- A bounded native GRPO update path that replays policy/reference logprobs for
-  sampled free rollouts, performs one optimizer step, and writes a Stage2-shaped
-  native checkpoint.
+- A configurable multi-step GRPO training loop controlled by `max_steps`,
+  `save_steps`, `per_device_prompt_batch_size`, and
+  `gradient_accumulation_steps`.
+- Fake and native GRPO update paths that write rollout debug rows, reward
+  breakdowns, per-step metrics, launch summaries, and checkpoints.
+- A native update path that replays policy/reference logprobs for sampled free
+  rollouts, performs optimizer steps, and writes Stage2-shaped native
+  checkpoints.
 
 The fake rollout backend is only for verifying the plumbing. `native_single_focus`
 can run real sampled Stage2/TGVF trajectories and record generation-time
 logprobs. Its launch path now replays policy/ref logprobs with gradients for the
-sampled trajectory and runs a bounded GRPO step. The remaining gate before
-scaling is a real GPU smoke against the selected completed Stage2 checkpoint.
+sampled trajectories, runs GRPO updates for the configured number of steps, and
+saves checkpoints on the configured schedule. The current implementation uses
+step-local rollout accumulation before each optimizer update; it does not yet
+implement memory-saving micro-batch backward accumulation.
 The judge runner is real and can use local Qwen3/Qwen2.5-VL style models through
 Hugging Face `transformers`.
 
@@ -89,10 +94,11 @@ PYTHONPATH=revisit_vlm_clean/src python -m revisit_vlm_clean.cli.train_stage3_gr
 ```
 
 W&B receives the Stage3 config, rollout/reward/probe/judge/train parameters,
-RL dataset identity, Stage2 checkpoint identity, scalar train/reward metrics,
-and an output artifact containing plan, preflight, launch result, train metrics,
-rollout debug, and reward breakdown. Checkpoint upload is intentionally separate
-because native checkpoints are large; enable it only when needed:
+RL dataset identity, Stage2 checkpoint identity, git identity, scalar
+train/reward metrics, and an output artifact containing plan, preflight, launch
+result, train metrics, rollout debug, and reward breakdown. Checkpoint upload is
+intentionally separate because native checkpoints are large; enable it only when
+needed:
 
 ```bash
 --wandb-log-checkpoint-artifact
@@ -278,7 +284,7 @@ PYTHONPATH=revisit_vlm_clean/src python -m revisit_vlm_clean.training.stage3_grp
 
 This writes rollout debug rows and reward breakdowns without optimizer updates.
 
-## Fake GRPO Smoke
+## GRPO Training Launch
 
 ```bash
 PYTHONPATH=revisit_vlm_clean/src python -m revisit_vlm_clean.training.stage3_grpo_executor \
@@ -286,19 +292,22 @@ PYTHONPATH=revisit_vlm_clean/src python -m revisit_vlm_clean.training.stage3_grp
   --launch-training
 ```
 
-With `runtime_backend=fake`, this runs one bounded GRPO update and writes:
+With `runtime_backend=fake`, this runs the configured multi-step GRPO loop
+without loading the 8B model. With `runtime_backend=native_single_focus`, it
+loads the Stage2 checkpoint, runs real sampled rollouts, replays
+policy/reference logprobs for the sampled tokens, performs GRPO optimizer
+updates, and writes native checkpoints.
+
+The launch writes:
 
 - `rollout_debug.jsonl`
 - `reward_breakdown.jsonl`
 - `judge_pending.jsonl`
 - `train_metrics.json`
-- `checkpoint_step_1.pt`
+- `train_metrics.jsonl`
+- `checkpoint_step_*.pt`
+- `LATEST_CHECKPOINT.txt`
 - `stage3_grpo_launch_result.json`
-
-With `runtime_backend=native_single_focus`, `--launch-training` loads the Stage2
-checkpoint, runs real sampled rollouts, replays policy/reference logprobs for
-the sampled tokens, performs one bounded GRPO optimizer step, and writes a native
-checkpoint. This is the smoke path to use once the Stage2 checkpoint is ready.
 
 ## Reward Notes
 
@@ -318,7 +327,6 @@ cache-backed judge scores. In cache-only mode, missing judge rows are logged to
 
 ## Non-Goals In This Implementation
 
-This code does not yet implement long-running distributed GRPO, periodic
-benchmark eval, or advanced replay optimizations. Online multimodal judging is
-intentionally not in the train loop; the implemented path is offline local-judge
-cache construction.
+This code does not yet implement distributed GRPO, periodic benchmark eval, or
+advanced replay optimizations. Online multimodal judging is intentionally not in
+the train loop; the implemented path is offline local-judge cache construction.

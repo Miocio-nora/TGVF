@@ -119,8 +119,8 @@ class NativeSingleFocusRolloutEngine:
     """Native Stage2/TGVF-backed rollout engine.
 
     This path performs real Qwen/TGVF free and forced trajectories through the
-    clean-native Stage2 runtime and exposes logprob replay for bounded GRPO
-    smoke updates.
+    clean-native Stage2 runtime and exposes logprob replay for GRPO training
+    updates.
     """
 
     def __init__(self, config: Stage3GRPOConfig) -> None:

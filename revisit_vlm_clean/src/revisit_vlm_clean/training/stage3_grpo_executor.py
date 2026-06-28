@@ -1,9 +1,9 @@
 """Clean Stage3 RL-GRPO executor.
 
-This executor validates the Stage3 plan handoff and can run bounded smoke
-actions. The fake backend validates lightweight plumbing; native_single_focus
+This executor validates the Stage3 plan handoff and launches configured Stage3
+GRPO actions. The fake backend validates lightweight plumbing; native_single_focus
 loads the Stage2 checkpoint and runs real sampled rollout/reward/replay/GRPO
-smoke.
+training updates.
 """
 
 from __future__ import annotations
@@ -74,7 +74,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.rollout_only:
         result["rollout_only"] = run_rollout_only(config)
     if args.launch_training:
-        launched = launch_stage3_grpo_smoke(config, report_path=args.launch_report)
+        launched = launch_stage3_grpo_training(config, report_path=args.launch_report)
         result["training_launch_result"] = launched
     if result.keys() != {"preflight_report"}:
         print_json(result)
@@ -289,24 +289,25 @@ def run_rollout_only(config: Stage3GRPOConfig) -> dict[str, Any]:
     return summary
 
 
+def launch_stage3_grpo_training(
+    config: Stage3GRPOConfig,
+    *,
+    report_path: str | Path | None,
+) -> dict[str, Any]:
+    trainer = Stage3GRPOTrainer(config)
+    result = trainer.run_training()
+    launch_path = Path(report_path or Path(config.output_dir) / "stage3_grpo_launch_result.json")
+    result["launch_report"] = str(launch_path)
+    write_json(launch_path, result)
+    return result
+
+
 def launch_stage3_grpo_smoke(
     config: Stage3GRPOConfig,
     *,
     report_path: str | Path | None,
 ) -> dict[str, Any]:
-    if config.rollout.runtime_backend != "fake":
-        trainer = Stage3GRPOTrainer(config)
-        result = trainer.run_native_train_step()
-        launch_path = Path(report_path or Path(config.output_dir) / "stage3_grpo_launch_result.json")
-        write_json(launch_path, result)
-        result["launch_report"] = str(launch_path)
-        return result
-    trainer = Stage3GRPOTrainer(config)
-    result = trainer.run_smoke_step()
-    launch_path = Path(report_path or Path(config.output_dir) / "stage3_grpo_launch_result.json")
-    write_json(launch_path, result)
-    result["launch_report"] = str(launch_path)
-    return result
+    return launch_stage3_grpo_training(config, report_path=report_path)
 
 
 def _preflight_report_path(plan_path: Path, *, requested: str | Path | None) -> Path:

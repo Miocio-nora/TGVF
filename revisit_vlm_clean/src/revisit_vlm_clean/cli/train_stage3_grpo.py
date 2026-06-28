@@ -336,7 +336,7 @@ def _defaults() -> dict[str, Any]:
         "default_config": config.to_dict(),
         "clean_launcher_actions": ["dry_run", "write_plan"],
         "executor_actions": ["preflight_only", "prepare_execution", "precompute_probes", "rollout_only", "launch_training"],
-        "note": "runtime_backend=fake validates lightweight plumbing; native_single_focus runs bounded real Stage2/TGVF rollout/replay/GRPO smoke",
+        "note": "runtime_backend=fake validates lightweight plumbing; native_single_focus runs real Stage2/TGVF rollout/replay/GRPO training updates",
     }
 
 

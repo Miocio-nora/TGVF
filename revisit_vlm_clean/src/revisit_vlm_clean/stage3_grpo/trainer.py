@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 import math
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -62,7 +64,13 @@ class Stage3GRPOTrainer:
             rewards.append(breakdown.to_dict())
         return rewarded, rewards
 
-    def fake_grpo_update(self, rollouts: list[RolloutRecord], rewards: list[dict[str, Any]]) -> dict[str, Any]:
+    def fake_grpo_update(
+        self,
+        rollouts: list[RolloutRecord],
+        rewards: list[dict[str, Any]],
+        *,
+        global_step: int,
+    ) -> dict[str, Any]:
         import torch
 
         reward_map = {
@@ -74,8 +82,14 @@ class Stage3GRPOTrainer:
             reward_map,
             eps=self.config.train.eps,
         )
-        bias = torch.nn.Parameter(torch.zeros(()))
-        optimizer = torch.optim.AdamW([bias], lr=self.config.train.learning_rate)
+        if not hasattr(self, "_fake_bias"):
+            self._fake_bias = torch.nn.Parameter(torch.zeros(()))
+            self._fake_optimizer = torch.optim.AdamW(
+                [self._fake_bias],
+                lr=self.config.train.learning_rate,
+            )
+        bias = self._fake_bias
+        optimizer = self._fake_optimizer
         tensors = rollout_logprob_tensors(rollouts, advantages, trainable_bias=bias)
         loss, stats = grpo_loss_from_tensors(
             new_logprobs=tensors[0],
@@ -92,35 +106,18 @@ class Stage3GRPOTrainer:
         optimizer.zero_grad(set_to_none=True)
         return {
             **stats,
+            "global_step": int(global_step),
+            "optimizer_step": int(global_step),
             "grad_norm": grad_norm,
             "trainable_bias_after_step": float(bias.detach().cpu()),
             "group_count": len({rollout.sample_id for rollout in rollouts}),
             "rollout_count": len(rollouts),
             "mean_reward": sum(reward_map.values()) / max(len(reward_map), 1),
+            "gradient_accumulation_steps": int(self.config.train.gradient_accumulation_steps),
         }
 
     def run_smoke_step(self) -> dict[str, Any]:
-        self.output_dir.mkdir(parents=True, exist_ok=True)
-        rollouts = self.rollout_batch()
-        rewarded, rewards = self.reward_rollouts(rollouts)
-        write_jsonl(self.output_dir / "rollout_debug.jsonl", [item.to_dict() for item in rewarded])
-        write_jsonl(self.output_dir / "reward_breakdown.jsonl", rewards)
-        update = self.fake_grpo_update(rewarded, rewards)
-        write_json(self.output_dir / "train_metrics.json", update)
-        checkpoint_path = self.output_dir / "checkpoint_step_1.pt"
-        _save_fake_checkpoint(checkpoint_path, self.config, update)
-        result = {
-            "status": "stage3_grpo_fake_smoke_completed",
-            "output_dir": str(self.output_dir),
-            "rollout_debug": str(self.output_dir / "rollout_debug.jsonl"),
-            "reward_breakdown": str(self.output_dir / "reward_breakdown.jsonl"),
-            "train_metrics": str(self.output_dir / "train_metrics.json"),
-            "checkpoint": str(checkpoint_path),
-            "metrics": update,
-        }
-        write_json(self.output_dir / "stage3_grpo_launch_result.json", result)
-        self._log_success_to_wandb(result=result, rollouts=rewarded, rewards=rewards)
-        return result
+        return self.run_training()
 
     def run_native_readiness_step(self) -> dict[str, Any]:
         if self.config.rollout.runtime_backend != "native_single_focus":
@@ -140,40 +137,201 @@ class Stage3GRPOTrainer:
         return readiness
 
     def run_native_train_step(self) -> dict[str, Any]:
-        if self.config.rollout.runtime_backend != "native_single_focus":
-            raise ValueError("native train step is only for runtime_backend=native_single_focus")
+        return self.run_training()
+
+    def run_training(self) -> dict[str, Any]:
         self.output_dir.mkdir(parents=True, exist_ok=True)
-        rollouts = self.rollout_batch()
-        rewarded, rewards = self.reward_rollouts(rollouts)
-        write_jsonl(self.output_dir / "rollout_debug.jsonl", [item.to_dict() for item in rewarded])
-        write_jsonl(self.output_dir / "reward_breakdown.jsonl", rewards)
-        update = self.native_grpo_update(rewarded, rewards)
-        write_json(self.output_dir / "train_metrics.json", update)
-        checkpoint_path = self.output_dir / "checkpoint_step_1.pt"
-        _save_native_checkpoint(
-            checkpoint_path,
-            self.config,
-            self.engine,
-            update,
-            optimizer_state=getattr(self, "_last_native_optimizer_state", None),
-        )
-        result = {
-            "status": "stage3_grpo_native_step_completed",
-            "output_dir": str(self.output_dir),
-            "rollout_debug": str(self.output_dir / "rollout_debug.jsonl"),
-            "reward_breakdown": str(self.output_dir / "reward_breakdown.jsonl"),
-            "train_metrics": str(self.output_dir / "train_metrics.json"),
-            "checkpoint": str(checkpoint_path),
-            "metrics": update,
-        }
-        write_json(self.output_dir / "stage3_grpo_launch_result.json", result)
-        self._log_success_to_wandb(result=result, rollouts=rewarded, rewards=rewards)
-        return result
+        rollout_path = self.output_dir / "rollout_debug.jsonl"
+        reward_path = self.output_dir / "reward_breakdown.jsonl"
+        metrics_path = self.output_dir / "train_metrics.jsonl"
+        for path in (rollout_path, reward_path, metrics_path):
+            path.write_text("", encoding="utf-8")
+        logger = _create_stage3_wandb_logger(self.config, self.output_dir)
+        step_summaries: list[dict[str, Any]] = []
+        latest_checkpoint: str | None = None
+        latest_metrics: dict[str, Any] = {}
+        aggregate = _Stage3Aggregate()
+        try:
+            for global_step in range(1, int(self.config.train.max_steps) + 1):
+                rewarded, rewards = self._rollout_and_reward_training_step(global_step)
+                _append_jsonl(
+                    rollout_path,
+                    [
+                        {
+                            **item.to_dict(),
+                            "global_step": global_step,
+                        }
+                        for item in rewarded
+                    ],
+                )
+                _append_jsonl(
+                    reward_path,
+                    [
+                        {
+                            **row,
+                            "global_step": global_step,
+                        }
+                        for row in rewards
+                    ],
+                )
+                if self.config.rollout.runtime_backend == "native_single_focus":
+                    update = self.native_grpo_update(
+                        rewarded,
+                        rewards,
+                        global_step=global_step,
+                    )
+                else:
+                    update = self.fake_grpo_update(
+                        rewarded,
+                        rewards,
+                        global_step=global_step,
+                    )
+                latest_metrics = dict(update)
+                _append_jsonl(metrics_path, [latest_metrics])
+                write_json(self.output_dir / "train_metrics.json", latest_metrics)
+                aggregate.update(rollouts=rewarded, rewards=rewards, metrics=latest_metrics)
+                checkpoint_path = None
+                if (
+                    global_step % int(self.config.train.save_steps) == 0
+                    or global_step == int(self.config.train.max_steps)
+                ):
+                    checkpoint_path = self._save_checkpoint(global_step, latest_metrics)
+                    latest_checkpoint = str(checkpoint_path)
+                    (self.output_dir / "LATEST_CHECKPOINT.txt").write_text(
+                        latest_checkpoint + "\n",
+                        encoding="utf-8",
+                    )
+                step_summary = {
+                    "global_step": global_step,
+                    "rollout_count": len(rewarded),
+                    "reward_count": len(rewards),
+                    "checkpoint": None if checkpoint_path is None else str(checkpoint_path),
+                    "metrics": latest_metrics,
+                }
+                step_summaries.append(step_summary)
+                if logger is not None:
+                    logger.log(
+                        _stage3_wandb_metrics(
+                            result={"metrics": latest_metrics},
+                            rollouts=rewarded,
+                            rewards=rewards,
+                        ),
+                        step=global_step,
+                    )
+            result = {
+                "status": "stage3_grpo_training_completed",
+                "output_dir": str(self.output_dir),
+                "runtime_backend": self.config.rollout.runtime_backend,
+                "global_step": int(self.config.train.max_steps),
+                "optimizer_step": int(self.config.train.max_steps),
+                "max_steps": int(self.config.train.max_steps),
+                "rollout_debug": str(rollout_path),
+                "reward_breakdown": str(reward_path),
+                "train_metrics": str(self.output_dir / "train_metrics.json"),
+                "train_metrics_jsonl": str(metrics_path),
+                "checkpoint": latest_checkpoint,
+                "step_summaries": step_summaries,
+                "metrics": latest_metrics,
+                "aggregate": aggregate.summary(),
+            }
+            write_json(self.output_dir / "stage3_grpo_launch_result.json", result)
+            if logger is not None:
+                logger.update_summary(
+                    _stage3_wandb_summary_from_aggregate(self.config, result)
+                )
+                if self.config.wandb.log_artifacts:
+                    logger.log_artifact(
+                        name=_safe_artifact_name(f"{self.config.run_id}-stage3-grpo-outputs"),
+                        artifact_type="stage3_grpo_outputs",
+                        paths=_stage3_output_artifact_paths(
+                            self.output_dir,
+                            include_checkpoint=False,
+                        ),
+                        aliases=["latest"],
+                    )
+                if self.config.wandb.log_checkpoint_artifact and latest_checkpoint:
+                    logger.log_artifact(
+                        name=_safe_artifact_name(f"{self.config.run_id}-stage3-grpo-checkpoint"),
+                        artifact_type="model",
+                        paths=[latest_checkpoint],
+                        aliases=["latest", f"step_{int(self.config.train.max_steps)}"],
+                    )
+            return result
+        finally:
+            if logger is not None:
+                logger.finish()
+
+    def _rollout_and_reward_training_step(
+        self,
+        global_step: int,
+    ) -> tuple[list[RolloutRecord], list[dict[str, Any]]]:
+        all_rollouts: list[RolloutRecord] = []
+        all_rewards: list[dict[str, Any]] = []
+        for accumulation_index in range(int(self.config.train.gradient_accumulation_steps)):
+            rollouts = self.rollout_batch()
+            rewarded, rewards = self.reward_rollouts(rollouts)
+            rollout_id_map = {
+                (item.sample_id, item.rollout_id): (
+                    accumulation_index * int(self.config.rollout.group_size) + item.rollout_id
+                )
+                for item in rewarded
+            }
+            for rollout in rewarded:
+                payload = dict(rollout.runtime or {})
+                payload["global_step"] = global_step
+                payload["accumulation_index"] = accumulation_index
+                mapped_rollout_id = rollout_id_map[(rollout.sample_id, rollout.rollout_id)]
+                all_rollouts.append(
+                    RolloutRecord(
+                        **{
+                            **rollout.to_dict(),
+                            "rollout_id": mapped_rollout_id,
+                            "runtime": payload,
+                        }
+                    )
+                )
+            for row in rewards:
+                mapped_rollout_id = rollout_id_map[(str(row["sample_id"]), int(row["rollout_id"]))]
+                all_rewards.append(
+                    {
+                        **row,
+                        "rollout_id": mapped_rollout_id,
+                        "accumulation_index": accumulation_index,
+                    }
+                )
+        return all_rollouts, all_rewards
+
+    def _save_checkpoint(self, global_step: int, update: dict[str, Any]) -> Path:
+        checkpoint_path = self.output_dir / f"checkpoint_step_{int(global_step)}.pt"
+        if self.config.rollout.runtime_backend == "native_single_focus":
+            _save_native_checkpoint(
+                checkpoint_path,
+                self.config,
+                self.engine,
+                update,
+                global_step=global_step,
+                optimizer_state=getattr(self, "_last_native_optimizer_state", None),
+            )
+        else:
+            _save_fake_checkpoint(
+                checkpoint_path,
+                self.config,
+                update,
+                global_step=global_step,
+                optimizer_state=(
+                    getattr(self, "_fake_optimizer", None).state_dict()
+                    if hasattr(self, "_fake_optimizer")
+                    else None
+                ),
+            )
+        return checkpoint_path
 
     def native_grpo_update(
         self,
         rollouts: list[RolloutRecord],
         rewards: list[dict[str, Any]],
+        *,
+        global_step: int,
     ) -> dict[str, Any]:
         import torch
 
@@ -243,7 +401,12 @@ class Stage3GRPOTrainer:
             )
         if not params:
             raise RuntimeError("native GRPO update found no trainable parameters")
-        optimizer = torch.optim.AdamW(params, lr=self.config.train.learning_rate)
+        if not hasattr(self, "_native_optimizer"):
+            self._native_optimizer = torch.optim.AdamW(
+                params,
+                lr=self.config.train.learning_rate,
+            )
+        optimizer = self._native_optimizer
         loss, stats = grpo_loss_from_tensors(
             new_logprobs=new_tensor,
             old_logprobs=old_tensor,
@@ -261,50 +424,32 @@ class Stage3GRPOTrainer:
         return {
             **stats,
             "status": "native_grpo_update_completed",
+            "global_step": int(global_step),
+            "optimizer_step": int(global_step),
             "grad_norm": grad_norm,
             "group_count": len({rollout.sample_id for rollout in rollouts}),
             "rollout_count": len(rollouts),
             "mean_reward": sum(reward_map.values()) / max(len(reward_map), 1),
             "replayed_tokens": float(mask_tensor.sum().detach().cpu()),
+            "gradient_accumulation_steps": int(self.config.train.gradient_accumulation_steps),
         }
 
-    def _log_success_to_wandb(
-        self,
-        *,
-        result: dict[str, Any],
-        rollouts: list[RolloutRecord],
-        rewards: list[dict[str, Any]],
-    ) -> None:
-        logger = _create_stage3_wandb_logger(self.config, self.output_dir)
-        if logger is None:
-            return
-        try:
-            metrics = _stage3_wandb_metrics(result=result, rollouts=rollouts, rewards=rewards)
-            logger.log(metrics, step=int(result.get("metrics", {}).get("optimizer_step", 1) or 1))
-            logger.update_summary(_stage3_wandb_summary(self.config, result, rollouts, rewards))
-            if self.config.wandb.log_artifacts:
-                logger.log_artifact(
-                    name=_safe_artifact_name(f"{self.config.run_id}-stage3-grpo-outputs"),
-                    artifact_type="stage3_grpo_outputs",
-                    paths=_stage3_output_artifact_paths(
-                        self.output_dir,
-                        include_checkpoint=False,
-                    ),
-                    aliases=["latest"],
-                )
-            checkpoint_path = result.get("checkpoint")
-            if self.config.wandb.log_checkpoint_artifact and checkpoint_path:
-                logger.log_artifact(
-                    name=_safe_artifact_name(f"{self.config.run_id}-stage3-grpo-checkpoint"),
-                    artifact_type="model",
-                    paths=[str(checkpoint_path)],
-                    aliases=["latest", "step_1"],
-                )
-        finally:
-            logger.finish()
+
+def _append_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as handle:
+        for row in rows:
+            handle.write(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n")
 
 
-def _save_fake_checkpoint(path: Path, config: Stage3GRPOConfig, update: dict[str, Any]) -> None:
+def _save_fake_checkpoint(
+    path: Path,
+    config: Stage3GRPOConfig,
+    update: dict[str, Any],
+    *,
+    global_step: int,
+    optimizer_state: dict[str, Any] | None,
+) -> None:
     import torch
 
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -313,9 +458,10 @@ def _save_fake_checkpoint(path: Path, config: Stage3GRPOConfig, update: dict[str
             "schema_version": "stage3_grpo_checkpoint_v0",
             "run_id": config.run_id,
             "config": config.to_dict(),
-            "global_step": 1,
-            "optimizer_step": 1,
+            "global_step": int(global_step),
+            "optimizer_step": int(global_step),
             "smoke_metrics": update,
+            "optimizer": optimizer_state,
             "note": "fake runtime checkpoint validates Stage3 GRPO plumbing only",
         },
         path,
@@ -353,6 +499,7 @@ def _save_native_checkpoint(
     engine: Any,
     update: dict[str, Any],
     *,
+    global_step: int,
     optimizer_state: dict[str, Any] | None,
 ) -> None:
     import torch
@@ -372,8 +519,8 @@ def _save_native_checkpoint(
         "run_id": config.run_id,
         "config": source_checkpoint_config,
         "stage3_config": config.to_dict(),
-        "global_step": 1,
-        "optimizer_step": 1,
+        "global_step": int(global_step),
+        "optimizer_step": int(global_step),
         "qwen_lora": get_peft_model_state_dict(native_runtime.model),
         "tgvf_module": (
             native_runtime.foveal_module.state_dict()
@@ -433,6 +580,68 @@ def native_grpo_readiness_report(
     }
 
 
+class _Stage3Aggregate:
+    def __init__(self) -> None:
+        self.step_count = 0
+        self.rollout_count = 0
+        self.reward_count = 0
+        self.used_tool_count = 0
+        self.tool_call_count = 0
+        self.malformed_count = 0
+        self.answer_correct_count = 0
+        self.reward_sums: dict[str, float] = {}
+        self.tool_label_counts: dict[str, int] = {}
+        self.latest_metrics: dict[str, Any] = {}
+
+    def update(
+        self,
+        *,
+        rollouts: list[RolloutRecord],
+        rewards: list[dict[str, Any]],
+        metrics: dict[str, Any],
+    ) -> None:
+        self.step_count += 1
+        self.rollout_count += len(rollouts)
+        self.reward_count += len(rewards)
+        self.used_tool_count += sum(1 for item in rollouts if item.used_tool)
+        self.tool_call_count += sum(int(item.num_tool_calls) for item in rollouts)
+        self.malformed_count += sum(1 for item in rollouts if (item.protocol or {}).get("native_errors"))
+        self.answer_correct_count += sum(1 for row in rewards if row.get("answer_correct"))
+        self.latest_metrics = dict(metrics)
+        for key in (
+            "reward_total",
+            "reward_answer",
+            "reward_tool",
+            "reward_focus",
+            "reward_ground",
+            "reward_protocol",
+        ):
+            for row in rewards:
+                value = row.get(key)
+                if isinstance(value, (int, float)) and math.isfinite(float(value)):
+                    self.reward_sums[key] = self.reward_sums.get(key, 0.0) + float(value)
+        for label, count in _count_by_key(rewards, "tool_label").items():
+            self.tool_label_counts[label] = self.tool_label_counts.get(label, 0) + count
+
+    def summary(self) -> dict[str, Any]:
+        reward_means = {
+            key: value / max(self.reward_count, 1)
+            for key, value in sorted(self.reward_sums.items())
+        }
+        return {
+            "step_count": self.step_count,
+            "rollout_count": self.rollout_count,
+            "reward_count": self.reward_count,
+            "tool_trigger_rate": self.used_tool_count / max(self.rollout_count, 1),
+            "avg_tool_calls": self.tool_call_count / max(self.rollout_count, 1),
+            "malformed_rate": self.malformed_count / max(self.rollout_count, 1),
+            "answer_accuracy": self.answer_correct_count / max(self.reward_count, 1),
+            "reward_means": reward_means,
+            "tool_label_counts": dict(sorted(self.tool_label_counts.items())),
+            "latest_metrics": self.latest_metrics,
+        }
+
+
 def _create_stage3_wandb_logger(config: Stage3GRPOConfig, output_dir: Path) -> Any | None:
     wandb_config = config.wandb
     if not wandb_config.project or wandb_config.mode == "disabled":
@@ -458,6 +667,7 @@ def _create_stage3_wandb_logger(config: Stage3GRPOConfig, output_dir: Path) -> A
 
 
 def _stage3_wandb_config(config: Stage3GRPOConfig, output_dir: Path) -> dict[str, Any]:
+    git_commit, dirty_worktree = _git_identity()
     return {
         "stage": "stage3_grpo",
         "run_id": config.run_id,
@@ -469,6 +679,8 @@ def _stage3_wandb_config(config: Stage3GRPOConfig, output_dir: Path) -> dict[str
         "stage3_config": config.to_dict(),
         "rl_data": dataset_identity(config.rl_data_path),
         "policy_checkpoint": file_identity(config.policy_checkpoint).to_dict(),
+        "git_commit": git_commit,
+        "dirty_worktree": dirty_worktree,
     }
 
 
@@ -479,8 +691,9 @@ def _stage3_wandb_metrics(
     rewards: list[dict[str, Any]],
 ) -> dict[str, Any]:
     update = dict(result.get("metrics") or {})
+    global_step = int(update.get("global_step") or update.get("optimizer_step") or 1)
     metrics: dict[str, Any] = {
-        "trainer/global_step": 1,
+        "trainer/global_step": global_step,
         "trainer/rollout_count": len(rollouts),
         "trainer/reward_count": len(rewards),
         "rollout/tool_trigger_rate": _mean_float(
@@ -513,11 +726,9 @@ def _stage3_wandb_metrics(
     return {key: value for key, value in metrics.items() if value is not None}
 
 
-def _stage3_wandb_summary(
+def _stage3_wandb_summary_from_aggregate(
     config: Stage3GRPOConfig,
     result: dict[str, Any],
-    rollouts: list[RolloutRecord],
-    rewards: list[dict[str, Any]],
 ) -> dict[str, Any]:
     return {
         "status": result.get("status"),
@@ -526,22 +737,10 @@ def _stage3_wandb_summary(
         "policy_checkpoint": config.policy_checkpoint,
         "rl_data_path": config.rl_data_path,
         "checkpoint": result.get("checkpoint"),
-        "rollout_count": len(rollouts),
-        "reward_count": len(rewards),
+        "global_step": result.get("global_step"),
+        "max_steps": result.get("max_steps"),
         "metrics": dict(result.get("metrics") or {}),
-        "reward_summary": {
-            "answer_accuracy": _mean_float(
-                [1.0 if row.get("answer_correct") else 0.0 for row in rewards]
-            ),
-            "mean_total": _mean_float(
-                [
-                    float(row["reward_total"])
-                    for row in rewards
-                    if isinstance(row.get("reward_total"), (int, float))
-                ]
-            ),
-            "tool_label_counts": _count_by_key(rewards, "tool_label"),
-        },
+        "aggregate": dict(result.get("aggregate") or {}),
     }
 
 
@@ -557,15 +756,17 @@ def _stage3_output_artifact_paths(
         "stage3_grpo_preflight_report.json",
         "stage3_grpo_launch_result.json",
         "train_metrics.json",
+        "train_metrics.jsonl",
         "rollout_debug.jsonl",
         "reward_breakdown.jsonl",
+        "LATEST_CHECKPOINT.txt",
         "judge_pending.jsonl",
         "probe_cache.jsonl",
         "probe_cache_summary.json",
     ]
     paths: list[str | Path] = [output_dir / name for name in names]
     if include_checkpoint:
-        paths.append(output_dir / "checkpoint_step_1.pt")
+        paths.extend(sorted(output_dir.glob("checkpoint_step_*.pt")))
     return paths
 
 
@@ -585,3 +786,20 @@ def _count_by_key(rows: list[dict[str, Any]], key: str) -> dict[str, int]:
 def _safe_artifact_name(value: str) -> str:
     safe = "".join(char if char.isalnum() or char in {"-", "_", "."} else "-" for char in value)
     return safe.strip("-") or "stage3-grpo-artifact"
+
+
+def _git_identity() -> tuple[str | None, bool | None]:
+    try:
+        commit = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"],
+            text=True,
+            stderr=subprocess.DEVNULL,
+        ).strip()
+        status = subprocess.check_output(
+            ["git", "status", "--porcelain", "--untracked-files=no"],
+            text=True,
+            stderr=subprocess.DEVNULL,
+        )
+    except Exception:
+        return None, None
+    return commit or None, bool(status.strip())

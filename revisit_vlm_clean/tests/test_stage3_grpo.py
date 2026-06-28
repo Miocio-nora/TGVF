@@ -531,6 +531,12 @@ def test_stage3_cli_plan_preflight_rollout_and_launch(tmp_path: Path) -> None:
                 "4",
                 "--per-device-prompt-batch-size",
                 "1",
+                "--max-steps",
+                "3",
+                "--save-steps",
+                "2",
+                "--gradient-accumulation-steps",
+                "2",
                 "--no-judge-enabled",
             ]
         )
@@ -560,7 +566,17 @@ def test_stage3_cli_plan_preflight_rollout_and_launch(tmp_path: Path) -> None:
     assert (output_dir / "rollout_debug.jsonl").exists()
     assert (output_dir / "reward_breakdown.jsonl").exists()
     assert (output_dir / "train_metrics.json").exists()
-    assert (output_dir / "checkpoint_step_1.pt").exists()
+    assert (output_dir / "train_metrics.jsonl").exists()
+    assert (output_dir / "checkpoint_step_2.pt").exists()
+    assert (output_dir / "checkpoint_step_3.pt").exists()
+    launch_result = json.loads((output_dir / "stage3_grpo_launch_result.json").read_text(encoding="utf-8"))
+    assert launch_result["status"] == "stage3_grpo_training_completed"
+    assert launch_result["global_step"] == 3
+    assert launch_result["aggregate"]["step_count"] == 3
+    assert launch_result["aggregate"]["rollout_count"] == 24
+    assert len((output_dir / "train_metrics.jsonl").read_text(encoding="utf-8").splitlines()) == 3
+    assert len((output_dir / "reward_breakdown.jsonl").read_text(encoding="utf-8").splitlines()) == 24
+    assert "checkpoint_step_3.pt" in (output_dir / "LATEST_CHECKPOINT.txt").read_text(encoding="utf-8")
 
 
 def _write_rl_fixture(tmp_path: Path) -> Path:
