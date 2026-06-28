@@ -7858,7 +7858,7 @@ entry, update this file immediately.
 ### EXP-20260628-1444-stage3-grpo-formal-4gpu-g8pb2-lora-only
 
 - Status:
-  - PLANNED.
+  - RUNNING.
 - Question:
   - Run the first formal 4-GPU Stage3 GRPO training job from the latest Stage2
     checkpoint on the 20k RL QA data, using a higher per-rank workload to use
@@ -7874,10 +7874,9 @@ entry, update this file immediately.
   - Enable W&B offline logging with full config/artifact metadata; checkpoint
     artifact upload remains disabled because checkpoints are large.
 - Code commit / worktree:
-  - Commit: `34a5fbc Record Stage3 debug7 success`.
+  - Commit: `cc01e06 Record formal Stage3 GRPO run plan`.
   - Training code commit includes `7be02a1 Restrict Stage3 native trainable parameters`.
-  - Worktree expected clean before plan/launch except future ledger status
-    updates.
+  - Worktree dirty only for this RUNNING ledger update at launch.
 - Stage2 checkpoint/output:
   - `outputs/clean_training/qwen3_stage2_norm01_stage1_mask075_deepstack_4gpu_20260627_163250/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt`.
   - SHA256: `50245a11c27ad9755eb815b5f008af50a659fa07a4043f0f9427f5bbea3c0236`.
@@ -7895,7 +7894,7 @@ entry, update this file immediately.
 - tmux:
   - Planned session: `stage3_grpo_formal_4gpu_g8pb2`.
 - Started:
-  - Pending.
+  - 2026-06-28 14:47:10 JST.
 - Finished:
   - Pending.
 - Metrics:
