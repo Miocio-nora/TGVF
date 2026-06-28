@@ -8864,7 +8864,7 @@ entry, update this file immediately.
 
 ### EXP-20260629-000300-stage3-formal-all5-g16-res768-200step-wandb-online
 
-- Status: BLOCKED_WAITING_WANDB_AUTH.
+- Status: RUNNING.
 - Question:
   - Relaunch the formal Stage3 all-5 GRPO 200-step run with W&B cloud upload
     enabled, while keeping checkpoint artifacts disabled.
@@ -8915,7 +8915,17 @@ entry, update this file immediately.
   - Group: `formal_all5_g16_res768_200step_online`.
   - `log_artifacts=true`.
   - `log_checkpoint_artifact=false`.
-  - Launch gate currently failed because `wandb status` reports
-    `api_key=null` and the shell has no `WANDB_API_KEY`.
-- Planned command after W&B auth is available:
+  - Check immediately before launch still showed `wandb status` as
+    `api_key=null`, but `~/.netrc` contains a W&B login entry and the user
+    confirmed the machine is logged in, so the online launch is proceeding.
+  - If W&B auth is still not visible to the training subprocess, this run should
+    fail fast in step 1 rather than silently becoming offline.
+- Runtime:
+  - Started: 2026-06-29 00:13 JST.
+  - tmux session: `stage3_g16_res768_wandb_online_200step`.
+  - Runner log:
+    `outputs/stage3_grpo/formal_all5_hint_4gpu_g16_res768_200step_wandb_online_20260629/stepwise_runner_stdout.log`.
+  - GPU memory trace:
+    `outputs/stage3_grpo/formal_all5_hint_4gpu_g16_res768_200step_wandb_online_20260629/gpu_mem_trace.csv`.
+- Launch command:
   - `CUDA_VISIBLE_DEVICES=0,1,2,3 PYTHONPATH=revisit_vlm_clean/src python -u -m revisit_vlm_clean.cli.stage3_grpo_stepwise --template-plan outputs/stage3_grpo/formal_all5_hint_4gpu_g16_res768_200step_wandb_online_20260629/step_000001/stage3_grpo_training_plan.json --output-root outputs/stage3_grpo/formal_all5_hint_4gpu_g16_res768_200step_wandb_online_20260629 --state-path outputs/stage3_grpo/formal_all5_hint_4gpu_g16_res768_200step_wandb_online_20260629/stage3_grpo_stepwise_state.json --target-step 200 --max-new-steps 200 --judge-devices cuda:0,cuda:1,cuda:2,cuda:3 --judge-max-image-resolution 768 --execute`.
