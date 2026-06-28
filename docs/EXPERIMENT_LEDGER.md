@@ -8599,7 +8599,7 @@ entry, update this file immediately.
 
 ### EXP-20260628-205812-stage3-formal-all5-hint-stepwise
 
-- Status: RUNNING.
+- Status: FAILED_OOM_BEFORE_METRICS.
 - Question:
   - Prepare formal Stage3 all-5 GRPO training using dataset `tool_need_hint` for
     ToolDecision labels instead of forced-probe `Delta_tool`.
@@ -8933,3 +8933,71 @@ entry, update this file immediately.
     `outputs/stage3_grpo/formal_all5_hint_4gpu_g16_res768_200step_wandb_online_20260629/gpu_mem_trace.csv`.
 - Launch command:
   - `CUDA_VISIBLE_DEVICES=0,1,2,3 PYTHONPATH=revisit_vlm_clean/src python -u -m revisit_vlm_clean.cli.stage3_grpo_stepwise --template-plan outputs/stage3_grpo/formal_all5_hint_4gpu_g16_res768_200step_wandb_online_20260629/step_000001/stage3_grpo_training_plan.json --output-root outputs/stage3_grpo/formal_all5_hint_4gpu_g16_res768_200step_wandb_online_20260629 --state-path outputs/stage3_grpo/formal_all5_hint_4gpu_g16_res768_200step_wandb_online_20260629/stage3_grpo_stepwise_state.json --target-step 200 --max-new-steps 200 --judge-devices cuda:0,cuda:1,cuda:2,cuda:3 --judge-max-image-resolution 768 --execute`.
+- Failure:
+  - Failed during step 1 launch-training before `train_metrics.jsonl` had any
+    rows, so no `train/loss` or reward scalar metrics were uploaded.
+  - Root cause: rank2 CUDA OOM during replay `_append_visual_d`.
+  - Error excerpt:
+    `torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 28.00 MiB.
+    GPU 2 ... 10.12 MiB is free ... this process has 178.34 GiB memory in use`.
+  - W&B uploaded/created only the step-1 run config and environment metadata for
+    run `0rwxtdpl`; it did not receive loss metrics or output artifacts because
+    artifact logging happens after a step completes.
+  - State file:
+    `outputs/stage3_grpo/formal_all5_hint_4gpu_g16_res768_200step_wandb_online_20260629/stage3_grpo_stepwise_state.json`.
+  - State status: `failed`, completed steps: 0.
+
+### EXP-20260629-002900-stage3-formal-all5-g12-res768-200step-wandb-online
+
+- Status: RUNNING.
+- Question:
+  - Relaunch formal Stage3 all-5 GRPO after the G16/res768 online run OOMed
+    before metrics, keeping W&B online upload and checkpoint artifact exclusion.
+- Intended diff:
+  - Reduce `group_size` from 16 to 12.
+  - Keep `max_image_resolution=768`.
+  - Set `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` for the launcher.
+- Repository / code identity:
+  - Git commit: `6847d8d91927a011440e9a5a6a7e4ba7130f3ed7`.
+- Source checkpoint:
+  - `outputs/clean_training/qwen3_stage2_norm01_stage1_mask075_deepstack_4gpu_20260627_163250/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt`.
+  - SHA256: `50245a11c27ad9755eb815b5f008af50a659fa07a4043f0f9427f5bbea3c0236`.
+- Train data:
+  - `revisit_vlm_clean/data/stage3_rl/v1_direct_20k_20260627_032447/accepted_rl_prompts.jsonl`.
+  - Rows: 20,000.
+  - SHA256: `2e39a1dadcc020001bd3d763635f461d2b7dc6d94bfb3cfecdb9bb20240fa758`.
+- Output:
+  - `outputs/stage3_grpo/formal_all5_hint_4gpu_g12_res768_200step_wandb_online_20260629`.
+- Sample schedule:
+  - `outputs/stage3_grpo/formal_all5_hint_4gpu_g12_res768_200step_wandb_online_20260629/stage3_grpo_sample_schedule.jsonl`.
+  - Rows: 800 = 200 steps x 4 ranks x 1 prompt.
+  - SHA256: `268384d6d1c4f06e73ed313cdb0202f01e8bc7f3e05d705a0d6377a4bc6dddf5`.
+  - Duplicate sample ids: 0.
+  - Duplicate image uids: 0.
+- Plan / preflight:
+  - Plan:
+    `outputs/stage3_grpo/formal_all5_hint_4gpu_g12_res768_200step_wandb_online_20260629/step_000001/stage3_grpo_training_plan.json`.
+  - Stepwise preflight: passed, warnings: none.
+- Runtime config:
+  - GPUs: physical 0-3 via `CUDA_VISIBLE_DEVICES=0,1,2,3`.
+  - World size: 4.
+  - Per-device prompt batch size: 1.
+  - Group size: 12.
+  - Global rollouts per step: 48.
+  - `max_image_resolution=768`, `max_new_tokens=256`,
+    `max_action_tokens=128`, `max_answer_tokens=160`.
+  - Reward: answer/tool/focus/ground/protocol all enabled.
+  - Judge mode: `cache_only`; offline 32B judge shards run before training.
+- W&B:
+  - Project: `tgvf-stage3`.
+  - Mode: `online`.
+  - Group: `formal_all5_g12_res768_200step_online`.
+  - `log_artifacts=true`.
+  - `log_checkpoint_artifact=false`.
+- Runtime:
+  - Started: 2026-06-29 00:29 JST.
+  - tmux session: `stage3_g12_res768_wandb_online_200step`.
+  - Runner log:
+    `outputs/stage3_grpo/formal_all5_hint_4gpu_g12_res768_200step_wandb_online_20260629/stepwise_runner_stdout.log`.
+  - GPU memory trace:
+    `outputs/stage3_grpo/formal_all5_hint_4gpu_g12_res768_200step_wandb_online_20260629/gpu_mem_trace.csv`.
