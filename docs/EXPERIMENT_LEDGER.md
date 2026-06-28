@@ -8599,7 +8599,7 @@ entry, update this file immediately.
 
 ### EXP-20260628-205812-stage3-formal-all5-hint-stepwise
 
-- Status: PLANNED.
+- Status: RUNNING.
 - Question:
   - Prepare formal Stage3 all-5 GRPO training using dataset `tool_need_hint` for
     ToolDecision labels instead of forced-probe `Delta_tool`.
@@ -8824,3 +8824,31 @@ entry, update this file immediately.
   - SHA256: `2e39a1dadcc020001bd3d763635f461d2b7dc6d94bfb3cfecdb9bb20240fa758`.
 - Planned output:
   - `outputs/stage3_grpo/formal_all5_hint_4gpu_g16_res768_200step_20260628`.
+- Sample schedule:
+  - `outputs/stage3_grpo/formal_all5_hint_4gpu_g16_res768_200step_20260628/stage3_grpo_sample_schedule.jsonl`.
+  - Rows: 800.
+  - SHA256: `e0a1695b3634a95fbc48acd8147a366274422a590ca332b4114c38150c522324`.
+  - Duplicate sample ids: 0.
+  - Duplicate image uids: 0.
+- Runtime:
+  - Started: 2026-06-28 22:42:25 JST.
+  - tmux session: `stage3_g16_res768_200step`.
+  - W&B mode: offline.
+  - Runner log:
+    `outputs/stage3_grpo/formal_all5_hint_4gpu_g16_res768_200step_20260628/stepwise_runner_stdout.log`.
+  - GPU memory trace:
+    `outputs/stage3_grpo/formal_all5_hint_4gpu_g16_res768_200step_20260628/gpu_mem_trace.csv`.
+- Initial metrics:
+  - Step 1 completed successfully and advanced state to `next_step=2`.
+  - Step 1 checkpoint:
+    `outputs/stage3_grpo/formal_all5_hint_4gpu_g16_res768_200step_20260628/step_000001/checkpoint_step_1.pt`.
+  - Step 1 distributed rollout count: 64.
+  - Step 1 distributed replayed tokens: 1850.
+  - Observed GPU memory trace peak on physical GPUs 0-3 after step 1:
+    - GPU0: 125,154 MiB.
+    - GPU1: 133,704 MiB.
+    - GPU2: 118,098 MiB.
+    - GPU3: 120,540 MiB.
+  - This satisfies the requested high-VRAM profile; rollout-only phases still
+    drop to about 23GB because rollout generation is serial, while train/replay
+    reaches the intended 120GB range.
