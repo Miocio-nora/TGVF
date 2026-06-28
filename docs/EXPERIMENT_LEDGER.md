@@ -8086,7 +8086,7 @@ entry, update this file immediately.
 ### EXP-20260628-1553-stage3-grpo-formal-4gpu-g8pb2-stable20-lora-only
 
 - Status:
-  - RUNNING.
+  - DONE.
 - Question:
   - Complete a stable formal 20-step 4-GPU Stage3 GRPO run from the latest
     Stage2 checkpoint on the 20k RL QA data.
@@ -8131,10 +8131,51 @@ entry, update this file immediately.
 - Started:
   - 2026-06-28 15:53 JST.
 - Finished:
-  - Pending.
+  - 2026-06-28 16:34 JST.
 - Metrics:
-  - Pending.
+  - Status: `stage3_grpo_training_completed`.
+  - Train metrics: 20 rows per rank, 80 rows total.
+  - Checkpoints:
+    - `outputs/stage3_grpo/formal_4gpu_g8pb2_stable20_manualsgd_loraonly_clean_stage2_step1200_20260628/checkpoint_step_5.pt`
+      (734,586,059 bytes).
+    - `outputs/stage3_grpo/formal_4gpu_g8pb2_stable20_manualsgd_loraonly_clean_stage2_step1200_20260628/checkpoint_step_10.pt`
+      (734,586,595 bytes).
+    - `outputs/stage3_grpo/formal_4gpu_g8pb2_stable20_manualsgd_loraonly_clean_stage2_step1200_20260628/checkpoint_step_15.pt`
+      (734,586,595 bytes).
+    - `outputs/stage3_grpo/formal_4gpu_g8pb2_stable20_manualsgd_loraonly_clean_stage2_step1200_20260628/checkpoint_step_20.pt`
+      (734,586,595 bytes).
+  - Latest checkpoint pointer:
+    `outputs/stage3_grpo/formal_4gpu_g8pb2_stable20_manualsgd_loraonly_clean_stage2_step1200_20260628/LATEST_CHECKPOINT.txt`.
+  - Final step-20 distributed metrics from rank0/root logs:
+    - `distributed_rollout_count=64`.
+    - `distributed_group_count=8`.
+    - `distributed_mean_reward=0.57421875`.
+    - `distributed_loss_mean=0.07808398269116879`.
+    - `distributed_policy_loss_mean=0.016010917723178864`.
+    - `distributed_kl_mean=3.1036531925201416`.
+    - `distributed_replayed_tokens=2202`.
+  - 20-step means from rank0/root `train_metrics.jsonl`:
+    - mean `distributed_mean_reward=1.143515625`.
+    - mean `distributed_kl_mean=3.438732349872589`.
+    - mean `distributed_loss_mean=0.049926025234162806`.
+    - mean `distributed_policy_loss_mean=-0.01884862000897556`.
+    - mean `distributed_replayed_tokens=2283.1`.
+  - W&B:
+    - Offline run directory:
+      `outputs/stage3_grpo/formal_4gpu_g8pb2_stable20_manualsgd_loraonly_clean_stage2_step1200_20260628/wandb/wandb/offline-run-20260628_155555-khqo0njf`.
+    - Checkpoint artifact upload disabled by plan.
+  - Peak observed GPU memory:
+    - Around 144 GiB on the highest rank during this stable run.
 - Analysis:
-  - Pending.
+  - The full native Stage3 GRPO path completed 20 optimizer steps on GPUs 0-3:
+    free rollouts, TGVF tool protocol, reward computation, replay, GRPO loss,
+    backward, gradient all-reduce, manual SGD update, checkpointing, W&B offline
+    logging, and clean process teardown.
+  - `g8pb3` and `g8pb4` are useful capacity probes but not stable long-run
+    settings because random long rollout/replay groups can push a rank to the
+    memory limit. `g8pb2` is the stable formal setting until token-budget
+    batching or stricter rollout length caps are added.
 - Conclusion:
-  - Pending.
+  - Stage3 GRPO training framework is operational end to end for a formal
+    4-GPU 20-step run. Next scaling step should improve batching by token budget
+    or rollout length control before increasing prompt batch again.
