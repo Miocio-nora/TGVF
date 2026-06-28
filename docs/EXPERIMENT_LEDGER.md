@@ -8949,7 +8949,7 @@ entry, update this file immediately.
 
 ### EXP-20260629-002900-stage3-formal-all5-g12-res768-200step-wandb-online
 
-- Status: RUNNING_RESUME2 from step 31 with one parent W&B run and checkpoint
+- Status: RUNNING_RESUME3 from step 32 with one parent W&B run and checkpoint
   retention.
 - Question:
   - Relaunch formal Stage3 all-5 GRPO after the G16/res768 online run OOMed
@@ -9055,6 +9055,18 @@ entry, update this file immediately.
     - Fix commit: `5e3b725`.
     - Resume2 launch command:
       `CUDA_VISIBLE_DEVICES=0,1,2,3 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True PYTHONPATH=/nvmesv/dredvpn009/projects/r-vlm/revisit_vlm/revisit_vlm_clean/src:/nvmesv/dredvpn009/projects/r-vlm/revisit_vlm/src python -u -m revisit_vlm_clean.cli.stage3_grpo_stepwise --template-plan outputs/stage3_grpo/formal_all5_hint_4gpu_g12_res768_200step_wandb_online_20260629/step_000001/stage3_grpo_training_plan.json --output-root outputs/stage3_grpo/formal_all5_hint_4gpu_g12_res768_200step_wandb_online_20260629 --state-path outputs/stage3_grpo/formal_all5_hint_4gpu_g12_res768_200step_wandb_online_20260629/stage3_grpo_stepwise_state.json --start-step 31 --target-step 200 --max-new-steps 170 --checkpoint-keep-last 2 --checkpoint-keep-every 25 --judge-devices cuda:0,cuda:1,cuda:2,cuda:3 --judge-max-image-resolution 768 --execute`.
+    - Resume2 was stopped after the user requested the W&B/ckpt policy fix to
+      be verified before continuing the formal run.
+    - Resume3 tmux session:
+      `stage3_g12_res768_wandb_online_200step_resume3`.
+    - Resume3 parent W&B run:
+      `https://wandb.ai/mio_nora/tgvf-stage3/runs/wczsw7l6`.
+    - Verified child step plans set `wandb.mode=disabled`,
+      `log_artifacts=false`, and `log_checkpoint_artifact=false`; grep of
+      `step_000031/torchrun_train_stdout.log` showed no child W&B run init.
+    - Step 31 completed successfully and advanced state to `next_step=32`.
+    - After step 31 retention kept steps 25, 30, 31 and deleted the prior
+      non-milestone step 29 checkpoint.
   - Stage3 RL 20k train data direct/focus distribution:
     - `tool_need_hint`: useful_tool 10,510; likely_required 1,744;
       optional_tool 4,668; no_tool 3,078.
