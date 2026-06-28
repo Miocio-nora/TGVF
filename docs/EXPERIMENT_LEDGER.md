@@ -7738,3 +7738,41 @@ entry, update this file immediately.
   - Add a native Stage3 `manual_sgd` optimizer mode that applies the averaged
     gradients directly with `param.add_(grad, alpha=-lr)`, then rerun 4-GPU
     one-step smoke.
+
+### EXP-20260628-1423-stage3-grpo-native-dist-4gpu-1step-debug6-manual-sgd
+
+- Status:
+  - PLANNED.
+- Question:
+  - Does the 4-GPU native distributed Stage3 path complete one optimizer step
+    and write metrics/checkpoint using manual SGD updates?
+- Baseline anchor:
+  - Follows `EXP-20260628-1414-stage3-grpo-native-dist-4gpu-1step-debug5-safe-adamw`.
+- Intended diff:
+  - Use commit `ad0b7c1`; set `--optimizer manual_sgd`.
+  - Keep `--max-grad-norm 0` and the same 4-GPU one-step debug shape.
+- Code commit / worktree:
+  - Commit: `ad0b7c1 Add manual Stage3 native optimizer path`.
+  - Worktree expected clean before plan/launch except future ledger status
+    updates.
+- Stage2 checkpoint/output:
+  - `outputs/clean_training/qwen3_stage2_norm01_stage1_mask075_deepstack_4gpu_20260627_163250/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt`.
+- Train data:
+  - `revisit_vlm_clean/data/stage3_rl/v1_direct_20k_20260627_032447/accepted_rl_prompts.jsonl`.
+- Script / command:
+  - Plan:
+    `PYTHONPATH=revisit_vlm_clean/src:src python -m revisit_vlm_clean.cli.train_stage3_grpo --write-plan --run-id stage3_grpo_native_dist_4gpu_1step_debug6_manual_sgd_clean_stage2_step1200_20260628 --rl-data-path revisit_vlm_clean/data/stage3_rl/v1_direct_20k_20260627_032447/accepted_rl_prompts.jsonl --policy-checkpoint outputs/clean_training/qwen3_stage2_norm01_stage1_mask075_deepstack_4gpu_20260627_163250/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt --output-dir outputs/stage3_grpo/native_dist_4gpu_1step_debug6_manual_sgd_clean_stage2_step1200_20260628 --runtime-backend native_single_focus --optimizer manual_sgd --world-size 4 --group-size 2 --per-device-prompt-batch-size 1 --gradient-accumulation-steps 1 --max-steps 1 --save-steps 1 --max-grad-norm 0 --max-tool-calls 1 --w-focus 0 --w-ground 0 --judge-mode cache_only --judge-model qwen3_vl_32b_thinking --wandb-mode disabled`.
+  - Launch:
+    `CUDA_VISIBLE_DEVICES=0,1,2,3 PYTHONPATH=revisit_vlm_clean/src:src torchrun --standalone --nproc_per_node=4 -m revisit_vlm_clean.training.stage3_grpo_executor --plan outputs/stage3_grpo/native_dist_4gpu_1step_debug6_manual_sgd_clean_stage2_step1200_20260628/stage3_grpo_training_plan.json --launch-training`.
+- GPUs:
+  - `CUDA_VISIBLE_DEVICES=0,1,2,3`.
+- Started:
+  - Pending.
+- Finished:
+  - Pending.
+- Metrics:
+  - Pending.
+- Analysis:
+  - Pending.
+- Conclusion:
+  - Pending.
