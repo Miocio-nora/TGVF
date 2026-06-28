@@ -8742,7 +8742,10 @@ entry, update this file immediately.
 - Planned command:
   - `PYTHONPATH=revisit_vlm_clean/src python -m revisit_vlm_clean.cli.stage3_grpo_stepwise --template-plan outputs/stage3_grpo/formal_all5_hint_4gpu_g8pb1_200step_20260628/step_000001/stage3_grpo_training_plan.json --output-root outputs/stage3_grpo/formal_all5_hint_4gpu_g8pb1_200step_20260628 --state-path outputs/stage3_grpo/formal_all5_hint_4gpu_g8pb1_200step_20260628/stage3_grpo_stepwise_state.json --target-step 200 --max-new-steps 200 --judge-devices cuda:0,cuda:1,cuda:2,cuda:3 --execute`
 - Started:
-  - 2026-06-28 JST, pending background launch after ledger update.
+  - 2026-06-28 21:47:38 JST.
+  - tmux session: `stage3_grpo_200step`.
+  - Runner log:
+    `outputs/stage3_grpo/formal_all5_hint_4gpu_g8pb1_200step_20260628/stepwise_runner_stdout.log`.
 - Finished:
   - Pending.
 - Metrics:
