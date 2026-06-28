@@ -8441,3 +8441,158 @@ entry, update this file immediately.
 - Follow-up:
   - For larger 32B judge cache fills, keep the model resident per worker to
     amortize load time and shard pending rows across available GPUs.
+
+### EXP-20260628-203232-stage3-all5-32bjudge-trigger-pilot
+
+- Status: DONE.
+- Question:
+  - Can Stage3 GRPO run with all five reward components active using 32B VLM
+    judge caches: Answer, ToolDecision from forced probes, FocusEvidence,
+    GroundedReasoning, and ProtocolGate?
+- Baseline anchor:
+  - `EXP-20260628-stage3-probe-judge-reward-trigger-smoke`.
+- Intended diff:
+  - Replace the prior 8B judge cache with the production-intended
+    `Qwen3-VL-32B-Thinking` judge.
+  - Use effective no-thinking judge generation: `<think>` token ban plus `{`
+    JSON response prefill.
+  - Keep the same 4-prompt trigger subset and one 4GPU GRPO update so judge
+    cache keys can be generated offline before training and then hit exactly.
+- Allowed changed variables:
+  - Judge model/cache, run id/output dir, and regenerated cache artifacts.
+- Not allowed to change:
+  - Stage2 checkpoint, RL trigger subset rows, protocol, world size, group
+    size, per-device prompt batch, reward weights, GRPO algorithm, optimizer,
+    LoRA-only trainable scope, D generation path, and DeepStack/mask behavior.
+- Code commit / worktree:
+  - `5a6b849` plus this PLANNED ledger entry.
+- Stage1 checkpoint:
+  - Encoded in the Stage2 checkpoint lineage.
+- Stage1 processor:
+  - Encoded in the Stage2 checkpoint lineage.
+- Stage2 checkpoint/output:
+  - `outputs/clean_training/qwen3_stage2_norm01_stage1_mask075_deepstack_4gpu_20260627_163250/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt`.
+- Train data:
+  - `outputs/stage3_grpo/probe_judge_reward_trigger_smoke_4gpu_g8pb1_clean_stage2_step1200_20260628/trigger_smoke_prompts_4.jsonl`.
+  - Parent full RL data:
+    `revisit_vlm_clean/data/stage3_rl/v1_direct_20k_20260627_032447/accepted_rl_prompts.jsonl`.
+- Validation data:
+  - None; this is an all-reward training-path pilot, not benchmark eval.
+- Benchmark output:
+  - None.
+- Script / command:
+  - Plan:
+    `outputs/stage3_grpo/all5_32bjudge_trigger_4gpu_g8pb1_step1_clean_stage2_step1200_20260628/stage3_grpo_training_plan.json`.
+  - Pipeline:
+    1. write plan with all reward weights active;
+    2. preflight;
+    3. precompute forced probes;
+    4. rollout-only on 4 GPUs to generate judge pending rows;
+    5. run offline 32B no-thinking JSON judge;
+    6. preflight after judge cache;
+    7. launch one 4GPU GRPO update.
+- GPUs:
+  - Training/probe/rollout: GPUs 0,1,2,3.
+  - Offline 32B judge: GPU 0.
+- tmux:
+  - None; foreground run monitored directly.
+- Started:
+  - 2026-06-28T20:34:40+09:00.
+- Finished:
+  - 2026-06-28T20:50:20+09:00.
+- Metrics:
+  - Plan:
+    - `stage3_grpo_training_plan.json` SHA256
+      `ffbadb808aa74eb6d94d6e61a26c760cbb4270a037435db75b2c6c9ade201a1e`.
+    - Trigger subset rows: 4.
+    - Global rollouts per training step: 32.
+  - Preflight:
+    - Initial preflight passed with expected judge-cache-missing warnings.
+    - After 32B judge cache, preflight passed with judge cache status `ready`.
+    - Focus cache rows: 31.
+    - Grounding cache rows: 31.
+  - Forced probes:
+    - Wall time: 271.96s.
+    - Rows: 4.
+    - `mean_delta_tool=0.5`.
+    - Probe rows: two samples `delta_tool=0.0`, two samples `delta_tool=1.0`.
+  - Rollout-only cache-generation pass:
+    - Wall time: 108.39s.
+    - 4 ranks x 8 rollouts = 32 free rollouts.
+    - Judge pending rows: 62 total, 31 focus and 31 grounding.
+  - 32B judge:
+    - Model: `Qwen/Qwen3-VL-32B-Thinking`.
+    - Generation: no-thinking, `{` JSON prefill, `<think>` token ban.
+    - Wall time: 115.18s (`judge_run_summary` wall time 113.77s).
+    - Scored: 62/62, failed 0.
+    - Focus scores: `1` x28, `2` x3.
+    - Grounding scores: `0` x14, `2` x17.
+  - Training:
+    - Wall time: 225.67s.
+    - Status: `stage3_grpo_training_completed`.
+    - Distributed rollouts: 32.
+    - Distributed groups: 4.
+    - Distributed replayed tokens: 2028.
+    - Distributed mean reward: 1.0140625.
+    - Distributed loss mean: 0.05968846.
+    - Distributed policy loss mean: -0.00847226.
+    - Distributed KL mean: 3.40803605.
+    - Checkpoint:
+      `outputs/stage3_grpo/all5_32bjudge_trigger_4gpu_g8pb1_step1_clean_stage2_step1200_20260628/checkpoint_step_1.pt`
+      (about 701MB).
+  - Combined reward breakdown across 4 ranks:
+    - Reward rows: 32.
+    - Rollout rows: 32.
+    - Used-tool rollouts: 31/32.
+    - Focus judge hit: 31/31 used-tool rollouts.
+    - Grounding judge hit: 31/31 used-tool rollouts.
+    - Answer correct: 7/32.
+    - Protocol penalty count: 0.
+    - `tool_label_source`: `forced_probe` x32.
+    - `tool_label`: `unknown` x32.
+    - Mean rewards:
+      - total 1.0140625.
+      - answer 0.21875.
+      - tool -0.0484375.
+      - focus 0.53125.
+      - ground 0.09375.
+      - protocol 0.0.
+  - W&B:
+    - Offline run:
+      `outputs/stage3_grpo/all5_32bjudge_trigger_4gpu_g8pb1_step1_clean_stage2_step1200_20260628/wandb/wandb/offline-run-20260628_204553-u5dgvbms`.
+- Analysis:
+  - The all-reward path ran end to end with real native rollouts, forced-probe
+    cache, 32B focus/grounding judge cache, GRPO replay/update, W&B offline
+    logging, and checkpoint save.
+  - The focus/grounding judge path is materially better than the earlier 8B
+    smoke: 32B scored all 62 rows with 0 parse failures after the no-thinking
+    JSON generation fix.
+  - Important caveat: although forced-probe labels were used for all 32 rewards,
+    the weighted sampler selected only two of the four trigger-subset samples for
+    this single step, and those two had `delta_tool=0.0`; therefore
+    `tool_label=unknown` for all training rollouts. The ToolDecision reward
+    component was active, but in this step it contributed the extra-call
+    efficiency penalty rather than a `tool_needed`/`tool_unnecessary` positive
+    or negative label.
+  - The sampled groups covered only 2 unique sample ids. This is acceptable for
+    the all-reward path pilot but too narrow for a training-quality run.
+  - No GPU peak monitor was attached for this run; post-run GPUs returned to 0
+    MiB used.
+- Conclusion:
+  - The five-component Stage3 GRPO reward/training path is now runnable with
+    production-intended 32B judge caches. The next blocker for real multi-step
+    all-5 training is not reward plumbing; it is scheduler/sampling: we need
+    stepwise rollout -> 32B judge cache fill -> train update, and prompt
+    sampling should use forced-probe labels so tool-needed/tool-unnecessary
+    samples are actually represented.
+- Comparable to baseline:
+  - Comparable only as an all-reward path pilot; not a model-quality or
+    benchmark-comparable run.
+- Follow-up:
+  - Add a stepwise all-5 training scheduler that pauses between rollout and
+    update to fill 32B judge caches.
+  - Add probe-label-aware prompt sampling or construct per-step prompt shards so
+    `tool_needed`, `tool_unnecessary`, and `unknown` labels are represented.
+  - For the immediate next pilot, force a small `delta_tool=1.0` subset to
+    verify nonzero ToolDecision classification reward, not just efficiency
+    penalty.
