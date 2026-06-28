@@ -7040,7 +7040,7 @@ entry, update this file immediately.
 
 ### EXP-20260628-1027-clean-qwen3-stage2-norm01-softforce-coredev2511
 
-- Status: PLANNED.
+- Status: RUNNING.
 - Question:
   - Complete the paired soft-force benchmark for the same clean Qwen3 Stage2
     checkpoint and CoreDev-2511 manifest, so the comparison table contains
@@ -7057,8 +7057,10 @@ entry, update this file immediately.
     DeepStack state, max resolution/tokens, Stage2 D condition, forward mode,
     attention implementation, and shard rule fixed.
 - Code / worktree:
-  - Launch from current clean branch
-    `clean/tgvf-clean-project-20260625` after this PLANNED entry is committed.
+  - Runtime launch commit:
+    `dc28ab1cc9044ca2ef6e55ac0561a909b3480ac0`.
+  - Launch from clean branch
+    `clean/tgvf-clean-project-20260625`.
   - No executable code change in this entry; workflow rule updated so future
     method tables include original/free/softforce trigger rates.
 - Model / processor:
@@ -7101,7 +7103,12 @@ entry, update this file immediately.
 - GPUs:
   - Planned: `0,1,2,3`, one shard per GPU.
 - Started:
-  - Pending.
+  - `2026-06-28T10:29:42+09:00`.
+  - Shard sessions:
+    `clean_qwen3_stage2_norm01_softforce_coredev2511_ds512_recovery_20260628_102713_s0`,
+    `clean_qwen3_stage2_norm01_softforce_coredev2511_ds512_recovery_20260628_102713_s1`,
+    `clean_qwen3_stage2_norm01_softforce_coredev2511_ds512_recovery_20260628_102713_s2`,
+    `clean_qwen3_stage2_norm01_softforce_coredev2511_ds512_recovery_20260628_102713_s3`.
 - Finished:
   - Pending.
 - Metrics:
