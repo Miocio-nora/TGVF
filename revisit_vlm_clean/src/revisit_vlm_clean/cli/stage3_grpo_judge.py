@@ -45,6 +45,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-new-tokens", type=int, default=256)
     parser.add_argument("--temperature", type=float, default=0.0)
     parser.add_argument("--top-p", type=float, default=1.0)
+    parser.add_argument(
+        "--judge-enable-thinking",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Enable thinking in the judge chat template. Default is disabled for fast JSON scoring.",
+    )
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--skip-existing", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--append", action=argparse.BooleanOptionalAction, default=True)
@@ -81,6 +87,7 @@ def main(argv: list[str] | None = None) -> int:
         max_new_tokens=args.max_new_tokens,
         temperature=args.temperature,
         top_p=args.top_p,
+        enable_thinking=args.judge_enable_thinking,
         limit=args.limit,
         skip_existing=args.skip_existing,
         append=args.append,

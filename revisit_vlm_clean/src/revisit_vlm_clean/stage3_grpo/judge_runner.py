@@ -16,6 +16,8 @@ from .schemas import STAGE3_GRPO_JUDGE_SCHEMA_VERSION, now_iso, write_json
 
 JUDGE_RUN_SCHEMA_VERSION = "stage3_grpo_offline_judge_run_v0"
 DEFAULT_MODEL_ROOT = os.environ.get("TGVF_JUDGE_MODEL_ROOT", "/nvmesv/dredvpn009/models/hf")
+THINKING_GENERATION_PROMPT = "<|im_start|>assistant\n<think>\n"
+PLAIN_GENERATION_PROMPT = "<|im_start|>assistant\n"
 
 MODEL_PRESETS = {
     "qwen3_vl_2b_thinking": "Qwen/Qwen3-VL-2B-Thinking",
@@ -51,6 +53,7 @@ class OfflineJudgeConfig:
     max_new_tokens: int = 256
     temperature: float = 0.0
     top_p: float = 1.0
+    enable_thinking: bool = False
     limit: int | None = None
     skip_existing: bool = True
     append: bool = True
@@ -129,6 +132,7 @@ def run_offline_judge(config: OfflineJudgeConfig, *, preflight_only: bool = Fals
         "processor_id": config.processor_id,
         "model_root": config.model_root,
         "require_local_model": config.require_local_model,
+        "enable_thinking": bool(config.enable_thinking),
         "model": model_report,
         "pending_rows": len(pending_rows),
         "existing_cache_keys": len(existing_keys),
@@ -181,6 +185,7 @@ def run_offline_judge(config: OfflineJudgeConfig, *, preflight_only: bool = Fals
         "resolved_model_id": model_report.get("resolved_model_id"),
         "model_root": config.model_root,
         "prompt_version": config.prompt_version,
+        "enable_thinking": bool(config.enable_thinking),
         "pending_rows": len(pending_rows),
         "skipped_existing": len(pending_rows) - len(rows_to_score),
         "scored_rows": len(scored_rows),
@@ -224,6 +229,7 @@ class FakeJudgeBackend:
             backend=self.config.backend,
             model_id=self.config.model_id,
             prompt_version=self.config.prompt_version,
+            enable_thinking=self.config.enable_thinking,
         )
 
 
@@ -249,6 +255,7 @@ class LocalQwenVLJudgeBackend:
             model_id=self.config.model_id,
             prompt_version=self.config.prompt_version,
             parse_fallback=parse_fallback,
+            enable_thinking=self.config.enable_thinking,
         )
 
     def generate(self, row: dict[str, Any], prompt: str) -> str:
@@ -281,7 +288,11 @@ class LocalQwenVLJudgeBackend:
                 ],
             }
         ]
-        inputs = build_qwen_vl_inputs(processor, messages)
+        inputs = build_qwen_vl_inputs(
+            processor,
+            messages,
+            enable_thinking=self.config.enable_thinking,
+        )
         device = resolve_generation_device(model, self.config.device)
         model_inputs = move_tensors(inputs, device)
         prompt_len = int(model_inputs["input_ids"].shape[-1])
@@ -735,6 +746,7 @@ def build_scored_cache_row(
     model_id: str,
     prompt_version: str,
     parse_fallback: bool = False,
+    enable_thinking: bool | None = None,
 ) -> dict[str, Any]:
     kind = str(pending.get("kind") or "")
     payload = {
@@ -754,22 +766,57 @@ def build_scored_cache_row(
         "judge_backend": backend,
         "judge_model": model_id,
         "prompt_version": prompt_version,
+        "judge_enable_thinking": enable_thinking,
         "raw_output": raw_output,
         "parsed_json": dict(parsed),
         "parse_fallback": bool(parse_fallback),
         "reason": parsed.get("reason") or "",
     }
+    if enable_thinking is None:
+        payload.pop("judge_enable_thinking")
     payload.update(parsed)
     return payload
 
 
-def build_qwen_vl_inputs(processor: Any, messages: list[dict[str, Any]]) -> dict[str, Any]:
+def apply_judge_chat_template(
+    processor: Any,
+    messages: list[dict[str, Any]],
+    *,
+    enable_thinking: bool = False,
+) -> str:
+    kwargs = {
+        "tokenize": False,
+        "add_generation_prompt": True,
+        "enable_thinking": bool(enable_thinking),
+    }
+    try:
+        text = str(processor.apply_chat_template(messages, **kwargs))
+    except TypeError:
+        kwargs.pop("enable_thinking", None)
+        text = str(processor.apply_chat_template(messages, **kwargs))
+    if not enable_thinking:
+        text = strip_thinking_generation_prompt(text)
+    return text
+
+
+def strip_thinking_generation_prompt(text: str) -> str:
+    if text.endswith(THINKING_GENERATION_PROMPT):
+        return text[: -len(THINKING_GENERATION_PROMPT)] + PLAIN_GENERATION_PROMPT
+    return re.sub(r"(<\|im_start\|>assistant\n)<think>\n\Z", r"\1", text)
+
+
+def build_qwen_vl_inputs(
+    processor: Any,
+    messages: list[dict[str, Any]],
+    *,
+    enable_thinking: bool = False,
+) -> dict[str, Any]:
     from qwen_vl_utils import process_vision_info
 
-    text = processor.apply_chat_template(
+    text = apply_judge_chat_template(
+        processor,
         messages,
-        tokenize=False,
-        add_generation_prompt=True,
+        enable_thinking=enable_thinking,
     )
     image_patch_size = int(
         getattr(getattr(processor, "image_processor", None), "patch_size", 16) or 16

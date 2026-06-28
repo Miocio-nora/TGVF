@@ -41,9 +41,11 @@ from revisit_vlm_clean.stage3_grpo.trainer import (
 from revisit_vlm_clean.stage3_grpo.judge import JudgeBundle
 from revisit_vlm_clean.stage3_grpo.judge_runner import (
     OfflineJudgeConfig,
+    apply_judge_chat_template,
     parse_judge_json,
     parse_judge_text_fallback,
     run_offline_judge,
+    strip_thinking_generation_prompt,
 )
 from revisit_vlm_clean.training.stage3_grpo_executor import (
     main as executor_main,
@@ -319,6 +321,61 @@ def test_stage3_judge_text_fallback_parser() -> None:
     assert parsed_ground["grounding_score"] == 0
 
 
+def test_stage3_judge_chat_template_disables_thinking() -> None:
+    class CaptureProcessor:
+        def __init__(self) -> None:
+            self.kwargs: dict[str, object] | None = None
+
+        def apply_chat_template(self, messages: list[dict[str, object]], **kwargs: object) -> str:
+            self.kwargs = dict(kwargs)
+            return "templated"
+
+    processor = CaptureProcessor()
+
+    text = apply_judge_chat_template(processor, [{"role": "user", "content": []}])
+
+    assert text == "templated"
+    assert processor.kwargs is not None
+    assert processor.kwargs["enable_thinking"] is False
+    assert processor.kwargs["tokenize"] is False
+    assert processor.kwargs["add_generation_prompt"] is True
+
+
+def test_stage3_judge_chat_template_strips_hardcoded_thinking_prompt() -> None:
+    text = (
+        "<|im_start|>user\nReturn JSON only.<|im_end|>\n"
+        "<|im_start|>assistant\n<think>\n"
+    )
+
+    stripped = strip_thinking_generation_prompt(text)
+
+    assert stripped == "<|im_start|>user\nReturn JSON only.<|im_end|>\n<|im_start|>assistant\n"
+    assert "<think>" not in stripped
+
+
+def test_stage3_judge_chat_template_falls_back_without_thinking_kwarg() -> None:
+    class LegacyProcessor:
+        def __init__(self) -> None:
+            self.kwargs: dict[str, object] | None = None
+            self.calls = 0
+
+        def apply_chat_template(self, messages: list[dict[str, object]], **kwargs: object) -> str:
+            self.calls += 1
+            if "enable_thinking" in kwargs:
+                raise TypeError("unexpected keyword argument 'enable_thinking'")
+            self.kwargs = dict(kwargs)
+            return "legacy"
+
+    processor = LegacyProcessor()
+
+    text = apply_judge_chat_template(processor, [{"role": "user", "content": []}])
+
+    assert text == "legacy"
+    assert processor.calls == 2
+    assert processor.kwargs is not None
+    assert "enable_thinking" not in processor.kwargs
+
+
 def test_stage3_offline_judge_fake_backend_writes_caches(tmp_path: Path) -> None:
     pending = _write_judge_pending_fixture(tmp_path)
     output_dir = tmp_path / "judge_out"
@@ -331,6 +388,7 @@ def test_stage3_offline_judge_fake_backend_writes_caches(tmp_path: Path) -> None
         )
     )
     assert summary["scored_rows"] == 2
+    assert summary["enable_thinking"] is False
     focus_cache = output_dir / "focus_judge_cache.jsonl"
     grounding_cache = output_dir / "grounding_judge_cache.jsonl"
     assert focus_cache.exists()
@@ -350,6 +408,7 @@ def test_stage3_offline_judge_fake_backend_writes_caches(tmp_path: Path) -> None
         preflight_only=True,
     )
     assert preflight["rows_to_score"] == 0
+    assert preflight["enable_thinking"] is False
 
 
 def test_stage3_offline_judge_local_preflight_resolves_model_root(tmp_path: Path) -> None:
