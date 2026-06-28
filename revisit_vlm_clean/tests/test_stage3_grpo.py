@@ -42,6 +42,8 @@ from revisit_vlm_clean.stage3_grpo.judge import JudgeBundle
 from revisit_vlm_clean.stage3_grpo.judge_runner import (
     OfflineJudgeConfig,
     apply_judge_chat_template,
+    build_judge_prompt_text,
+    judge_no_thinking_bad_words_ids,
     parse_judge_json,
     parse_judge_text_fallback,
     run_offline_judge,
@@ -353,6 +355,31 @@ def test_stage3_judge_chat_template_strips_hardcoded_thinking_prompt() -> None:
     assert "<think>" not in stripped
 
 
+def test_stage3_judge_prompt_text_prefills_json_after_plain_assistant() -> None:
+    class Processor:
+        def apply_chat_template(self, messages: list[dict[str, object]], **kwargs: object) -> str:
+            return "<|im_start|>user\nReturn JSON.<|im_end|>\n<|im_start|>assistant\n<think>\n"
+
+    text = build_judge_prompt_text(
+        Processor(),
+        [{"role": "user", "content": []}],
+        enable_thinking=False,
+        response_prefix="{",
+    )
+
+    assert text.endswith("<|im_start|>assistant\n{")
+    assert "<think>" not in text
+
+
+def test_stage3_judge_no_thinking_bad_words_include_think_tokens() -> None:
+    class Tokenizer:
+        def encode(self, text: str, *, add_special_tokens: bool = False) -> list[int]:
+            mapping = {"<think>": [101], "</think>": [102]}
+            return mapping[text]
+
+    assert judge_no_thinking_bad_words_ids(Tokenizer()) == [[101], [102]]
+
+
 def test_stage3_judge_chat_template_falls_back_without_thinking_kwarg() -> None:
     class LegacyProcessor:
         def __init__(self) -> None:
@@ -389,6 +416,7 @@ def test_stage3_offline_judge_fake_backend_writes_caches(tmp_path: Path) -> None
     )
     assert summary["scored_rows"] == 2
     assert summary["enable_thinking"] is False
+    assert summary["response_prefix"] == "{"
     focus_cache = output_dir / "focus_judge_cache.jsonl"
     grounding_cache = output_dir / "grounding_judge_cache.jsonl"
     assert focus_cache.exists()
@@ -409,6 +437,7 @@ def test_stage3_offline_judge_fake_backend_writes_caches(tmp_path: Path) -> None
     )
     assert preflight["rows_to_score"] == 0
     assert preflight["enable_thinking"] is False
+    assert preflight["response_prefix"] == "{"
 
 
 def test_stage3_offline_judge_local_preflight_resolves_model_root(tmp_path: Path) -> None:

@@ -51,6 +51,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=False,
         help="Enable thinking in the judge chat template. Default is disabled for fast JSON scoring.",
     )
+    parser.add_argument(
+        "--judge-response-prefix",
+        default="{",
+        help="Assistant response prefix for no-thinking judge generation; default starts JSON directly.",
+    )
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--skip-existing", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--append", action=argparse.BooleanOptionalAction, default=True)
@@ -88,6 +93,7 @@ def main(argv: list[str] | None = None) -> int:
         temperature=args.temperature,
         top_p=args.top_p,
         enable_thinking=args.judge_enable_thinking,
+        response_prefix=args.judge_response_prefix,
         limit=args.limit,
         skip_existing=args.skip_existing,
         append=args.append,

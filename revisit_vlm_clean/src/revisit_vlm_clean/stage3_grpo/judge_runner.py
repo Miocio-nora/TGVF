@@ -54,6 +54,7 @@ class OfflineJudgeConfig:
     temperature: float = 0.0
     top_p: float = 1.0
     enable_thinking: bool = False
+    response_prefix: str = "{"
     limit: int | None = None
     skip_existing: bool = True
     append: bool = True
@@ -76,6 +77,8 @@ class OfflineJudgeConfig:
             raise ValueError("temperature must be >= 0")
         if not 0 < float(self.top_p) <= 1:
             raise ValueError("top_p must be in (0, 1]")
+        if "\n" in self.response_prefix or "\r" in self.response_prefix:
+            raise ValueError("response_prefix must be a single-line string")
         if self.limit is not None and int(self.limit) < 1:
             raise ValueError("limit must be >= 1 when set")
 
@@ -133,6 +136,7 @@ def run_offline_judge(config: OfflineJudgeConfig, *, preflight_only: bool = Fals
         "model_root": config.model_root,
         "require_local_model": config.require_local_model,
         "enable_thinking": bool(config.enable_thinking),
+        "response_prefix": config.response_prefix,
         "model": model_report,
         "pending_rows": len(pending_rows),
         "existing_cache_keys": len(existing_keys),
@@ -186,6 +190,7 @@ def run_offline_judge(config: OfflineJudgeConfig, *, preflight_only: bool = Fals
         "model_root": config.model_root,
         "prompt_version": config.prompt_version,
         "enable_thinking": bool(config.enable_thinking),
+        "response_prefix": config.response_prefix,
         "pending_rows": len(pending_rows),
         "skipped_existing": len(pending_rows) - len(rows_to_score),
         "scored_rows": len(scored_rows),
@@ -292,6 +297,7 @@ class LocalQwenVLJudgeBackend:
             processor,
             messages,
             enable_thinking=self.config.enable_thinking,
+            response_prefix=response_prefix_for_config(self.config),
         )
         device = resolve_generation_device(model, self.config.device)
         model_inputs = move_tensors(inputs, device)
@@ -307,11 +313,18 @@ class LocalQwenVLJudgeBackend:
         eos_id = getattr(getattr(processor, "tokenizer", None), "eos_token_id", None)
         if eos_id is not None:
             generate_kwargs["eos_token_id"] = eos_id
+        if not self.config.enable_thinking:
+            bad_words_ids = judge_no_thinking_bad_words_ids(
+                getattr(processor, "tokenizer", processor)
+            )
+            if bad_words_ids:
+                generate_kwargs["bad_words_ids"] = bad_words_ids
         with torch.no_grad():
             generated = model.generate(**generate_kwargs)
         new_ids = generated[0, prompt_len:].detach().cpu().tolist()
         tokenizer = getattr(processor, "tokenizer", processor)
-        return tokenizer.decode(new_ids, skip_special_tokens=True).strip()
+        response_prefix = response_prefix_for_config(self.config)
+        return (response_prefix + tokenizer.decode(new_ids, skip_special_tokens=True)).strip()
 
     def _load(self) -> tuple[Any, Any]:
         if self._loaded is not None:
@@ -805,18 +818,72 @@ def strip_thinking_generation_prompt(text: str) -> str:
     return re.sub(r"(<\|im_start\|>assistant\n)<think>\n\Z", r"\1", text)
 
 
+def response_prefix_for_config(config: OfflineJudgeConfig) -> str:
+    if config.enable_thinking:
+        return ""
+    return str(config.response_prefix or "")
+
+
+def judge_no_thinking_bad_words_ids(tokenizer: Any) -> list[list[int]]:
+    bad_words: list[list[int]] = []
+    seen: set[tuple[int, ...]] = set()
+    for token_text in ("<think>", "</think>"):
+        token_ids = _encode_without_special_tokens(tokenizer, token_text)
+        if not token_ids:
+            converted = getattr(tokenizer, "convert_tokens_to_ids", lambda value: None)(
+                token_text
+            )
+            if isinstance(converted, int) and converted >= 0:
+                token_ids = [converted]
+        key = tuple(int(item) for item in token_ids if int(item) >= 0)
+        if key and key not in seen:
+            bad_words.append(list(key))
+            seen.add(key)
+    return bad_words
+
+
+def _encode_without_special_tokens(tokenizer: Any, text: str) -> list[int]:
+    encode = getattr(tokenizer, "encode", None)
+    if encode is None:
+        return []
+    try:
+        token_ids = encode(text, add_special_tokens=False)
+    except TypeError:
+        token_ids = encode(text)
+    return [int(item) for item in token_ids or []]
+
+
+def build_judge_prompt_text(
+    processor: Any,
+    messages: list[dict[str, Any]],
+    *,
+    enable_thinking: bool = False,
+    response_prefix: str = "",
+) -> str:
+    return (
+        apply_judge_chat_template(
+            processor,
+            messages,
+            enable_thinking=enable_thinking,
+        )
+        + str(response_prefix or "")
+    )
+
+
 def build_qwen_vl_inputs(
     processor: Any,
     messages: list[dict[str, Any]],
     *,
     enable_thinking: bool = False,
+    response_prefix: str = "",
 ) -> dict[str, Any]:
     from qwen_vl_utils import process_vision_info
 
-    text = apply_judge_chat_template(
+    text = build_judge_prompt_text(
         processor,
         messages,
         enable_thinking=enable_thinking,
+        response_prefix=response_prefix,
     )
     image_patch_size = int(
         getattr(getattr(processor, "image_processor", None), "patch_size", 16) or 16

@@ -8351,3 +8351,93 @@ entry, update this file immediately.
   - Improve judge JSON compliance / retry failed judge rows before large runs.
   - Keep 8B single-GPU judge for smoke; revisit 32B only after generation config
     is optimized.
+
+### EXP-20260628-194148-stage3-judge-thinking-ab
+
+- Status: DONE.
+- Question:
+  - For the production 32B Qwen3-VL judge, does disabling thinking reduce
+    offline judge latency and improve JSON cache usability?
+- Baseline anchor:
+  - Diagnostic side result anchored to
+    `EXP-20260628-stage3-probe-judge-reward-trigger-smoke`.
+- Intended diff:
+  - A/B the Stage3 offline judge with 32B thinking-on vs no-thinking.
+  - After raw output inspection showed prompt-only no-thinking still generated
+    `<think>`, update the no-thinking path to:
+    - strip hardcoded `<think>` from the generation prompt;
+    - ban `<think>` and `</think>` token ids during generation;
+    - prefill the assistant response with `{` so the model directly completes a
+      JSON object.
+- Allowed changed variables:
+  - Judge thinking prompt switch and the no-thinking JSON enforcement needed to
+    make the switch real.
+- Not allowed to change:
+  - Pending rows, 32B judge model preset, max image resolution, max new tokens,
+    backend, GPU.
+- Code commit / worktree:
+  - Base `7a478b9`.
+  - Current worktree includes this ledger update plus judge runner/CLI/tests for
+    JSON prefill and `<think>` token suppression.
+- Stage1 checkpoint:
+  - N/A.
+- Stage1 processor:
+  - N/A.
+- Stage2 checkpoint/output:
+  - N/A for judge diagnostic.
+- Train data:
+  - N/A.
+- Validation data:
+  - Pending judge rows:
+    `outputs/stage3_grpo/probe_judge_reward_trigger_smoke_4gpu_g8pb1_clean_stage2_step1200_20260628/judge_pending_all_ranks.jsonl`.
+  - 32B comparison used first 4 rows by file order.
+  - Accidental/side 8B no-thinking run used first 8 rows and is not used for
+    production judge choice.
+- Benchmark output:
+  - 32B:
+    `outputs/stage3_grpo/judge_thinking_ab_32b_limit4_20260628`.
+  - 8B side result:
+    `outputs/stage3_grpo/judge_thinking_ab_8b_limit8_20260628`.
+- Script / command:
+  - 32B thinking-on:
+    `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=revisit_vlm_clean/src python -m revisit_vlm_clean.cli.stage3_grpo_judge --pending-path outputs/stage3_grpo/probe_judge_reward_trigger_smoke_4gpu_g8pb1_clean_stage2_step1200_20260628/judge_pending_all_ranks.jsonl --output-dir outputs/stage3_grpo/judge_thinking_ab_32b_limit4_20260628/thinking --backend local_qwen_vl --model-preset qwen3_vl_32b_thinking --device cuda:0 --device-map cuda:0 --dtype bfloat16 --attn-implementation sdpa --max-image-resolution 512 --max-new-tokens 128 --limit 4 --no-skip-existing --no-append --judge-enable-thinking --execute`.
+  - 32B no-thinking effective:
+    `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=revisit_vlm_clean/src python -m revisit_vlm_clean.cli.stage3_grpo_judge --pending-path outputs/stage3_grpo/probe_judge_reward_trigger_smoke_4gpu_g8pb1_clean_stage2_step1200_20260628/judge_pending_all_ranks.jsonl --output-dir outputs/stage3_grpo/judge_thinking_ab_32b_limit4_20260628/no_thinking_jsonprefill --backend local_qwen_vl --model-preset qwen3_vl_32b_thinking --device cuda:0 --device-map cuda:0 --dtype bfloat16 --attn-implementation sdpa --max-image-resolution 512 --max-new-tokens 128 --limit 4 --no-skip-existing --no-append --execute`.
+- GPUs:
+  - GPU 0 only.
+- tmux:
+  - None.
+- Started:
+  - 2026-06-28T19:41:48+09:00.
+- Finished:
+  - 2026-06-28T19:52:52+09:00.
+- Metrics:
+  - Prompt-only 32B no-thinking before JSON prefill:
+    - 4 rows, 80.82s, 3/4 scored, 1 failed.
+    - Raw outputs still contained `<think>` in 3/3 scored rows, so this was not
+      effective no-thinking.
+  - 32B thinking-on:
+    - 4 rows, 77.78s, 3/4 scored, 1 failed.
+    - Raw outputs were long rationale-like text, not compact JSON.
+  - 32B effective no-thinking with JSON prefill and `<think>` token ban:
+    - 4 rows, 39.44s, 4/4 scored, 0 failed.
+    - Raw outputs had 0 rows containing `<think>`.
+    - Raw outputs were compact JSON-like objects, lengths 54-60 chars.
+  - 8B side result:
+    - 8 rows, 75.43s, 8/8 scored, but not used for production judge choice.
+- Analysis:
+  - The initial template-only switch was insufficient for Qwen3-VL-32B-Thinking:
+    the model can self-emit `<think>` even when the prompt does not end with the
+    thinking tag.
+  - Effective no-thinking requires generation-level blocking plus JSON prefill.
+  - On this small 32B diagnostic, effective no-thinking is about 2.0x faster
+    than thinking-on including model load, and has better cache usability
+    (4/4 vs 3/4 scored).
+- Conclusion:
+  - Use 32B judge for production, with thinking disabled, `<think>` tokens
+    banned, and `{` JSON response prefill enabled by default.
+- Comparable to baseline:
+  - Diagnostic only, not a benchmark/training comparison.
+- Follow-up:
+  - For larger 32B judge cache fills, keep the model resident per worker to
+    amortize load time and shard pending rows across available GPUs.
