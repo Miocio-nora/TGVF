@@ -5,6 +5,10 @@ from pathlib import Path
 
 from revisit_vlm_clean.cli.train_stage3_grpo import main as plan_main
 from revisit_vlm_clean.cli.stage3_grpo_schedule import main as schedule_main
+from revisit_vlm_clean.cli.stage3_grpo_stepwise import (
+    _apply_checkpoint_retention,
+    _stepwise_wandb_metrics,
+)
 from revisit_vlm_clean.cli.stage3_grpo_judge import main as judge_main
 from revisit_vlm_clean.cli.stage3_grpo_prepare_judge_models import main as prepare_judge_main
 from revisit_vlm_clean.stage3_grpo.data import BalancedPromptSampler, load_stage3_samples
@@ -710,6 +714,111 @@ def test_stage3_sample_schedule_controls_rollout_prompts(tmp_path: Path) -> None
         row["runtime"]["sample_schedule"]["global_step"] == 2
         for row in rollout_rows
     )
+
+
+def test_stage3_stepwise_checkpoint_retention_keeps_latest_and_milestones(
+    tmp_path: Path,
+) -> None:
+    output_root = tmp_path / "stepwise"
+    for step in range(1, 8):
+        step_dir = output_root / f"step_{step:06d}"
+        step_dir.mkdir(parents=True)
+        (step_dir / "checkpoint_step_1.pt").write_text(f"checkpoint {step}", encoding="utf-8")
+    state = {
+        "completed_steps": list(range(1, 8)),
+        "current_checkpoint": str(output_root / "step_000007" / "checkpoint_step_1.pt"),
+    }
+
+    summary = _apply_checkpoint_retention(
+        output_root=output_root,
+        state=state,
+        keep_last=2,
+        keep_every=3,
+        keep_steps={1},
+    )
+
+    kept_steps = {
+        int(path.parent.name.split("_", 1)[1])
+        for path in output_root.glob("step_*/checkpoint_step_1.pt")
+    }
+    assert kept_steps == {1, 3, 6, 7}
+    assert summary["deleted_count"] == 3
+    assert (output_root / "checkpoint_retention_summary.json").exists()
+
+
+def test_stage3_stepwise_wandb_metrics_uses_outer_global_step(tmp_path: Path) -> None:
+    step_dir = tmp_path / "step_000031"
+    step_dir.mkdir()
+    (step_dir / "train_metrics.jsonl").write_text(
+        json.dumps(
+            {
+                "global_step": 1,
+                "optimizer_step": 1,
+                "loss": 0.25,
+                "distributed_loss_mean": 0.5,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    rewards = [
+        {
+            "reward_total": 2.0,
+            "reward_answer": 1.0,
+            "reward_tool": 1.0,
+            "reward_focus": 0.5,
+            "reward_ground": 0.0,
+            "reward_protocol": 0.0,
+            "answer_correct": True,
+            "tool_label": "tool_needed",
+            "tool_label_source": "teacher_hint",
+            "metadata": {"used_tool": True},
+            "focus_judge": {"score": 1},
+            "grounding_judge": None,
+        },
+        {
+            "reward_total": 0.0,
+            "reward_answer": 0.0,
+            "reward_tool": 0.0,
+            "reward_focus": 0.0,
+            "reward_ground": 0.0,
+            "reward_protocol": 0.0,
+            "answer_correct": False,
+            "tool_label": "unknown",
+            "tool_label_source": "none",
+            "metadata": {"used_tool": False},
+            "focus_judge": None,
+            "grounding_judge": None,
+        },
+    ]
+    (step_dir / "reward_breakdown.jsonl").write_text(
+        "\n".join(json.dumps(row) for row in rewards) + "\n",
+        encoding="utf-8",
+    )
+    rollouts = [
+        {"used_tool": True, "num_tool_calls": 1, "protocol": {}},
+        {"used_tool": False, "num_tool_calls": 0, "protocol": {"native_errors": ["bad"]}},
+    ]
+    (step_dir / "rollout_debug.jsonl").write_text(
+        "\n".join(json.dumps(row) for row in rollouts) + "\n",
+        encoding="utf-8",
+    )
+
+    metrics = _stepwise_wandb_metrics(
+        step_dir=step_dir,
+        global_step=31,
+        step_result={"pending_rows": 2},
+    )
+
+    assert metrics["trainer/global_step"] == 31
+    assert metrics["train/local_global_step"] == 1.0
+    assert metrics["train/loss"] == 0.25
+    assert metrics["train/distributed_loss_mean"] == 0.5
+    assert metrics["reward/reward_total_mean"] == 1.0
+    assert metrics["reward/answer_accuracy"] == 0.5
+    assert metrics["rollout/tool_trigger_rate"] == 0.5
+    assert metrics["rollout/malformed_rate"] == 0.5
+    assert metrics["reward/focus_judge_hit_rate"] == 1.0
 
 
 def test_stage3_native_rollout_backend_constructs_without_loading(tmp_path: Path) -> None:

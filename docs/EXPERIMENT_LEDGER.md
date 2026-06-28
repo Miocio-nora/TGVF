@@ -8949,8 +8949,8 @@ entry, update this file immediately.
 
 ### EXP-20260629-002900-stage3-formal-all5-g12-res768-200step-wandb-online
 
-- Status: RUNNING_RESUME from step 14 with the same sample schedule and current
-  checkpoint.
+- Status: PAUSED_FOR_STEPWISE_LOGGING_FIX at step 30; resume planned from step
+  31 with one parent W&B run and checkpoint retention.
 - Question:
   - Relaunch formal Stage3 all-5 GRPO after the G16/res768 online run OOMed
     before metrics, keeping W&B online upload and checkpoint artifact exclusion.
@@ -9036,3 +9036,26 @@ entry, update this file immediately.
       `https://wandb.ai/mio_nora/tgvf-stage3/runs/2aykbhba`.
     - Step 14 rank0 loss: `0.09086516499519348`;
       distributed mean loss: `0.15043716318905354`.
+  - Pause / stepwise logging fix:
+    - User noticed the stepwise implementation created one W&B run per step and
+      one checkpoint per step. The run was stopped before continuing.
+    - State at pause: completed through step 30, next step 31, current
+      checkpoint
+      `outputs/stage3_grpo/formal_all5_hint_4gpu_g12_res768_200step_wandb_online_20260629/step_000030/checkpoint_step_1.pt`.
+    - Code change planned/applied: parent stepwise runner owns one W&B run;
+      child per-step training subprocesses set `wandb.mode=disabled`; parent
+      logs `train/*`, `reward/*`, rollout, and checkpoint retention metrics at
+      true global step.
+    - Checkpoint retention: keep last 2 plus every 25 steps by default.
+    - Existing checkpoints cleaned with this policy: kept steps 25, 29, 30;
+      deleted 27 old checkpoint files; output directory reduced to about 2.1G.
+    - Verification:
+      `PYTHONPATH=revisit_vlm_clean/src pytest -q revisit_vlm_clean/tests/test_stage3_grpo.py`
+      passed, 35 tests.
+  - Stage3 RL 20k train data direct/focus distribution:
+    - `tool_need_hint`: useful_tool 10,510; likely_required 1,744;
+      optional_tool 4,668; no_tool 3,078.
+    - Strict buckets: focus/useful_or_required 12,254; optional 4,668;
+      direct/no_tool 3,078.
+    - If optional is grouped with focus-like local/reasoning samples:
+      focus/useful_or_required 16,876; direct/no_tool 3,124.

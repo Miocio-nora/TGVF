@@ -38,6 +38,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--judge-devices", default="cuda:0")
     parser.add_argument("--judge-max-image-resolution", type=int, default=512)
     parser.add_argument("--judge-max-new-tokens", type=int, default=128)
+    parser.add_argument("--checkpoint-keep-last", type=int, default=2)
+    parser.add_argument("--checkpoint-keep-every", type=int, default=25)
+    parser.add_argument("--checkpoint-keep-steps", default="")
+    parser.add_argument("--no-parent-wandb", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--preflight-only", action="store_true")
     parser.add_argument("--execute", action="store_true")
@@ -80,6 +84,10 @@ def main(argv: list[str] | None = None) -> int:
         judge_devices=_parse_csv(args.judge_devices),
         judge_max_image_resolution=args.judge_max_image_resolution,
         judge_max_new_tokens=args.judge_max_new_tokens,
+        checkpoint_keep_last=args.checkpoint_keep_last,
+        checkpoint_keep_every=args.checkpoint_keep_every,
+        checkpoint_keep_steps=_parse_int_csv(args.checkpoint_keep_steps),
+        parent_wandb=not args.no_parent_wandb,
     )
     print_json(result)
     return 0 if result["status"] in {"completed", "running"} else 1
@@ -101,6 +109,10 @@ def execute_stepwise(
     judge_devices: list[str],
     judge_max_image_resolution: int,
     judge_max_new_tokens: int,
+    checkpoint_keep_last: int,
+    checkpoint_keep_every: int,
+    checkpoint_keep_steps: set[int],
+    parent_wandb: bool,
 ) -> dict[str, Any]:
     next_step = int(start_step or state.get("next_step") or 1)
     final_step = int(target_step or state.get("target_steps") or next_step)
@@ -108,50 +120,77 @@ def execute_stepwise(
     completed_now: list[int] = []
     state["status"] = "running"
     _write_state(state_path, state)
-    for step in range(next_step, final_step + 1):
-        if len(completed_now) >= max_new:
-            break
-        if step in set(int(item) for item in state.get("completed_steps") or []):
-            state["next_step"] = step + 1
-            _write_state(state_path, state)
-            continue
-        try:
-            step_result = _execute_one_step(
-                template_config=config,
-                output_root=output_root,
-                state=state,
-                state_path=state_path,
-                global_step=step,
-                pythonpath=pythonpath,
-                torchrun=torchrun,
-                judge_backend=judge_backend,
-                judge_model_preset=judge_model_preset,
-                judge_devices=judge_devices,
-                judge_max_image_resolution=judge_max_image_resolution,
-                judge_max_new_tokens=judge_max_new_tokens,
-            )
-            completed_now.append(step)
-            _append_event(output_root, {"event": "step_completed", "global_step": step, **step_result})
-        except Exception as exc:
-            failed = list(state.get("failed_steps") or [])
-            failed.append({"global_step": step, "error": f"{type(exc).__name__}: {exc}", "created_at": now_iso()})
-            state["failed_steps"] = failed
-            state["status"] = "failed"
-            _write_state(state_path, state)
-            _append_event(output_root, {"event": "step_failed", "global_step": step, "error": str(exc)})
-            raise
-    if int(state.get("next_step") or 1) > final_step:
-        state["status"] = "completed"
-    else:
-        state["status"] = "running"
-    _write_state(state_path, state)
-    return {
-        "status": state["status"],
-        "state_path": str(state_path),
-        "completed_now": completed_now,
-        "next_step": state.get("next_step"),
-        "current_checkpoint": state.get("current_checkpoint"),
-    }
+    logger = _create_stepwise_wandb_logger(config, output_root) if parent_wandb else None
+    last_retention: dict[str, Any] | None = None
+    try:
+        for step in range(next_step, final_step + 1):
+            if len(completed_now) >= max_new:
+                break
+            if step in set(int(item) for item in state.get("completed_steps") or []):
+                state["next_step"] = step + 1
+                _write_state(state_path, state)
+                continue
+            try:
+                step_result = _execute_one_step(
+                    template_config=config,
+                    output_root=output_root,
+                    state=state,
+                    state_path=state_path,
+                    global_step=step,
+                    pythonpath=pythonpath,
+                    torchrun=torchrun,
+                    judge_backend=judge_backend,
+                    judge_model_preset=judge_model_preset,
+                    judge_devices=judge_devices,
+                    judge_max_image_resolution=judge_max_image_resolution,
+                    judge_max_new_tokens=judge_max_new_tokens,
+                )
+                last_retention = _apply_checkpoint_retention(
+                    output_root=output_root,
+                    state=state,
+                    keep_last=checkpoint_keep_last,
+                    keep_every=checkpoint_keep_every,
+                    keep_steps=checkpoint_keep_steps,
+                )
+                step_result["checkpoint_retention"] = last_retention
+                if logger is not None:
+                    logger.log(
+                        _stepwise_wandb_metrics(
+                            step_dir=Path(step_result["step_dir"]),
+                            global_step=step,
+                            step_result=step_result,
+                        ),
+                        step=step,
+                    )
+                completed_now.append(step)
+                _append_event(output_root, {"event": "step_completed", "global_step": step, **step_result})
+            except Exception as exc:
+                failed = list(state.get("failed_steps") or [])
+                failed.append({"global_step": step, "error": f"{type(exc).__name__}: {exc}", "created_at": now_iso()})
+                state["failed_steps"] = failed
+                state["status"] = "failed"
+                _write_state(state_path, state)
+                _append_event(output_root, {"event": "step_failed", "global_step": step, "error": str(exc)})
+                raise
+        if int(state.get("next_step") or 1) > final_step:
+            state["status"] = "completed"
+        else:
+            state["status"] = "running"
+        _write_state(state_path, state)
+        result = {
+            "status": state["status"],
+            "state_path": str(state_path),
+            "completed_now": completed_now,
+            "next_step": state.get("next_step"),
+            "current_checkpoint": state.get("current_checkpoint"),
+            "checkpoint_retention": last_retention,
+        }
+        if logger is not None:
+            logger.update_summary(_stepwise_wandb_summary(config, output_root, state, result))
+        return result
+    finally:
+        if logger is not None:
+            logger.finish()
 
 
 def _execute_one_step(
@@ -185,11 +224,14 @@ def _execute_one_step(
         ),
         wandb=replace(
             template_config.wandb,
+            mode="disabled",
             name=(
                 f"{template_config.wandb.name.rsplit('_step', 1)[0]}_step{int(global_step):06d}"
                 if template_config.wandb.name
                 else None
             ),
+            log_artifacts=False,
+            log_checkpoint_artifact=False,
         ),
     )
     git_commit, dirty_worktree = _git_identity()
@@ -564,6 +606,12 @@ def _parse_csv(value: str | None) -> list[str]:
     return [item.strip() for item in value.split(",") if item.strip()]
 
 
+def _parse_int_csv(value: str | None) -> set[int]:
+    if not value:
+        return set()
+    return {int(item.strip()) for item in value.split(",") if item.strip()}
+
+
 def _cuda_visible_device(device: str) -> str:
     if device.startswith("cuda:"):
         return device.split(":", 1)[1]
@@ -583,6 +631,184 @@ def _read_jsonl(path: Path) -> list[dict[str, Any]]:
 
 def _jsonl_count(path: Path) -> int:
     return len(_read_jsonl(path))
+
+
+def _create_stepwise_wandb_logger(config: Stage3GRPOConfig, output_root: Path) -> Any | None:
+    wandb_config = config.wandb
+    if not wandb_config.project or wandb_config.mode == "disabled":
+        return None
+    from revisit_vlm.wandb_logging import WandbLogger
+
+    wandb_dir = output_root / "wandb_stepwise"
+    wandb_dir.mkdir(parents=True, exist_ok=True)
+    run_name = wandb_config.name or config.run_id
+    run_name = run_name.rsplit("_step", 1)[0]
+    return WandbLogger(
+        project=wandb_config.project,
+        entity=wandb_config.entity,
+        name=run_name,
+        group=wandb_config.group or "stage3_grpo",
+        job_type=f"{wandb_config.job_type}_stepwise",
+        mode=wandb_config.mode,
+        config={
+            "stage": "stage3_grpo_stepwise",
+            "run_id": config.run_id.rsplit("_step", 1)[0],
+            "output_root": str(output_root),
+            "stage3_config": config.to_dict(),
+        },
+        tags=["stage3-grpo-stepwise", *list(wandb_config.tags)],
+        directory=wandb_dir,
+    )
+
+
+def _stepwise_wandb_metrics(
+    *,
+    step_dir: Path,
+    global_step: int,
+    step_result: dict[str, Any],
+) -> dict[str, Any]:
+    train_rows = _read_jsonl(step_dir / "train_metrics.jsonl")
+    rewards = _read_jsonl(step_dir / "reward_breakdown.jsonl")
+    rollouts = _read_jsonl(step_dir / "rollout_debug.jsonl")
+    update = dict(train_rows[-1] if train_rows else {})
+    metrics: dict[str, Any] = {
+        "trainer/global_step": int(global_step),
+        "trainer/rollout_count": len(rollouts),
+        "trainer/reward_count": len(rewards),
+        "stepwise/pending_rows": int(step_result.get("pending_rows") or 0),
+    }
+    retention = dict(step_result.get("checkpoint_retention") or {})
+    for key in ("kept_count", "deleted_count", "keep_last", "keep_every"):
+        if isinstance(retention.get(key), (int, float)):
+            metrics[f"checkpoint/{key}"] = float(retention[key])
+    for key, value in update.items():
+        if not isinstance(value, (int, float)):
+            continue
+        if key in {"global_step", "optimizer_step"}:
+            metrics[f"train/local_{key}"] = float(value)
+        else:
+            metrics[f"train/{key}"] = float(value)
+    for key in (
+        "reward_total",
+        "reward_answer",
+        "reward_tool",
+        "reward_focus",
+        "reward_ground",
+        "reward_protocol",
+    ):
+        metrics[f"reward/{key}_mean"] = _mean_float(
+            [float(row[key]) for row in rewards if isinstance(row.get(key), (int, float))]
+        )
+    metrics["reward/answer_accuracy"] = _mean_float(
+        [1.0 if row.get("answer_correct") else 0.0 for row in rewards]
+    )
+    for label, count in _count_by_key(rewards, "tool_label").items():
+        metrics[f"reward/tool_label_count/{label}"] = count
+    for source, count in _count_by_key(rewards, "tool_label_source").items():
+        metrics[f"reward/tool_label_source_count/{source}"] = count
+    metrics["rollout/tool_trigger_rate"] = _mean_float(
+        [1.0 if item.get("used_tool") else 0.0 for item in rollouts]
+    )
+    metrics["rollout/avg_tool_calls"] = _mean_float(
+        [float(item.get("num_tool_calls") or 0.0) for item in rollouts]
+    )
+    metrics["rollout/malformed_rate"] = _mean_float(
+        [1.0 if (item.get("protocol") or {}).get("native_errors") else 0.0 for item in rollouts]
+    )
+    used_tool_rewards = [
+        row for row in rewards if dict(row.get("metadata") or {}).get("used_tool")
+    ]
+    metrics["reward/focus_judge_hit_rate"] = _mean_float(
+        [1.0 if row.get("focus_judge") else 0.0 for row in used_tool_rewards]
+    )
+    metrics["reward/grounding_judge_hit_rate"] = _mean_float(
+        [1.0 if row.get("grounding_judge") else 0.0 for row in used_tool_rewards]
+    )
+    return {key: value for key, value in metrics.items() if value is not None}
+
+
+def _stepwise_wandb_summary(
+    config: Stage3GRPOConfig,
+    output_root: Path,
+    state: dict[str, Any],
+    result: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        "status": result.get("status"),
+        "run_id": config.run_id.rsplit("_step", 1)[0],
+        "output_root": str(output_root),
+        "next_step": state.get("next_step"),
+        "completed_count": len(state.get("completed_steps") or []),
+        "current_checkpoint": state.get("current_checkpoint"),
+        "checkpoint_retention": dict(result.get("checkpoint_retention") or {}),
+    }
+
+
+def _apply_checkpoint_retention(
+    *,
+    output_root: Path,
+    state: dict[str, Any],
+    keep_last: int,
+    keep_every: int,
+    keep_steps: set[int],
+) -> dict[str, Any]:
+    completed = sorted(int(item) for item in state.get("completed_steps") or [])
+    keep: set[int] = set(int(item) for item in keep_steps)
+    if keep_last > 0:
+        keep.update(completed[-int(keep_last):])
+    if keep_every > 0:
+        keep.update(step for step in completed if step % int(keep_every) == 0)
+    current_step = _checkpoint_step_from_path(str(state.get("current_checkpoint") or ""))
+    if current_step is not None:
+        keep.add(current_step)
+    deleted: list[str] = []
+    kept: list[str] = []
+    for checkpoint in sorted(output_root.glob("step_*/checkpoint_step_1.pt")):
+        step = _step_number_from_step_dir(checkpoint.parent)
+        if step is None:
+            continue
+        if step in keep:
+            kept.append(str(checkpoint))
+            continue
+        checkpoint.unlink()
+        deleted.append(str(checkpoint))
+    summary = {
+        "schema_version": "stage3_grpo_checkpoint_retention_v0",
+        "created_at": now_iso(),
+        "output_root": str(output_root),
+        "keep_last": int(keep_last),
+        "keep_every": int(keep_every),
+        "keep_steps": sorted(keep),
+        "kept_count": len(kept),
+        "deleted_count": len(deleted),
+        "kept_checkpoints": kept,
+        "deleted_checkpoints": deleted,
+    }
+    write_json(output_root / "checkpoint_retention_summary.json", summary)
+    return summary
+
+
+def _checkpoint_step_from_path(path: str) -> int | None:
+    if not path:
+        return None
+    return _step_number_from_step_dir(Path(path).parent)
+
+
+def _step_number_from_step_dir(path: Path) -> int | None:
+    name = path.name
+    if not (name.startswith("step_") and len(name) == len("step_000000")):
+        return None
+    suffix = name.split("_", 1)[1]
+    return int(suffix) if suffix.isdigit() else None
+
+
+def _mean_float(values: list[float]) -> float | None:
+    finite = [float(value) for value in values]
+    return sum(finite) / len(finite) if finite else None
+
+
+def _count_by_key(rows: list[dict[str, Any]], key: str) -> dict[str, int]:
+    return dict(Counter(str(row.get(key) or "unknown") for row in rows))
 
 
 def _write_state(path: Path, state: dict[str, Any]) -> None:
