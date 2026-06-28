@@ -61,7 +61,7 @@ def score_rollout_reward(
             focus_row,
             field="focus_score",
             zero_reward=reward_config.focus_zero_reward,
-            missing_reward=reward_config.focus_zero_reward,
+            missing_reward=judge_bundle.config.cache_miss_reward,
         )
         if rollout.used_tool
         else 0.0
@@ -71,7 +71,7 @@ def score_rollout_reward(
             ground_row,
             field="grounding_score",
             zero_reward=reward_config.grounding_zero_reward,
-            missing_reward=reward_config.grounding_zero_reward,
+            missing_reward=judge_bundle.config.cache_miss_reward,
         )
         if rollout.used_tool
         else 0.0
@@ -103,6 +103,9 @@ def score_rollout_reward(
             "used_tool": rollout.used_tool,
             "num_tool_calls": rollout.num_tool_calls,
             "targets": list(rollout.targets),
+            "focus_judge_hit": focus_row is not None,
+            "grounding_judge_hit": ground_row is not None,
+            "judge_cache_miss_reward": judge_bundle.config.cache_miss_reward,
         },
     )
 

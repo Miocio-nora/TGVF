@@ -235,13 +235,12 @@ class LocalQwenVLJudgeBackend:
     def score(self, row: dict[str, Any]) -> dict[str, Any]:
         prompt = judge_prompt_for_row(row)
         raw_output = self.generate(row, prompt)
+        parse_fallback = False
         try:
             parsed = parse_judge_json(raw_output, kind=str(row.get("kind") or ""))
         except Exception as exc:
-            raw_excerpt = str(raw_output or "")[:1000]
-            raise ValueError(
-                f"could not parse judge JSON from raw_output={raw_excerpt!r}: {exc}"
-            ) from exc
+            parsed = parse_judge_text_fallback(raw_output, kind=str(row.get("kind") or ""))
+            parse_fallback = True
         return build_scored_cache_row(
             pending=row,
             parsed=parsed,
@@ -249,6 +248,7 @@ class LocalQwenVLJudgeBackend:
             backend=self.config.backend,
             model_id=self.config.model_id,
             prompt_version=self.config.prompt_version,
+            parse_fallback=parse_fallback,
         )
 
     def generate(self, row: dict[str, Any], prompt: str) -> str:
@@ -256,6 +256,19 @@ class LocalQwenVLJudgeBackend:
 
         model, processor = self._load()
         messages = [
+            {
+                "role": "system",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": (
+                            "You are a JSON-only visual scoring function. "
+                            "Return exactly one compact JSON object and no prose, "
+                            "no markdown, no hidden reasoning, no bullet list."
+                        ),
+                    }
+                ],
+            },
             {
                 "role": "user",
                 "content": [
@@ -307,7 +320,7 @@ class LocalQwenVLJudgeBackend:
             "trust_remote_code": self.config.trust_remote_code,
         }
         if self.config.device_map:
-            model_kwargs["device_map"] = self.config.device_map
+            model_kwargs["device_map"] = normalized_device_map(self.config.device_map)
         if self.config.attn_implementation:
             model_kwargs["attn_implementation"] = self.config.attn_implementation
         model_config = AutoConfig.from_pretrained(
@@ -544,7 +557,8 @@ Score:
 1 = target is related but too broad, vague, partly incomplete, or mildly ambiguous.
 0 = target is irrelevant, non-visual, not present, impossible to execute, or directly answers the question instead of guiding observation.
 
-Return strict JSON only:
+Your entire response must be exactly one JSON object on one line. Do not
+explain, do not describe the image, and do not use markdown:
 {{"focus_score": 0|1|2, "reason": "short reason"}}
 """
 
@@ -575,7 +589,8 @@ Score:
 1 = visual statements are mostly correct but incomplete, weakly connected, or underspecified.
 0 = reasoning contains visual hallucination, contradicts the image, ignores relevant evidence, or cannot support the final answer.
 
-Return strict JSON only:
+Your entire response must be exactly one JSON object on one line. Do not
+explain, do not describe the image, and do not use markdown:
 {{"grounding_score": 0|1|2, "reason": "short reason"}}
 """
 
@@ -601,6 +616,102 @@ def parse_judge_json(raw_output: str, *, kind: str) -> dict[str, Any]:
     raise ValueError(f"could not parse judge JSON: {last_error}")
 
 
+def parse_judge_text_fallback(raw_output: str, *, kind: str) -> dict[str, Any]:
+    text = str(raw_output or "").strip()
+    lower = text.lower()
+    if not text:
+        raise ValueError("empty judge output")
+    field = "focus_score" if kind == "focus" else "grounding_score"
+    zero_markers = (
+        "score: 0",
+        "score 0",
+        f"{field}: 0",
+        "should be 0",
+        "would be 0",
+    )
+    two_markers = (
+        "score: 2",
+        "score 2",
+        f"{field}: 2",
+        "should be 2",
+        "would be 2",
+    )
+    one_markers = (
+        "score: 1",
+        "score 1",
+        f"{field}: 1",
+        "should be 1",
+        "would be 1",
+    )
+    if any(marker in lower for marker in zero_markers):
+        score = 0
+    elif any(marker in lower for marker in two_markers):
+        score = 2
+    elif any(marker in lower for marker in one_markers):
+        score = 1
+    elif kind == "focus":
+        score = _fallback_focus_score(lower)
+    else:
+        score = _fallback_grounding_score(lower)
+    if score is None:
+        raise ValueError(f"could not infer {field} from non-JSON judge output")
+    reason = _compact_reason(text)
+    return {field: int(score), "score": int(score), "reason": f"parse_fallback: {reason}"}
+
+
+def _fallback_focus_score(lower: str) -> int | None:
+    if any(
+        phrase in lower
+        for phrase in (
+            "not relevant",
+            "irrelevant",
+            "not present",
+            "does not correspond",
+            "doesn't correspond",
+            "impossible to execute",
+            "directly answers the question",
+        )
+    ):
+        return 0
+    if any(phrase in lower for phrase in ("too broad", "too vague", "ambiguous")):
+        return 1
+    if (
+        any(phrase in lower for phrase in ("relevant", "matches", "corresponds", "appropriate"))
+        and any(phrase in lower for phrase in ("specific", "executable", "visual content", "target"))
+    ):
+        return 2
+    return None
+
+
+def _fallback_grounding_score(lower: str) -> int | None:
+    if any(
+        phrase in lower
+        for phrase in (
+            "hallucination",
+            "contradicts",
+            "contradict",
+            "incorrect",
+            "not support",
+            "does not support",
+            "cannot support",
+        )
+    ):
+        return 0
+    if any(phrase in lower for phrase in ("incomplete", "weakly connected", "underspecified")):
+        return 1
+    if (
+        any(phrase in lower for phrase in ("correct", "true", "accurate"))
+        and any(phrase in lower for phrase in ("support", "supports", "sufficient"))
+    ):
+        return 2
+    return None
+
+
+def _compact_reason(text: str) -> str:
+    clean = " ".join(str(text or "").split())
+    return clean[:300]
+
+
 def validate_judge_payload(payload: dict[str, Any], *, kind: str) -> dict[str, Any]:
     field = "focus_score" if kind == "focus" else "grounding_score"
     if field not in payload and "score" in payload:
@@ -623,6 +734,7 @@ def build_scored_cache_row(
     backend: str,
     model_id: str,
     prompt_version: str,
+    parse_fallback: bool = False,
 ) -> dict[str, Any]:
     kind = str(pending.get("kind") or "")
     payload = {
@@ -644,6 +756,7 @@ def build_scored_cache_row(
         "prompt_version": prompt_version,
         "raw_output": raw_output,
         "parsed_json": dict(parsed),
+        "parse_fallback": bool(parse_fallback),
         "reason": parsed.get("reason") or "",
     }
     payload.update(parsed)
@@ -744,6 +857,15 @@ def torch_dtype(torch: Any, name: str) -> Any:
     if value in {"fp32", "float32"}:
         return torch.float32
     raise ValueError(f"unsupported dtype: {name}")
+
+
+def normalized_device_map(value: str | None) -> Any:
+    text = str(value or "").strip()
+    if text.startswith("cuda:"):
+        return {"": text}
+    if text == "cuda":
+        return {"": "cuda:0"}
+    return value
 
 
 def resolve_generation_device(model: Any, requested: str) -> Any:

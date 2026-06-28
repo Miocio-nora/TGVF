@@ -42,6 +42,7 @@ from revisit_vlm_clean.stage3_grpo.judge import JudgeBundle
 from revisit_vlm_clean.stage3_grpo.judge_runner import (
     OfflineJudgeConfig,
     parse_judge_json,
+    parse_judge_text_fallback,
     run_offline_judge,
 )
 from revisit_vlm_clean.training.stage3_grpo_executor import (
@@ -101,6 +102,49 @@ def test_stage3_reward_uses_answer_and_tool_hint(tmp_path: Path) -> None:
     assert reward.tool_label == "tool_needed"
     assert reward.reward_tool > 0
     assert reward.reward_protocol == 0.0
+
+
+def test_stage3_reward_uses_configured_judge_cache_miss_reward(tmp_path: Path) -> None:
+    record = {
+        "sample_id": "s_tool",
+        "image_path": "/tmp/image.png",
+        "question": "What word is printed on the small blue label?",
+        "gold_answer": "Open",
+        "answer_aliases": [],
+        "source_dataset": "textvqa",
+        "answer_type": "ocr_text",
+        "eval_metric": "normalized_exact_match",
+        "tool_need_hint": "likely_required",
+        "reference_target": "the small blue label on the box",
+        "target_spec": {"target_text": "the small blue label on the box"},
+    }
+    sample = Stage3Sample.from_record(record)
+    rollout = FakeRolloutEngine(RolloutConfig(group_size=2, max_tool_calls=1)).free_rollout(
+        sample,
+        rollout_id=0,
+    )
+    reward = score_rollout_reward(
+        sample=sample,
+        rollout=rollout,
+        reward_config=RewardConfig(w_focus=1.0, w_ground=1.0, grounding_zero_reward=-1.0),
+        probe_cache=ProbeCache(),
+        judge_bundle=JudgeBundle(
+            JudgeConfig(enabled=True, mode="cache_only", cache_miss_reward=-0.25),
+            output_dir=tmp_path,
+        ),
+        tau=0.25,
+        missing_probe_policy="teacher_hint",
+        hint_label_weight=0.5,
+        protocol="protocol_c_tool_observation",
+        max_tool_calls=1,
+    )
+    assert rollout.used_tool is True
+    assert reward.focus_judge is None
+    assert reward.grounding_judge is None
+    assert reward.reward_focus == -0.25
+    assert reward.reward_ground == -0.25
+    assert reward.metadata["focus_judge_hit"] is False
+    assert reward.metadata["grounding_judge_hit"] is False
 
 
 def test_stage3_grpo_math_smoke() -> None:
@@ -259,6 +303,20 @@ def test_stage3_judge_json_parser() -> None:
         kind="grounding",
     )
     assert parsed_ground["grounding_score"] == 1
+
+
+def test_stage3_judge_text_fallback_parser() -> None:
+    parsed = parse_judge_text_fallback(
+        "The target is relevant, specific, and executable visual content for the question.",
+        kind="focus",
+    )
+    assert parsed["focus_score"] == 2
+    assert parsed["reason"].startswith("parse_fallback:")
+    parsed_ground = parse_judge_text_fallback(
+        "The reasoning contradicts the image and cannot support the final answer.",
+        kind="grounding",
+    )
+    assert parsed_ground["grounding_score"] == 0
 
 
 def test_stage3_offline_judge_fake_backend_writes_caches(tmp_path: Path) -> None:

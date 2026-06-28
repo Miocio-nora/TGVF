@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import math
 import os
+import random
 import subprocess
 from dataclasses import replace
 from pathlib import Path
@@ -34,6 +35,9 @@ class Stage3GRPOTrainer:
             else self.output_dir / f"rank_{self.distributed['rank']}"
         )
         self.samples = load_stage3_samples(self.config.rl_data_path)
+        _seed_stage3_runtime(
+            int(self.config.train.seed) + int(self.distributed["rank"]) * 100003
+        )
         self.sampler = BalancedPromptSampler(
             self.samples,
             seed=int(self.config.train.seed) + int(self.distributed["rank"]) * 100003,
@@ -935,6 +939,10 @@ class _Stage3Aggregate:
         self.answer_correct_count = 0
         self.reward_sums: dict[str, float] = {}
         self.tool_label_counts: dict[str, int] = {}
+        self.tool_label_source_counts: dict[str, int] = {}
+        self.used_tool_reward_count = 0
+        self.focus_judge_hit_count = 0
+        self.grounding_judge_hit_count = 0
         self.latest_metrics: dict[str, Any] = {}
 
     def update(
@@ -966,6 +974,14 @@ class _Stage3Aggregate:
                     self.reward_sums[key] = self.reward_sums.get(key, 0.0) + float(value)
         for label, count in _count_by_key(rewards, "tool_label").items():
             self.tool_label_counts[label] = self.tool_label_counts.get(label, 0) + count
+        for source, count in _count_by_key(rewards, "tool_label_source").items():
+            self.tool_label_source_counts[source] = self.tool_label_source_counts.get(source, 0) + count
+        for row in rewards:
+            metadata = dict(row.get("metadata") or {})
+            if metadata.get("used_tool"):
+                self.used_tool_reward_count += 1
+                self.focus_judge_hit_count += 1 if row.get("focus_judge") else 0
+                self.grounding_judge_hit_count += 1 if row.get("grounding_judge") else 0
 
     def summary(self) -> dict[str, Any]:
         reward_means = {
@@ -982,6 +998,9 @@ class _Stage3Aggregate:
             "answer_accuracy": self.answer_correct_count / max(self.reward_count, 1),
             "reward_means": reward_means,
             "tool_label_counts": dict(sorted(self.tool_label_counts.items())),
+            "tool_label_source_counts": dict(sorted(self.tool_label_source_counts.items())),
+            "focus_judge_hit_rate": self.focus_judge_hit_count / max(self.used_tool_reward_count, 1),
+            "grounding_judge_hit_rate": self.grounding_judge_hit_count / max(self.used_tool_reward_count, 1),
             "latest_metrics": self.latest_metrics,
         }
 
@@ -1069,6 +1088,17 @@ def _stage3_wandb_metrics(
     )
     for label, count in _count_by_key(rewards, "tool_label").items():
         metrics[f"reward/tool_label_count/{label}"] = count
+    for source, count in _count_by_key(rewards, "tool_label_source").items():
+        metrics[f"reward/tool_label_source_count/{source}"] = count
+    used_tool_rewards = [
+        row for row in rewards if dict(row.get("metadata") or {}).get("used_tool")
+    ]
+    metrics["reward/focus_judge_hit_rate"] = _mean_float(
+        [1.0 if row.get("focus_judge") else 0.0 for row in used_tool_rewards]
+    )
+    metrics["reward/grounding_judge_hit_rate"] = _mean_float(
+        [1.0 if row.get("grounding_judge") else 0.0 for row in used_tool_rewards]
+    )
     return {key: value for key, value in metrics.items() if value is not None}
 
 
@@ -1119,6 +1149,24 @@ def _stage3_output_artifact_paths(
 def _mean_float(values: list[float]) -> float | None:
     finite = [float(value) for value in values if math.isfinite(float(value))]
     return sum(finite) / len(finite) if finite else None
+
+
+def _seed_stage3_runtime(seed: int) -> None:
+    random.seed(int(seed))
+    try:
+        import torch
+
+        torch.manual_seed(int(seed))
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(int(seed))
+    except Exception:
+        pass
+    try:
+        import numpy as np
+
+        np.random.seed(int(seed) % (2**32))
+    except Exception:
+        pass
 
 
 def _count_by_key(rows: list[dict[str, Any]], key: str) -> dict[str, int]:

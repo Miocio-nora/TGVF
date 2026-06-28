@@ -8179,3 +8179,175 @@ entry, update this file immediately.
   - Stage3 GRPO training framework is operational end to end for a formal
     4-GPU 20-step run. Next scaling step should improve batching by token budget
     or rollout length control before increasing prompt batch again.
+
+### EXP-20260628-1726-stage3-grpo-probe-judge-reward-smoke
+
+- Status:
+  - DONE.
+- Question:
+  - Verify that Stage3 GRPO can consume real forced-probe `Delta_tool` labels and
+    real visual judge rewards, instead of relying on teacher-hint tool labels or
+    zeroed judge weights.
+- Baseline anchor:
+  - `EXP-20260628-1553-stage3-grpo-formal-4gpu-g8pb2-stable20-lora-only`
+    completed native GRPO training, but used `w_focus=0`, `w_ground=0`, and no
+    probe cache, so it did not validate judge reward or forced-probe
+    ToolDecision reward.
+- Intended diff:
+  - Use a small smoke subset from the 20k RL data so probe cache and training
+    samples exactly overlap.
+  - Precompute forced OFF / forced ON-clean probes with `num_off=1`,
+    `num_on_clean=1` to populate `delta_tool`.
+  - Generate rollout judge pending rows, score them with a local VLM judge, then
+    run one 4-GPU native GRPO update with `w_focus=1`, `w_ground=1`,
+    `judge_mode=cache_only`, and judge caches loaded.
+  - Add reward/logging fix so judge cache misses use
+    `judge.cache_miss_reward` and metrics report judge hit rate plus
+    `tool_label_source` counts.
+- Allowed changed variables:
+  - Smoke sample count, group size, max steps, probe repetitions, judge caches,
+    reward weights, and reward logging.
+- Not allowed to change:
+  - Stage2 checkpoint, Stage3 RL source data identity, native TGVF/free rollout
+    path, LoRA-only trainable scope, D generation, D-condition audit, benchmark
+    eval, or long training schedule.
+- Code commit / worktree:
+  - Base commit: `b0cb8c7`.
+  - Worktree dirty by this DONE ledger update and code fixes:
+    - judge cache miss now uses `judge.cache_miss_reward`;
+    - W&B/aggregate metrics report judge hit rate and `tool_label_source`;
+    - trainer seeds Python/Torch/NumPy so rollout-only and first training step
+      can share cache keys;
+    - judge runner uses JSON-only system prompting, conservative text fallback,
+      and supports single-GPU `--device-map cuda:0`.
+- Stage2 checkpoint/output:
+  - `outputs/clean_training/qwen3_stage2_norm01_stage1_mask075_deepstack_4gpu_20260627_163250/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt`.
+  - SHA256: `50245a11c27ad9755eb815b5f008af50a659fa07a4043f0f9427f5bbea3c0236`.
+- Train data:
+  - Initial 8-sample ChartQA smoke subset:
+    `outputs/stage3_grpo/probe_judge_reward_smoke_4gpu_g2pb1_clean_stage2_step1200_20260628/smoke_prompts_8.jsonl`.
+  - Rows: 8.
+  - SHA256: `607372523a35b9fa1b3ba51341ebbf80d96daca41f374b19a82185297e57c671`.
+  - Final trigger-smoke subset:
+    `outputs/stage3_grpo/probe_judge_reward_trigger_smoke_4gpu_g8pb1_clean_stage2_step1200_20260628/trigger_smoke_prompts_4.jsonl`.
+  - Rows: 4.
+  - SHA256: `5c8efec0ea893668d89488339d9d1c24e9ac53090dbf610d99f806148a26dbec`.
+  - Parent data:
+    `revisit_vlm_clean/data/stage3_rl/v1_direct_20k_20260627_032447/accepted_rl_prompts.jsonl`,
+    rows 20,000, SHA256
+    `2e39a1dadcc020001bd3d763635f461d2b7dc6d94bfb3cfecdb9bb20240fa758`.
+- Validation data:
+  - None; this is a reward-path smoke, not benchmark validation.
+- Benchmark output:
+  - None.
+- Script / command:
+  - Final plan:
+    `outputs/stage3_grpo/probe_judge_reward_trigger_smoke_4gpu_g8pb1_clean_stage2_step1200_20260628/stage3_grpo_training_plan.json`.
+  - Final run id:
+    `stage3_grpo_probe_judge_reward_trigger_smoke_4gpu_g8pb1_8bjudge_step1200_20260628`.
+  - Final config summary:
+    `runtime_backend=native_single_focus`, `world_size=4`, `group_size=8`,
+    `per_device_prompt_batch_size=1`, `max_steps=1`, `optimizer=manual_sgd`,
+    `max_grad_norm=0`, `w_answer=2`, `w_tool=1`, `w_focus=1`, `w_ground=1`,
+    `judge_model=qwen3_vl_8b_thinking`, `judge_mode=cache_only`.
+  - Main commands:
+    - forced probes:
+      `python -m revisit_vlm_clean.training.stage3_grpo_executor --plan .../stage3_grpo_training_plan.json --precompute-probes --probe-output .../probe_cache.jsonl`.
+    - rollout-only pending generation:
+      `torchrun --standalone --nproc_per_node=4 -m revisit_vlm_clean.training.stage3_grpo_executor --plan .../stage3_grpo_training_plan.json --rollout-only`.
+    - judge cache:
+      `CUDA_VISIBLE_DEVICES=0 python -m revisit_vlm_clean.cli.stage3_grpo_judge --pending-path .../judge_pending_all_ranks.jsonl --output-dir .../offline_judge_8b --backend local_qwen_vl --model-preset qwen3_vl_8b_thinking --device cuda:0 --device-map cuda:0 --max-new-tokens 192 --execute`.
+    - training:
+      `torchrun --standalone --nproc_per_node=4 -m revisit_vlm_clean.training.stage3_grpo_executor --plan .../stage3_grpo_training_plan.json --launch-training`.
+- GPUs:
+  - `CUDA_VISIBLE_DEVICES=0,1,2,3`.
+- tmux:
+  - None planned; run foreground and monitor time/memory directly.
+- Started:
+  - 2026-06-28 17:30 JST.
+- Preflight:
+  - Initial 8-sample plan passed, but rollout-only produced no tool calls.
+  - Final trigger-smoke preflight after judge cache:
+    `outputs/stage3_grpo/probe_judge_reward_trigger_smoke_4gpu_g8pb1_clean_stage2_step1200_20260628/stage3_grpo_preflight_after_judge8b.json`.
+  - Status: `passed`.
+  - Final plan SHA256:
+    `deb1cd76e595c6b10e849a05be838b2de6bb624a0a15022aa4a5c54fea0420c2`.
+  - Global rollouts per step: 32.
+  - Judge cache status: ready, focus rows 30, grounding rows 24.
+- Finished:
+  - 2026-06-28 18:28 JST.
+- Metrics:
+  - Probe:
+    - Final trigger-smoke forced probes: 4 samples, 8 trajectories,
+      wall time 265s.
+    - `mean_delta_tool=0.25`; deltas were three `0.0` and one `1.0`.
+    - Peak probe memory: about 10.2GB on the highest GPU; utilization low
+      (max about 18%).
+  - Judge:
+    - 32B judge preflight passed, but 32B thinking generation was too slow for
+      this smoke and initially failed JSON parsing before the JSON-only/fallback
+      fix.
+    - 8B single-GPU judge scored 54/62 pending rows in 320s:
+      30 focus rows and 24 grounding rows; 8 rows failed parser/fallback.
+    - Score distribution: focus `2` x30; grounding `2` x16 and `0` x8.
+    - Parse fallback used on 5 scored rows.
+    - Peak judge memory: GPU0 about 20.3GB; other GPUs idle.
+  - Training:
+    - Status: `stage3_grpo_training_completed`.
+    - Wall time: 223s.
+    - Global rollouts: 32; distributed groups: 4.
+    - Checkpoint:
+      `outputs/stage3_grpo/probe_judge_reward_trigger_smoke_4gpu_g8pb1_clean_stage2_step1200_20260628/checkpoint_step_1.pt`
+      (about 701MB).
+    - Distributed metrics:
+      - `distributed_mean_reward=1.5765625`.
+      - `distributed_loss_mean=0.0461840453`.
+      - `distributed_policy_loss_mean=-0.0219766728`.
+      - `distributed_kl_mean=3.4080360532`.
+      - `distributed_replayed_tokens=2028`.
+    - Combined reward breakdown across 4 ranks:
+      - `tool_label_source`: `forced_probe` x32.
+      - `used_tool`: 31/32 rollouts.
+      - focus judge hit: 30/31 used-tool rollouts.
+      - grounding judge hit: 24/31 used-tool rollouts.
+      - mean rewards: total 1.57656, answer 0.21875, tool -0.04844,
+        focus 0.9375, ground 0.25, protocol 0.0.
+      - malformed/protocol penalty: 0.
+    - Peak training memory: GPU0 66.1GB, GPU1 82.5GB, GPU2 66.8GB,
+      GPU3 62.3GB.
+  - W&B:
+    - Offline run:
+      `outputs/stage3_grpo/probe_judge_reward_trigger_smoke_4gpu_g8pb1_clean_stage2_step1200_20260628/wandb/wandb/offline-run-20260628_182559-ic7ckwn5`.
+    - Logged `reward/focus_judge_hit_rate`,
+      `reward/grounding_judge_hit_rate`,
+      `reward/tool_label_source_count/forced_probe`, reward means, rollout
+      rates, distributed loss/KL/replayed-token metrics, and full config.
+- Analysis:
+  - D-condition audit is intentionally excluded for this run.
+  - Forced probe reward path is real and no longer falls back to teacher hints:
+    all 32 training rewards had `tool_label_source=forced_probe`.
+  - Judge reward path is real: focus/ground judge caches were consumed during
+    reward calculation and affected `reward_focus`/`reward_ground`.
+  - The initial 8 ChartQA smoke set had zero free tool calls even at
+    `group_size=8`, so it was unsuitable for judge reward verification; the
+    trigger-smoke set was built from samples known to trigger in the prior
+    formal run.
+  - Probe generation is much too slow in the current single-process form
+    (4-sample smoke took 265s; 8-sample ChartQA probe took 392s), so full-scale
+    probes must be offline and parallelized.
+  - 32B thinking judge is not yet practical in this runner without further
+    generation tuning; 8B single-GPU judge is usable for plumbing and cache
+    validation.
+- Conclusion:
+  - Stage3 reward plumbing is now verified end to end with forced-probe
+    `Delta_tool` labels and nonzero cached VLM judge rewards entering a real
+    4-GPU GRPO update. The next production step is probe/judge cache scaling and
+    judge reliability work, not D-condition audit.
+- Comparable to baseline:
+  - Only comparable as reward-path plumbing/capacity validation, not as a
+    model-quality run.
+- Follow-up:
+  - Parallelize forced probe precompute.
+  - Improve judge JSON compliance / retry failed judge rows before large runs.
+  - Keep 8B single-GPU judge for smoke; revisit 32B only after generation config
+    is optimized.
