@@ -7040,7 +7040,7 @@ entry, update this file immediately.
 
 ### EXP-20260628-1027-clean-qwen3-stage2-norm01-softforce-coredev2511
 
-- Status: RUNNING.
+- Status: COMPLETE.
 - Question:
   - Complete the paired soft-force benchmark for the same clean Qwen3 Stage2
     checkpoint and CoreDev-2511 manifest, so the comparison table contains
@@ -7110,10 +7110,69 @@ entry, update this file immediately.
     `clean_qwen3_stage2_norm01_softforce_coredev2511_ds512_recovery_20260628_102713_s2`,
     `clean_qwen3_stage2_norm01_softforce_coredev2511_ds512_recovery_20260628_102713_s3`.
 - Finished:
-  - Pending.
+  - `2026-06-28T11:34:39+09:00`.
+  - All four shards exited with `exit=0`; merged with manifest hash
+    verification.
 - Metrics:
-  - Pending.
+  - Output merged:
+    `outputs/clean_benchmarks/qwen3_stage2_norm01_softforce_coredev2511_deepstack512_recovery_4shard_20260628_102713/merged`.
+  - Same sample order as original and free runs: yes, `2511/2511`.
+  - Overall comparison:
+    - Original: accuracy `0.308553`, parse `0.941458`, trigger `0.000000`,
+      malformed `0.000000`.
+    - Free: accuracy `0.320675`, parse `0.987256`, trigger `0.186380`,
+      append success `0.967949`, malformed `0.005974`.
+    - Soft-force: accuracy `0.313802`, parse `0.980884`, trigger
+      `0.340104`, append success `0.971897`, malformed `0.009558`.
+  - By benchmark, `original / free / soft-force` accuracy and trigger:
+    - `blink`, n=`420`: acc `0.464286 / 0.554762 / 0.535714`;
+      trigger `0.000000 / 0.080952 / 0.233333`.
+    - `hr_bench_4k`, n=`200`: acc `0.520000 / 0.540000 / 0.510000`;
+      trigger `0.000000 / 0.370000 / 0.720000`.
+    - `mathverse`, n=`500`: acc `0.048000 / 0.048193 / 0.054217`;
+      trigger `0.000000 / 0.240000 / 0.274000`.
+    - `mathvista`, n=`300`: acc `0.410000 / 0.419463 / 0.417508`;
+      trigger `0.000000 / 0.110000 / 0.183333`.
+    - `mmmu_pro`, n=`300`: acc `0.343333 / 0.281879 / 0.277592`;
+      trigger `0.000000 / 0.143333 / 0.180000`.
+    - `ocrbench_v2`, n=`600`: acc `0.204628 / 0.222342 / 0.218944`;
+      trigger `0.000000 / 0.220000 / 0.406667`.
+    - `vstar_bench`, n=`191`: acc `0.539267 / 0.497382 / 0.481675`;
+      trigger `0.000000 / 0.167539 / 0.638743`.
+  - Pairwise free vs soft-force:
+    - Overall: soft-force higher on `133`, free higher on `156`, equal on
+      `2186`, unpaired/unscored `36`.
+    - `blink`: soft higher `24`, free higher `32`, equal `364`.
+    - `hr_bench_4k`: soft higher `10`, free higher `16`, equal `174`.
+    - `mathverse`: soft higher `12`, free higher `9`, equal `475`,
+      unpaired `4`.
+    - `mathvista`: soft higher `15`, free higher `16`, equal `265`,
+      unpaired `4`.
+    - `mmmu_pro`: soft higher `17`, free higher `18`, equal `262`,
+      unpaired `3`.
+    - `ocrbench_v2`: soft higher `42`, free higher `49`, equal `484`,
+      unpaired `25`.
+    - `vstar_bench`: soft higher `13`, free higher `16`, equal `162`.
+  - Fatal CUDA/OOM recovery:
+    - `24` soft-force rows hit real OOM and were marked malformed/unscored.
+    - Recovery unloaded/reloaded runtime on all `24`; no MHA cascade and all
+      shards completed.
 - Analysis:
-  - Pending.
+  - Soft-force raises the trigger rate substantially (`18.64% -> 34.01%`)
+    but reduces overall accuracy relative to free (`32.07% -> 31.38%`).
+  - The extra triggers are not uniformly useful: HR, V*, BLINK, MMMU-Pro, and
+    OCRBench-v2 all drop versus free despite higher trigger rates; only
+    MathVerse improves slightly over free.
+  - Soft-force also increases malformed/OOM rows (`15 -> 24`), concentrated in
+    OCRBench-v2 (`18`), plus MathVerse (`2`), MathVista (`3`), and MMMU-Pro
+    (`1`). The recovery path still works, but soft-force creates more
+    expensive post-D rows.
+  - This confirms the table should always include trigger rate together with
+    accuracy: higher trigger is not automatically better under the current
+    Stage2 checkpoint.
 - Conclusion:
-  - Pending.
+  - For this Qwen3 clean Stage2 checkpoint on CoreDev-2511, `tgvf_free` is the
+    best of the three tested modes overall: original `30.86`, free `32.07`,
+    soft-force `31.38`.
+  - Soft-force is still useful diagnostically because it stresses router/focus
+    behavior, but it should not be reported alone as the method score.
