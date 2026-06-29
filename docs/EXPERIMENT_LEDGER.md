@@ -9583,3 +9583,47 @@ entry, update this file immediately.
     detached for the one-update-per-rollout path.
   - The new frozen Stage2 reference affects the KL term. It is not a second
     full 32B model in memory.
+
+## 2026-06-29 - DeepStack No-Block Scope for Stage3/Benchmark
+
+- Status:
+  IMPLEMENTED_AND_UNIT_TESTED. No training or benchmark run launched in this
+  entry.
+- Motivation:
+  Stage3 production-intended training should use Qwen3 DeepStack features while
+  still letting the policy access the original image after D. The previous clean
+  DeepStack scopes were only:
+  - `through_answer`: block original-image visual keys from D through answer.
+  - `evidence_only`: block for D/evidence and restore for answer.
+  That made `--deepstack-enabled` imply a post-D original-image key block, which
+  is not the desired Stage3 default.
+- Implementation:
+  - Added `DeepStackScope.NO_BLOCK` serialized as `no_block`.
+  - `DeepStackState(enabled=True, original_image_scope=no_block)` is valid and
+    distinct from `off`.
+  - Benchmark CLI now resolves bare `--deepstack-enabled` to `no_block` instead
+    of invalid `enabled+off`.
+  - Stage3 planner now defaults `--deepstack-enabled` to
+    `--deepstack-original-image-scope no_block`.
+  - Native Stage2 append/replay now decouples DeepStack enablement from
+    original-image key blocking:
+    - `no_block`: DeepStack remains enabled; original-image visual keys remain
+      visible after D.
+    - `through_answer` / `evidence_only`: old key-block behavior remains.
+  - Execution-plan hooks now mark `apply_post_tgvf_deepstack_scope_mask` as not
+    required under `no_block`.
+  - Project workflow and handoff docs updated to record the new scope.
+- Stage3 reward/cache note:
+  - There is still no correct probe cache bound to the intended Stage3
+    checkpoint/protocol/sample set.
+  - Stage3 should therefore use the default `teacher_hint` tool label fallback
+    for the first production-intended run:
+    `probe_cache_path=None`, `missing_probe_policy=teacher_hint`,
+    `hint_label_weight=0.5`.
+- Verification:
+  - `python -m compileall -q revisit_vlm_clean/src/revisit_vlm_clean/schema.py revisit_vlm_clean/src/revisit_vlm_clean/deepstack.py revisit_vlm_clean/src/revisit_vlm_clean/stage2_native.py revisit_vlm_clean/src/revisit_vlm_clean/runner.py revisit_vlm_clean/src/revisit_vlm_clean/cli/benchmark.py revisit_vlm_clean/src/revisit_vlm_clean/cli/train_stage3_grpo.py revisit_vlm_clean/src/revisit_vlm_clean/training_plan.py revisit_vlm_clean/tests/test_schema.py revisit_vlm_clean/tests/test_runner_backend.py revisit_vlm_clean/tests/test_cli.py revisit_vlm_clean/tests/test_stage3_grpo.py`
+    passed.
+  - `PYTHONPATH=revisit_vlm_clean/src:src pytest -q revisit_vlm_clean/tests/test_schema.py revisit_vlm_clean/tests/test_runner_backend.py revisit_vlm_clean/tests/test_stage3_grpo.py revisit_vlm_clean/tests/test_cli.py::test_benchmark_deepstack_enabled_defaults_to_no_block revisit_vlm_clean/tests/test_cli.py::test_stage2_deepstack_plan_disables_legacy_command revisit_vlm_clean/tests/test_cli.py::test_stage2_deepstack_prepare_writes_training_plan`
+    passed: `81 passed, 2 warnings`.
+  - `PYTHONPATH=revisit_vlm_clean/src:src pytest -q revisit_vlm_clean/tests/test_benchmark_data.py revisit_vlm_clean/tests/test_deepstack.py`
+    passed: `24 passed`.

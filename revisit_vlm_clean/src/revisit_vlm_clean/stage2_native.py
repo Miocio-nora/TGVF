@@ -829,7 +829,7 @@ class NativeStage2Engine:
         append_attention = attention_mask
         block_original_image_keys = False
         original_positions = None
-        if self._deepstack_enabled():
+        if self._deepstack_blocks_original_image_keys():
             if past_key_values is None:
                 raise ValueError("KV DeepStack append requires capture.past_key_values")
             if attention_mask is None or input_ids is None:
@@ -913,19 +913,21 @@ class NativeStage2Engine:
                 ),
                 **cache_alignment_debug,
                 "deepstack_caution": None
-                if block_original_image_keys
+                if self._deepstack_enabled()
                 else (
                     "clean-native FVT append uses Qwen3 visual special tokens and real "
                     "3D positions, but does not provide native Qwen3 DeepStack visual "
                     "features."
                 ),
-                "uses_deepstack_for_fvt": bool(block_original_image_keys),
-                "deepstack_cached_prefix_used": bool(block_original_image_keys),
+                "uses_deepstack_for_fvt": bool(self._deepstack_enabled()),
+                "deepstack_cached_prefix_used": bool(self._deepstack_enabled()),
                 "deepstack_scope": (
-                    None if not block_original_image_keys else self._deepstack_scope().value
+                    None if not self._deepstack_enabled() else self._deepstack_scope().value
                 ),
                 "deepstack_answer_restore_policy": (
                     None
+                    if not self._deepstack_enabled()
+                    else "not_blocked"
                     if not block_original_image_keys
                     else (
                         "restore_after_answer_boundary"
@@ -935,12 +937,14 @@ class NativeStage2Engine:
                 ),
                 "deepstack_append_attention_mask": (
                     None
+                    if not self._deepstack_enabled()
+                    else "2d_no_original_image_key_block"
                     if not block_original_image_keys
                     else "4d_cached_chunk_original_image_key_block"
                 ),
                 "deepstack_prefix_source": (
                     None
-                    if not block_original_image_keys
+                    if not self._deepstack_enabled()
                     else "native_qwen3_capture_past_key_values"
                 ),
                 "deepstack_original_image_key_block": bool(block_original_image_keys),
@@ -954,7 +958,8 @@ class NativeStage2Engine:
         sequence length is one token shorter than `sequences`. The clean KV
         append keeps the cache unchanged and includes the missing tail token(s)
         in the same `inputs_embeds` chunk as D. Tail queries keep access to the
-        original image; D queries use the configured original-image key block.
+        original image; D queries use the configured original-image key block
+        only for blocking DeepStack scopes.
         """
 
         if self.model is None:
@@ -1207,14 +1212,15 @@ class NativeStage2Engine:
                 device=self.device,
                 dtype=embeds.dtype,
             )
-            prefill_attention = build_original_image_key_block_attention_mask(
-                attention_mask_2d=full_attention,
-                original_image_token_indices=original_positions,
-                block_query_start=int(capture_input_ids.shape[-1]),
-                dtype=embeds.dtype,
-                block_query_end=None,
-            )
-            block_original_image_keys = True
+            if self._deepstack_blocks_original_image_keys():
+                prefill_attention = build_original_image_key_block_attention_mask(
+                    attention_mask_2d=full_attention,
+                    original_image_token_indices=original_positions,
+                    block_query_start=int(capture_input_ids.shape[-1]),
+                    dtype=embeds.dtype,
+                    block_query_end=None,
+                )
+                block_original_image_keys = True
             outputs = self._forward_qwen3_language_with_deepstack(
                 inputs_embeds=embeds,
                 attention_mask=prefill_attention,
@@ -1287,6 +1293,8 @@ class NativeStage2Engine:
                 "deepstack_answer_restore_policy": (
                     None
                     if deepstack_payload is None
+                    else "not_blocked"
+                    if not block_original_image_keys
                     else (
                         "restore_after_answer_boundary"
                         if self._deepstack_scope() == DeepStackScope.EVIDENCE_ONLY
@@ -1294,7 +1302,11 @@ class NativeStage2Engine:
                     )
                 ),
                 "deepstack_prefill_attention_mask": (
-                    None if deepstack_payload is None else "4d_original_image_key_block"
+                    None
+                    if deepstack_payload is None
+                    else "2d_no_original_image_key_block"
+                    if not block_original_image_keys
+                    else "4d_original_image_key_block"
                 ),
                 "deepstack_original_image_key_block": bool(block_original_image_keys),
             },
@@ -1586,6 +1598,12 @@ class NativeStage2Engine:
         if config is None:
             return DeepStackScope.OFF
         return config.deepstack.original_image_scope
+
+    def _deepstack_blocks_original_image_keys(self) -> bool:
+        return self._deepstack_scope() in {
+            DeepStackScope.THROUGH_ANSWER,
+            DeepStackScope.EVIDENCE_ONLY,
+        }
 
     def _original_image_deepstack_features(self, sample: NativeStage2Sample) -> list[Any]:
         from revisit_vlm.qwen3_vl_tgvf import build_direct_messages, build_qwen3_inputs

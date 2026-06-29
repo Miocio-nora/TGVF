@@ -18,8 +18,10 @@ from .deepstack import (
     deepstack_runtime_hooks,
     deepstack_scope_contract,
     qwen3_deepstack_runtime_hook_names_for_full_sequence_evidence_only,
+    qwen3_deepstack_runtime_hook_names_for_full_sequence_no_block,
     qwen3_deepstack_runtime_hook_names_for_full_sequence_through_answer,
     qwen3_deepstack_runtime_hook_names_for_kv_cache_evidence_only,
+    qwen3_deepstack_runtime_hook_names_for_kv_cache_no_block,
     qwen3_deepstack_runtime_hook_names_for_kv_cache_through_answer,
 )
 from .rendering import RenderedBenchmarkInput
@@ -652,11 +654,15 @@ def _implemented_deepstack_hooks_for_eval(config: RunConfig, *, backend: str) ->
     if backend != STAGE2_NATIVE_BACKEND:
         return set()
     if config.post_tgvf_forward_mode == ForwardMode.NO_KV_FULL_SEQUENCE:
+        if config.deepstack.original_image_scope == DeepStackScope.NO_BLOCK:
+            return qwen3_deepstack_runtime_hook_names_for_full_sequence_no_block()
         if config.deepstack.original_image_scope == DeepStackScope.THROUGH_ANSWER:
             return qwen3_deepstack_runtime_hook_names_for_full_sequence_through_answer()
         if config.deepstack.original_image_scope == DeepStackScope.EVIDENCE_ONLY:
             return qwen3_deepstack_runtime_hook_names_for_full_sequence_evidence_only()
     if config.post_tgvf_forward_mode == ForwardMode.KV_CACHE:
+        if config.deepstack.original_image_scope == DeepStackScope.NO_BLOCK:
+            return qwen3_deepstack_runtime_hook_names_for_kv_cache_no_block()
         if config.deepstack.original_image_scope == DeepStackScope.THROUGH_ANSWER:
             return qwen3_deepstack_runtime_hook_names_for_kv_cache_through_answer()
         if config.deepstack.original_image_scope == DeepStackScope.EVIDENCE_ONLY:

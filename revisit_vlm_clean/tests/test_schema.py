@@ -66,6 +66,12 @@ def test_deepstack_enabled_requires_scope() -> None:
         DeepStackState(enabled=True, original_image_scope=DeepStackScope.OFF).validate()
 
 
+def test_deepstack_enabled_accepts_no_block_scope() -> None:
+    DeepStackState(enabled=True, original_image_scope=DeepStackScope.NO_BLOCK).validate()
+
+
 def test_deepstack_disabled_rejects_scope() -> None:
     with pytest.raises(ValueError, match="disabled DeepStack"):
         DeepStackState(enabled=False, original_image_scope=DeepStackScope.THROUGH_ANSWER).validate()
+    with pytest.raises(ValueError, match="disabled DeepStack"):
+        DeepStackState(enabled=False, original_image_scope=DeepStackScope.NO_BLOCK).validate()

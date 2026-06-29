@@ -181,6 +181,15 @@ def qwen3_deepstack_runtime_hook_names_for_full_sequence_evidence_only() -> set[
     }
 
 
+def qwen3_deepstack_runtime_hook_names_for_full_sequence_no_block() -> set[str]:
+    """Hooks implemented by the clean full-sequence no-block path."""
+
+    return {
+        "capture_original_image_deepstack_features",
+        "carry_original_image_deepstack_through_post_tgvf_append",
+    }
+
+
 def qwen3_deepstack_runtime_hook_names_for_kv_cache_through_answer() -> set[str]:
     """Hooks implemented by the clean cached-prefix through-answer path.
 
@@ -205,6 +214,15 @@ def qwen3_deepstack_runtime_hook_names_for_kv_cache_evidence_only() -> set[str]:
         "carry_original_image_deepstack_through_post_tgvf_append",
         "apply_post_tgvf_deepstack_scope_mask",
         "restore_deepstack_for_answer_when_scope_requires",
+    }
+
+
+def qwen3_deepstack_runtime_hook_names_for_kv_cache_no_block() -> set[str]:
+    """Hooks implemented by the clean cached-prefix no-block path."""
+
+    return {
+        "capture_original_image_deepstack_features",
+        "carry_original_image_deepstack_through_post_tgvf_append",
     }
 
 
@@ -435,20 +453,23 @@ def deepstack_scope_policy(scope: DeepStackScope | str) -> dict[str, Any]:
         DeepStackScope.THROUGH_ANSWER,
         DeepStackScope.EVIDENCE_ONLY,
     }
+    if restore_for_answer:
+        block_scope = "evidence_only"
+    elif block_after_tgvf_append:
+        block_scope = "through_answer"
+    elif resolved == DeepStackScope.NO_BLOCK:
+        block_scope = "no_block"
+    else:
+        block_scope = "off"
     return {
         "block_after_tgvf_append": block_after_tgvf_append,
         "block_query_start": "post_tgvf_append" if block_after_tgvf_append else None,
         "block_query_end": "answer_start" if restore_for_answer else None,
-        "block_scope": (
-            "evidence_only"
-            if restore_for_answer
-            else "through_answer"
-            if block_after_tgvf_append
-            else "off"
-        ),
+        "block_scope": block_scope,
         "restore_for_answer": restore_for_answer,
-        "must_follow_attention_mask_scope": True,
+        "must_follow_attention_mask_scope": block_after_tgvf_append,
         "scope_mapping": {
+            "no_block": "inject original-image DeepStack and do not block original-image keys after D",
             "through_answer": "block original-image DeepStack from D/evidence through answer",
             "evidence_only": "block original-image DeepStack for D/evidence and restore for answer",
             "off": "do not inject original-image DeepStack in clean TGVF post-D scope",

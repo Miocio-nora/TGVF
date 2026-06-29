@@ -117,8 +117,9 @@ Before Stage1/Stage2 training:
 - record DeepStack support/state separately from attention masks:
   - clean Qwen3 must support DeepStack training semantics, but the default is
     DeepStack off unless the run explicitly enables it;
-  - if DeepStack is enabled, original-image DeepStack injection after D must
-    follow the same scope as original-image visual-key masking;
+  - DeepStack scope is separate from original-image visual-key masking;
+  - `no_block` means original-image DeepStack remains enabled and original-image
+    visual keys remain visible after D;
   - `through_answer` means original-image DeepStack is blocked from D/evidence
     through answer;
   - `evidence_only` means original-image DeepStack is blocked for D/evidence

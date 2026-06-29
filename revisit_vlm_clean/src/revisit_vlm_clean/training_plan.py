@@ -18,6 +18,7 @@ from .data_generation import FileIdentity, file_identity
 from .deepstack import (
     deepstack_runtime_hooks,
     deepstack_scope_contract,
+    deepstack_scope_policy,
     qwen3_deepstack_runtime_hook_names_for_stage2_training,
 )
 from .defaults import (
@@ -791,6 +792,7 @@ def _deepstack_training_plan(config: Stage2LaunchConfig) -> dict[str, Any]:
     state = config.deepstack
     scope = state.original_image_scope
     enabled = bool(state.enabled)
+    policy = deepstack_scope_policy(scope)
     implemented_hooks = (
         qwen3_deepstack_runtime_hook_names_for_stage2_training()
         if enabled
@@ -825,7 +827,9 @@ def _deepstack_training_plan(config: Stage2LaunchConfig) -> dict[str, Any]:
         "current_training_path": {
             "uses_manual_inputs_embeds": True,
             "qwen3_deepstack_features_injected": enabled,
-            "post_d_deepstack_scope_mask_applied": enabled,
+            "post_d_deepstack_scope_mask_applied": bool(
+                enabled and policy["block_after_tgvf_append"]
+            ),
             "answer_stage_restore_supported": (
                 enabled and scope == DeepStackScope.EVIDENCE_ONLY
             ),

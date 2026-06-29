@@ -442,6 +442,30 @@ def test_deepstack_execution_plan_records_scope_semantics() -> None:
         "block_query_end"
     ] is None
 
+    no_block_config = RunConfig(
+        run_id="stage2_deepstack_no_block",
+        checkpoint_path="outputs/checkpoint.pt",
+        mode=EvalMode.TGVF_FORCE,
+        post_tgvf_forward_mode=ForwardMode.KV_CACHE,
+        subset_id="core_smoke_256_seed20260625",
+        deepstack=DeepStackState(
+            enabled=True,
+            original_image_scope=DeepStackScope.NO_BLOCK,
+        ),
+    )
+    no_block = build_deepstack_execution_plan(
+        no_block_config,
+        backend=STAGE2_NATIVE_BACKEND,
+    )
+    assert no_block["execution_supported"] is True
+    assert no_block["status"] == "supported_kv_cache_no_block"
+    assert no_block["original_image_scope"] == "no_block"
+    assert no_block["original_image_deepstack"]["block_after_tgvf_append"] is False
+    assert no_block["original_image_deepstack"]["restore_for_answer"] is False
+    assert no_block["runtime_hooks"]["hooks"][
+        "apply_post_tgvf_deepstack_scope_mask"
+    ]["required"] is False
+
     full_sequence = build_deepstack_execution_plan(
         _deepstack_full_sequence_run_config(),
         backend=STAGE2_NATIVE_BACKEND,
@@ -457,6 +481,26 @@ def test_deepstack_execution_plan_records_scope_semantics() -> None:
         "apply_post_tgvf_deepstack_scope_mask"
     ]["status"] == "ported"
     assert full_sequence["scope_contract"]["runtime_hooks"] == full_sequence["runtime_hooks"]
+
+    full_sequence_no_block = build_deepstack_execution_plan(
+        RunConfig(
+            run_id="stage2_deepstack_full_no_block",
+            checkpoint_path="outputs/checkpoint.pt",
+            mode=EvalMode.TGVF_FORCE,
+            post_tgvf_forward_mode=ForwardMode.NO_KV_FULL_SEQUENCE,
+            subset_id="core_smoke_256_seed20260625",
+            deepstack=DeepStackState(
+                enabled=True,
+                original_image_scope=DeepStackScope.NO_BLOCK,
+            ),
+        ),
+        backend=STAGE2_NATIVE_BACKEND,
+    )
+    assert full_sequence_no_block["execution_supported"] is True
+    assert full_sequence_no_block["status"] == "supported_full_sequence_no_block"
+    assert full_sequence_no_block["runtime_hooks"]["hooks"][
+        "apply_post_tgvf_deepstack_scope_mask"
+    ]["status"] == "not_required"
 
     evidence_only_config = RunConfig(
         run_id="stage2_deepstack_evidence",
@@ -1032,6 +1076,113 @@ def test_stage2_native_kv_deepstack_append_uses_cached_chunk_mask(
     assert result.debug_metadata["deepstack_prefix_source"] == (
         "native_qwen3_capture_past_key_values"
     )
+
+
+def test_stage2_native_kv_deepstack_no_block_keeps_original_image_keys_visible(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    import torch
+    import revisit_vlm.qwen3_vl_tgvf as qwen3_vl_tgvf
+
+    class FakeEmbedding:
+        weight = torch.zeros((32, 4), dtype=torch.float32)
+
+        def __call__(self, token_ids):
+            return torch.zeros((*token_ids.shape, 4), dtype=torch.float32)
+
+    class RecordingModel:
+        def __init__(self) -> None:
+            self.calls = []
+            self.embed = FakeEmbedding()
+
+        def get_input_embeddings(self):
+            return self.embed
+
+        def __call__(self, **kwargs):
+            self.calls.append(kwargs)
+            return SimpleNamespace(
+                past_key_values="new-cache",
+                logits=torch.zeros((1, 1, 8), dtype=torch.float32),
+            )
+
+    monkeypatch.setattr(qwen3_vl_tgvf, "render_tgvf_prefix_suffix", lambda **kwargs: ("P", "S"))
+    monkeypatch.setattr(qwen3_vl_tgvf, "protocol_uses_tool_observation", lambda protocol: True)
+    monkeypatch.setattr(qwen3_vl_tgvf, "protocol_uses_think_tags", lambda protocol: False)
+    monkeypatch.setattr(qwen3_vl_tgvf, "protocol_uses_evidence_tags", lambda protocol: False)
+    monkeypatch.setattr(
+        qwen3_vl_tgvf,
+        "_bracketed_visual_token_ids",
+        lambda *args, **kwargs: torch.tensor([10, 11, 12, 13], dtype=torch.long),
+    )
+    monkeypatch.setattr(
+        qwen3_vl_tgvf,
+        "_encode_text",
+        lambda tokenizer, text, device: torch.empty((0,), dtype=torch.long),
+    )
+    monkeypatch.setattr(
+        qwen3_vl_tgvf,
+        "_fvt_mm_token_type_ids",
+        lambda *, chunk_length, fvt_token_start, fvt_token_end, device: torch.zeros(
+            (1, chunk_length),
+            dtype=torch.long,
+        ),
+    )
+    monkeypatch.setattr(
+        qwen3_vl_tgvf,
+        "_chunk_position_ids_native_source_grid",
+        lambda **kwargs: torch.zeros((3, 1, 4), dtype=torch.long),
+    )
+    monkeypatch.setattr(
+        qwen3_vl_tgvf,
+        "_next_position_ids_after_prefill",
+        lambda position_ids: torch.zeros((3, 1, 1), dtype=torch.long),
+    )
+
+    runtime = _runtime(tmp_path, append_forward_mode=ForwardMode.KV_CACHE)
+    config = RunConfig(
+        run_id="stage2_deepstack_no_block",
+        checkpoint_path="outputs/checkpoint.pt",
+        mode=EvalMode.TGVF_FORCE,
+        post_tgvf_forward_mode=ForwardMode.KV_CACHE,
+        subset_id="core_smoke_256_seed20260625",
+        deepstack=DeepStackState(
+            enabled=True,
+            original_image_scope=DeepStackScope.NO_BLOCK,
+        ),
+    )
+    engine = NativeStage2Engine(stage2_config=runtime)
+    engine.prepare(config)
+    model = RecordingModel()
+    engine.model = model
+    engine.utility_model = model
+    engine.processor = SimpleNamespace(tokenizer=object())
+    engine.device = torch.device("cpu")
+    capture = SimpleNamespace(
+        capture_found=True,
+        past_key_values="prefix-cache",
+        attention_mask=torch.ones((1, 5), dtype=torch.long),
+        input_ids=torch.arange(5, dtype=torch.long).view(1, -1),
+        model_kwargs={},
+        source_visual_geometry=SimpleNamespace(
+            source_visual_token_count=2,
+            source_visual_token_indices=torch.tensor([1, 2], dtype=torch.long),
+            source_visual_position_ids=torch.zeros((3, 2), dtype=torch.long),
+        ),
+    )
+
+    result = engine._append_visual_d(capture, torch.ones((2, 4), dtype=torch.float32))
+
+    attention_mask = model.calls[0]["attention_mask"]
+    assert list(attention_mask.shape) == [1, 9]
+    assert "tgvf_block_original_image_keys" not in result.model_kwargs
+    assert result.debug_metadata["uses_deepstack_for_fvt"] is True
+    assert result.debug_metadata["deepstack_scope"] == "no_block"
+    assert result.debug_metadata["deepstack_answer_restore_policy"] == "not_blocked"
+    assert result.debug_metadata["deepstack_append_attention_mask"] == (
+        "2d_no_original_image_key_block"
+    )
+    assert result.debug_metadata["deepstack_original_image_key_block"] is False
 
 
 def test_stage2_native_kv_deepstack_prefills_generate_cache_tail(

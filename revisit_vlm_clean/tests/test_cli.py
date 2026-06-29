@@ -296,6 +296,34 @@ def test_benchmark_dry_run_cli(capsys) -> None:
     assert '"tgvf_protocol": "protocol_c_tool_observation_qwen2_no_think"' in captured.out
 
 
+def test_benchmark_deepstack_enabled_defaults_to_no_block(capsys) -> None:
+    assert (
+        benchmark_main(
+            [
+                "--run-id",
+                "deepstack_no_block",
+                "--checkpoint-path",
+                "outputs/checkpoint.pt",
+                "--mode",
+                "tgvf_force",
+                "--post-tgvf-forward-mode",
+                "kv_cache",
+                "--subset-id",
+                "core_smoke_256_seed20260625",
+                "--deepstack-enabled",
+                "--dry-run",
+            ]
+        )
+        == 0
+    )
+    config = json.loads(capsys.readouterr().out)
+    assert config["deepstack"] == {
+        "d_features_enabled": False,
+        "enabled": True,
+        "original_image_scope": "no_block",
+    }
+
+
 def test_benchmark_dry_run_cli_accepts_explicit_internal_diagnostic_family(capsys) -> None:
     assert (
         benchmark_main(

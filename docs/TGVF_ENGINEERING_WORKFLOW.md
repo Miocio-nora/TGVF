@@ -104,8 +104,8 @@ Training runs must record:
 - DeepStack support/state:
   - clean Qwen3 must support DeepStack training semantics;
   - default training setting is DeepStack off unless explicitly enabled;
-  - when enabled, original-image DeepStack injection after D follows the same
-    scope as original-image visual-key masking;
+  - `no_block` enables original-image DeepStack without blocking original-image
+    visual keys after D;
   - `through_answer` blocks original-image DeepStack from D/evidence through
     answer;
   - `evidence_only` blocks original-image DeepStack for D/evidence and restores

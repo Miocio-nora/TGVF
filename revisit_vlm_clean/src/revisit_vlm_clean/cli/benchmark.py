@@ -161,6 +161,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.subset_id:
         get_subset(args.subset_id)
     git_commit, dirty_worktree = _git_identity()
+    deepstack_scope = DeepStackScope(args.deepstack_original_image_scope)
+    if args.deepstack_enabled and deepstack_scope == DeepStackScope.OFF:
+        deepstack_scope = DeepStackScope.NO_BLOCK
     config = RunConfig(
         run_id=args.run_id,
         checkpoint_path=args.checkpoint_path,
@@ -184,7 +187,7 @@ def main(argv: list[str] | None = None) -> int:
         softforce_prompt_text=args.softforce_prompt_text,
         deepstack=DeepStackState(
             enabled=bool(args.deepstack_enabled),
-            original_image_scope=DeepStackScope(args.deepstack_original_image_scope),
+            original_image_scope=deepstack_scope,
         ),
         parser_scorer=ParserScorerIdentity(
             scoring_backend=ScoringBackend(args.scoring_backend),

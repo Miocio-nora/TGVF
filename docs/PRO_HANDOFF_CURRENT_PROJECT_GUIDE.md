@@ -97,6 +97,8 @@ natural_continue
 
 `DeepStack`：Qwen3-VL 原生的 original-image 多层视觉特征注入机制。它和普通 attention mask 不是一回事。当前主线 DeepStack 只作用于 original image features，不给 D 加 DeepStack-like features。
 
+`no_block`：启用 original-image DeepStack，但 post-TGVF 后不屏蔽 original image access。
+
 `through_answer`：post-TGVF 之后一直到 answer 都屏蔽 original image access。
 
 `evidence_only`：D/evidence 阶段屏蔽 original image access，answer 阶段恢复。
@@ -354,7 +356,8 @@ DeepStack 默认关闭。
 
 - 从 Qwen3 原生 image feature output 捕获 original-image DeepStack features；
 - 把这些 features 带入 post-TGVF append path；
-- scope 必须跟 original-image visual-key mask 语义一致；
+- `no_block`：启用 original-image DeepStack，但 post-D 原图 visual keys
+  继续可见；
 - `through_answer`：through answer 都屏蔽 original-image DeepStack；
 - `evidence_only`：D/evidence 阶段屏蔽，answer boundary 之后恢复；
 - D 仍然是 v-merge-level visual-token span；
@@ -363,8 +366,9 @@ DeepStack 默认关闭。
 当前支持状态：
 
 - Clean Qwen3 Stage2 training 支持 enabled DeepStack 的 `through_answer` 和 `evidence_only`。
-- Clean Qwen3 Stage2 benchmark eval 支持 full-sequence DeepStack 的 `through_answer` 和 `evidence_only`。
-- Cache-continuation DeepStack 和 legacy bridge DeepStack 会被拒绝，不能默默当成有效结果。
+- Clean Qwen3 Stage2 benchmark eval 支持 full-sequence/KV DeepStack 的
+  `no_block`、`through_answer` 和 `evidence_only`。
+- Legacy bridge DeepStack 会被拒绝，不能默默当成有效结果。
 
 ## 12. Benchmark Sets
 
@@ -652,4 +656,3 @@ warnings 是 checkpoint runtime audit 测试中依赖层的 `SwigPy*` deprecatio
 - 这是新结果、复现、还是 side diagnostic？
 
 这些都解析清楚之后，先写 ledger/preflight，再开 tmux 或 torchrun。
-

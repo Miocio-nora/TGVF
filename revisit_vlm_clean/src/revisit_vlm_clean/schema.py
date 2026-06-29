@@ -51,6 +51,7 @@ class ForwardMode(StrEnum):
 
 class DeepStackScope(StrEnum):
     OFF = "off"
+    NO_BLOCK = "no_block"
     THROUGH_ANSWER = "through_answer"
     EVIDENCE_ONLY = "evidence_only"
 

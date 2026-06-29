@@ -53,8 +53,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--deepstack-enabled", action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument(
         "--deepstack-original-image-scope",
-        choices=[DeepStackScope.THROUGH_ANSWER.value, DeepStackScope.EVIDENCE_ONLY.value],
-        default=DeepStackScope.THROUGH_ANSWER.value,
+        choices=[
+            DeepStackScope.NO_BLOCK.value,
+            DeepStackScope.THROUGH_ANSWER.value,
+            DeepStackScope.EVIDENCE_ONLY.value,
+        ],
+        default=DeepStackScope.NO_BLOCK.value,
     )
 
     parser.add_argument("--runtime-backend", choices=("fake", "native_single_focus"), default="fake")

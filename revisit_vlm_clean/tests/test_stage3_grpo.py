@@ -1305,6 +1305,42 @@ def test_stage3_cli_plan_preflight_rollout_and_launch(tmp_path: Path) -> None:
     assert "checkpoint_step_3.pt" in (output_dir / "LATEST_CHECKPOINT.txt").read_text(encoding="utf-8")
 
 
+def test_stage3_cli_deepstack_enabled_defaults_to_no_block(tmp_path: Path) -> None:
+    data = _write_rl_fixture(tmp_path)
+    checkpoint = tmp_path / "stage2_checkpoint.pt"
+    checkpoint.write_text("fake checkpoint", encoding="utf-8")
+    output_dir = tmp_path / "stage3_grpo_no_block_plan"
+
+    assert (
+        plan_main(
+            [
+                "--write-plan",
+                "--run-id",
+                "stage3_grpo_no_block",
+                "--rl-data-path",
+                str(data),
+                "--policy-checkpoint",
+                str(checkpoint),
+                "--output-dir",
+                str(output_dir),
+                "--runtime-backend",
+                "fake",
+                "--deepstack-enabled",
+            ]
+        )
+        == 0
+    )
+
+    plan = json.loads(
+        (output_dir / "stage3_grpo_training_plan.json").read_text(encoding="utf-8")
+    )
+    assert plan["config"]["deepstack"] == {
+        "d_features_enabled": False,
+        "enabled": True,
+        "original_image_scope": "no_block",
+    }
+
+
 def _write_rl_fixture(tmp_path: Path) -> Path:
     rows = [
         {
