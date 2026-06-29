@@ -9722,6 +9722,13 @@ entry, update this file immediately.
   - Free no-block is recorded as a new result on this exact manifest; no strict
     same-manifest free `through_answer` control was found in
     `outputs/clean_benchmarks`.
+  - Historical free `through_answer` benchmark results do exist, for example
+    `outputs/clean_benchmarks/qwen3_stage2_norm01_free_coredev2511_deepstack512_recovery_4shard_20260628_0615/merged`
+    with `n=2511`, `accuracy=32.07`, `trigger_rate=18.64`,
+    `answer_parse_rate=98.73`, `append_success_rate=96.79`, and DeepStack
+    scope `through_answer`. That run is useful historical context, but it is
+    not an exact ablation against this HR200 `n=200` manifest because the sample
+    set and benchmark mixture differ.
 - Conclusion:
   - `DeepStack enabled + no_block` works mechanically in the clean runner and is
     comparable on the same HR200 manifest.
