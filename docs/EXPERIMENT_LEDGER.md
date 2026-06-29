@@ -9749,7 +9749,7 @@ entry, update this file immediately.
 ## 2026-06-29 - CoreDev-2511 Full No-Block DeepStack Rerun
 
 - Status:
-  RUNNING.
+  DONE.
 - Question:
   Measure the full CoreDev-2511 manifest for the current Qwen3 Stage2
   checkpoint with `DeepStack enabled + no_block`, after the HR200-only
@@ -9822,3 +9822,70 @@ entry, update this file immediately.
     `kv_cache`, CoreDev-2511 manifest hash
     `a461d9b482b7165b42b9bbb0fbf0ea6aff31fde0a838c13d953f070e770b0579`,
     and DeepStack scope `no_block`.
+- Finished:
+  - `2026-06-29 21:49:51 JST`.
+  - Elapsed wall time: `1h33m58s`.
+  - Free mode elapsed: about `45m24s`.
+  - Softforce mode elapsed: about `48m34s`.
+- Metrics:
+  - `tgvf_free`, DeepStack `no_block`, KV cache:
+    - `n=2511`, `n_scored=2464`, `accuracy=32.64`,
+      `answer_parse_rate=97.37`, `trigger_rate=18.64`,
+      `focus_valid_rate=18.64`, `append_success_rate=89.96`,
+      `malformed_rate=1.87`.
+    - Output:
+      `outputs/clean_benchmarks/qwen3_stage2_norm01_coredev2511_kv_deepstack_no_block_4shard_20260629_201340/tgvf_free/merged`.
+  - `tgvf_softforce`, DeepStack `no_block`, KV cache:
+    - `n=2511`, `n_scored=2412`, `accuracy=32.65`,
+      `answer_parse_rate=95.10`, `trigger_rate=34.01`,
+      `focus_valid_rate=34.01`, `append_success_rate=88.41`,
+      `malformed_rate=3.94`.
+    - Output:
+      `outputs/clean_benchmarks/qwen3_stage2_norm01_coredev2511_kv_deepstack_no_block_4shard_20260629_201340/tgvf_softforce/merged`.
+  - DeepStack execution checks:
+    - Free: `421/421` reported FVT appends used DeepStack; requested rows
+      `2511/2511`; unsupported rows `0`.
+    - Softforce: `755/755` reported FVT appends used DeepStack; requested rows
+      `2511/2511`; unsupported rows `0`.
+- Comparison:
+  - Original baseline: `30.86`.
+  - Old free `through_answer`/`no_kv_full_sequence`: `32.07`.
+  - New free `no_block`/`kv_cache`: `32.64`, delta `+0.57` vs old free and
+    `+1.79` vs original.
+  - Old softforce `through_answer`/`no_kv_full_sequence`: `31.38`.
+  - New softforce `no_block`/`kv_cache`: `32.65`, delta `+1.27` vs old
+    softforce and `+1.80` vs original.
+  - Trigger rates stayed identical to the old corresponding modes:
+    free `18.64`, softforce `34.01`.
+  - Parse and append rates dropped under no-block:
+    free parse `98.73 -> 97.37`, append `96.79 -> 89.96`;
+    softforce parse `98.09 -> 95.10`, append `97.19 -> 88.41`.
+- Per-benchmark accuracy:
+  - VStar: original `53.93`, free old `49.74`, free no-block `49.74`,
+    softforce old `48.17`, softforce no-block `50.26`.
+  - HRBench4K: original `52.00`, free old `54.00`, free no-block `54.00`,
+    softforce old `51.00`, softforce no-block `52.50`.
+  - BLINK: original `46.43`, free old `55.48`, free no-block `55.56`,
+    softforce old `53.57`, softforce no-block `54.05`.
+  - OCRBench v2: original `20.46`, free old `22.23`, free no-block `23.21`,
+    softforce old `21.89`, softforce no-block `24.93`.
+  - MMMU-Pro: original `34.33`, free old `28.19`, free no-block `28.42`,
+    softforce old `27.76`, softforce no-block `28.67`.
+  - MathVista: original `41.00`, free old `41.95`, free no-block `44.19`,
+    softforce old `41.75`, softforce no-block `45.31`.
+  - MathVerse: original `4.80`, free old `4.82`, free no-block `6.20`,
+    softforce old `5.42`, softforce no-block `7.00`.
+- Analysis:
+  - Full CoreDev no-block improves both free and softforce overall accuracy.
+  - Gains are concentrated in OCRBench v2, MathVista, MathVerse, with smaller
+    gains on BLINK and softforce VStar/HR.
+  - This is not a pure single-variable ablation against old CoreDev runs
+    because the current intended no-block run uses `kv_cache` while old
+    through-answer CoreDev runs used `no_kv_full_sequence`.
+  - The lower parse/append rates, especially MathVista append `0.00` under
+    no-block, need follow-up before claiming the mechanism is clean.
+- Conclusion:
+  - The requested full CoreDev-2511 no-block benchmark is complete.
+  - On this checkpoint and current intended inference path, no-block is better
+    than the old through-answer results in overall accuracy, but it introduces
+    a formatting/append regression that should be inspected next.
