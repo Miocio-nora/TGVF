@@ -1249,7 +1249,7 @@ def test_stage3_cli_plan_preflight_rollout_and_launch(tmp_path: Path) -> None:
     assert plan_path.exists()
     plan = json.loads(plan_path.read_text(encoding="utf-8"))
     assert plan["summary"]["rl_sample_count"] == 3
-    assert plan["config"]["model_id"] == "Qwen/Qwen3-VL-32B-Thinking"
+    assert plan["config"]["model_id"] == "Qwen/Qwen3-VL-8B-Thinking"
     assert plan["config"]["train"]["optimizer"] == "manual_sgd"
     assert plan["config"]["train"]["reference_policy"] == "frozen_stage2"
     assert plan["summary"]["reference_policy"] == "frozen_stage2"

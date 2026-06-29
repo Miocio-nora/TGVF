@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from revisit_vlm_clean.defaults import DEFAULT_MODEL_ID
 from revisit_vlm_clean.schema import DeepStackScope, DeepStackState, _to_jsonable
 
 STAGE3_GRPO_PLAN_SCHEMA_VERSION = "stage3_grpo_training_plan_v0"
@@ -16,7 +17,7 @@ STAGE3_GRPO_ROLLOUT_SCHEMA_VERSION = "stage3_grpo_rollout_v0"
 STAGE3_GRPO_REWARD_SCHEMA_VERSION = "stage3_grpo_reward_breakdown_v0"
 STAGE3_GRPO_PROBE_SCHEMA_VERSION = "stage3_grpo_probe_cache_v0"
 STAGE3_GRPO_JUDGE_SCHEMA_VERSION = "stage3_grpo_judge_cache_v0"
-DEFAULT_STAGE3_MODEL_ID = "Qwen/Qwen3-VL-32B-Thinking"
+DEFAULT_STAGE3_MODEL_ID = DEFAULT_MODEL_ID
 
 
 def now_iso() -> str:
