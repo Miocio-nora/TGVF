@@ -10300,3 +10300,95 @@ entry, update this file immediately.
   - Conclusion:
     `group_size=24` uses the 180G cards aggressively but has no safety margin.
     Use `group_size=20` for the next retry.
+
+## 2026-06-29 - Stage3 No-Block Frozen-Reference G20 8-Step Retry2
+
+- Status:
+  PLANNED.
+- Question:
+  Retry the Stage3 8-step pilot with a safer high-utilization group size after
+  `g24` reached OOM.
+- Baseline anchor:
+  - Failed OOM run:
+    `2026-06-29 - Stage3 No-Block Frozen-Reference G24 8-Step Retry1`.
+- Intended diff:
+  - Reduce `group_size` from `24` to `20`.
+  - Keep the fixed frozen-reference replay ordering, same sample ids/order,
+    same Stage2 checkpoint, same DeepStack no-block setting, same 4 GPUs, and
+    same token budgets.
+- Rationale for GPU utilization:
+  - `g24` peaked at `174G/182.6G/163G/166G` and OOMed on GPU1.
+  - `g20` should retain high replay utilization while leaving enough headroom
+    for long tool-triggered samples and allocator fragmentation.
+- Code/worktree:
+  - Branch: `clean/tgvf-clean-project-20260625`.
+  - Latest code commit before launch: `8f26ad2 Record Stage3 g24 retry OOM`.
+- Source checkpoint:
+  - `outputs/clean_training/qwen3_stage2_norm01_stage1_mask075_deepstack_4gpu_20260627_163250/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt`.
+  - SHA256:
+    `50245a11c27ad9755eb815b5f008af50a659fa07a4043f0f9427f5bbea3c0236`.
+- Train data:
+  - `revisit_vlm_clean/data/stage3_rl/v1_direct_20k_20260627_032447/accepted_rl_prompts.jsonl`.
+  - Rows: `20000`.
+  - SHA256:
+    `2e39a1dadcc020001bd3d763635f461d2b7dc6d94bfb3cfecdb9bb20240fa758`.
+- Output root:
+  - `outputs/stage3_grpo/all5_hint_no_block_frozenref_4gpu_g20_res768_8step_retry2_20260629`.
+- Sample schedule:
+  - `outputs/stage3_grpo/all5_hint_no_block_frozenref_4gpu_g20_res768_8step_retry2_20260629/stage3_grpo_sample_schedule.jsonl`.
+  - Rows: `32` = 8 steps x 4 ranks x 1 prompt.
+  - SHA256:
+    `6e1154d856adc83a4de85837e40b6890927a0727382694bfbad33db7bc828a87`.
+  - Same sample-id order as failed `g12` and `g24`: `true`, overlap
+    `32/32`.
+  - Tool buckets: `tool_helpful=20`, `tool_unnecessary=7`,
+    `uncertain=5`.
+  - Tool hints: `useful_tool=18`, `likely_required=2`, `no_tool=7`,
+    `optional_tool=5`.
+  - Source mix: `textvqa=14`, `visual_genome=12`, `docvqa=4`,
+    `chartqa=2`.
+- Planned Stage3 config:
+  - Runtime backend: `native_single_focus`.
+  - Policy model/processor:
+    `/nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking`.
+  - Judge model: `qwen3_vl_32b_thinking`, no-thinking JSON judge.
+  - DeepStack: `enabled=true`, `original_image_scope=no_block`,
+    `d_features_enabled=false`.
+  - Reference policy: `frozen_stage2`.
+  - Optimizer: `manual_sgd`.
+  - GPUs: physical `0,1,2,3`.
+  - World size: `4`.
+  - Group size: `20`.
+  - Per-device prompt batch: `1`.
+  - Global rollouts per step: `80`.
+  - Total pilot steps: `8`.
+  - Total sampled rollouts if complete: `640`.
+  - Max image resolution: `768`.
+  - Max new/action/answer tokens: `256/128/160`.
+  - Reward weights: answer `2.0`, tool `1.0`, focus `1.0`,
+    grounding `1.0`, protocol gate additive with penalty `-1.0`.
+  - W&B: project `tgvf-stage3`, mode `online`, group
+    `stage3-no-block-frozenref-pilot`, checkpoint artifact upload disabled.
+- Plan/preflight:
+  - Plan:
+    `outputs/stage3_grpo/all5_hint_no_block_frozenref_4gpu_g20_res768_8step_retry2_20260629/step_000001/stage3_grpo_training_plan.json`.
+  - Plan SHA256:
+    `4f8f3d12cf70f79212aa0a488c0670a9a96fc23a01221d18629281304680482b`.
+  - Stage3 executor preflight: `passed`.
+  - Stepwise preflight: `passed`.
+- Launch scripts:
+  - Foreground:
+    `outputs/stage3_grpo/all5_hint_no_block_frozenref_4gpu_g20_res768_8step_retry2_20260629/run_stepwise_foreground.sh`.
+  - Tmux:
+    `outputs/stage3_grpo/all5_hint_no_block_frozenref_4gpu_g20_res768_8step_retry2_20260629/launch_tmux.sh`.
+  - Tracked wrapper:
+    `revisit_vlm_clean/scripts/launch_stage3_no_block_frozenref_g20_8step_retry2_20260629.sh`.
+  - Tmux session name if launched:
+    `stage3_no_block_frozenref_g20_8step_retry2`.
+- Planned launch command:
+  - `revisit_vlm_clean/scripts/launch_stage3_no_block_frozenref_g20_8step_retry2_20260629.sh`.
+- Early monitoring:
+  - Confirm no recurrence of the inplace-backward error.
+  - Confirm no OOM in step 1 replay/backward.
+  - Record step 1 GPU peaks, trigger rate, focus/ground judge rows, reward
+    distribution, and checkpoint creation.
