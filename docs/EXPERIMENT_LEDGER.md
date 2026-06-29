@@ -9490,5 +9490,9 @@ entry, update this file immediately.
     DeepStack scope, max resolution, action/answer token budgets, and GPUs.
   - Launch commit:
     `09a11aa`.
-  - Planned tmux session:
+  - Started:
+    `2026-06-29 11:59 JST`.
+  - tmux session:
     `diag_hr200_softforce_kv_deepstack_tailchunk_20260629`.
+  - Command:
+    `cd /nvmesv/dredvpn009/projects/r-vlm/revisit_vlm && outputs/clean_benchmarks/diagnostic_hr200_softforce_kv_deepstack_equiv_tailchunk_20260629/run_kv_tailchunk.sh`.
