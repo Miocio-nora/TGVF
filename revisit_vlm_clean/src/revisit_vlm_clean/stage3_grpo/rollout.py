@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import hashlib
 import math
-from contextlib import nullcontext
+from contextlib import ExitStack, nullcontext
 from typing import Protocol
 
 from revisit_vlm_clean.scoring import extract_final_answer
 from revisit_vlm_clean.tgvf_protocol import PROTOCOL_C_FOCUS_END, PROTOCOL_C_FOCUS_START
 
+from .policy_reference import PolicyReferenceSnapshot, swapped_policy_reference
 from .schemas import RolloutConfig, RolloutRecord, Stage3GRPOConfig, Stage3Sample
 
 
@@ -196,6 +197,7 @@ class NativeSingleFocusRolloutEngine:
         rollout: RolloutRecord,
         *,
         reference: bool = False,
+        reference_policy_snapshot: PolicyReferenceSnapshot | None = None,
     ):
         import torch
         from revisit_vlm.qwen3_vl_tgvf import (
@@ -216,7 +218,11 @@ class NativeSingleFocusRolloutEngine:
             raise ValueError(f"rollout {rollout.sample_id}/{rollout.rollout_id} has no replay tokens")
         model = engine.model  # type: ignore[attr-defined]
         processor = engine.processor  # type: ignore[attr-defined]
-        ctx = _reference_model_context(model) if reference else nullcontext()
+        ctx = (
+            _reference_model_context(model, snapshot=reference_policy_snapshot)
+            if reference
+            else nullcontext()
+        )
         with ctx:
             focus_logprobs = replay_focus_segment_logprobs(
                 model=model,
@@ -489,9 +495,31 @@ def _is_finite_float(value: object) -> bool:
         return False
 
 
-def _reference_model_context(model: object):
-    # Stage3 currently continues training the Stage2 LoRA adapter directly.
-    # Disabling adapters would make the reference path the base Qwen model, not
-    # the frozen Stage2 policy. Native updates therefore use detached
-    # teacher-forced replay logprobs as the behavior/reference baseline instead.
-    return nullcontext()
+def _reference_model_context(
+    model: object,
+    *,
+    snapshot: PolicyReferenceSnapshot | None = None,
+):
+    # Never call PEFT disable_adapter() here: that would turn the reference into
+    # base Qwen, not the frozen Stage2 policy. A provided snapshot swaps only the
+    # Stage3-trainable adapter/token parameters and runs replay without grads.
+    if snapshot is None:
+        return nullcontext()
+    import torch
+
+    class _ReferenceContext:
+        def __enter__(self):
+            self._stack = ExitStack()
+            self._was_training = bool(getattr(model, "training", False))
+            self._stack.enter_context(swapped_policy_reference(model, snapshot))
+            self._stack.enter_context(torch.no_grad())
+            if hasattr(model, "eval"):
+                model.eval()
+            return None
+
+        def __exit__(self, exc_type, exc, tb):
+            if hasattr(model, "train"):
+                model.train(self._was_training)
+            return self._stack.__exit__(exc_type, exc, tb)
+
+    return _ReferenceContext()

@@ -21,6 +21,10 @@ from revisit_vlm_clean.stage3_grpo.native_replay import (
     replay_inputs_with_generated_text,
     selected_token_logprobs_from_logits,
 )
+from revisit_vlm_clean.stage3_grpo.policy_reference import (
+    capture_frozen_policy_reference,
+    swapped_policy_reference,
+)
 from revisit_vlm_clean.stage3_grpo.probe import ProbeCache
 from revisit_vlm_clean.stage3_grpo.reward import answer_is_correct, score_rollout_reward
 from revisit_vlm_clean.stage3_grpo.rollout import FakeRolloutEngine
@@ -36,6 +40,7 @@ from revisit_vlm_clean.stage3_grpo.schemas import (
     TrainConfig,
 )
 from revisit_vlm_clean.stage3_grpo.trainer import (
+    Stage3GRPOTrainer,
     _stage3_configure_native_trainables,
     _stage3_distributed_average_gradients,
     _stage3_rollout_replay_token_count,
@@ -264,6 +269,11 @@ def test_stage3_train_config_accepts_manual_sgd() -> None:
     TrainConfig(optimizer="manual_sgd").validate()
 
 
+def test_stage3_train_config_accepts_reference_policy_modes() -> None:
+    TrainConfig(reference_policy="frozen_stage2").validate()
+    TrainConfig(reference_policy="on_policy_detached").validate()
+
+
 def test_stage3_config_round_trips_deepstack_state(tmp_path: Path) -> None:
     config = Stage3GRPOConfig(
         run_id="deepstack_roundtrip",
@@ -417,6 +427,124 @@ def test_stage3_reference_context_does_not_disable_stage2_adapter() -> None:
         pass
 
     assert policy.disable_called is False
+
+
+def test_stage3_policy_reference_snapshot_swaps_and_restores_adapter() -> None:
+    import torch
+
+    class Policy(torch.nn.Module):
+        def __init__(self) -> None:
+            super().__init__()
+            self.base = torch.nn.Linear(1, 1)
+            self.register_parameter("lora_adapter", torch.nn.Parameter(torch.tensor([1.0])))
+
+    policy = Policy()
+    _stage3_configure_native_trainables(policy, None)
+    snapshot = capture_frozen_policy_reference(policy)
+    with torch.no_grad():
+        policy.lora_adapter.fill_(5.0)
+
+    with swapped_policy_reference(policy, snapshot):
+        assert torch.allclose(policy.lora_adapter.detach(), torch.tensor([1.0]))
+
+    assert torch.allclose(policy.lora_adapter.detach(), torch.tensor([5.0]))
+
+
+def test_stage3_native_update_uses_frozen_stage2_reference_snapshot(tmp_path: Path) -> None:
+    import torch
+
+    class Policy(torch.nn.Module):
+        def __init__(self) -> None:
+            super().__init__()
+            self.register_parameter("lora_adapter", torch.nn.Parameter(torch.tensor([0.25])))
+
+    class Runtime:
+        def __init__(self, model) -> None:
+            self.model = model
+            self.foveal_module = None
+
+    class Engine:
+        def __init__(self, model) -> None:
+            self._engine = Runtime(model)
+            self.reference_calls = 0
+
+        def replay_rollout_logprobs(
+            self,
+            sample,
+            rollout,
+            *,
+            reference=False,
+            reference_policy_snapshot=None,
+        ):
+            if reference:
+                self.reference_calls += 1
+                assert reference_policy_snapshot is not None
+                assert reference_policy_snapshot.source == "stage2_policy_before_stage3_updates"
+                return torch.full((2,), -1.5)
+            value = self._engine.model.lora_adapter.view(())
+            return torch.stack([value, value + 0.1])
+
+    data = _write_rl_fixture(tmp_path)
+    config = Stage3GRPOConfig(
+        run_id="native_frozen_ref",
+        rl_data_path=str(data),
+        output_dir=str(tmp_path / "out"),
+        policy_checkpoint=str(tmp_path / "stage2.pt"),
+        train=TrainConfig(
+            optimizer="manual_sgd",
+            reference_policy="frozen_stage2",
+            learning_rate=0.01,
+            kl_coef=0.1,
+            max_grad_norm=0.0,
+        ),
+    )
+    samples = load_stage3_samples(data)
+    model = Policy()
+    engine = Engine(model)
+    trainer = Stage3GRPOTrainer.__new__(Stage3GRPOTrainer)
+    trainer.config = config
+    trainer.engine = engine
+    trainer.samples = samples
+    trainer.progress_path = tmp_path / "progress.jsonl"
+    trainer.distributed = {
+        "rank": 0,
+        "local_rank": 0,
+        "world_size": 1,
+        "distributed": False,
+    }
+    rollouts = [
+        RolloutRecord(
+            sample_id="s1",
+            rollout_id=0,
+            rollout_type="free",
+            raw_output="a",
+            final_answer="a",
+            used_tool=False,
+            num_tool_calls=0,
+            protocol={"focus_generated_ids": [1, 2], "continuation_generated_ids": []},
+        ),
+        RolloutRecord(
+            sample_id="s1",
+            rollout_id=1,
+            rollout_type="free",
+            raw_output="b",
+            final_answer="b",
+            used_tool=False,
+            num_tool_calls=0,
+            protocol={"focus_generated_ids": [3, 4], "continuation_generated_ids": []},
+        ),
+    ]
+    rewards = [
+        {"sample_id": "s1", "rollout_id": 0, "reward_total": 0.0},
+        {"sample_id": "s1", "rollout_id": 1, "reward_total": 1.0},
+    ]
+
+    update = trainer.native_grpo_update(rollouts, rewards, global_step=1)
+
+    assert engine.reference_calls == 2
+    assert update["reference_policy"] == "frozen_stage2"
+    assert update["reference_logprobs_source"] == "teacher_forced_frozen_stage2_snapshot"
+    assert update["reference_policy_snapshot"]["tensor_count"] == 1
 
 
 def test_stage3_judge_json_parser() -> None:
@@ -1121,7 +1249,10 @@ def test_stage3_cli_plan_preflight_rollout_and_launch(tmp_path: Path) -> None:
     assert plan_path.exists()
     plan = json.loads(plan_path.read_text(encoding="utf-8"))
     assert plan["summary"]["rl_sample_count"] == 3
+    assert plan["config"]["model_id"] == "Qwen/Qwen3-VL-32B-Thinking"
     assert plan["config"]["train"]["optimizer"] == "manual_sgd"
+    assert plan["config"]["train"]["reference_policy"] == "frozen_stage2"
+    assert plan["summary"]["reference_policy"] == "frozen_stage2"
     assert plan["config"]["deepstack"] == {
         "d_features_enabled": False,
         "enabled": True,
@@ -1134,6 +1265,7 @@ def test_stage3_cli_plan_preflight_rollout_and_launch(tmp_path: Path) -> None:
         (output_dir / "stage3_grpo_preflight_report.json").read_text(encoding="utf-8")
     )
     assert preflight["deepstack"]["original_image_scope"] == "evidence_only"
+    assert preflight["reference_policy"] == "frozen_stage2"
     assert executor_main(["--plan", str(plan_path), "--prepare-execution"]) == 0
     bundle = json.loads(
         (

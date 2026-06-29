@@ -9,7 +9,7 @@ from typing import Any
 
 from revisit_vlm_clean.cli.common import exit_not_implemented, print_json
 from revisit_vlm_clean.data_generation import file_identity
-from revisit_vlm_clean.defaults import DEFAULT_MAX_IMAGE_RESOLUTION, DEFAULT_MODEL_ID, DEFAULT_PROTOCOL
+from revisit_vlm_clean.defaults import DEFAULT_MAX_IMAGE_RESOLUTION, DEFAULT_PROTOCOL
 from revisit_vlm_clean.schema import DeepStackScope, DeepStackState
 from revisit_vlm_clean.stage3_grpo.data import dataset_identity, load_stage3_samples, sample_schedule_identity
 from revisit_vlm_clean.stage3_grpo.schemas import (
@@ -17,6 +17,7 @@ from revisit_vlm_clean.stage3_grpo.schemas import (
     ProbeConfig,
     RewardConfig,
     RolloutConfig,
+    DEFAULT_STAGE3_MODEL_ID,
     STAGE3_GRPO_PLAN_SCHEMA_VERSION,
     Stage3GRPOConfig,
     TrainConfig,
@@ -41,7 +42,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--policy-checkpoint")
     parser.add_argument("--sample-schedule-path", default=None)
     parser.add_argument("--sample-schedule-start-step", type=int, default=1)
-    parser.add_argument("--model-id", default=DEFAULT_MODEL_ID)
+    parser.add_argument("--model-id", default=DEFAULT_STAGE3_MODEL_ID)
     parser.add_argument("--processor-id", default=None)
     parser.add_argument("--protocol", choices=SUPPORTED_PROTOCOLS, default=DEFAULT_PROTOCOL)
     parser.add_argument("--max-image-resolution", type=int, default=DEFAULT_MAX_IMAGE_RESOLUTION)
@@ -112,6 +113,16 @@ def build_parser() -> argparse.ArgumentParser:
 
     parser.add_argument("--max-steps", type=int, default=1)
     parser.add_argument("--optimizer", choices=("adamw", "manual_sgd"), default="adamw")
+    parser.add_argument(
+        "--reference-policy",
+        choices=("frozen_stage2", "on_policy_detached"),
+        default="frozen_stage2",
+        help=(
+            "Reference logprob source for the KL term. frozen_stage2 snapshots "
+            "the Stage2 policy adapter before Stage3 updates; on_policy_detached "
+            "keeps the lighter old detached replay behavior."
+        ),
+    )
     parser.add_argument("--world-size", type=int, default=1)
     parser.add_argument("--per-device-prompt-batch-size", type=int, default=1)
     parser.add_argument("--gradient-accumulation-steps", type=int, default=1)
@@ -222,6 +233,7 @@ def build_stage3_grpo_training_plan(
                 "ground": config.reward.w_ground,
                 "protocol_gate": "additive",
             },
+            "reference_policy": config.train.reference_policy,
             "will_launch_training": False,
             "plan_only": True,
             "wandb_enabled": bool(config.wandb.project and config.wandb.mode != "disabled"),
@@ -341,6 +353,7 @@ def _config_from_args(args: argparse.Namespace) -> Stage3GRPOConfig:
         ),
         train=TrainConfig(
             optimizer=args.optimizer,
+            reference_policy=args.reference_policy,
             max_steps=args.max_steps,
             world_size=args.world_size,
             per_device_prompt_batch_size=args.per_device_prompt_batch_size,
@@ -408,6 +421,7 @@ def _plan_text(plan: dict[str, Any]) -> str:
         f"runtime_backend: {summary['runtime_backend']}",
         f"world_size: {config['train']['world_size']}",
         f"optimizer: {config['train'].get('optimizer')}",
+        f"reference_policy: {config['train'].get('reference_policy')}",
         f"group_size: {summary['group_size']}",
         f"global_rollouts_per_step: {summary['global_rollouts_per_step']}",
         f"max_tool_calls: {summary['max_tool_calls']}",

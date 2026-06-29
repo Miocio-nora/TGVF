@@ -9538,3 +9538,48 @@ entry, update this file immediately.
     runnable and metric-equivalent to `no_kv_full_sequence` on the HR200
     soft-force diagnostic. It is not bitwise output-identical, but the score
     disagreement is balanced (`+1/-1`) and aggregate metrics match.
+
+## 2026-06-29 - Stage3 Frozen Stage2 Reference Implementation
+
+- Status:
+  IMPLEMENTED_AND_UNIT_TESTED. No Stage3 training run launched in this entry.
+- Motivation:
+  The previous native Stage3 GRPO update used teacher-forced current-policy
+  replay with `.detach()` for both behavior and reference logprobs. That kept
+  the update lightweight and avoided the wrong base-Qwen `disable_adapter()`
+  reference, but `kl_coef` did not actually constrain the policy against a
+  frozen Stage2 policy.
+- Implementation:
+  - Added `train.reference_policy` with choices:
+    - `frozen_stage2` default.
+    - `on_policy_detached` diagnostic fallback.
+  - Added a frozen Stage2 policy reference snapshot for native Stage3:
+    - captures only Stage3-trainable policy adapter/token parameters after the
+      native trainable scope is configured;
+    - does not duplicate the base 32B Qwen weights or the frozen TGVF module;
+    - computes reference logprobs by temporarily swapping the current adapter
+      parameters to the frozen snapshot under `eval()` and `torch.no_grad()`;
+    - restores the current adapter parameters before current-policy replay, so
+      the autograd graph for `new_logprobs` is not built across a parameter
+      swap.
+  - Native Stage3 update now reports:
+    - `reference_policy`;
+    - `reference_logprobs_source`;
+    - `reference_policy_snapshot` summary.
+  - Stage3 planner default model changed to `Qwen/Qwen3-VL-32B-Thinking`
+    without changing the global clean default used by Stage1/Stage2/eval.
+  - Stage3 still does not enable post-D original-image visual-key blocking by
+    default. The DeepStack/key-block capability remains an explicit runtime
+    configuration, not the intended default Stage3 RL setting.
+- Verification:
+  - `python -m compileall -q revisit_vlm_clean/src/revisit_vlm_clean/stage3_grpo revisit_vlm_clean/src/revisit_vlm_clean/cli/train_stage3_grpo.py revisit_vlm_clean/src/revisit_vlm_clean/training/stage3_grpo_executor.py revisit_vlm_clean/tests/test_stage3_grpo.py`
+    passed.
+  - `PYTHONPATH=revisit_vlm_clean/src:src pytest -q revisit_vlm_clean/tests/test_stage3_grpo.py`
+    passed: `43 passed`.
+  - `PYTHONPATH=revisit_vlm_clean/src:src pytest -q revisit_vlm_clean/tests/test_runner_backend.py revisit_vlm_clean/tests/test_schema.py`
+    passed: `32 passed, 2 warnings`.
+- Notes:
+  - Behavior/old logprobs are still teacher-forced current-policy replay
+    detached for the one-update-per-rollout path.
+  - The new frozen Stage2 reference affects the KL term. It is not a second
+    full 32B model in memory.

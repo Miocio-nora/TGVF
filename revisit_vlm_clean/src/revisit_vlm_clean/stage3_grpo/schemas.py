@@ -16,6 +16,7 @@ STAGE3_GRPO_ROLLOUT_SCHEMA_VERSION = "stage3_grpo_rollout_v0"
 STAGE3_GRPO_REWARD_SCHEMA_VERSION = "stage3_grpo_reward_breakdown_v0"
 STAGE3_GRPO_PROBE_SCHEMA_VERSION = "stage3_grpo_probe_cache_v0"
 STAGE3_GRPO_JUDGE_SCHEMA_VERSION = "stage3_grpo_judge_cache_v0"
+DEFAULT_STAGE3_MODEL_ID = "Qwen/Qwen3-VL-32B-Thinking"
 
 
 def now_iso() -> str:
@@ -134,6 +135,7 @@ class JudgeConfig:
 class TrainConfig:
     algorithm: str = "grpo"
     optimizer: str = "adamw"
+    reference_policy: str = "frozen_stage2"
     max_steps: int = 1
     world_size: int = 1
     per_device_prompt_batch_size: int = 1
@@ -153,6 +155,8 @@ class TrainConfig:
             raise ValueError("train.algorithm must be grpo")
         if self.optimizer not in {"adamw", "manual_sgd"}:
             raise ValueError("train.optimizer must be adamw or manual_sgd")
+        if self.reference_policy not in {"frozen_stage2", "on_policy_detached"}:
+            raise ValueError("train.reference_policy must be frozen_stage2 or on_policy_detached")
         for name in (
             "max_steps",
             "world_size",
@@ -202,7 +206,7 @@ class Stage3GRPOConfig:
     policy_checkpoint: str
     sample_schedule_path: str | None = None
     sample_schedule_start_step: int = 1
-    model_id: str = "Qwen/Qwen3-VL-8B-Thinking"
+    model_id: str = DEFAULT_STAGE3_MODEL_ID
     processor_id: str | None = None
     protocol: str = "protocol_c_tool_observation"
     max_image_resolution: int = 512

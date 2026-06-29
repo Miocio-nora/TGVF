@@ -18,6 +18,11 @@ from .data import BalancedPromptSampler, load_stage3_sample_schedule, load_stage
 from .data import dataset_identity
 from .grpo import attach_group_advantages, grpo_loss_from_tensors, rollout_logprob_tensors
 from .judge import JudgeBundle
+from .policy_reference import (
+    STAGE3_POLICY_ADAPTER_MARKERS,
+    PolicyReferenceSnapshot,
+    capture_frozen_policy_reference,
+)
 from .probe import ProbeCache
 from .reward import score_rollout_reward
 from .rollout import build_rollout_engine
@@ -481,6 +486,27 @@ class Stage3GRPOTrainer:
             )
         return checkpoint_path
 
+    def _stage3_reference_snapshot(
+        self,
+        model: Any,
+    ) -> tuple[PolicyReferenceSnapshot | None, dict[str, Any]]:
+        if self.config.train.reference_policy == "on_policy_detached":
+            return None, {
+                "source": "teacher_forced_policy_replay_detached",
+                "tensor_count": 0,
+                "parameter_count": 0,
+            }
+        if self.config.train.reference_policy != "frozen_stage2":
+            raise ValueError(f"unsupported reference_policy: {self.config.train.reference_policy}")
+        if not hasattr(self, "_frozen_stage2_reference_snapshot"):
+            self._frozen_stage2_reference_snapshot = capture_frozen_policy_reference(model)
+            self._progress(
+                "frozen_stage2_reference_snapshot_captured",
+                reference_summary=self._frozen_stage2_reference_snapshot.summary(),
+            )
+        snapshot = self._frozen_stage2_reference_snapshot
+        return snapshot, snapshot.summary()
+
     def _progress(self, event: str, **payload: Any) -> None:
         _append_jsonl(
             self.progress_path,
@@ -513,10 +539,13 @@ class Stage3GRPOTrainer:
         model = native_runtime.model
         foveal_module = getattr(native_runtime, "foveal_module", None)
         trainable_summary = _stage3_configure_native_trainables(model, foveal_module)
+        reference_snapshot, reference_summary = self._stage3_reference_snapshot(model)
         self._progress(
             "trainable_parameters",
             global_step=global_step,
             summary=trainable_summary,
+            reference_policy=self.config.train.reference_policy,
+            reference_summary=reference_summary,
         )
         model.train()
         if foveal_module is not None:
@@ -533,6 +562,34 @@ class Stage3GRPOTrainer:
         recorded_old_logprob_mismatches = 0
         for rollout_index, rollout in enumerate(rollouts):
             sample = sample_by_id[rollout.sample_id]
+            self._progress(
+                "replay_reference_start",
+                global_step=global_step,
+                rollout_index=rollout_index,
+                sample_id=rollout.sample_id,
+                rollout_id=rollout.rollout_id,
+                reference_policy=self.config.train.reference_policy,
+            )
+            if self.config.train.reference_policy == "frozen_stage2":
+                ref_logprobs = self.engine.replay_rollout_logprobs(  # type: ignore[attr-defined]
+                    sample,
+                    rollout,
+                    reference=True,
+                    reference_policy_snapshot=reference_snapshot,
+                ).detach().float()
+                ref_source = "teacher_forced_frozen_stage2_snapshot"
+            else:
+                ref_logprobs = None
+                ref_source = "teacher_forced_policy_replay_detached"
+            self._progress(
+                "replay_reference_done",
+                global_step=global_step,
+                rollout_index=rollout_index,
+                sample_id=rollout.sample_id,
+                rollout_id=rollout.rollout_id,
+                reference_policy=self.config.train.reference_policy,
+                token_count=None if ref_logprobs is None else int(ref_logprobs.numel()),
+            )
             self._progress(
                 "replay_policy_start",
                 global_step=global_step,
@@ -563,13 +620,20 @@ class Stage3GRPOTrainer:
             if recorded_old_count not in {0, int(new_logprobs.numel())}:
                 recorded_old_logprob_mismatches += 1
             old_logprobs = new_logprobs.detach().float()
-            ref_logprobs = old_logprobs.clone()
+            if ref_logprobs is None:
+                ref_logprobs = old_logprobs.clone()
+            elif int(ref_logprobs.numel()) != int(new_logprobs.numel()):
+                raise ValueError(
+                    f"reference replay length mismatch for {rollout.sample_id}/{rollout.rollout_id}: "
+                    f"ref={int(ref_logprobs.numel())} new={int(new_logprobs.numel())}"
+                )
             self._progress(
-                "reference_logprobs_reused_from_replay_policy",
+                "reference_logprobs_ready",
                 global_step=global_step,
                 rollout_index=rollout_index,
                 sample_id=rollout.sample_id,
                 rollout_id=rollout.rollout_id,
+                reference_logprobs_source=ref_source,
                 token_count=int(ref_logprobs.numel()),
                 recorded_old_logprob_count=recorded_old_count,
             )
@@ -645,7 +709,13 @@ class Stage3GRPOTrainer:
             "mean_reward": sum(reward_map.values()) / max(len(reward_map), 1),
             "replayed_tokens": float(mask_tensor.sum().detach().cpu()),
             "behavior_logprobs_source": "teacher_forced_policy_replay_detached",
-            "reference_logprobs_source": "teacher_forced_policy_replay_detached",
+            "reference_logprobs_source": (
+                "teacher_forced_frozen_stage2_snapshot"
+                if self.config.train.reference_policy == "frozen_stage2"
+                else "teacher_forced_policy_replay_detached"
+            ),
+            "reference_policy": self.config.train.reference_policy,
+            "reference_policy_snapshot": reference_summary,
             "recorded_old_logprob_mismatches": int(recorded_old_logprob_mismatches),
             "gradient_accumulation_steps": int(self.config.train.gradient_accumulation_steps),
             "rank": int(self.distributed["rank"]),
@@ -825,7 +895,7 @@ def _stage3_configure_native_trainables(model: Any, foveal_module: Any | None) -
 
 
 def _stage3_restrict_policy_trainables(model: Any) -> dict[str, Any]:
-    markers = ("lora_", "modules_to_save", "trainable_tokens", "token_adapter")
+    markers = STAGE3_POLICY_ADAPTER_MARKERS
     total_parameters = 0
     trainable_parameters = 0
     trainable_tensors = 0
