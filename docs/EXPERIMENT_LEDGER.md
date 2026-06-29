@@ -10850,7 +10850,7 @@ entry, update this file immediately.
 ## 2026-06-30 - Stage3 Reward-Gated Soft-Prompt4 Tool Exploration G20 8-Step Pilot
 
 - Status:
-  RUNNING.
+  FAILED_MEMORY_SIDE_RESULT.
 - Question:
   After `softprompt8` proved that soft prompting increases tool triggers but
   OOMed during policy replay, can a softer `soft_count=4` setting complete the
@@ -10944,3 +10944,52 @@ entry, update this file immediately.
     `https://wandb.ai/mio_nora/tgvf-stage3/runs/z7o0if7q`.
   - State immediately after launch:
     `status=running`, `next_step=1`, `completed_steps=[]`.
+- Outcome:
+  - Failed during `step_000001` launch-training.
+  - Failed at: `2026-06-30 01:47:35 JST`.
+  - Final state:
+    `status=failed`, `next_step=1`, `completed_steps=[]`.
+  - Tmux session exited; GPUs 0-7 were idle after failure.
+  - No checkpoint was produced.
+  - W&B:
+    `https://wandb.ai/mio_nora/tgvf-stage3/runs/z7o0if7q`.
+  - Failure:
+    Rank0 completed policy replay and `backward_done`, then failed at
+    `gradient_allreduce_start` with NCCL `ncclUnhandledCudaError`:
+    `Failed to CUDA calloc async 16 bytes`.
+  - Peak GPU memory from `gpu_mem_trace.csv`:
+    GPU0 `182564 MiB`, GPU1 `173230 MiB`, GPU2 `139074 MiB`,
+    GPU3 `141754 MiB`.
+- Partial rollout/reward diagnostics from failed step 1:
+  - Training rollout rows: `80`.
+  - Rollout type counts: `free=76`, `soft_tool_prompt=4`.
+  - Trigger count/rate: `6/80 = 7.50%`.
+  - Free trigger count/rate: `3/76 = 3.95%`.
+  - Soft-prompt trigger count/rate: `3/4 = 75.00%`.
+  - Reward rows: `80`.
+  - Tool labels: `tool_needed=20`, `tool_unnecessary=60`.
+  - Answer accuracy over reward rows: `65.0%`.
+  - Mean reward over reward rows: `1.7294`.
+- Analysis:
+  - `soft_count=4` passed the earlier `softprompt8` failure point: rank0
+    completed all policy replay and backward. The failure moved to distributed
+    gradient all-reduce, where CUDA could not allocate even `16` bytes.
+  - This supports the memory diagnosis: more triggered trajectories increase
+    GPU pressure because tool-triggered rollouts contain longer action/focus
+    and post-D answer spans, and the current native GRPO update keeps grouped
+    per-rollout autograd graphs alive until the group loss/backward/all-reduce
+    boundary.
+  - The soft prompt itself is effective for exploration: on the first
+    tool-needed rank0 sample it triggered `3/4` times while remaining
+    non-forced.
+- Conclusion:
+  - `soft_count=4` is still too close to the 180G memory boundary for the
+    current implementation at `group_size=20`, `max_image_resolution=768`,
+    DeepStack no-block, and 4-GPU distributed update.
+  - Do not treat this as a reward or protocol failure. Treat it as evidence
+    that Stage3 needs a memory-safe update path, e.g. chunked policy
+    replay/backward or another way to avoid retaining all triggered rollout
+    graphs through all-reduce.
+  - A lower `soft_count=2` or lower group size could be used only as a quick
+    diagnostic; it should not be the main fix if we want stable soft tool
+    exploration.
