@@ -10850,7 +10850,7 @@ entry, update this file immediately.
 ## 2026-06-30 - Stage3 Reward-Gated Soft-Prompt4 Tool Exploration G20 8-Step Pilot
 
 - Status:
-  PLANNED.
+  RUNNING.
 - Question:
   After `softprompt8` proved that soft prompting increases tool triggers but
   OOMed during policy replay, can a softer `soft_count=4` setting complete the
@@ -10934,3 +10934,13 @@ entry, update this file immediately.
     `stage3_softprompt4_g20_8step_20260630_013548`.
   - Planned launch command:
     `revisit_vlm_clean/scripts/launch_stage3_softprompt4_g20_8step_20260630_013548.sh`.
+- Actual launch:
+  - Started: `2026-06-30 01:40:15 JST`.
+  - Tmux session:
+    `stage3_softprompt4_g20_8step_20260630_013548`.
+  - Command:
+    `revisit_vlm_clean/scripts/launch_stage3_softprompt4_g20_8step_20260630_013548.sh`.
+  - W&B:
+    `https://wandb.ai/mio_nora/tgvf-stage3/runs/z7o0if7q`.
+  - State immediately after launch:
+    `status=running`, `next_step=1`, `completed_steps=[]`.
