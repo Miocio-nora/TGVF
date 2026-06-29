@@ -11342,3 +11342,86 @@ entry, update this file immediately.
   - Do not launch a long formal Stage3 run until the zero-gradient diagnostic is
     resolved.
 
+## 2026-06-30 - Stage3 G8 PB2 Optional SoftPrompt4 Gradient Diagnostic
+
+- Status:
+  PLANNED.
+- Question:
+  Before launching a longer formal Stage3 run, does the lighter candidate
+  `group_size=8`, `per_device_prompt_batch_size=2`, `4 free + 4 soft_tool_prompt`
+  for tool-needed-or-optional prompts produce real nonzero gradients, while
+  keeping canonical `max_image_resolution=512` and no-block DeepStack?
+- Baseline anchor:
+  - `2026-06-30 - Stage3 SoftPrompt8 G20 Res512 Worst-Case 1-Step Memory Probe`.
+  - Follow-up code commit for diagnostics and optional prompt exploration:
+    `237319a49a98c91155dc9e10e00181d12bf31f54`.
+- Intended diff:
+  - Reduce group size from `20` to `8`.
+  - Increase per-rank prompt batch from `1` to `2`.
+  - Use explicit exploration target `tool_needed_or_optional` so `optional_tool`
+    prompts receive soft tool prompt rollouts, while `no_tool` prompts remain
+    all-free.
+  - Keep Stage2 checkpoint, model/processor, DeepStack `no_block`, reward gate,
+    frozen Stage2 reference, token budgets, optimizer, and `max_image_resolution=512`
+    fixed.
+  - Run exactly one step for gradient/resource diagnosis, not learning conclusions.
+- Code/worktree:
+  - Branch: `clean/tgvf-clean-project-20260625`.
+  - Code commit before plan generation:
+    `237319a49a98c91155dc9e10e00181d12bf31f54`.
+  - Template plan generation was done from a clean git worktree.
+- Source checkpoint:
+  - `outputs/clean_training/qwen3_stage2_norm01_stage1_mask075_deepstack_4gpu_20260627_163250/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt`.
+  - SHA256:
+    `50245a11c27ad9755eb815b5f008af50a659fa07a4043f0f9427f5bbea3c0236`.
+- Train data:
+  - `revisit_vlm_clean/data/stage3_rl/v1_direct_20k_20260627_032447/accepted_rl_prompts.jsonl`.
+  - Rows: `20000`.
+  - SHA256:
+    `2e39a1dadcc020001bd3d763635f461d2b7dc6d94bfb3cfecdb9bb20240fa758`.
+- Sample schedule:
+  - `outputs/stage3_grpo/all5_hint_no_block_frozenref_rewardgate_softprompt4_4gpu_g8_pb2_opt_res512_graddiag_1step_20260630_032030/stage3_grpo_sample_schedule.jsonl`.
+  - Rows: `8`.
+  - SHA256:
+    `badb0c3755ff63b5e54dbcf4f10b19a3482e179e810ea80c50b0b8f85b38d140`.
+  - Tool hints: `useful_tool=3`, `optional_tool=2`, `no_tool=3`.
+  - Source datasets: `textvqa=3`, `docvqa=3`, `chartqa=2`.
+  - Duplicate sample/image ids: `0/0`.
+- Planned Stage3 config:
+  - Runtime backend: `native_single_focus`.
+  - Policy model/processor:
+    `/nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking`.
+  - Judge model: `qwen3_vl_32b_thinking`, no-thinking JSON judge.
+  - DeepStack: `enabled=true`, `original_image_scope=no_block`,
+    `d_features_enabled=false`.
+  - Reference policy: `frozen_stage2`.
+  - Optimizer: `manual_sgd`.
+  - GPUs: physical `0,1,2,3`.
+  - World size: `4`.
+  - Group size: `8`.
+  - Per-device prompt batch: `2`.
+  - Gradient accumulation: `1`.
+  - Max steps: `1`.
+  - Global rollouts in the step: `64`.
+  - Expected rollout split from schedule: `free=44`, `soft_tool_prompt=20`.
+  - Max image resolution: `512`.
+  - Judge max image resolution: `512`.
+  - Max new/action/answer tokens: `256/128/160`.
+  - Reward gate: `gate_answer_without_required_tool=true`,
+    `required_tool_no_call_penalty=2.0`.
+  - Tool exploration:
+    `apply_to=tool_needed_or_optional`, `soft_count=4`, `hard_count=0`,
+    prompt suffix `Use the focus tool if it helps answer precisely.`
+  - KL coefficient: `0.02`.
+  - Max grad norm: `0.0`, meaning clipping is disabled; gradient magnitude will
+    be read from the added `grad_debug_after_backward` and
+    `grad_debug_after_allreduce` events.
+  - W&B: disabled for this diagnostic.
+- Output root:
+  - `outputs/stage3_grpo/all5_hint_no_block_frozenref_rewardgate_softprompt4_4gpu_g8_pb2_opt_res512_graddiag_1step_20260630_032030`.
+- Plan/preflight:
+  - Template plan:
+    `outputs/stage3_grpo/all5_hint_no_block_frozenref_rewardgate_softprompt4_4gpu_g8_pb2_opt_res512_graddiag_1step_20260630_032030/step_000001/stage3_grpo_training_plan.json`.
+  - Template plan SHA256:
+    `94b306f5f4f43014f44f66d2865aea1a6fc5e4d9f24135254517ed5a60c6cd46`.
+  - Stepwise preflight: `passed`.
