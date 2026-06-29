@@ -11195,7 +11195,7 @@ entry, update this file immediately.
 ## 2026-06-30 - Stage3 SoftPrompt8 G20 Res512 Worst-Case 1-Step Memory Probe
 
 - Status:
-  PLANNED.
+  RUNNING.
 - Question:
   With canonical `max_image_resolution=512`, can `group_size=20` with the
   canonical `12 free + 8 soft_tool_prompt` tool-needed split fit when all four
@@ -11293,4 +11293,12 @@ entry, update this file immediately.
   - Planned tmux session:
     `stage3_softprompt8_g20_res512_1step_worstmem_20260630_024144`.
 - Launch status:
-  - Not launched yet in this PLANNED entry.
+  - Started: `2026-06-30 02:45:18 JST`.
+  - Tmux session:
+    `stage3_softprompt8_g20_res512_1step_worstmem_20260630_024144`.
+  - Command:
+    `revisit_vlm_clean/scripts/launch_stage3_softprompt8_g20_res512_1step_worstmem_20260630_024144.sh`.
+  - Runtime commit from `run_config.txt`:
+    `714a2c3fd4f44a52a2da9b225b0a08ae8b6fd39a`, git status short count `0`.
+  - State immediately after launch:
+    `status=running`, `next_step=1`, `completed_steps=[]`.
