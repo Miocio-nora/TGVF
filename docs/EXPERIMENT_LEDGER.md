@@ -10706,3 +10706,101 @@ entry, update this file immediately.
     supervision, such as mixed free/soft-force/forced-tool rollouts inside
     each group, a small tool-call BC/CE auxiliary loss, or a temporary
     rollout-only logit bias for tool action tokens.
+
+## 2026-06-30 - Stage3 Reward-Gated Soft-Prompt Tool Exploration G20 8-Step Pilot
+
+- Status:
+  PLANNED.
+- Question:
+  The reward-gated `g20` pilot produced `0/640` tool triggers. If we keep the
+  same Stage2 checkpoint, same 32-row schedule, same reward gate, and same
+  no-block DeepStack setup, does adding a softer exploration branch cause
+  tool-needed rollouts to enter TGVF often enough for GRPO to see positive
+  tool trajectories?
+- Baseline anchor:
+  - `2026-06-30 - Stage3 Reward-Gated No-Block Frozen-Reference G20 8-Step
+    Rerun`.
+- Intended diff:
+  - Add configurable Stage3 rollout exploration in commit `5801f0a`.
+  - For samples with teacher hint `useful_tool` or `likely_required`, the last
+    `8/20` rollouts in each group use `rollout_type=soft_tool_prompt`.
+  - `soft_tool_prompt` appends this question suffix:
+    `Use the focus tool if it helps answer precisely.`
+  - Hard forced exploration remains disabled: `tool_exploration_hard_count=0`.
+  - Reward gate, reward weights, judge, Stage2 checkpoint, sample schedule,
+    DeepStack state, token budgets, optimizer, and 4-GPU topology are held
+    fixed.
+- Code/worktree:
+  - Branch: `clean/tgvf-clean-project-20260625`.
+  - Code commit:
+    `5801f0a601be7fb124f762a4683cc5bcc5724c51`.
+  - Verification before launch:
+    `python -m py_compile` on changed Stage3 files passed.
+  - Unit tests before launch:
+    `PYTHONPATH=revisit_vlm_clean/src:src pytest -q revisit_vlm_clean/tests/test_stage3_grpo.py -q`
+    passed: `47/47`.
+- Source checkpoint:
+  - `outputs/clean_training/qwen3_stage2_norm01_stage1_mask075_deepstack_4gpu_20260627_163250/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt`.
+  - SHA256:
+    `50245a11c27ad9755eb815b5f008af50a659fa07a4043f0f9427f5bbea3c0236`.
+- Train data:
+  - `revisit_vlm_clean/data/stage3_rl/v1_direct_20k_20260627_032447/accepted_rl_prompts.jsonl`.
+  - Rows: `20000`.
+  - SHA256:
+    `2e39a1dadcc020001bd3d763635f461d2b7dc6d94bfb3cfecdb9bb20240fa758`.
+- Sample schedule:
+  - Reused from baseline:
+    `outputs/stage3_grpo/all5_hint_no_block_frozenref_4gpu_g20_res768_8step_retry2_20260629/stage3_grpo_sample_schedule.jsonl`.
+  - Rows: `32` = 8 steps x 4 ranks x 1 prompt.
+  - SHA256:
+    `6e1154d856adc83a4de85837e40b6890927a0727382694bfbad33db7bc828a87`.
+  - Duplicate sample ids: `0`; duplicate image uids: `0`.
+  - Tool hints: `useful_tool=18`, `likely_required=2`, `no_tool=7`,
+    `optional_tool=5`.
+  - Source mix: `textvqa=14`, `visual_genome=12`, `docvqa=4`,
+    `chartqa=2`.
+- Planned Stage3 config:
+  - Runtime backend: `native_single_focus`.
+  - Policy model/processor:
+    `/nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking`.
+  - Judge model: `qwen3_vl_32b_thinking`, no-thinking JSON judge.
+  - DeepStack: `enabled=true`, `original_image_scope=no_block`,
+    `d_features_enabled=false`.
+  - Reference policy: `frozen_stage2`.
+  - Optimizer: `manual_sgd`.
+  - GPUs: physical `0,1,2,3`.
+  - World size: `4`.
+  - Group size: `20`.
+  - Per-device prompt batch: `1`.
+  - Global rollouts per step: `80`.
+  - Total pilot steps: `8`.
+  - Total sampled rollouts if complete: `640`.
+  - Max image resolution: `768`.
+  - Max new/action/answer tokens: `256/128/160`.
+  - Reward gate: `gate_answer_without_required_tool=true`,
+    `required_tool_no_call_penalty=2.0`.
+  - Tool exploration:
+    `apply_to=tool_needed`, `soft_count=8`, `hard_count=0`,
+    prompt suffix `Use the focus tool if it helps answer precisely.`
+  - W&B: project `tgvf-stage3`, mode `online`, group
+    `stage3-no-block-frozenref-rewardgate-softprompt-pilot`; stepwise child
+    plans disable per-step W&B runs.
+- Output root:
+  - `outputs/stage3_grpo/all5_hint_no_block_frozenref_rewardgate_softprompt8_4gpu_g20_res768_8step_20260630_011952`.
+- Plan/preflight:
+  - Template plan:
+    `outputs/stage3_grpo/all5_hint_no_block_frozenref_rewardgate_softprompt8_4gpu_g20_res768_8step_20260630_011952/step_000001/stage3_grpo_training_plan.json`.
+  - Template plan SHA256:
+    `7e00e5444f059b1fc1a98cc0e59131ae18e9d23ff7be3e48bfc24cf51df20f61`.
+  - Executor preflight: `passed`.
+- Launch scripts:
+  - Foreground:
+    `outputs/stage3_grpo/all5_hint_no_block_frozenref_rewardgate_softprompt8_4gpu_g20_res768_8step_20260630_011952/run_stepwise_foreground.sh`.
+  - Tmux:
+    `outputs/stage3_grpo/all5_hint_no_block_frozenref_rewardgate_softprompt8_4gpu_g20_res768_8step_20260630_011952/launch_tmux.sh`.
+  - Tracked wrapper:
+    `revisit_vlm_clean/scripts/launch_stage3_softprompt8_g20_8step_20260630_011952.sh`.
+  - Planned tmux session:
+    `stage3_softprompt8_g20_8step_20260630_011952`.
+  - Planned launch command:
+    `revisit_vlm_clean/scripts/launch_stage3_softprompt8_g20_8step_20260630_011952.sh`.
