@@ -9164,7 +9164,7 @@ entry, update this file immediately.
 
 ### DIAG-20260629-102455-clean-softforce-hr200-kv-vs-nokv
 
-- Status: RUNNING.
+- Status: BLOCKED_FOR_KV_DEEPSTACK_COMPARISON.
 - Question:
   - On a small high-trigger benchmark, test whether `kv_cache` and
     `no_kv_full_sequence` have matching accuracy and whether `kv_cache` is
@@ -9240,3 +9240,45 @@ entry, update this file immediately.
     `diag_hr200_softforce_kv_vs_nokv_20260629`.
   - Command:
     `cd /nvmesv/dredvpn009/projects/r-vlm/revisit_vlm && outputs/clean_benchmarks/diagnostic_hr200_softforce_kv_vs_nokv_20260629/run_kv_vs_nokv.sh`.
+- Results:
+  - No-KV output:
+    `outputs/clean_benchmarks/diagnostic_hr200_softforce_kv_vs_nokv_20260629/nokv/merged`.
+  - No-KV wall time: `2026-06-29T10:27:59+09:00` to
+    `2026-06-29T10:33:55+09:00`, about `5m56s` on 4 GPUs.
+  - No-KV metrics:
+    - n_rows `200`, n_scored `200`.
+    - accuracy `0.510000`.
+    - answer_parse_rate `0.995000`.
+    - trigger/focus_valid `0.720000`.
+    - append_success_rate `1.000000` among triggered appends.
+    - malformed_rate `0.000000`.
+    - row wall time sum `1232.50s`, mean `6.16s`, p50 `5.01s`.
+  - No-KV reproducibility against the full CoreDev soft-force HR slice:
+    - same sample ids/order: `200/200`.
+    - same final output: `200/200`.
+    - same parsed answer: `200/200`.
+    - same score: `200/200`.
+  - KV output:
+    `outputs/clean_benchmarks/diagnostic_hr200_softforce_kv_vs_nokv_20260629/kv`.
+  - KV result: invalid, no rows written.
+  - KV failure:
+    all four shards failed in `backend.prepare()` before model loading with
+    `NotImplementedError`.
+  - Failure reason:
+    current clean benchmark backend only reports implemented DeepStack hooks for
+    `post_tgvf_forward_mode=no_kv_full_sequence`. For
+    `post_tgvf_forward_mode=kv_cache` with DeepStack enabled and
+    `original_image_scope=through_answer`, the runtime correctly blocks the run
+    because these hooks are not ported:
+    `capture_original_image_deepstack_features`,
+    `carry_original_image_deepstack_through_post_tgvf_append`,
+    `apply_post_tgvf_deepstack_scope_mask`.
+- Conclusion:
+  - This diagnostic confirms the fresh no-KV HR200 path is stable and exactly
+    reproduces the old full CoreDev soft-force HR slice.
+  - It does not answer whether KV and no-KV are accuracy-equivalent under
+    controlled DeepStack, because the clean KV+DeepStack execution path is
+    intentionally blocked as unimplemented.
+  - A `DeepStack off` KV-vs-no-KV diagnostic would test cache mechanics only,
+    but it would not answer the requested controlled-DeepStack question and
+    should be a separately named ablation if run.
