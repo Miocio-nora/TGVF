@@ -10517,7 +10517,7 @@ entry, update this file immediately.
 ## 2026-06-30 - Stage3 Reward-Gated No-Block Frozen-Reference G20 8-Step Rerun
 
 - Status:
-  PLANNED.
+  RUNNING.
 - Question:
   From the same Stage2 checkpoint and same 32-row schedule as the completed
   `g20` 8-step pilot, does the required-tool reward gate make a fresh Stage3
@@ -10544,6 +10544,9 @@ entry, update this file immediately.
   - Branch: `clean/tgvf-clean-project-20260625`.
   - Code commit:
     `29ef3452470301a58dbd1197cad2d6a505129a65`.
+  - Launch wrapper/ledger commit before tmux start:
+    `985815b`. Diff from the template-plan commit is documentation/wrapper
+    only; no training source files changed.
   - Dirty worktree at template-plan generation: `false`.
 - Source checkpoint:
   - `outputs/clean_training/qwen3_stage2_norm01_stage1_mask075_deepstack_4gpu_20260627_163250/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt`.
@@ -10613,3 +10616,13 @@ entry, update this file immediately.
     `stage3_rewardgate_g20_8step_20260630_001248`.
 - Planned launch command:
   - `revisit_vlm_clean/scripts/launch_stage3_rewardgate_g20_8step_20260630_001248.sh`.
+- Actual launch:
+  - Started: `2026-06-30 00:20:18 JST`.
+  - Tmux session:
+    `stage3_rewardgate_g20_8step_20260630_001248`.
+  - Command:
+    `revisit_vlm_clean/scripts/launch_stage3_rewardgate_g20_8step_20260630_001248.sh`.
+  - W&B:
+    `https://wandb.ai/mio_nora/tgvf-stage3/runs/tkz1or5g`.
+  - State immediately after launch:
+    `status=running`, `next_step=1`, `completed_steps=[]`.
