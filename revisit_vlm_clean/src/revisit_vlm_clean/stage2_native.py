@@ -1326,7 +1326,7 @@ class NativeStage2Engine:
     def _continue_generation_blocking_original_image_keys(self, append_result: Any) -> Any:
         import torch
 
-        from revisit_vlm.qwen3_vl_tgvf import Qwen3Continuation
+        from revisit_vlm.qwen3_vl_tgvf import Qwen3Continuation, _select_next_token
 
         if self.model is None or self.processor is None:
             raise RuntimeError("native Stage2 model is not loaded")
@@ -1344,10 +1344,12 @@ class NativeStage2Engine:
         if next_position_ids is None or original_indices is None:
             raise ValueError("DeepStack continuation is missing position or original-key metadata")
         generated_ids: list[int] = []
+        generated_logprobs: list[float] = []
         stop_reason = "max_new_tokens"
         eos_token_id = tokenizer.eos_token_id
         device = logits.device
         param_dtype = next(self.model.parameters()).dtype
+        sampling = self._sampling_options()
         blocked_focus_start_ids: list[int] = []
         for marker in (
             "<|focus_start|>",
@@ -1361,9 +1363,11 @@ class NativeStage2Engine:
             if len(ids) == 1:
                 blocked_focus_start_ids.append(int(ids[0]))
         for _ in range(self.stage2_config.max_answer_tokens):
+            step_logits = logits[:, -1, :]
             if blocked_focus_start_ids:
-                logits[:, -1, blocked_focus_start_ids] = -torch.inf
-            next_token = torch.argmax(logits[:, -1, :], dim=-1, keepdim=True)
+                step_logits = step_logits.clone()
+                step_logits[:, blocked_focus_start_ids] = -torch.inf
+            next_token, selected_logprob = _select_next_token(step_logits, **sampling)
             restore_original_image_keys = restore_for_answer and _generated_answer_has_started(
                 tokenizer,
                 generated_ids,
@@ -1371,6 +1375,7 @@ class NativeStage2Engine:
             )
             token_id = int(next_token[0, 0].detach().cpu().item())
             generated_ids.append(token_id)
+            generated_logprobs.append(float(selected_logprob))
             input_ids = torch.cat([input_ids.to(device), next_token.to(device)], dim=-1)
             next_attention = torch.ones(
                 (attention_mask.shape[0], 1),
@@ -1420,7 +1425,124 @@ class NativeStage2Engine:
             input_ids=input_ids,
             last_logits=logits,
             stop_reason=stop_reason,
+            generated_logprobs=generated_logprobs,
         )
+
+    def teacher_forced_continue_logprobs(
+        self,
+        append_result: Any,
+        *,
+        generated_token_ids: list[int],
+    ) -> Any:
+        from revisit_vlm.qwen3_vl_tgvf import teacher_forced_continue_logprobs_qwen3
+
+        if self.model is None or self.processor is None:
+            raise RuntimeError("native Stage2 model is not loaded")
+        if bool((append_result.model_kwargs or {}).get("tgvf_block_original_image_keys")):
+            return self._teacher_forced_continue_logprobs_blocking_original_image_keys(
+                append_result,
+                generated_token_ids=generated_token_ids,
+            )
+        return teacher_forced_continue_logprobs_qwen3(
+            self.model,
+            self.processor,
+            append_result,
+            generated_token_ids=generated_token_ids,
+        )
+
+    def _teacher_forced_continue_logprobs_blocking_original_image_keys(
+        self,
+        append_result: Any,
+        *,
+        generated_token_ids: list[int],
+    ) -> Any:
+        import torch
+
+        if self.model is None or self.processor is None:
+            raise RuntimeError("native Stage2 model is not loaded")
+        tokenizer = self.processor.tokenizer
+        logits = append_result.last_logits
+        if logits is None:
+            raise ValueError("DeepStack teacher-forced continuation replay requires state.last_logits")
+        past_key_values = append_result.past_key_values
+        attention_mask = append_result.attention_mask
+        input_ids = append_result.input_ids
+        model_kwargs = dict(append_result.model_kwargs or {})
+        next_position_ids = model_kwargs.get("tgvf_next_position_ids")
+        original_indices = model_kwargs.get("tgvf_original_image_token_indices")
+        restore_for_answer = bool(model_kwargs.get("tgvf_deepstack_restore_for_answer"))
+        if attention_mask is None or input_ids is None:
+            raise ValueError("DeepStack teacher-forced continuation requires input_ids and 2D attention")
+        if next_position_ids is None or original_indices is None:
+            raise ValueError("DeepStack teacher-forced continuation is missing position or original-key metadata")
+        device = logits.device
+        param_dtype = next(self.model.parameters()).dtype
+        blocked_focus_start_ids: list[int] = []
+        for marker in (
+            "<|focus_start|>",
+            "<|focus_end|>",
+            "<FOCUS>",
+            "</FOCUS>",
+            "<tool_call>",
+            "</tool_call>",
+        ):
+            ids = tokenizer.encode(marker, add_special_tokens=False)
+            if len(ids) == 1:
+                blocked_focus_start_ids.append(int(ids[0]))
+        generated_ids: list[int] = []
+        logprob_rows: list[torch.Tensor] = []
+        for index, token_id in enumerate(generated_token_ids):
+            step_logits = logits[:, -1, :]
+            if blocked_focus_start_ids:
+                step_logits = step_logits.clone()
+                step_logits[:, blocked_focus_start_ids] = -torch.inf
+            token = torch.tensor([[int(token_id)]], dtype=torch.long, device=device)
+            logprob_rows.append(
+                torch.log_softmax(step_logits.float(), dim=-1).gather(-1, token).view(())
+            )
+            restore_original_image_keys = restore_for_answer and _generated_answer_has_started(
+                tokenizer,
+                generated_ids,
+                protocol=self.stage2_config.protocol,
+            )
+            generated_ids.append(int(token_id))
+            input_ids = torch.cat([input_ids.to(device), token.to(device)], dim=-1)
+            next_attention = torch.ones(
+                (attention_mask.shape[0], 1),
+                dtype=attention_mask.dtype,
+                device=attention_mask.device,
+            )
+            attention_mask = torch.cat([attention_mask.to(device), next_attention], dim=-1)
+            position_ids = next_position_ids.to(device=token.device) + index
+            cache_position = torch.arange(
+                attention_mask.shape[-1] - 1,
+                attention_mask.shape[-1],
+                device=token.device,
+                dtype=torch.long,
+            )
+            step_attention = (
+                attention_mask
+                if restore_original_image_keys
+                else build_single_query_original_image_key_block_attention_mask(
+                    attention_mask_2d=attention_mask,
+                    original_image_token_indices=original_indices,
+                    dtype=param_dtype,
+                )
+            )
+            outputs = self.model(
+                input_ids=token.to(device),
+                past_key_values=past_key_values,
+                attention_mask=step_attention,
+                position_ids=position_ids,
+                cache_position=cache_position,
+                use_cache=True,
+                return_dict=True,
+            )
+            past_key_values = outputs.past_key_values
+            logits = outputs.logits
+        if not logprob_rows:
+            return torch.empty((0,), dtype=torch.float32, device=device)
+        return torch.stack(logprob_rows)
 
     def _parse_action(self, text: str) -> Any:
         from revisit_vlm.qwen3_vl_tgvf import parse_v3_action

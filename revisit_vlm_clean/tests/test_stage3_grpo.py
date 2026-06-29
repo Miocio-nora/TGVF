@@ -60,6 +60,7 @@ from revisit_vlm_clean.training.stage3_grpo_executor import (
     main as executor_main,
     preflight_stage3_grpo_plan,
 )
+from revisit_vlm_clean.schema import DeepStackScope, DeepStackState
 
 
 def test_stage3_samples_and_balanced_sampler(tmp_path: Path) -> None:
@@ -261,6 +262,24 @@ def test_stage3_manual_sgd_step_updates_and_zeroes_grads() -> None:
 
 def test_stage3_train_config_accepts_manual_sgd() -> None:
     TrainConfig(optimizer="manual_sgd").validate()
+
+
+def test_stage3_config_round_trips_deepstack_state(tmp_path: Path) -> None:
+    config = Stage3GRPOConfig(
+        run_id="deepstack_roundtrip",
+        rl_data_path=str(tmp_path / "rl.jsonl"),
+        output_dir=str(tmp_path / "out"),
+        policy_checkpoint=str(tmp_path / "stage2.pt"),
+        deepstack=DeepStackState(
+            enabled=True,
+            original_image_scope=DeepStackScope.EVIDENCE_ONLY,
+        ),
+    )
+
+    restored = Stage3GRPOConfig.from_dict(config.to_dict())
+
+    assert restored.deepstack.enabled is True
+    assert restored.deepstack.original_image_scope == DeepStackScope.EVIDENCE_ONLY
 
 
 def test_stage3_configure_native_trainables_keeps_policy_adapters_only() -> None:
@@ -906,6 +925,48 @@ def test_stage3_native_rollout_backend_constructs_without_loading(tmp_path: Path
     assert engine.__class__.__name__ == "NativeSingleFocusRolloutEngine"
 
 
+def test_stage3_native_rollout_run_config_carries_deepstack(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    import revisit_vlm_clean.stage2_native as stage2_native
+
+    class FakeNativeStage2Engine:
+        def __init__(self, *, stage2_config, backend_options=None) -> None:
+            self.stage2_config = stage2_config
+            self.backend_options = dict(backend_options or {})
+            self.run_config = None
+            self.loaded_sample = None
+
+        def prepare(self, run_config):
+            self.run_config = run_config
+
+        def _ensure_loaded(self, sample):
+            self.loaded_sample = sample
+
+    monkeypatch.setattr(stage2_native, "NativeStage2Engine", FakeNativeStage2Engine)
+    data = _write_rl_fixture(tmp_path)
+    config = Stage3GRPOConfig(
+        run_id="native_deepstack_config",
+        rl_data_path=str(data),
+        output_dir=str(tmp_path / "out"),
+        policy_checkpoint=str(tmp_path / "future_stage2.pt"),
+        deepstack=DeepStackState(
+            enabled=True,
+            original_image_scope=DeepStackScope.THROUGH_ANSWER,
+        ),
+        rollout=RolloutConfig(runtime_backend="native_single_focus"),
+    )
+    engine = build_rollout_engine(config)
+    sample = load_stage3_samples(data)[0]
+
+    native = engine._ensure_engine(sample)  # noqa: SLF001
+
+    assert native.run_config.deepstack.enabled is True
+    assert native.run_config.deepstack.original_image_scope == DeepStackScope.THROUGH_ANSWER
+    assert native.run_config.execution_backend["deepstack"]["enabled"] is True
+
+
 def test_stage3_native_preflight_validates_stage2_checkpoint_contract(
     tmp_path: Path,
 ) -> None:
@@ -1036,6 +1097,9 @@ def test_stage3_cli_plan_preflight_rollout_and_launch(tmp_path: Path) -> None:
                 str(output_dir),
                 "--runtime-backend",
                 "fake",
+                "--deepstack-enabled",
+                "--deepstack-original-image-scope",
+                "evidence_only",
                 "--optimizer",
                 "manual_sgd",
                 "--group-size",
@@ -1058,9 +1122,27 @@ def test_stage3_cli_plan_preflight_rollout_and_launch(tmp_path: Path) -> None:
     plan = json.loads(plan_path.read_text(encoding="utf-8"))
     assert plan["summary"]["rl_sample_count"] == 3
     assert plan["config"]["train"]["optimizer"] == "manual_sgd"
+    assert plan["config"]["deepstack"] == {
+        "d_features_enabled": False,
+        "enabled": True,
+        "original_image_scope": "evidence_only",
+    }
+    assert plan["summary"]["deepstack"]["enabled"] is True
 
     assert executor_main(["--plan", str(plan_path), "--preflight-only"]) == 0
+    preflight = json.loads(
+        (output_dir / "stage3_grpo_preflight_report.json").read_text(encoding="utf-8")
+    )
+    assert preflight["deepstack"]["original_image_scope"] == "evidence_only"
     assert executor_main(["--plan", str(plan_path), "--prepare-execution"]) == 0
+    bundle = json.loads(
+        (
+            output_dir
+            / "stage3_grpo_execution"
+            / "stage3_grpo_execution_bundle.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert bundle["deepstack"]["enabled"] is True
     assert (
         executor_main(
             [

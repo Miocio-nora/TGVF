@@ -10,6 +10,7 @@ from typing import Any
 from revisit_vlm_clean.cli.common import exit_not_implemented, print_json
 from revisit_vlm_clean.data_generation import file_identity
 from revisit_vlm_clean.defaults import DEFAULT_MAX_IMAGE_RESOLUTION, DEFAULT_MODEL_ID, DEFAULT_PROTOCOL
+from revisit_vlm_clean.schema import DeepStackScope, DeepStackState
 from revisit_vlm_clean.stage3_grpo.data import dataset_identity, load_stage3_samples, sample_schedule_identity
 from revisit_vlm_clean.stage3_grpo.schemas import (
     JudgeConfig,
@@ -48,6 +49,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--device", default="auto")
     parser.add_argument("--device-map", default="auto")
     parser.add_argument("--attn-implementation", default="sdpa")
+    parser.add_argument("--deepstack-enabled", action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument(
+        "--deepstack-original-image-scope",
+        choices=[DeepStackScope.THROUGH_ANSWER.value, DeepStackScope.EVIDENCE_ONLY.value],
+        default=DeepStackScope.THROUGH_ANSWER.value,
+    )
 
     parser.add_argument("--runtime-backend", choices=("fake", "native_single_focus"), default="fake")
     parser.add_argument("--group-size", type=int, default=8)
@@ -220,6 +227,7 @@ def build_stage3_grpo_training_plan(
             "wandb_enabled": bool(config.wandb.project and config.wandb.mode != "disabled"),
             "sample_schedule_rows": None if schedule_identity is None else schedule_identity["rows"],
             "sample_schedule_start_step": config.sample_schedule_start_step,
+            "deepstack": config.deepstack.to_dict(),
         },
     }
 
@@ -281,6 +289,14 @@ def _config_from_args(args: argparse.Namespace) -> Stage3GRPOConfig:
         device=args.device,
         device_map=args.device_map,
         attn_implementation=args.attn_implementation,
+        deepstack=(
+            DeepStackState(
+                enabled=True,
+                original_image_scope=DeepStackScope(args.deepstack_original_image_scope),
+            )
+            if args.deepstack_enabled
+            else DeepStackState()
+        ),
         rollout=RolloutConfig(
             group_size=args.group_size,
             temperature=args.temperature,
@@ -387,6 +403,8 @@ def _plan_text(plan: dict[str, Any]) -> str:
         f"protocol: {config['protocol']}",
         f"device: {config['device']}",
         f"device_map: {config.get('device_map')}",
+        f"deepstack_enabled: {config['deepstack']['enabled']}",
+        f"deepstack_original_image_scope: {config['deepstack']['original_image_scope']}",
         f"runtime_backend: {summary['runtime_backend']}",
         f"world_size: {config['train']['world_size']}",
         f"optimizer: {config['train'].get('optimizer')}",

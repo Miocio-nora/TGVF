@@ -750,6 +750,7 @@ def test_stage2_native_deepstack_evidence_only_restores_attention_after_answer_b
         attention_mask=torch.ones((1, 2), dtype=torch.long),
         input_ids=torch.tensor([[10, 11]], dtype=torch.long),
         model_kwargs={
+            "tgvf_block_original_image_keys": True,
             "tgvf_next_position_ids": torch.zeros((3, 1, 1), dtype=torch.long),
             "tgvf_original_image_token_indices": torch.tensor([0], dtype=torch.long),
             "tgvf_deepstack_scope": "evidence_only",
@@ -760,8 +761,168 @@ def test_stage2_native_deepstack_evidence_only_restores_attention_after_answer_b
     continuation = engine._continue_generation_blocking_original_image_keys(append_result)
 
     assert continuation.generated_ids == [1, 2, 3]
+    assert len(continuation.generated_logprobs) == 3
     assert continuation.stop_reason == "eos_token"
     assert engine.model.attention_dims == [4, 2, 2]
+
+
+def test_stage2_native_deepstack_teacher_forced_replay_masks_like_decode(tmp_path) -> None:
+    import torch
+
+    class FakeTokenizer:
+        text = {
+            1: "</think>",
+            2: "B",
+            3: "<|im_end|>",
+        }
+
+        def encode(self, text, add_special_tokens=False):
+            del text, add_special_tokens
+            return []
+
+        def decode(
+            self,
+            ids,
+            skip_special_tokens=False,
+            clean_up_tokenization_spaces=False,
+        ):
+            del skip_special_tokens, clean_up_tokenization_spaces
+            return "".join(self.text.get(int(item), "") for item in ids)
+
+    def logits_for(token_id: int) -> torch.Tensor:
+        logits = torch.full((1, 1, 8), -1000.0)
+        logits[0, 0, token_id] = 1000.0
+        return logits
+
+    class RecordingModel:
+        def __init__(self) -> None:
+            self.attention_dims = []
+            self.param = torch.nn.Parameter(torch.zeros((), dtype=torch.float32))
+            self.next_tokens = [2, 3, 3]
+
+        def parameters(self):
+            yield self.param
+
+        def __call__(self, **kwargs):
+            attention_mask = kwargs["attention_mask"]
+            self.attention_dims.append(int(attention_mask.ndim))
+            token_id = self.next_tokens.pop(0)
+            return SimpleNamespace(
+                past_key_values=kwargs.get("past_key_values"),
+                logits=logits_for(token_id),
+            )
+
+    runtime = _runtime(tmp_path, append_forward_mode=ForwardMode.KV_CACHE)
+    engine = NativeStage2Engine(stage2_config=runtime)
+    engine.model = RecordingModel()
+    engine.processor = SimpleNamespace(tokenizer=FakeTokenizer())
+    initial_logits = logits_for(1).requires_grad_()
+    append_result = SimpleNamespace(
+        last_logits=initial_logits,
+        past_key_values=object(),
+        attention_mask=torch.ones((1, 2), dtype=torch.long),
+        input_ids=torch.tensor([[10, 11]], dtype=torch.long),
+        model_kwargs={
+            "tgvf_block_original_image_keys": True,
+            "tgvf_next_position_ids": torch.zeros((3, 1, 1), dtype=torch.long),
+            "tgvf_original_image_token_indices": torch.tensor([0], dtype=torch.long),
+            "tgvf_deepstack_scope": "evidence_only",
+            "tgvf_deepstack_restore_for_answer": True,
+        },
+    )
+
+    logprobs = engine.teacher_forced_continue_logprobs(
+        append_result,
+        generated_token_ids=[1, 2, 3],
+    )
+    (-logprobs.sum()).backward()
+
+    assert tuple(logprobs.shape) == (3,)
+    assert initial_logits.grad is not None
+    assert engine.model.attention_dims == [4, 2, 2]
+
+
+def test_stage2_native_deepstack_blocked_decode_uses_sampling_options(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    import torch
+    import revisit_vlm.qwen3_vl_tgvf as qwen3_vl_tgvf
+
+    class FakeTokenizer:
+        eos_token_id = 99
+
+        def encode(self, text, add_special_tokens=False):
+            del text, add_special_tokens
+            return []
+
+        def decode(
+            self,
+            ids,
+            skip_special_tokens=False,
+            clean_up_tokenization_spaces=False,
+        ):
+            del skip_special_tokens, clean_up_tokenization_spaces
+            return "".join(str(int(item)) for item in ids)
+
+    class RecordingModel:
+        def __init__(self) -> None:
+            self.param = torch.nn.Parameter(torch.zeros((), dtype=torch.float32))
+
+        def parameters(self):
+            yield self.param
+
+        def __call__(self, **kwargs):
+            return SimpleNamespace(
+                past_key_values=kwargs.get("past_key_values"),
+                logits=torch.zeros((1, 1, 8), dtype=torch.float32),
+            )
+
+    calls = []
+
+    def fake_select_next_token(logits, *, do_sample, temperature, top_p):
+        calls.append(
+            {
+                "shape": tuple(logits.shape),
+                "do_sample": do_sample,
+                "temperature": temperature,
+                "top_p": top_p,
+            }
+        )
+        return torch.tensor([[4]], dtype=torch.long), -0.5
+
+    monkeypatch.setattr(qwen3_vl_tgvf, "_select_next_token", fake_select_next_token)
+    runtime = _runtime(tmp_path, append_forward_mode=ForwardMode.KV_CACHE)
+    runtime = Stage2RuntimeConfig(
+        stage2_checkpoint=runtime.stage2_checkpoint,
+        eval_jsonl=runtime.eval_jsonl,
+        append_forward_mode=runtime.append_forward_mode,
+        max_answer_tokens=1,
+    )
+    engine = NativeStage2Engine(
+        stage2_config=runtime,
+        backend_options={"do_sample": True, "temperature": 0.7, "top_p": 0.8},
+    )
+    engine.model = RecordingModel()
+    engine.processor = SimpleNamespace(tokenizer=FakeTokenizer())
+    append_result = SimpleNamespace(
+        last_logits=torch.zeros((1, 1, 8), dtype=torch.float32),
+        past_key_values=object(),
+        attention_mask=torch.ones((1, 2), dtype=torch.long),
+        input_ids=torch.tensor([[10, 11]], dtype=torch.long),
+        model_kwargs={
+            "tgvf_next_position_ids": torch.zeros((3, 1, 1), dtype=torch.long),
+            "tgvf_original_image_token_indices": torch.tensor([0], dtype=torch.long),
+            "tgvf_deepstack_scope": "through_answer",
+            "tgvf_deepstack_restore_for_answer": False,
+        },
+    )
+
+    continuation = engine._continue_generation_blocking_original_image_keys(append_result)
+
+    assert continuation.generated_ids == [4]
+    assert continuation.generated_logprobs == [-0.5]
+    assert calls == [{"shape": (1, 8), "do_sample": True, "temperature": 0.7, "top_p": 0.8}]
 
 
 def test_stage2_native_kv_deepstack_append_uses_cached_chunk_mask(

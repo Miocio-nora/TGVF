@@ -202,7 +202,6 @@ class NativeSingleFocusRolloutEngine:
             build_direct_messages,
             build_qwen3_inputs,
             capture_focus_single_pass_from_inputs_qwen3,
-            teacher_forced_continue_logprobs_qwen3,
         )
         from revisit_vlm_clean.stage3_grpo.native_replay import replay_focus_segment_logprobs
 
@@ -255,9 +254,7 @@ class NativeSingleFocusRolloutEngine:
                 )
             d = engine._d_from_capture(runtime_sample, capture, focus_source="stage3_replay")  # noqa: SLF001
             append_result = engine._append_visual_d(capture, d)  # noqa: SLF001
-            continuation_logprobs = teacher_forced_continue_logprobs_qwen3(
-                model,
-                processor,
+            continuation_logprobs = engine.teacher_forced_continue_logprobs(  # type: ignore[attr-defined]
                 append_result,
                 generated_token_ids=continuation_ids,
             )
@@ -306,11 +303,13 @@ class NativeSingleFocusRolloutEngine:
             max_action_tokens=self.config.rollout.max_action_tokens,
             max_answer_tokens=self.config.rollout.max_answer_tokens,
             tgvf_protocol=self.config.protocol,
+            deepstack=self.config.deepstack,
             execution_backend={
                 "name": "stage3_native_single_focus",
                 "rollout_only": False,
                 "sampled_generation_ready": True,
                 "logprob_replay_ready": True,
+                "deepstack": self.config.deepstack.to_dict(),
             },
         )
         engine.prepare(run_config)
@@ -450,6 +449,7 @@ class NativeSingleFocusRolloutEngine:
             "processor_id": self.config.processor_id,
             "device": self.config.device,
             "device_map": self.config.device_map,
+            "deepstack": self.config.deepstack.to_dict(),
             "sampled_generation_ready": True,
             "logprob_replay_ready": True,
             "grpo_update_ready": True,

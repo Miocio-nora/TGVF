@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from revisit_vlm_clean.schema import _to_jsonable
+from revisit_vlm_clean.schema import DeepStackScope, DeepStackState, _to_jsonable
 
 STAGE3_GRPO_PLAN_SCHEMA_VERSION = "stage3_grpo_training_plan_v0"
 STAGE3_GRPO_EXECUTION_SCHEMA_VERSION = "stage3_grpo_execution_bundle_v0"
@@ -210,6 +210,7 @@ class Stage3GRPOConfig:
     device: str = "auto"
     device_map: str | None = "auto"
     attn_implementation: str = "sdpa"
+    deepstack: DeepStackState = field(default_factory=DeepStackState)
     rollout: RolloutConfig = field(default_factory=RolloutConfig)
     probe: ProbeConfig = field(default_factory=ProbeConfig)
     reward: RewardConfig = field(default_factory=RewardConfig)
@@ -231,6 +232,7 @@ class Stage3GRPOConfig:
             raise ValueError("sample_schedule_start_step must be >= 1")
         if int(self.max_image_resolution) < 1:
             raise ValueError("max_image_resolution must be >= 1")
+        self.deepstack.validate()
         self.rollout.validate()
         self.probe.validate()
         self.reward.validate()
@@ -244,6 +246,7 @@ class Stage3GRPOConfig:
     @classmethod
     def from_dict(cls, payload: dict[str, Any]) -> "Stage3GRPOConfig":
         data = dict(payload)
+        data["deepstack"] = _stage3_deepstack_from_dict(data.get("deepstack", {}))
         data["rollout"] = RolloutConfig(**dict(data.get("rollout") or {}))
         data["probe"] = ProbeConfig(**dict(data.get("probe") or {}))
         data["reward"] = RewardConfig(**dict(data.get("reward") or {}))
@@ -253,6 +256,17 @@ class Stage3GRPOConfig:
         config = cls(**data)
         config.validate()
         return config
+
+
+def _stage3_deepstack_from_dict(payload: dict[str, Any] | DeepStackState) -> DeepStackState:
+    if isinstance(payload, DeepStackState):
+        return payload
+    data = dict(payload or {})
+    if "original_image_scope" in data:
+        data["original_image_scope"] = DeepStackScope(data["original_image_scope"])
+    state = DeepStackState(**data)
+    state.validate()
+    return state
 
 
 @dataclass(frozen=True)

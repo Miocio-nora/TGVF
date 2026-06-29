@@ -190,6 +190,7 @@ def preflight_stage3_grpo_plan(
         "stage2_checkpoint": stage2_checkpoint,
         "processor_id": config.processor_id,
         "output_dir": config.output_dir,
+        "deepstack": config.deepstack.to_dict(),
         "group_size": config.rollout.group_size,
         "world_size": config.train.world_size,
         "global_rollouts_per_step": (
@@ -226,6 +227,7 @@ def prepare_stage3_grpo_execution(
         "config": config.to_dict(),
         "dataset_identity": dataset_identity(config.rl_data_path),
         "policy_checkpoint_identity": file_identity(config.policy_checkpoint).to_dict(),
+        "deepstack": config.deepstack.to_dict(),
         "launchable_actions": {
             "fake": ["precompute_probes", "rollout_only", "launch_training"],
             "native_single_focus": [
