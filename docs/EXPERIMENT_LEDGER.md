@@ -10542,7 +10542,8 @@ entry, update this file immediately.
   - The final template plan was generated with `--write-plan` only.
 - Code/worktree:
   - Branch: `clean/tgvf-clean-project-20260625`.
-  - Code commit: `26bd130499d48668669dacb2c90c94ef0aef16fc`.
+  - Code commit:
+    `29ef3452470301a58dbd1197cad2d6a505129a65`.
   - Dirty worktree at template-plan generation: `false`.
 - Source checkpoint:
   - `outputs/clean_training/qwen3_stage2_norm01_stage1_mask075_deepstack_4gpu_20260627_163250/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt`.
@@ -10597,7 +10598,7 @@ entry, update this file immediately.
   - Template plan:
     `outputs/stage3_grpo/all5_hint_no_block_frozenref_rewardgate_4gpu_g20_res768_8step_20260630_001248/step_000001/stage3_grpo_training_plan.json`.
   - Template plan SHA256:
-    `c63b6d4c0fa181b5c6f8aa9889ad10ca5d42fe66d18aed3a7bf7cf4aa63ece83`.
+    `7c8841462d47ce911625325514fb47840b7ef790f03b019b6515d3a092280423`.
   - Dataset identity SHA256:
     `5479baf6363936c775bf449ef9e3c1065c08363d953926dbbe0085236d7ef5ff`.
   - Stepwise preflight: `passed`.
