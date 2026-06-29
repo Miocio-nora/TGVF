@@ -19,6 +19,8 @@ from .deepstack import (
     deepstack_scope_contract,
     qwen3_deepstack_runtime_hook_names_for_full_sequence_evidence_only,
     qwen3_deepstack_runtime_hook_names_for_full_sequence_through_answer,
+    qwen3_deepstack_runtime_hook_names_for_kv_cache_evidence_only,
+    qwen3_deepstack_runtime_hook_names_for_kv_cache_through_answer,
 )
 from .rendering import RenderedBenchmarkInput
 from .schema import DeepStackScope, EvalFamily, EvalMode, EvalSummary, ForwardMode, RunConfig
@@ -618,7 +620,12 @@ def build_deepstack_execution_plan(config: RunConfig, *, backend: str) -> dict[s
     )
     status = "disabled_noop"
     if state.enabled and execution_supported:
-        status = f"supported_full_sequence_{state.original_image_scope}"
+        forward_prefix = (
+            "supported_full_sequence"
+            if config.post_tgvf_forward_mode == ForwardMode.NO_KV_FULL_SEQUENCE
+            else "supported_kv_cache"
+        )
+        status = f"{forward_prefix}_{state.original_image_scope}"
     elif state.enabled:
         status = "not_ported"
     return {
@@ -644,12 +651,16 @@ def _implemented_deepstack_hooks_for_eval(config: RunConfig, *, backend: str) ->
         return set()
     if backend != STAGE2_NATIVE_BACKEND:
         return set()
-    if config.post_tgvf_forward_mode != ForwardMode.NO_KV_FULL_SEQUENCE:
-        return set()
-    if config.deepstack.original_image_scope == DeepStackScope.THROUGH_ANSWER:
-        return qwen3_deepstack_runtime_hook_names_for_full_sequence_through_answer()
-    if config.deepstack.original_image_scope == DeepStackScope.EVIDENCE_ONLY:
-        return qwen3_deepstack_runtime_hook_names_for_full_sequence_evidence_only()
+    if config.post_tgvf_forward_mode == ForwardMode.NO_KV_FULL_SEQUENCE:
+        if config.deepstack.original_image_scope == DeepStackScope.THROUGH_ANSWER:
+            return qwen3_deepstack_runtime_hook_names_for_full_sequence_through_answer()
+        if config.deepstack.original_image_scope == DeepStackScope.EVIDENCE_ONLY:
+            return qwen3_deepstack_runtime_hook_names_for_full_sequence_evidence_only()
+    if config.post_tgvf_forward_mode == ForwardMode.KV_CACHE:
+        if config.deepstack.original_image_scope == DeepStackScope.THROUGH_ANSWER:
+            return qwen3_deepstack_runtime_hook_names_for_kv_cache_through_answer()
+        if config.deepstack.original_image_scope == DeepStackScope.EVIDENCE_ONLY:
+            return qwen3_deepstack_runtime_hook_names_for_kv_cache_evidence_only()
     return set()
 
 

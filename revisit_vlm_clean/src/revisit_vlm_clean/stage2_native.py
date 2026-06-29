@@ -21,6 +21,7 @@ from typing import Any
 from .benchmark_data import BenchmarkSample
 from .data_generation import file_identity
 from .deepstack import (
+    build_cached_chunk_original_image_key_block_attention_mask,
     build_original_image_key_block_attention_mask,
     build_qwen3_original_image_deepstack_payload,
     build_single_query_original_image_key_block_attention_mask,
@@ -728,10 +729,31 @@ class NativeStage2Engine:
                 source_visual_position_ids=source_geometry.source_visual_position_ids,
                 device=self.device,
             )
+        append_attention = attention_mask
+        block_original_image_keys = False
+        original_positions = None
+        if self._deepstack_enabled():
+            if capture.past_key_values is None:
+                raise ValueError("KV DeepStack append requires capture.past_key_values")
+            if attention_mask is None or input_ids is None:
+                raise ValueError("KV DeepStack append requires attention_mask and input_ids")
+            if source_geometry.source_visual_token_indices is None:
+                raise ValueError("KV DeepStack append requires source visual token indices")
+            original_positions = source_geometry.source_visual_token_indices.to(self.device)
+            chunk_length = int(token_ids.shape[0])
+            query_start = int(attention_mask.shape[-1]) - chunk_length
+            append_attention = build_cached_chunk_original_image_key_block_attention_mask(
+                attention_mask_2d=attention_mask,
+                original_image_token_indices=original_positions,
+                query_start=query_start,
+                query_length=chunk_length,
+                dtype=embeds.dtype,
+            )
+            block_original_image_keys = True
         outputs = self.model(
             inputs_embeds=embeds,
             past_key_values=capture.past_key_values,
-            attention_mask=attention_mask,
+            attention_mask=append_attention,
             position_ids=position_ids,
             mm_token_type_ids=mm_token_type_ids,
             use_cache=True,
@@ -741,6 +763,13 @@ class NativeStage2Engine:
         next_position_ids = _next_position_ids_after_prefill(position_ids)
         if next_position_ids is not None:
             model_kwargs["tgvf_next_position_ids"] = next_position_ids.detach().cpu()
+        if block_original_image_keys:
+            model_kwargs["tgvf_block_original_image_keys"] = True
+            model_kwargs["tgvf_original_image_token_indices"] = original_positions.detach().cpu()
+            model_kwargs["tgvf_deepstack_scope"] = self._deepstack_scope().value
+            model_kwargs["tgvf_deepstack_restore_for_answer"] = (
+                self._deepstack_scope() == DeepStackScope.EVIDENCE_ONLY
+            )
         return self._append_result_cls()(
             past_key_values=outputs.past_key_values,
             attention_mask=attention_mask,
@@ -755,7 +784,6 @@ class NativeStage2Engine:
             debug_metadata={
                 "fvt_append_path": "clean_native_qwen3_visual_special_tokens_embedding_replace",
                 "tgvf_protocol": self.stage2_config.protocol,
-                "uses_deepstack_for_fvt": False,
                 "fvt_shape": list(d.shape),
                 "num_fvt_tokens": int(d.shape[0]),
                 "source_visual_token_count": source_token_count,
@@ -764,16 +792,46 @@ class NativeStage2Engine:
                     list(position_ids.shape) if position_ids is not None else None
                 ),
                 "mm_token_type_ids_shape": list(mm_token_type_ids.shape),
+                "append_attention_mask_shape": (
+                    list(append_attention.shape) if append_attention is not None else None
+                ),
                 "native_qwen3_position_compute_used": True,
                 "second_full_forward_used": False,
                 "past_key_values_preserved": (
                     capture.past_key_values is not None and outputs.past_key_values is not None
                 ),
-                "deepstack_caution": (
+                "deepstack_caution": None
+                if block_original_image_keys
+                else (
                     "clean-native FVT append uses Qwen3 visual special tokens and real "
                     "3D positions, but does not provide native Qwen3 DeepStack visual "
                     "features."
                 ),
+                "uses_deepstack_for_fvt": bool(block_original_image_keys),
+                "deepstack_cached_prefix_used": bool(block_original_image_keys),
+                "deepstack_scope": (
+                    None if not block_original_image_keys else self._deepstack_scope().value
+                ),
+                "deepstack_answer_restore_policy": (
+                    None
+                    if not block_original_image_keys
+                    else (
+                        "restore_after_answer_boundary"
+                        if self._deepstack_scope() == DeepStackScope.EVIDENCE_ONLY
+                        else "blocked_through_answer"
+                    )
+                ),
+                "deepstack_append_attention_mask": (
+                    None
+                    if not block_original_image_keys
+                    else "4d_cached_chunk_original_image_key_block"
+                ),
+                "deepstack_prefix_source": (
+                    None
+                    if not block_original_image_keys
+                    else "native_qwen3_capture_past_key_values"
+                ),
+                "deepstack_original_image_key_block": bool(block_original_image_keys),
             },
         )
 

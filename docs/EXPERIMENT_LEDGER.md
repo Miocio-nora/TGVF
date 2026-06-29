@@ -9282,3 +9282,77 @@ entry, update this file immediately.
   - A `DeepStack off` KV-vs-no-KV diagnostic would test cache mechanics only,
     but it would not answer the requested controlled-DeepStack question and
     should be a separately named ablation if run.
+
+### DIAG-20260629-111358-clean-kv-deepstack-implementation-smoke
+
+- Status: PLANNED.
+- Question:
+  - Implement and validate clean Stage2 benchmark support for
+    `kv_cache + DeepStack` so cached post-D continuation can be compared to
+    `no_kv_full_sequence` under the same DeepStack scope.
+- Macro plan:
+  - Repository/worktree strategy: implement on the current clean branch and
+    keep legacy code unchanged.
+  - What changes now:
+    - Add a cached multi-token original-image key-block attention mask helper.
+    - Mark clean Qwen3 native KV+DeepStack hooks as supported.
+    - Apply the cached chunk mask in `_append_visual_d` and propagate
+      original-image key-block metadata into continuation.
+    - Add focused unit tests for the gate, mask semantics, and fake KV append.
+  - What will not be touched: training code, benchmark manifests, parser/scorer,
+    legacy evaluation bridges, and Stage3/RL.
+  - Verification:
+    - Unit tests for DeepStack masks and Stage2 runner/backend identity.
+    - Real HR-Bench-4K 200-row soft-force KV+DeepStack run on the same manifest
+      used by `DIAG-20260629-102455`.
+    - Compare KV rows against the prior no-KV HR200 rows for accuracy, parse
+      rate, trigger rate, answer/score agreement, and wall time.
+- Implementation tests already run before launch:
+  - `PYTHONPATH=revisit_vlm_clean/src:src pytest -q revisit_vlm_clean/tests/test_deepstack.py revisit_vlm_clean/tests/test_runner_backend.py::test_stage2_native_backend_accepts_supported_kv_deepstack revisit_vlm_clean/tests/test_runner_backend.py::test_stage2_native_backend_accepts_supported_full_sequence_deepstack revisit_vlm_clean/tests/test_runner_backend.py::test_stage2_native_backend_accepts_supported_full_sequence_evidence_only_deepstack revisit_vlm_clean/tests/test_runner_backend.py::test_deepstack_execution_plan_records_scope_semantics revisit_vlm_clean/tests/test_runner_backend.py::test_stage2_legacy_backend_rejects_unported_deepstack_execution revisit_vlm_clean/tests/test_runner_backend.py::test_stage2_native_kv_deepstack_append_uses_cached_chunk_mask revisit_vlm_clean/tests/test_runner_backend.py::test_stage2_native_deepstack_evidence_only_restores_attention_after_answer_boundary`
+    passed: `12 passed`.
+  - `PYTHONPATH=revisit_vlm_clean/src:src pytest -q revisit_vlm_clean/tests/test_runner_backend.py revisit_vlm_clean/tests/test_benchmark_data.py revisit_vlm_clean/tests/test_cli.py::test_stage2_deepstack_plan_disables_legacy_command revisit_vlm_clean/tests/test_cli.py::test_stage2_deepstack_prepare_writes_training_plan`
+    passed: `44 passed`.
+- Baseline / comparison:
+  - Prior no-KV HR200:
+    `outputs/clean_benchmarks/diagnostic_hr200_softforce_kv_vs_nokv_20260629/nokv/merged`.
+  - Prior no-KV metrics: accuracy `0.510000`, parse `0.995000`, trigger
+    `0.720000`, malformed `0.000000`, wall about `5m56s`.
+- Model / processor:
+  - `/nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking`.
+- Stage2 checkpoint:
+  - `outputs/clean_training/qwen3_stage2_norm01_stage1_mask075_deepstack_4gpu_20260627_163250/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt`.
+  - SHA256:
+    `50245a11c27ad9755eb815b5f008af50a659fa07a4043f0f9427f5bbea3c0236`.
+- Stage2 runtime eval JSONL:
+  - `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend_open_answer/splits/tgvf_v4_teacher_stage2_protocol_c.test.jsonl`.
+  - SHA256:
+    `3b719e1bd03a09741cc05dac3ed85e423a9b2c29209b07546792a6795cdbbfc5`.
+- Benchmark:
+  - Diagnostic manifest:
+    `outputs/clean_benchmarks/diagnostic_hr200_softforce_kv_vs_nokv_20260629/preflight/hr_core200_from_coredev2511_softforce_manifest.json`.
+  - Manifest hash:
+    `705b29fc3c380d97a31947b54f3423f3c4da94da7fa79826c05ad8b2df297e76`.
+  - Sample count/order: `200`, same as prior no-KV HR200.
+  - Benchmark root:
+    `/home/dredvpn009/Flash_Storage/datasets/benchmarks`.
+- Evaluation identity:
+  - Eval family: `project_native_external`.
+  - Mode: `tgvf_softforce`.
+  - Soft-force prompt: `Use focus tool.`
+  - Runner backend: `tgvf_stage2_qwen3_native`.
+  - Protocol: `protocol_c_tool_observation`.
+  - Stage2 D condition: `correct_D`.
+  - Post-TGVF forward mode to validate: `kv_cache`.
+  - DeepStack: enabled; `original_image_scope=through_answer`;
+    D DeepStack-like features disabled.
+  - Max image resolution: `512`.
+  - Max action tokens: `64`.
+  - Max answer tokens: `512`.
+  - Scoring backend: `auto`.
+  - Attention implementation: `sdpa`.
+- Planned output:
+  - `outputs/clean_benchmarks/diagnostic_hr200_softforce_kv_deepstack_equiv_20260629_1114/kv`.
+- GPUs:
+  - Planned: physical GPUs `4,5,6,7`, one shard per GPU.
+- Launch command:
+  - To be recorded after implementation and PLANNED ledger entry are committed.

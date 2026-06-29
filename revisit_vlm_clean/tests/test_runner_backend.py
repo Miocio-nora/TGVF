@@ -349,14 +349,14 @@ def test_native_stage2_engine_cleanup_clears_per_sample_caches(tmp_path) -> None
     assert engine.deepstack_cache == {}
 
 
-def test_stage2_native_backend_rejects_unported_deepstack_execution(tmp_path) -> None:
+def test_stage2_native_backend_accepts_supported_kv_deepstack(tmp_path) -> None:
+    config = _deepstack_run_config()
     backend = make_backend(
         BackendConfig(backend=STAGE2_NATIVE_BACKEND, stage2=_runtime(tmp_path)),
-        config=_deepstack_run_config(),
+        config=config,
     )
 
-    with pytest.raises(NotImplementedError, match="deepstack_execution_plan"):
-        backend.prepare(_deepstack_run_config())
+    backend.prepare(config)
 
 
 def test_stage2_native_backend_accepts_supported_full_sequence_deepstack(tmp_path) -> None:
@@ -415,21 +415,21 @@ def test_deepstack_execution_plan_records_scope_semantics() -> None:
         _deepstack_run_config(),
         backend=STAGE2_NATIVE_BACKEND,
     )
-    assert through_answer["execution_supported"] is False
+    assert through_answer["execution_supported"] is True
+    assert through_answer["status"] == "supported_kv_cache_through_answer"
+    assert through_answer["supported_forward_mode"] == "kv_cache"
     assert through_answer["original_image_scope"] == "through_answer"
-    assert through_answer["runtime_hooks"]["all_required_hooks_implemented"] is False
+    assert through_answer["runtime_hooks"]["all_required_hooks_implemented"] is True
     assert through_answer["runtime_hooks"]["hooks"][
         "capture_original_image_deepstack_features"
-    ]["status"] == "not_ported"
+    ]["status"] == "ported"
     assert through_answer["runtime_hooks"]["hooks"][
         "apply_post_tgvf_deepstack_scope_mask"
     ]["required"] is True
     assert through_answer["runtime_hooks"]["hooks"][
         "restore_deepstack_for_answer_when_scope_requires"
     ]["required"] is False
-    assert through_answer["blocking_items"] == through_answer["runtime_hooks"][
-        "blocking_items"
-    ]
+    assert through_answer["blocking_items"] == []
     assert through_answer["original_image_deepstack"]["block_after_tgvf_append"] is True
     assert through_answer["original_image_deepstack"]["restore_for_answer"] is False
     assert through_answer["d_deepstack_features"]["required_for_current_mainline"] is False
@@ -473,11 +473,14 @@ def test_deepstack_execution_plan_records_scope_semantics() -> None:
         evidence_only_config,
         backend=STAGE2_NATIVE_BACKEND,
     )
+    assert evidence_only["execution_supported"] is True
+    assert evidence_only["status"] == "supported_kv_cache_evidence_only"
+    assert evidence_only["supported_forward_mode"] == "kv_cache"
     assert evidence_only["original_image_scope"] == "evidence_only"
     assert evidence_only["original_image_deepstack"]["restore_for_answer"] is True
     assert evidence_only["runtime_hooks"]["hooks"][
         "restore_deepstack_for_answer_when_scope_requires"
-    ]["required"] is True
+    ]["status"] == "ported"
     assert evidence_only["scope_contract"]["original_image_deepstack"][
         "block_query_end"
     ] == "answer_start"
@@ -759,6 +762,115 @@ def test_stage2_native_deepstack_evidence_only_restores_attention_after_answer_b
     assert continuation.generated_ids == [1, 2, 3]
     assert continuation.stop_reason == "eos_token"
     assert engine.model.attention_dims == [4, 2, 2]
+
+
+def test_stage2_native_kv_deepstack_append_uses_cached_chunk_mask(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    import torch
+    import revisit_vlm.qwen3_vl_tgvf as qwen3_vl_tgvf
+
+    class FakeEmbedding:
+        weight = torch.zeros((32, 4), dtype=torch.float32)
+
+        def __call__(self, token_ids):
+            return torch.zeros((*token_ids.shape, 4), dtype=torch.float32)
+
+    class RecordingModel:
+        def __init__(self) -> None:
+            self.calls = []
+            self.embed = FakeEmbedding()
+
+        def get_input_embeddings(self):
+            return self.embed
+
+        def __call__(self, **kwargs):
+            self.calls.append(kwargs)
+            return SimpleNamespace(
+                past_key_values="new-cache",
+                logits=torch.zeros((1, 1, 8), dtype=torch.float32),
+            )
+
+    monkeypatch.setattr(
+        qwen3_vl_tgvf,
+        "render_tgvf_prefix_suffix",
+        lambda **kwargs: ("P", "S"),
+    )
+    monkeypatch.setattr(qwen3_vl_tgvf, "protocol_uses_tool_observation", lambda protocol: True)
+    monkeypatch.setattr(qwen3_vl_tgvf, "protocol_uses_think_tags", lambda protocol: False)
+    monkeypatch.setattr(qwen3_vl_tgvf, "protocol_uses_evidence_tags", lambda protocol: False)
+    monkeypatch.setattr(
+        qwen3_vl_tgvf,
+        "_bracketed_visual_token_ids",
+        lambda *args, **kwargs: torch.tensor([10, 11, 12, 13], dtype=torch.long),
+    )
+    monkeypatch.setattr(
+        qwen3_vl_tgvf,
+        "_encode_text",
+        lambda tokenizer, text, device: torch.empty((0,), dtype=torch.long),
+    )
+    monkeypatch.setattr(
+        qwen3_vl_tgvf,
+        "_fvt_mm_token_type_ids",
+        lambda *, chunk_length, fvt_token_start, fvt_token_end, device: torch.zeros(
+            (1, chunk_length),
+            dtype=torch.long,
+        ),
+    )
+    monkeypatch.setattr(
+        qwen3_vl_tgvf,
+        "_chunk_position_ids_native_source_grid",
+        lambda **kwargs: torch.zeros((3, 1, 4), dtype=torch.long),
+    )
+    monkeypatch.setattr(
+        qwen3_vl_tgvf,
+        "_next_position_ids_after_prefill",
+        lambda position_ids: torch.zeros((3, 1, 1), dtype=torch.long),
+    )
+
+    runtime = _runtime(tmp_path, append_forward_mode=ForwardMode.KV_CACHE)
+    config = _deepstack_run_config()
+    engine = NativeStage2Engine(stage2_config=runtime)
+    engine.prepare(config)
+    model = RecordingModel()
+    engine.model = model
+    engine.utility_model = model
+    engine.processor = SimpleNamespace(tokenizer=object())
+    engine.device = torch.device("cpu")
+    capture = SimpleNamespace(
+        capture_found=True,
+        past_key_values="prefix-cache",
+        attention_mask=torch.ones((1, 5), dtype=torch.long),
+        input_ids=torch.arange(5, dtype=torch.long).view(1, -1),
+        model_kwargs={},
+        source_visual_geometry=SimpleNamespace(
+            source_visual_token_count=2,
+            source_visual_token_indices=torch.tensor([1, 2], dtype=torch.long),
+            source_visual_position_ids=torch.zeros((3, 2), dtype=torch.long),
+        ),
+    )
+
+    result = engine._append_visual_d(capture, torch.ones((2, 4), dtype=torch.float32))
+
+    call = model.calls[0]
+    attention_mask = call["attention_mask"]
+    blocked = torch.finfo(torch.float32).min
+    assert list(attention_mask.shape) == [1, 1, 4, 9]
+    assert attention_mask[0, 0, 0, 1].item() == blocked
+    assert attention_mask[0, 0, 3, 2].item() == blocked
+    assert attention_mask[0, 0, 0, 6].item() == blocked
+    assert attention_mask[0, 0, 1, 6].item() == 0.0
+    assert result.attention_mask.shape == (1, 9)
+    assert result.model_kwargs["tgvf_block_original_image_keys"] is True
+    assert result.model_kwargs["tgvf_original_image_token_indices"].tolist() == [1, 2]
+    assert result.model_kwargs["tgvf_deepstack_scope"] == "through_answer"
+    assert result.model_kwargs["tgvf_deepstack_restore_for_answer"] is False
+    assert result.debug_metadata["uses_deepstack_for_fvt"] is True
+    assert result.debug_metadata["deepstack_caution"] is None
+    assert result.debug_metadata["deepstack_prefix_source"] == (
+        "native_qwen3_capture_past_key_values"
+    )
 
 
 def test_stage2_native_backend_reports_runtime_errors_as_row_error(monkeypatch, tmp_path) -> None:

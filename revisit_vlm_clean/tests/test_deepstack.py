@@ -1,6 +1,7 @@
 import pytest
 import torch
 from revisit_vlm_clean.deepstack import (
+    build_cached_chunk_original_image_key_block_attention_mask,
     build_original_image_key_block_attention_mask,
     build_qwen3_original_image_deepstack_payload,
     build_single_query_original_image_key_block_attention_mask,
@@ -62,3 +63,22 @@ def test_single_query_original_image_key_block_attention_mask_blocks_original_ke
     assert mask[0, 0, 0, 0].item() == blocked
     assert mask[0, 0, 0, 2].item() == blocked
     assert mask[0, 0, 0, 4].item() == 0.0
+
+
+def test_cached_chunk_original_image_key_block_attention_mask_is_causal() -> None:
+    mask = build_cached_chunk_original_image_key_block_attention_mask(
+        attention_mask_2d=torch.ones(1, 6, dtype=torch.long),
+        original_image_token_indices=torch.tensor([1]),
+        query_start=3,
+        query_length=3,
+        dtype=torch.float32,
+    )
+
+    assert list(mask.shape) == [1, 1, 3, 6]
+    blocked = torch.finfo(torch.float32).min
+    assert mask[0, 0, 0, 1].item() == blocked
+    assert mask[0, 0, 1, 1].item() == blocked
+    assert mask[0, 0, 2, 1].item() == blocked
+    assert mask[0, 0, 0, 4].item() == blocked
+    assert mask[0, 0, 1, 4].item() == 0.0
+    assert mask[0, 0, 2, 5].item() == 0.0

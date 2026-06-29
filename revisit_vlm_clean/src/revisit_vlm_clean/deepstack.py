@@ -181,6 +181,33 @@ def qwen3_deepstack_runtime_hook_names_for_full_sequence_evidence_only() -> set[
     }
 
 
+def qwen3_deepstack_runtime_hook_names_for_kv_cache_through_answer() -> set[str]:
+    """Hooks implemented by the clean cached-prefix through-answer path.
+
+    In KV mode, the original image DeepStack features have already been applied
+    by Qwen3's native image prefill and are carried in the prefix KV cache. The
+    post-TGVF append path therefore only needs to preserve that cache and apply
+    the original-image key block mask to the D/evidence/answer queries.
+    """
+
+    return {
+        "capture_original_image_deepstack_features",
+        "carry_original_image_deepstack_through_post_tgvf_append",
+        "apply_post_tgvf_deepstack_scope_mask",
+    }
+
+
+def qwen3_deepstack_runtime_hook_names_for_kv_cache_evidence_only() -> set[str]:
+    """Hooks implemented by the clean cached-prefix evidence-only path."""
+
+    return {
+        "capture_original_image_deepstack_features",
+        "carry_original_image_deepstack_through_post_tgvf_append",
+        "apply_post_tgvf_deepstack_scope_mask",
+        "restore_deepstack_for_answer_when_scope_requires",
+    }
+
+
 def qwen3_deepstack_runtime_hook_names_for_stage2_training() -> set[str]:
     """Hooks implemented by the clean Stage2 full-sequence training path."""
 
@@ -344,6 +371,53 @@ def build_single_query_original_image_key_block_attention_mask(
     mask = torch.zeros((batch, 1, 1, key_len), dtype=dtype, device=device)
     key_padding = attention_mask_2d[:, None, None, :] == 0
     mask = mask.masked_fill(key_padding, min_value)
+    original_indices = original_image_token_indices.to(device=device, dtype=torch.long).view(-1)
+    if int(original_indices.numel()) > 0:
+        mask[:, :, :, original_indices] = min_value
+    return mask
+
+
+def build_cached_chunk_original_image_key_block_attention_mask(
+    *,
+    attention_mask_2d: Any,
+    original_image_token_indices: Any,
+    query_start: int,
+    query_length: int,
+    dtype: Any,
+) -> Any:
+    """Create a cached-generation 4D mask for a multi-token append chunk.
+
+    `attention_mask_2d` spans the full key sequence after appending the chunk.
+    The returned mask has query length `query_length` and key length equal to
+    the full sequence. It applies normal causal masking inside the appended
+    chunk and blocks original-image keys for every appended query token.
+    """
+
+    import torch
+
+    if attention_mask_2d.ndim != 2:
+        raise ValueError("attention_mask_2d must have shape [batch, key_len]")
+    batch, key_len = int(attention_mask_2d.shape[0]), int(attention_mask_2d.shape[-1])
+    if batch != 1:
+        raise ValueError("clean DeepStack cached chunk mask currently supports batch size 1")
+    q_start = int(query_start)
+    q_len = int(query_length)
+    if q_len <= 0:
+        raise ValueError("query_length must be positive")
+    if q_start < 0 or q_start + q_len > key_len:
+        raise ValueError("query span is outside the key sequence")
+    device = attention_mask_2d.device
+    min_value = torch.finfo(dtype).min
+    mask = torch.zeros((batch, 1, q_len, key_len), dtype=dtype, device=device)
+
+    query_positions = torch.arange(q_start, q_start + q_len, device=device)
+    key_positions = torch.arange(key_len, device=device)
+    future = key_positions.view(1, -1) > query_positions.view(-1, 1)
+    mask = mask.masked_fill(future.view(1, 1, q_len, key_len), min_value)
+
+    key_padding = attention_mask_2d[:, None, None, :] == 0
+    mask = mask.masked_fill(key_padding, min_value)
+
     original_indices = original_image_token_indices.to(device=device, dtype=torch.long).view(-1)
     if int(original_indices.numel()) > 0:
         mask[:, :, :, original_indices] = min_value
