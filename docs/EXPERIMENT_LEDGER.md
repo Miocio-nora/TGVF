@@ -10513,3 +10513,102 @@ entry, update this file immediately.
     passed: `45 passed`.
 - Launch status:
   - No new training launched under this entry.
+
+## 2026-06-30 - Stage3 Reward-Gated No-Block Frozen-Reference G20 8-Step Rerun
+
+- Status:
+  PLANNED.
+- Question:
+  From the same Stage2 checkpoint and same 32-row schedule as the completed
+  `g20` 8-step pilot, does the required-tool reward gate make a fresh Stage3
+  8-step run produce healthier reward/tool-use signals?
+- Baseline anchor:
+  - Completed pilot:
+    `2026-06-29 - Stage3 No-Block Frozen-Reference G20 8-Step Retry2`.
+- Intended diff:
+  - Start from the original Stage2 checkpoint again; do not continue the old
+    step-8 checkpoint.
+  - Keep the same sample ids/order, model/processor, DeepStack no-block scope,
+    4-GPU topology, `group_size=20`, token budgets, reward weights, judge
+    preset, and stepwise execution path.
+  - Enable the reward gate added in commit `26bd130`: for required-tool rows,
+    no-tool rollouts get answer reward gated to `0.0` and a no-call penalty of
+    `2.0`.
+- Known preparation notes:
+  - A first local planner attempt used `tee` before the output directory
+    existed; it did not launch training.
+  - A second local planner attempt combined `--dry-run` and `--write-plan`;
+    this CLI prints only and does not write files when `--dry-run` is present.
+  - The final template plan was generated with `--write-plan` only.
+- Code/worktree:
+  - Branch: `clean/tgvf-clean-project-20260625`.
+  - Code commit: `26bd130499d48668669dacb2c90c94ef0aef16fc`.
+  - Dirty worktree at template-plan generation: `false`.
+- Source checkpoint:
+  - `outputs/clean_training/qwen3_stage2_norm01_stage1_mask075_deepstack_4gpu_20260627_163250/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt`.
+  - SHA256:
+    `50245a11c27ad9755eb815b5f008af50a659fa07a4043f0f9427f5bbea3c0236`.
+- Train data:
+  - `revisit_vlm_clean/data/stage3_rl/v1_direct_20k_20260627_032447/accepted_rl_prompts.jsonl`.
+  - Rows: `20000`.
+  - SHA256:
+    `2e39a1dadcc020001bd3d763635f461d2b7dc6d94bfb3cfecdb9bb20240fa758`.
+- Output root:
+  - `outputs/stage3_grpo/all5_hint_no_block_frozenref_rewardgate_4gpu_g20_res768_8step_20260630_001248`.
+- Sample schedule:
+  - Reused from baseline:
+    `outputs/stage3_grpo/all5_hint_no_block_frozenref_4gpu_g20_res768_8step_retry2_20260629/stage3_grpo_sample_schedule.jsonl`.
+  - Rows: `32` = 8 steps x 4 ranks x 1 prompt.
+  - SHA256:
+    `6e1154d856adc83a4de85837e40b6890927a0727382694bfbad33db7bc828a87`.
+  - Overlap with baseline: `32/32`, same order.
+  - Tool buckets: `tool_helpful=20`, `tool_unnecessary=7`,
+    `uncertain=5`.
+  - Tool hints: `useful_tool=18`, `likely_required=2`, `no_tool=7`,
+    `optional_tool=5`.
+  - Source mix: `textvqa=14`, `visual_genome=12`, `docvqa=4`,
+    `chartqa=2`.
+- Planned Stage3 config:
+  - Runtime backend: `native_single_focus`.
+  - Policy model/processor:
+    `/nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking`.
+  - Judge model: `qwen3_vl_32b_thinking`, no-thinking JSON judge.
+  - DeepStack: `enabled=true`, `original_image_scope=no_block`,
+    `d_features_enabled=false`.
+  - Reference policy: `frozen_stage2`.
+  - Optimizer: `manual_sgd`.
+  - GPUs: physical `0,1,2,3`.
+  - World size: `4`.
+  - Group size: `20`.
+  - Per-device prompt batch: `1`.
+  - Global rollouts per step: `80`.
+  - Total pilot steps: `8`.
+  - Total sampled rollouts if complete: `640`.
+  - Max image resolution: `768`.
+  - Max new/action/answer tokens: `256/128/160`.
+  - Reward weights: answer `2.0`, tool `1.0`, focus `1.0`,
+    grounding `1.0`, protocol gate additive with penalty `-1.0`.
+  - Reward gate: `gate_answer_without_required_tool=true`,
+    `required_tool_no_call_penalty=2.0`.
+  - W&B parent run: project `tgvf-stage3`, mode `online`, group
+    `stage3-no-block-frozenref-rewardgate-pilot`; child step plans are disabled
+    by the stepwise runner as in the baseline.
+- Plan/preflight:
+  - Template plan:
+    `outputs/stage3_grpo/all5_hint_no_block_frozenref_rewardgate_4gpu_g20_res768_8step_20260630_001248/step_000001/stage3_grpo_training_plan.json`.
+  - Template plan SHA256:
+    `c63b6d4c0fa181b5c6f8aa9889ad10ca5d42fe66d18aed3a7bf7cf4aa63ece83`.
+  - Dataset identity SHA256:
+    `5479baf6363936c775bf449ef9e3c1065c08363d953926dbbe0085236d7ef5ff`.
+  - Stepwise preflight: `passed`.
+- Launch scripts:
+  - Foreground:
+    `outputs/stage3_grpo/all5_hint_no_block_frozenref_rewardgate_4gpu_g20_res768_8step_20260630_001248/run_stepwise_foreground.sh`.
+  - Tmux:
+    `outputs/stage3_grpo/all5_hint_no_block_frozenref_rewardgate_4gpu_g20_res768_8step_20260630_001248/launch_tmux.sh`.
+  - Tracked wrapper:
+    `revisit_vlm_clean/scripts/launch_stage3_rewardgate_g20_8step_20260630_001248.sh`.
+  - Tmux session name if launched:
+    `stage3_rewardgate_g20_8step_20260630_001248`.
+- Planned launch command:
+  - `revisit_vlm_clean/scripts/launch_stage3_rewardgate_g20_8step_20260630_001248.sh`.
