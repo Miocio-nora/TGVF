@@ -9285,7 +9285,7 @@ entry, update this file immediately.
 
 ### DIAG-20260629-111358-clean-kv-deepstack-implementation-smoke
 
-- Status: RUNNING.
+- Status: RUNNING_AFTER_TAIL_ALIGN_FIX.
 - Question:
   - Implement and validate clean Stage2 benchmark support for
     `kv_cache + DeepStack` so cached post-D continuation can be compared to
@@ -9362,3 +9362,50 @@ entry, update this file immediately.
     `diag_hr200_softforce_kv_deepstack_20260629`.
   - Command:
     `cd /nvmesv/dredvpn009/projects/r-vlm/revisit_vlm && outputs/clean_benchmarks/diagnostic_hr200_softforce_kv_deepstack_equiv_20260629_1114/run_kv.sh`.
+- First launch result:
+  - Output:
+    `outputs/clean_benchmarks/diagnostic_hr200_softforce_kv_deepstack_equiv_20260629_1114/kv/merged`.
+  - Status: INVALID_FOR_ACCURACY_COMPARISON.
+  - Metrics:
+    - n_rows `200`, n_scored `56`.
+    - reported accuracy `0.642857`, but this is only over untriggered/direct
+      rows and must not be compared to no-KV.
+    - answer_parse_rate `0.275000`.
+    - trigger/focus_valid `0.720000`.
+    - append_success_rate `0.000000`.
+    - malformed_rate `0.720000`.
+  - Failure reason:
+    all triggered KV+DeepStack appends failed with a one-token key-length
+    mismatch in the cached chunk 4D attention mask, for example target key
+    length `656` vs mask key length `657`.
+  - Code-level diagnosis:
+    generated `past_key_values.get_seq_length()` can be one token shorter than
+    `capture.input_ids.shape[-1]`. The fix is not to trim the mask; that would
+    drop the last captured token from the cached-prefix semantics. The fix is
+    to prefill any missing tail token(s) into the cache before appending D.
+- Tail-align implementation:
+  - Fix commit:
+    `e5ce88227da20cebbdc9f091e8e906540ca34a7a`.
+  - Added `_align_capture_cache_to_input_ids()` in clean native Stage2:
+    when DeepStack KV append is requested, it compares cache seq length to
+    captured `input_ids`, prefills missing tail tokens through the Qwen3 decode
+    helper, then builds the cached D-chunk original-image key-block mask.
+  - Added row debug fields:
+    `kv_cache_input_len`, `kv_cache_initial_seq_len`,
+    `kv_cache_tail_prefill_tokens`, `kv_cache_aligned_seq_len`,
+    `kv_cache_tail_prefill_used`.
+  - Additional tests:
+    - `PYTHONPATH=revisit_vlm_clean/src:src pytest -q revisit_vlm_clean/tests/test_deepstack.py revisit_vlm_clean/tests/test_runner_backend.py::test_stage2_native_kv_deepstack_append_uses_cached_chunk_mask revisit_vlm_clean/tests/test_runner_backend.py::test_stage2_native_kv_deepstack_prefills_generate_cache_tail revisit_vlm_clean/tests/test_runner_backend.py::test_stage2_native_deepstack_evidence_only_restores_attention_after_answer_boundary`
+      passed: `8 passed`.
+    - `PYTHONPATH=revisit_vlm_clean/src:src pytest -q revisit_vlm_clean/tests/test_runner_backend.py revisit_vlm_clean/tests/test_benchmark_data.py revisit_vlm_clean/tests/test_cli.py::test_stage2_deepstack_plan_disables_legacy_command revisit_vlm_clean/tests/test_cli.py::test_stage2_deepstack_prepare_writes_training_plan`
+      passed: `45 passed`.
+- Tail-align rerun:
+  - Planned output:
+    `outputs/clean_benchmarks/diagnostic_hr200_softforce_kv_deepstack_equiv_tailfix_20260629/kv`.
+  - Intended diff from first launch: code commit only; same checkpoint,
+    processor/model, HR200 manifest, sample order, prompt, parser/scorer,
+    DeepStack scope, max resolution, action/answer token budgets, and GPUs.
+  - Launch commit:
+    `e5ce88227da20cebbdc9f091e8e906540ca34a7a`.
+  - Planned tmux session:
+    `diag_hr200_softforce_kv_deepstack_tailfix_20260629`.
