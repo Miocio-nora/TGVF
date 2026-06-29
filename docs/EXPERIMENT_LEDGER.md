@@ -11345,7 +11345,7 @@ entry, update this file immediately.
 ## 2026-06-30 - Stage3 G8 PB2 Optional SoftPrompt4 Gradient Diagnostic
 
 - Status:
-  RUNNING.
+  COMPLETED.
 - Question:
   Before launching a longer formal Stage3 run, does the lighter candidate
   `group_size=8`, `per_device_prompt_batch_size=2`, `4 free + 4 soft_tool_prompt`
@@ -11433,3 +11433,47 @@ entry, update this file immediately.
     `d3817c6e0aefb2c5f5697c43c7694c8dd9937f6f`, git status short count `0`.
   - Command:
     `outputs/stage3_grpo/all5_hint_no_block_frozenref_rewardgate_softprompt4_4gpu_g8_pb2_opt_res512_graddiag_1step_20260630_032030/launch_tmux.sh`.
+- Outcome:
+  - Completed the single diagnostic step.
+  - Finished: `2026-06-30 03:25:13 JST`.
+  - Final state: `status=completed`, `completed_steps=[1]`, `next_step=2`.
+  - Checkpoint:
+    `outputs/stage3_grpo/all5_hint_no_block_frozenref_rewardgate_softprompt4_4gpu_g8_pb2_opt_res512_graddiag_1step_20260630_032030/step_000001/checkpoint_step_1.pt`.
+  - Wall time: about `10m22s`.
+- Rollout/reward metrics:
+  - Total rollouts: `64`.
+  - Rollout split: `free=44`, `soft_tool_prompt=20`.
+  - Trigger count/rate: `11/64 = 17.1875%`.
+  - Free trigger count/rate: `5/44 = 11.36%`.
+  - Soft-prompt trigger count/rate: `6/20 = 30.0%`.
+  - Tool labels from reward rows: `tool_needed=24`, `tool_unnecessary=24`,
+    `unknown=16`.
+  - Answer accuracy over reward rows: `40/64 = 62.5%`.
+  - Mean reward: `1.26953125`.
+  - Distributed replayed tokens: `2832`.
+  - Distributed loss mean: `-0.13162667234428227`.
+  - Distributed KL mean: `0.0`.
+  - Recorded old-logprob mismatches: `0`.
+- Gradient diagnostics:
+  - Replay autograd was intact on all ranks:
+    `new_tensor_requires_grad=true`, `new_rows_requires_grad=16/16`.
+  - After backward, all ranks had nonzero gradients for all `504` trainable
+    tensors; per-rank total grad norms were `4.2439`, `4.5840`, `3.2293`,
+    `3.6527`.
+  - After allreduce, all ranks reported total grad norm `2.1414`, max abs
+    `0.031905`, nonzero tensors `504/504`, `grad_none=0`.
+  - The scalar `grad_norm=0.0` in `train_metrics.json` is therefore a logging
+    artifact of `max_grad_norm=0.0` disabling clipping, not a no-learning signal.
+- GPU memory:
+  - Peak memory from `gpu_mem_trace.csv`: GPU0 `75320 MiB`, GPU1 `106754 MiB`,
+    GPU2 `93104 MiB`, GPU3 `69898 MiB`.
+- Analysis:
+  - The lighter candidate fits comfortably on 180G cards and produces real
+    gradients.
+  - It is suitable as the formal Stage3 candidate with `group_size=8`,
+    `per_device_prompt_batch_size=2`, `tool_needed_or_optional`, and `4`
+    soft-prompt rollouts.
+  - Throughput is still limited because the current stepwise path performs a
+    rollout-only pass for judge preparation and then reruns rollouts during
+    training. Reusing judged trajectories is a future speed optimization, not a
+    blocker for this formal pilot.
