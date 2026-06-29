@@ -10517,7 +10517,7 @@ entry, update this file immediately.
 ## 2026-06-30 - Stage3 Reward-Gated No-Block Frozen-Reference G20 8-Step Rerun
 
 - Status:
-  RUNNING.
+  COMPLETED.
 - Question:
   From the same Stage2 checkpoint and same 32-row schedule as the completed
   `g20` 8-step pilot, does the required-tool reward gate make a fresh Stage3
@@ -10626,3 +10626,83 @@ entry, update this file immediately.
     `https://wandb.ai/mio_nora/tgvf-stage3/runs/tkz1or5g`.
   - State immediately after launch:
     `status=running`, `next_step=1`, `completed_steps=[]`.
+- Outcome:
+  - Completed all `8/8` Stage3 pilot steps.
+  - Completed: `2026-06-30 00:56:37 JST`.
+  - Wall time: about `36m19s`.
+  - Final checkpoint:
+    `outputs/stage3_grpo/all5_hint_no_block_frozenref_rewardgate_4gpu_g20_res768_8step_20260630_001248/step_000008/checkpoint_step_1.pt`.
+  - Final state:
+    `outputs/stage3_grpo/all5_hint_no_block_frozenref_rewardgate_4gpu_g20_res768_8step_20260630_001248/stage3_grpo_stepwise_state.json`
+    with `status=completed`, `completed_steps=[1,2,3,4,5,6,7,8]`.
+  - W&B:
+    `https://wandb.ai/mio_nora/tgvf-stage3/runs/tkz1or5g`.
+  - Checkpoint retention kept steps `4,7,8` and deleted step `6`,
+    matching `keep_last=2`, `keep_every=4`.
+- Step metrics:
+  - Step 1: rollouts `80`, trigger `0/80=0.0%`, gated rows `20`,
+    answer acc `65.0%`, reward_total_mean `1.5481`, loss_mean `0.1088`,
+    replayed tokens `2387`.
+  - Step 2: rollouts `80`, trigger `0/80=0.0%`, gated rows `80`,
+    answer acc `58.75%`, reward_total_mean `-2.0000`, loss_mean `0.0000`,
+    replayed tokens `3759`.
+  - Step 3: rollouts `80`, trigger `0/80=0.0%`, gated rows `60`,
+    answer acc `28.75%`, reward_total_mean `-0.7500`, loss_mean `0.0000`,
+    replayed tokens `2622`.
+  - Step 4: rollouts `80`, trigger `0/80=0.0%`, gated rows `60`,
+    answer acc `45.0%`, reward_total_mean `-0.8375`, loss_mean `0.1527`,
+    replayed tokens `2931`.
+  - Step 5: rollouts `80`, trigger `0/80=0.0%`, gated rows `40`,
+    answer acc `38.75%`, reward_total_mean `-0.7250`, loss_mean `0.0901`,
+    replayed tokens `2841`.
+  - Step 6: rollouts `80`, trigger `0/80=0.0%`, gated rows `60`,
+    answer acc `30.0%`, reward_total_mean `-0.7625`, loss_mean `0.0703`,
+    replayed tokens `3588`.
+  - Step 7: rollouts `80`, trigger `0/80=0.0%`, gated rows `40`,
+    answer acc `53.75%`, reward_total_mean `-0.6250`, loss_mean `0.0405`,
+    replayed tokens `2682`.
+  - Step 8: rollouts `80`, trigger `0/80=0.0%`, gated rows `40`,
+    answer acc `45.0%`, reward_total_mean `-0.2000`, loss_mean `0.0142`,
+    replayed tokens `2676`.
+- Overall pilot metrics:
+  - Total rollouts: `640`.
+  - Trigger count/rate: `0/640 = 0.00%`.
+  - Gated rows: `400/640`.
+  - Tool labels: `tool_needed=400`, `tool_unnecessary=140`,
+    `unknown=100`; all labels came from `teacher_hint`.
+  - Answer accuracy over reward rows: `45.63%`.
+  - reward_total_mean: `-0.5440`.
+  - reward_answer_mean: `0.2453`.
+  - reward_tool_mean: `-1.0385`.
+  - reward_focus_mean: `0.0023`.
+  - reward_ground_mean: `0.0047`.
+  - reward_protocol_mean: `-0.0031`.
+  - `distributed_kl_mean` remained `0.0` for all steps, as in the baseline
+    pilot.
+- GPU/resource:
+  - No CUDA OOM.
+  - Peak memory on intended GPUs from `gpu_mem_trace.csv`:
+    GPU0 `150284 MiB`, GPU1 `173222 MiB`, GPU2 `148030 MiB`,
+    GPU3 `156512 MiB`.
+  - The trace also saw transient memory on GPUs `4-7`, but this run's launch
+    was constrained to `CUDA_VISIBLE_DEVICES=0,1,2,3`; do not attribute those
+    entries to this job without process-level corroboration.
+- Baseline comparison:
+  - Baseline `g20` pilot trigger was `3/640 = 0.47%`; this reward-gated rerun
+    had `0/640 = 0.00%`.
+  - Baseline reward_total_mean was `+0.4748`; this rerun is `-0.5440`, close
+    to the offline impact estimate `-0.5471`.
+  - Baseline answer accuracy was `44.38%`; this rerun is `45.63%`.
+- Conclusion:
+  - The required-tool reward gate is implemented and active: all `400`
+    no-tool rollouts on `tool_needed` rows had answer reward gated and received
+    the stronger no-call penalty.
+  - The gate alone does not solve Stage3 tool-use learning. The on-policy
+    rollout distribution produced zero tool attempts across all `640` samples,
+    so GRPO never saw a positive tool trajectory. Steps with homogeneous
+    gated rewards also produced little or no learning signal, e.g. step 2
+    had reward `-2.0` for all rows and loss `0.0`.
+  - Next Stage3 direction should add explicit tool exploration or trigger
+    supervision, such as mixed free/soft-force/forced-tool rollouts inside
+    each group, a small tool-call BC/CE auxiliary loss, or a temporary
+    rollout-only logit bias for tool action tokens.
