@@ -11040,7 +11040,7 @@ entry, update this file immediately.
 ## 2026-06-30 - Stage3 SoftPrompt8 G20 Res512 1-Step Memory Probe
 
 - Status:
-  RUNNING.
+  DONE.
 - Question:
   With the canonical `max_image_resolution=512` restored, can the main
   `group_size=20` / `12 free + 8 soft_tool_prompt` tool-needed rollout split
@@ -11137,3 +11137,57 @@ entry, update this file immediately.
     `revisit_vlm_clean/scripts/launch_stage3_softprompt8_g20_res512_1step_mem_20260630_020743.sh`.
   - State immediately after launch:
     `status=running`, `next_step=1`, `completed_steps=[]`.
+- Outcome:
+  - Completed the single Stage3 step.
+  - Finished: `2026-06-30 02:19:03 JST`.
+  - Wall time from tmux start to state update: about `7m25s`.
+  - Final state:
+    `status=completed`, `completed_steps=[1]`, `next_step=2`.
+  - Checkpoint:
+    `outputs/stage3_grpo/all5_hint_no_block_frozenref_rewardgate_softprompt8_4gpu_g20_res512_1step_mem_20260630_020743/step_000001/checkpoint_step_1.pt`.
+  - Tmux exited cleanly; GPUs 0-7 were idle after completion.
+- GPU memory:
+  - Sampling interval: `2s`.
+  - Overall/training-full peak from `gpu_mem_trace.csv`:
+    GPU0 `108194 MiB`, GPU1 `121388 MiB`, GPU2 `77682 MiB`,
+    GPU3 `80414 MiB`.
+  - Policy-replay-through-allreduce window peak:
+    GPU0 `107248 MiB`, GPU1 `120440 MiB`, GPU2 `76736 MiB`,
+    GPU3 `79468 MiB`.
+  - Peak occurred near `2026-06-30 02:18:55 JST`, around the
+    all-reduce/optimizer tail.
+  - Conclusion from this probe:
+    canonical `res512 + group20 + 12:8 on the one tool-needed prompt` fits on
+    180G GPUs with substantial headroom in this sampled step.
+- Rollout/reward metrics:
+  - Total rollouts: `80`.
+  - Rollout split: `free=72`, `soft_tool_prompt=8`.
+  - Trigger count/rate: `12/80 = 15.00%`.
+  - Free trigger count/rate: `9/72 = 12.50%`.
+  - Soft-prompt trigger count/rate: `3/8 = 37.50%`.
+  - Tool-needed rank0 split: `12 free + 8 soft`; tool triggers were
+    `1/12` free and `3/8` soft.
+  - Reward rows: `80`.
+  - Tool labels: `tool_needed=20`, `tool_unnecessary=60`.
+  - Answer accuracy over reward rows: `67.5%`.
+  - Mean reward: `1.83875`.
+  - Distributed replayed tokens: `2688`.
+  - Distributed rollout count: `80`.
+  - Distributed loss mean: `0.026532`.
+- Analysis:
+  - This directly corrects the earlier res768 misread: at canonical
+    `max_image_resolution=512`, the same `soft_count=8` setting completed one
+    step and did not approach the 180G limit.
+  - The result supports keeping the `12:8` soft exploration ratio for the
+    canonical line.
+  - Scope caveat: this is not a worst-case memory proof. Step 1 has only one
+    tool-needed prompt, so only one rank receives the `12:8` split; the other
+    three ranks are all-free under the current `apply_to=tool_needed`
+    implementation. A step with multiple tool-needed prompts and high soft
+    trigger rate may use more memory.
+- Conclusion:
+  - Use `max_image_resolution=512` for the next canonical Stage3 pilot.
+  - Do not lower the soft-prompt ratio based on the previous res768 OOM side
+    result.
+  - If future 512 steps with more tool-needed prompts hit memory pressure, fix
+    the Stage3 update path rather than suppressing soft exploration.
