@@ -11481,7 +11481,7 @@ entry, update this file immediately.
 ## 2026-06-30 - Stage3 G8 PB2 Optional SoftPrompt4 Formal 8-Step Pilot
 
 - Status:
-  PLANNED.
+  RUNNING.
 - Question:
   With the batch/resource setting validated by the 1-step diagnostic, can the
   current Stage3 all-5 reward recipe run an 8-step formal pilot from the clean
@@ -11575,6 +11575,16 @@ entry, update this file immediately.
     `stage3_g8_pb2_opt_formal8_20260630_033130`.
 - Planned launch command:
   - `outputs/stage3_grpo/all5_hint_no_block_frozenref_rewardgate_softprompt4_4gpu_g8_pb2_opt_res512_formal8_20260630_033130/launch_tmux.sh`.
+- Launch status:
+  - Started: `2026-06-30 03:38:12 JST`.
+  - Tmux session:
+    `stage3_g8_pb2_opt_formal8_20260630_033130`.
+  - Runtime commit from `run_config.txt`:
+    `18cc71d31d190e0bca860dd2ea76378eadfa0f1c`, git status short count `0`.
+  - State immediately after launch:
+    `status=running`, `next_step=1`, `completed_steps=[]`, `target_steps=8`.
+  - Command:
+    `outputs/stage3_grpo/all5_hint_no_block_frozenref_rewardgate_softprompt4_4gpu_g8_pb2_opt_res512_formal8_20260630_033130/launch_tmux.sh`.
 - Estimate:
   - Based on the 1-step diagnostic wall time of about `10m22s`, this 8-step
     pilot should take roughly `80-90 min` unless judge/model-loading overheads
