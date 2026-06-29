@@ -9745,3 +9745,80 @@ entry, update this file immediately.
     `mask_original_image_after_tgvf_prob=0.75`; on this HR200 diagnostic it
     gives `+1.50` points for softforce and `+0.00` points for free versus the
     closest available through-answer controls.
+
+## 2026-06-29 - CoreDev-2511 Full No-Block DeepStack Rerun
+
+- Status:
+  RUNNING.
+- Question:
+  Measure the full CoreDev-2511 manifest for the current Qwen3 Stage2
+  checkpoint with `DeepStack enabled + no_block`, after the HR200-only
+  diagnostic showed that a full CoreDev run is still missing.
+- Baseline anchor:
+  - Original:
+    `outputs/clean_benchmarks/qwen3_original_coredev2511_4shard_maxans512_20260628_0216_rescored_bboxfix_20260628_035759/merged`.
+  - Free through-answer:
+    `outputs/clean_benchmarks/qwen3_stage2_norm01_free_coredev2511_deepstack512_recovery_4shard_20260628_0615/merged`.
+  - Softforce through-answer:
+    `outputs/clean_benchmarks/qwen3_stage2_norm01_softforce_coredev2511_deepstack512_recovery_4shard_20260628_102713/merged`.
+- Intended diff:
+  - Full CoreDev-2511 instead of HR200 slice.
+  - DeepStack scope: `through_answer` baseline -> `no_block`.
+  - Forward mode: `no_kv_full_sequence` baseline -> `kv_cache`, matching the
+    current no-block inference path.
+- Held fixed:
+  - Checkpoint, model, processor, manifest, parser/scorer, max image
+    resolution, max action tokens, max answer tokens, Stage2 D condition, and
+    continuation mode.
+- Code/worktree:
+  - Branch: `clean/tgvf-clean-project-20260625`.
+  - Code commit at preflight: `c5b4ce4 Add CoreDev2511 benchmark table`.
+  - Worktree dirty before launch only from this ledger entry and the run script.
+- Stage2 checkpoint:
+  - `outputs/clean_training/qwen3_stage2_norm01_stage1_mask075_deepstack_4gpu_20260627_163250/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt`.
+- Model/processor:
+  - `/nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking`.
+- Stage2 runtime eval JSONL:
+  - `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend_open_answer/splits/tgvf_v4_teacher_stage2_protocol_c.test.jsonl`.
+- Benchmark source:
+  - Manifest:
+    `revisit_vlm_clean/benchmark_manifests/core_balanced_dev_2511_seed20260625.json`.
+  - Manifest id: `core_balanced_dev_2511_seed20260625`.
+  - Manifest hash:
+    `a461d9b482b7165b42b9bbb0fbf0ea6aff31fde0a838c13d953f070e770b0579`.
+  - Sample count/order: `2511`.
+  - Composition: VStar `191`, HRBench4K `200`, BLINK `420`,
+    OCRBench v2 `600`, MMMU-Pro `300`, MathVista `300`, MathVerse `500`.
+- Planned modes:
+  - `tgvf_free`.
+  - `tgvf_softforce` with prompt text `Use focus tool.`.
+- Runtime settings:
+  - Native runner backend: `tgvf_stage2_qwen3_native`.
+  - Forward mode: `kv_cache`.
+  - Post-TGVF continuation: `natural_continue`.
+  - Max image resolution: `512`.
+  - Max action tokens: `64`.
+  - Max answer tokens: `512`.
+  - Scoring backend: `auto`.
+  - DeepStack: `enabled=true`, `original_image_scope=no_block`,
+    `d_features_enabled=false`.
+  - Stage2 D condition: `correct_D`.
+- GPUs:
+  - Physical GPUs `0,1,2,3`, four shards per mode.
+  - Modes run sequentially: free, then softforce.
+- Output:
+  - `outputs/clean_benchmarks/qwen3_stage2_norm01_coredev2511_kv_deepstack_no_block_4shard_20260629_201340`.
+- Command:
+  - `cd /nvmesv/dredvpn009/projects/r-vlm/revisit_vlm && outputs/clean_benchmarks/qwen3_stage2_norm01_coredev2511_kv_deepstack_no_block_4shard_20260629_201340/run_free_softforce_no_block.sh`.
+- Started:
+  - `2026-06-29 20:15:53 JST`.
+- tmux session:
+  - `coredev2511_no_block_20260629_201340`.
+- Preflight:
+  - Checkpoint exists.
+  - Model/processor exists.
+  - Manifest exists and has `2511` samples.
+  - Dry-run confirmed `tgvf_free` and `tgvf_softforce` resolve to
+    `kv_cache`, CoreDev-2511 manifest hash
+    `a461d9b482b7165b42b9bbb0fbf0ea6aff31fde0a838c13d953f070e770b0579`,
+    and DeepStack scope `no_block`.
