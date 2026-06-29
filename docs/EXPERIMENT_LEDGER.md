@@ -10028,3 +10028,115 @@ entry, update this file immediately.
 - Conclusion:
   - Stage3 training is prepared but deliberately not launched.
   - This should be the next small pilot before another 200-step formal run.
+
+## 2026-06-29 - Stage3 No-Block Frozen-Reference 8-Step Pilot
+
+- Status:
+  PLANNED.
+- Question:
+  Run a shorter 8-step pilot before the prepared 20-step pilot, to quickly
+  check legal TGVF trigger rate, format stability, reward distribution, and
+  frozen-reference/no-block runtime behavior.
+- Baseline anchor:
+  - Prepared but not launched 20-step pilot:
+    `2026-06-29 - Stage3 No-Block Frozen-Reference 20-Step Pilot Prepared`.
+  - Invalid prior long run:
+    `EXP-20260629-002900-stage3-formal-all5-g12-res768-200step-wandb-online`,
+    stopped because legal tool actions were nearly absent.
+- Intended diff:
+  - Use the same intended Stage3 recipe as the 20-step prepared pilot.
+  - Reduce total planned optimizer steps from `20` to `8`.
+  - Use a fresh 8-step sample schedule/state/output root to avoid inconsistent
+    `target_steps` metadata.
+- Held fixed:
+  - Stage2 source checkpoint.
+  - Stage3 RL 20k data source.
+  - Policy model/processor: 8B.
+  - Judge model: 32B offline judge.
+  - DeepStack: `enabled + original_image_scope=no_block`.
+  - Reference policy: `frozen_stage2`.
+  - Reward weights and teacher-hint ToolDecision labels.
+  - GPU/world-size/group-size/token budgets.
+- Code/worktree:
+  - Branch: `clean/tgvf-clean-project-20260625`.
+  - Code commit at preparation: `2bb1edd Prepare Stage3 no-block frozen-reference pilot`.
+- Source checkpoint:
+  - `outputs/clean_training/qwen3_stage2_norm01_stage1_mask075_deepstack_4gpu_20260627_163250/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt`.
+  - SHA256:
+    `50245a11c27ad9755eb815b5f008af50a659fa07a4043f0f9427f5bbea3c0236`.
+- Train data:
+  - `revisit_vlm_clean/data/stage3_rl/v1_direct_20k_20260627_032447/accepted_rl_prompts.jsonl`.
+  - Rows: `20000`.
+  - SHA256:
+    `2e39a1dadcc020001bd3d763635f461d2b7dc6d94bfb3cfecdb9bb20240fa758`.
+- Output root:
+  - `outputs/stage3_grpo/all5_hint_no_block_frozenref_4gpu_g12_res768_8step_20260629`.
+- Sample schedule:
+  - `outputs/stage3_grpo/all5_hint_no_block_frozenref_4gpu_g12_res768_8step_20260629/stage3_grpo_sample_schedule.jsonl`.
+  - Rows: `32` = 8 steps x 4 ranks x 1 prompt.
+  - SHA256:
+    `ac9df06cc5502db27ad4777eb7a433b8521deaa6bc1e0726cc291572347af323`.
+  - Duplicate sample ids: `0`.
+  - Duplicate image uids: `0`.
+  - Tool buckets: `tool_helpful=20`, `tool_unnecessary=7`,
+    `uncertain=5`.
+  - Tool hints: `useful_tool=18`, `likely_required=2`, `no_tool=7`,
+    `optional_tool=5`.
+  - Source mix: `textvqa=14`, `visual_genome=12`, `docvqa=4`,
+    `chartqa=2`.
+- Planned Stage3 config:
+  - Runtime backend: `native_single_focus`.
+  - Policy model/processor:
+    `/nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking`.
+  - Judge model: `qwen3_vl_32b_thinking`, no-thinking JSON judge.
+  - DeepStack: `enabled=true`, `original_image_scope=no_block`,
+    `d_features_enabled=false`.
+  - Reference policy: `frozen_stage2`.
+  - Optimizer: `manual_sgd`.
+  - Trainable scope: policy LoRA/adapter parameters only; foveal/TGVF frozen.
+  - GPUs: physical `0,1,2,3`.
+  - World size: `4`.
+  - Group size: `12`.
+  - Per-device prompt batch: `1`.
+  - Global rollouts per step: `48`.
+  - Total pilot steps: `8`.
+  - Total scheduled prompts: `32`.
+  - Total sampled rollouts if complete: `384`.
+  - Max image resolution: `768`.
+  - Max new/action/answer tokens: `256/128/160`.
+  - Sampling: `temperature=1.0`, `top_p=0.95`.
+  - Reward weights: answer `2.0`, tool `1.0`, focus `1.0`,
+    grounding `1.0`, protocol gate additive with penalty `-1.0`.
+  - ToolDecision labels: forced probes disabled; use `teacher_hint` with
+    `hint_label_weight=1.0`.
+  - W&B: project `tgvf-stage3`, mode `online`, group
+    `stage3-no-block-frozenref-pilot`, checkpoint artifact upload disabled.
+- Plan/preflight:
+  - Plan:
+    `outputs/stage3_grpo/all5_hint_no_block_frozenref_4gpu_g12_res768_8step_20260629/step_000001/stage3_grpo_training_plan.json`.
+  - Plan SHA256:
+    `5b7cd6ad664efc50b4f1dc364e5600803ba1703a614a302e94a2143b0e332a49`.
+  - Stage3 executor preflight:
+    `outputs/stage3_grpo/all5_hint_no_block_frozenref_4gpu_g12_res768_8step_20260629/step_000001/stage3_grpo_preflight_report.json`.
+  - Preflight status: `passed`.
+  - Stepwise preflight status: `passed`.
+  - GPU preflight: GPUs `0-7` were idle; planned launch uses `0-3`.
+- Launch scripts:
+  - Foreground:
+    `outputs/stage3_grpo/all5_hint_no_block_frozenref_4gpu_g12_res768_8step_20260629/run_stepwise_foreground.sh`.
+  - Tmux:
+    `outputs/stage3_grpo/all5_hint_no_block_frozenref_4gpu_g12_res768_8step_20260629/launch_tmux.sh`.
+  - Tracked wrapper:
+    `revisit_vlm_clean/scripts/launch_stage3_no_block_frozenref_8step_20260629.sh`.
+  - Tmux session name if launched:
+    `stage3_no_block_frozenref_8step`.
+- Planned launch command:
+  - `revisit_vlm_clean/scripts/launch_stage3_no_block_frozenref_8step_20260629.sh`.
+- Metrics to inspect early:
+  - Step 1 `rollout/tool_trigger_rate`.
+  - Legal `<|focus_start|>...<|focus_end|>` count.
+  - `rollout/malformed_rate` and protocol penalties.
+  - `reward/tool_label_count/*`, `reward_tool_mean`,
+    `reward_focus_mean`, `reward_ground_mean`.
+  - `train/reference_logprobs_source` should be
+    `teacher_forced_frozen_stage2_snapshot`.
