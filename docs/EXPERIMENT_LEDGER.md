@@ -10304,7 +10304,7 @@ entry, update this file immediately.
 ## 2026-06-29 - Stage3 No-Block Frozen-Reference G20 8-Step Retry2
 
 - Status:
-  RUNNING.
+  COMPLETED.
 - Question:
   Retry the Stage3 8-step pilot with a safer high-utilization group size after
   `g24` reached OOM.
@@ -10400,3 +10400,61 @@ entry, update this file immediately.
   - Confirm no OOM in step 1 replay/backward.
   - Record step 1 GPU peaks, trigger rate, focus/ground judge rows, reward
     distribution, and checkpoint creation.
+- Outcome:
+  - Completed all `8/8` Stage3 pilot steps.
+  - Started: `2026-06-29 23:13:18 JST`.
+  - Completed: `2026-06-29 23:49:10 JST`.
+  - Wall time: about `35m52s`.
+  - Final checkpoint:
+    `outputs/stage3_grpo/all5_hint_no_block_frozenref_4gpu_g20_res768_8step_retry2_20260629/step_000008/checkpoint_step_1.pt`.
+  - Final state:
+    `outputs/stage3_grpo/all5_hint_no_block_frozenref_4gpu_g20_res768_8step_retry2_20260629/stage3_grpo_stepwise_state.json`
+    with `status=completed`, `completed_steps=[1,2,3,4,5,6,7,8]`.
+  - No recurrence of the frozen-reference inplace-backward error.
+  - No CUDA OOM at `group_size=20`.
+  - Peak GPU memory from `gpu_mem_trace.csv`:
+    GPU0 `150062 MiB`, GPU1 `173228 MiB`, GPU2 `147616 MiB`,
+    GPU3 `156330 MiB`.
+  - This confirms `group_size=20` is a safer 180G setting than `group_size=24`;
+    GPU1 still runs relatively high, so `g20` is a good safety default for this
+    stepwise pilot path.
+- Step metrics:
+  - Step 1: rollouts `80`, trigger `3/80=3.75%`, answer acc `65.0%`,
+    reward_total_mean `1.7981`, loss_mean `0.1088`, replayed tokens `2387`.
+  - Step 2: rollouts `80`, trigger `0/80=0.0%`, answer acc `60.0%`,
+    reward_total_mean `0.2000`, loss_mean `0.0208`, replayed tokens `3428`.
+  - Step 3: rollouts `80`, trigger `0/80=0.0%`, answer acc `28.75%`,
+    reward_total_mean `0.0625`, loss_mean `0.0614`, replayed tokens `2729`.
+  - Step 4: rollouts `80`, trigger `0/80=0.0%`, answer acc `47.5%`,
+    reward_total_mean `0.4500`, loss_mean `0.0832`, replayed tokens `2682`.
+  - Step 5: rollouts `80`, trigger `0/80=0.0%`, answer acc `47.5%`,
+    reward_total_mean `0.4375`, loss_mean `0.1992`, replayed tokens `2813`.
+  - Step 6: rollouts `80`, trigger `0/80=0.0%`, answer acc `28.75%`,
+    reward_total_mean `0.0625`, loss_mean `0.0891`, replayed tokens `3453`.
+  - Step 7: rollouts `80`, trigger `0/80=0.0%`, answer acc `40.0%`,
+    reward_total_mean `0.3000`, loss_mean `0.1693`, replayed tokens `2735`.
+  - Step 8: rollouts `80`, trigger `0/80=0.0%`, answer acc `37.5%`,
+    reward_total_mean `0.4875`, loss_mean `0.0981`, replayed tokens `2699`.
+- Overall pilot metrics:
+  - Total rollouts: `640`.
+  - Trigger count/rate: `3/640 = 0.47%`.
+  - Answer accuracy over reward rows: `44.38%`.
+  - reward_total_mean: `0.4748`.
+  - reward_answer_mean: `0.4438`.
+  - reward_tool_mean: `-0.4135`.
+  - reward_focus_mean: `0.0023`.
+  - reward_ground_mean: `0.0047`.
+  - Reference logprobs source throughout:
+    `teacher_forced_frozen_stage2_snapshot`.
+- Observations:
+  - The pilot is valid as a Stage3 plumbing and resource test, not as an
+    effectiveness result.
+  - Trigger rate collapsed after step 1, so the all-5 reward path barely uses
+    focus/grounding rewards in this pilot.
+  - Several steps show rank stragglers during rollout/reference replay; the
+    current stepwise path also reloads the 8B policy each step. These are the
+    main speed bottlenecks to address later with persistent workers and batched
+    replay.
+  - `max_grad_norm=0.0` currently means clipping disabled, but the metric logs
+    `grad_norm=0.0`. This is misleading and should be split into
+    `clip_enabled=false` plus a true `grad_norm_before_clip` metric.
