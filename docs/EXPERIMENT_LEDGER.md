@@ -10176,7 +10176,7 @@ entry, update this file immediately.
 ## 2026-06-29 - Stage3 No-Block Frozen-Reference G24 8-Step Retry1
 
 - Status:
-  PLANNED.
+  RUNNING.
 - Question:
   Retry the failed 8-step Stage3 pilot after fixing frozen-reference replay
   ordering, while using the 180G GPUs more effectively but still conservatively.
@@ -10198,6 +10198,7 @@ entry, update this file immediately.
 - Code/worktree:
   - Branch: `clean/tgvf-clean-project-20260625`.
   - Code commit with fix: `e316482 Fix Stage3 frozen reference replay ordering`.
+  - Launch-record commit: `83779c9 Prepare Stage3 g24 8-step retry`.
 - Verification before launch:
   - `PYTHONPATH=revisit_vlm_clean/src:src python -m pytest revisit_vlm_clean/tests/test_stage3_grpo.py::test_stage3_native_update_uses_frozen_stage2_reference_snapshot`
     passed.
@@ -10272,6 +10273,13 @@ entry, update this file immediately.
     `stage3_no_block_frozenref_g24_8step_retry1`.
 - Planned launch command:
   - `revisit_vlm_clean/scripts/launch_stage3_no_block_frozenref_g24_8step_retry1_20260629.sh`.
+- Actual launch:
+  - Started: `2026-06-29 23:02:37 JST`.
+  - Tmux session: `stage3_no_block_frozenref_g24_8step_retry1`.
+  - Command:
+    `revisit_vlm_clean/scripts/launch_stage3_no_block_frozenref_g24_8step_retry1_20260629.sh`.
+  - W&B:
+    `https://wandb.ai/mio_nora/tgvf-stage3/runs/ka97yp5c`.
 - Early monitoring:
   - Stop or re-plan if step 1 still triggers the inplace-backward error.
   - Record step 1 GPU peak from `gpu_mem_trace.csv`.
