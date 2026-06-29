@@ -10304,7 +10304,7 @@ entry, update this file immediately.
 ## 2026-06-29 - Stage3 No-Block Frozen-Reference G20 8-Step Retry2
 
 - Status:
-  PLANNED.
+  RUNNING.
 - Question:
   Retry the Stage3 8-step pilot with a safer high-utilization group size after
   `g24` reached OOM.
@@ -10323,6 +10323,7 @@ entry, update this file immediately.
 - Code/worktree:
   - Branch: `clean/tgvf-clean-project-20260625`.
   - Latest code commit before launch: `8f26ad2 Record Stage3 g24 retry OOM`.
+  - Launch-record commit: `4a70619 Prepare Stage3 g20 8-step retry`.
 - Source checkpoint:
   - `outputs/clean_training/qwen3_stage2_norm01_stage1_mask075_deepstack_4gpu_20260627_163250/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt`.
   - SHA256:
@@ -10387,6 +10388,13 @@ entry, update this file immediately.
     `stage3_no_block_frozenref_g20_8step_retry2`.
 - Planned launch command:
   - `revisit_vlm_clean/scripts/launch_stage3_no_block_frozenref_g20_8step_retry2_20260629.sh`.
+- Actual launch:
+  - Started: `2026-06-29 23:13:18 JST`.
+  - Tmux session: `stage3_no_block_frozenref_g20_8step_retry2`.
+  - Command:
+    `revisit_vlm_clean/scripts/launch_stage3_no_block_frozenref_g20_8step_retry2_20260629.sh`.
+  - W&B:
+    `https://wandb.ai/mio_nora/tgvf-stage3/runs/5r810ums`.
 - Early monitoring:
   - Confirm no recurrence of the inplace-backward error.
   - Confirm no OOM in step 1 replay/backward.
