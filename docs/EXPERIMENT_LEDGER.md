@@ -9719,18 +9719,29 @@ entry, update this file immediately.
 - Analysis:
   - On this HR200 slice, allowing original-image keys after D is modestly
     positive for softforce versus the valid `through_answer` control.
-  - Free no-block is recorded as a new result on this exact manifest; no strict
-    same-manifest free `through_answer` control was found in
-    `outputs/clean_benchmarks`.
-  - Historical free `through_answer` benchmark results do exist, for example
+  - Historical free `through_answer` benchmark results do exist. The important
+    one is
     `outputs/clean_benchmarks/qwen3_stage2_norm01_free_coredev2511_deepstack512_recovery_4shard_20260628_0615/merged`
     with `n=2511`, `accuracy=32.07`, `trigger_rate=18.64`,
     `answer_parse_rate=98.73`, `append_success_rate=96.79`, and DeepStack
-    scope `through_answer`. That run is useful historical context, but it is
-    not an exact ablation against this HR200 `n=200` manifest because the sample
-    set and benchmark mixture differ.
+    scope `through_answer`.
+  - That old `coredev2511` run contains the exact same HR200 sample ids in the
+    exact same order as this run. Filtering only `hr_bench_4k_800` rows from
+    the old free `through_answer` run gives:
+    `n=200`, `accuracy=54.00`, `answer_parse_rate=97.50`,
+    `trigger_rate/focus_valid_rate=37.00`, `append_success_rate=100.00`.
+  - The filtered old free run is sample-exact but not fully config-exact:
+    old free used `post_tgvf_forward_mode=no_kv_full_sequence` and
+    `DeepStack scope=through_answer`; this new free run used
+    `post_tgvf_forward_mode=kv_cache` and `DeepStack scope=no_block`.
+    Per-row comparison on the same 200 HR rows: score differs on `2/200`,
+    parsed answer differs on `6/200`, and final output differs on `74/200`
+    rows. Accuracy is unchanged at `54.00`.
 - Conclusion:
   - `DeepStack enabled + no_block` works mechanically in the clean runner and is
     comparable on the same HR200 manifest.
-  - Result is evidence in favor of keeping `no_block` as the inference setting
-    for the Stage2 checkpoint trained with `mask_original_image_after_tgvf_prob=0.75`.
+  - Result is evidence in favor of keeping `no_block` as a supported inference
+    setting for the Stage2 checkpoint trained with
+    `mask_original_image_after_tgvf_prob=0.75`; on this HR200 diagnostic it
+    gives `+1.50` points for softforce and `+0.00` points for free versus the
+    closest available through-answer controls.
