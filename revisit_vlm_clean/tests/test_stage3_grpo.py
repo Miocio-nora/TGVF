@@ -994,6 +994,113 @@ def test_stage3_sample_schedule_controls_rollout_prompts(tmp_path: Path) -> None
     )
 
 
+def test_stage3_tool_exploration_soft_prompt_modes(tmp_path: Path) -> None:
+    data = _write_rl_fixture(tmp_path)
+    schedule_path = tmp_path / "soft_prompt_schedule.jsonl"
+    schedule_rows = [
+        {
+            "global_step": 1,
+            "rank": 0,
+            "accumulation_index": 0,
+            "prompt_index": 0,
+            "sample_id": "s2",
+            "tool_need_hint": "likely_required",
+        },
+        {
+            "global_step": 1,
+            "rank": 0,
+            "accumulation_index": 0,
+            "prompt_index": 1,
+            "sample_id": "s1",
+            "tool_need_hint": "no_tool",
+        },
+    ]
+    schedule_path.write_text(
+        "\n".join(json.dumps(row) for row in schedule_rows) + "\n",
+        encoding="utf-8",
+    )
+    config = Stage3GRPOConfig(
+        run_id="soft_prompt_modes",
+        rl_data_path=str(data),
+        output_dir=str(tmp_path / "out"),
+        policy_checkpoint=str(tmp_path / "stage2.pt"),
+        sample_schedule_path=str(schedule_path),
+        rollout=RolloutConfig(
+            group_size=5,
+            runtime_backend="fake",
+            tool_exploration_soft_count=2,
+            tool_exploration_prompt_text="Use the focus tool if useful.",
+        ),
+        judge=JudgeConfig(enabled=False),
+        train=TrainConfig(per_device_prompt_batch_size=2),
+    )
+
+    trainer = Stage3GRPOTrainer(config)
+    rollouts = trainer.rollout_batch(global_step=1, accumulation_index=0)
+
+    s2_rollouts = sorted(
+        [rollout for rollout in rollouts if rollout.sample_id == "s2"],
+        key=lambda rollout: rollout.rollout_id,
+    )
+    assert [rollout.rollout_type for rollout in s2_rollouts] == [
+        "free",
+        "free",
+        "free",
+        "soft_tool_prompt",
+        "soft_tool_prompt",
+    ]
+    assert all(
+        rollout.runtime["question_suffix"] == "Use the focus tool if useful."
+        for rollout in s2_rollouts[-2:]
+    )
+    assert all(
+        rollout.rollout_type == "free"
+        for rollout in rollouts
+        if rollout.sample_id == "s1"
+    )
+    assert all(
+        rollout.runtime["sample_schedule"]["global_step"] == 1
+        for rollout in rollouts
+    )
+
+
+def test_stage3_cli_plan_records_tool_exploration(tmp_path: Path) -> None:
+    data = _write_rl_fixture(tmp_path)
+    checkpoint = tmp_path / "stage2_checkpoint.pt"
+    checkpoint.write_text("fake checkpoint", encoding="utf-8")
+    output_dir = tmp_path / "stage3_grpo_soft_prompt_plan"
+
+    assert (
+        plan_main(
+            [
+                "--write-plan",
+                "--run-id",
+                "stage3_grpo_soft_prompt",
+                "--rl-data-path",
+                str(data),
+                "--policy-checkpoint",
+                str(checkpoint),
+                "--output-dir",
+                str(output_dir),
+                "--runtime-backend",
+                "fake",
+                "--group-size",
+                "20",
+                "--tool-exploration-soft-count",
+                "8",
+                "--tool-exploration-prompt-text",
+                "Use the focus tool if useful.",
+            ]
+        )
+        == 0
+    )
+    plan = json.loads((output_dir / "stage3_grpo_training_plan.json").read_text(encoding="utf-8"))
+    assert plan["config"]["rollout"]["tool_exploration_soft_count"] == 8
+    assert plan["summary"]["tool_exploration"]["soft_count"] == 8
+    text = (output_dir / "stage3_grpo_training_plan.txt").read_text(encoding="utf-8")
+    assert "tool_exploration: apply_to=tool_needed soft_count=8 hard_count=0" in text
+
+
 def test_stage3_stepwise_checkpoint_retention_keeps_latest_and_milestones(
     tmp_path: Path,
 ) -> None:

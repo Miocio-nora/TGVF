@@ -18,6 +18,7 @@ STAGE3_GRPO_REWARD_SCHEMA_VERSION = "stage3_grpo_reward_breakdown_v0"
 STAGE3_GRPO_PROBE_SCHEMA_VERSION = "stage3_grpo_probe_cache_v0"
 STAGE3_GRPO_JUDGE_SCHEMA_VERSION = "stage3_grpo_judge_cache_v0"
 DEFAULT_STAGE3_MODEL_ID = DEFAULT_MODEL_ID
+DEFAULT_STAGE3_TOOL_EXPLORATION_PROMPT = "Use the focus tool if it helps answer precisely."
 
 
 def now_iso() -> str:
@@ -36,6 +37,10 @@ class RolloutConfig:
     runtime_backend: str = "fake"
     dynamic_filter_action: str = "log"
     low_variance_eps: float = 1e-6
+    tool_exploration_apply_to: str = "tool_needed"
+    tool_exploration_soft_count: int = 0
+    tool_exploration_hard_count: int = 0
+    tool_exploration_prompt_text: str = DEFAULT_STAGE3_TOOL_EXPLORATION_PROMPT
 
     def validate(self) -> None:
         if int(self.group_size) < 2:
@@ -55,6 +60,21 @@ class RolloutConfig:
             raise ValueError("rollout.dynamic_filter_action must be log, skip, or downweight")
         if float(self.low_variance_eps) < 0:
             raise ValueError("rollout.low_variance_eps must be >= 0")
+        if self.tool_exploration_apply_to not in {"tool_needed", "all"}:
+            raise ValueError("rollout.tool_exploration_apply_to must be tool_needed or all")
+        if int(self.tool_exploration_soft_count) < 0:
+            raise ValueError("rollout.tool_exploration_soft_count must be >= 0")
+        if int(self.tool_exploration_hard_count) < 0:
+            raise ValueError("rollout.tool_exploration_hard_count must be >= 0")
+        exploration_count = int(self.tool_exploration_soft_count) + int(
+            self.tool_exploration_hard_count
+        )
+        if exploration_count > int(self.group_size):
+            raise ValueError("rollout tool exploration counts must not exceed group_size")
+        if exploration_count > 0 and int(self.max_tool_calls) < 1:
+            raise ValueError("rollout tool exploration requires max_tool_calls >= 1")
+        if int(self.tool_exploration_soft_count) > 0 and not self.tool_exploration_prompt_text.strip():
+            raise ValueError("rollout.tool_exploration_prompt_text is required for soft exploration")
 
     def to_dict(self) -> dict[str, Any]:
         return _to_jsonable(self)

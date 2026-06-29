@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import math
 from contextlib import ExitStack, nullcontext
+from dataclasses import replace
 from typing import Protocol
 
 from revisit_vlm_clean.scoring import extract_final_answer
@@ -16,6 +17,9 @@ from .schemas import RolloutConfig, RolloutRecord, Stage3GRPOConfig, Stage3Sampl
 
 class RolloutEngine(Protocol):
     def free_rollout(self, sample: Stage3Sample, *, rollout_id: int) -> RolloutRecord:
+        ...
+
+    def soft_tool_prompt(self, sample: Stage3Sample, *, rollout_id: int) -> RolloutRecord:
         ...
 
     def forced_off(self, sample: Stage3Sample, *, rollout_id: int) -> RolloutRecord:
@@ -73,6 +77,27 @@ class FakeRolloutEngine:
             ref_logprobs=tuple(value - 0.01 for value in old_logprobs),
             loss_mask=tuple(1 for _ in token_ids),
             runtime={"backend": "fake"},
+        )
+
+    def soft_tool_prompt(self, sample: Stage3Sample, *, rollout_id: int) -> RolloutRecord:
+        rollout = self.free_rollout(sample, rollout_id=rollout_id)
+        runtime = dict(rollout.runtime or {})
+        runtime.update(
+            {
+                "rollout_type": "soft_tool_prompt",
+                "tool_exploration": {
+                    "mode": "soft_tool_prompt",
+                    "question_suffix": self.config.tool_exploration_prompt_text,
+                },
+                "question_suffix": self.config.tool_exploration_prompt_text,
+            }
+        )
+        return RolloutRecord(
+            **{
+                **rollout.to_dict(),
+                "rollout_type": "soft_tool_prompt",
+                "runtime": runtime,
+            }
         )
 
     def forced_off(self, sample: Stage3Sample, *, rollout_id: int) -> RolloutRecord:
@@ -139,6 +164,26 @@ class NativeSingleFocusRolloutEngine:
             rollout_type="free",
             result=result,
             forced_target=None,
+        )
+
+    def soft_tool_prompt(self, sample: Stage3Sample, *, rollout_id: int) -> RolloutRecord:
+        engine = self._ensure_engine(sample)
+        question_suffix = self.config.rollout.tool_exploration_prompt_text.strip()
+        runtime_sample = self._stage2_sample(sample, question_suffix=question_suffix)
+        result = engine._run_free(runtime_sample)  # noqa: SLF001 - Stage3 wraps clean-native runtime.
+        return self._record_from_native_result(
+            sample,
+            rollout_id=rollout_id,
+            rollout_type="soft_tool_prompt",
+            result=result,
+            forced_target=None,
+            runtime_extra={
+                "question_suffix": question_suffix,
+                "tool_exploration": {
+                    "mode": "soft_tool_prompt",
+                    "question_suffix": question_suffix,
+                },
+            },
         )
 
     def forced_off(self, sample: Stage3Sample, *, rollout_id: int) -> RolloutRecord:
@@ -224,17 +269,19 @@ class NativeSingleFocusRolloutEngine:
             else nullcontext()
         )
         with ctx:
+            question_suffix = _rollout_question_suffix(rollout)
+            replay_sample = _sample_with_question_suffix(sample, question_suffix)
             focus_logprobs = replay_focus_segment_logprobs(
                 model=model,
                 processor=processor,
-                sample=sample,
+                sample=replay_sample,
                 generated_token_ids=focus_ids,
                 config=self.config,
                 device=engine.device,  # type: ignore[attr-defined]
             )
             if not continuation_ids:
                 return focus_logprobs
-            runtime_sample = self._stage2_sample(sample)
+            runtime_sample = self._stage2_sample(sample, question_suffix=question_suffix)
             image = engine._image(runtime_sample)  # noqa: SLF001
             inputs = build_qwen3_inputs(
                 processor,
@@ -329,12 +376,13 @@ class NativeSingleFocusRolloutEngine:
         sample: Stage3Sample,
         *,
         target_override: str | None = None,
+        question_suffix: str | None = None,
     ):
         from revisit_vlm_clean.stage2_native import NativeStage2Sample
 
         return NativeStage2Sample(
             image=sample.image_path,
-            question=sample.question,
+            question=_question_with_suffix(sample.question, question_suffix),
             answer=sample.gold_answer,
             need_focus=True,
             evidence_state="need_local_visual_evidence",
@@ -382,6 +430,7 @@ class NativeSingleFocusRolloutEngine:
         rollout_type: str,
         result: object,
         forced_target: str | None,
+        runtime_extra: dict[str, object] | None = None,
     ) -> RolloutRecord:
         debug = dict(getattr(result, "debug", {}) or {})
         full_text = str(debug.get("full_protocol_text") or getattr(result, "raw_output", "") or "")
@@ -443,6 +492,7 @@ class NativeSingleFocusRolloutEngine:
                 extra={
                     "output_tokens": getattr(result, "output_tokens", 0),
                     "rollout_type": rollout_type,
+                    **dict(runtime_extra or {}),
                 }
             ),
         )
@@ -493,6 +543,30 @@ def _is_finite_float(value: object) -> bool:
         return math.isfinite(float(value))
     except Exception:
         return False
+
+
+def _question_with_suffix(question: str, suffix: str | None) -> str:
+    clean_suffix = str(suffix or "").strip()
+    if not clean_suffix:
+        return question
+    return f"{question.rstrip()}\n\n{clean_suffix}"
+
+
+def _rollout_question_suffix(rollout: RolloutRecord) -> str:
+    runtime = dict(rollout.runtime or {})
+    suffix = runtime.get("question_suffix")
+    if isinstance(suffix, str):
+        return suffix.strip()
+    exploration = runtime.get("tool_exploration")
+    if isinstance(exploration, dict):
+        value = exploration.get("question_suffix")
+        if isinstance(value, str):
+            return value.strip()
+    return ""
+
+
+def _sample_with_question_suffix(sample: Stage3Sample, suffix: str) -> Stage3Sample:
+    return replace(sample, question=_question_with_suffix(sample.question, suffix)) if suffix else sample
 
 
 def _reference_model_context(

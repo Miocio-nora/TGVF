@@ -83,34 +83,42 @@ class Stage3GRPOTrainer:
         rollouts: list[RolloutRecord] = []
         for sample in prompts:
             for rollout_id in range(self.config.rollout.group_size):
+                rollout_mode = self._rollout_mode(sample, rollout_id)
                 if global_step is not None:
                     self._progress(
-                        "free_rollout_start",
+                        f"{rollout_mode}_rollout_start",
                         global_step=global_step,
                         accumulation_index=accumulation_index,
                         sample_id=sample.sample_id,
                         rollout_id=rollout_id,
+                        rollout_mode=rollout_mode,
                     )
                 try:
-                    rollout = self.engine.free_rollout(sample, rollout_id=rollout_id)
+                    rollout = self._run_rollout_mode(
+                        sample,
+                        rollout_id=rollout_id,
+                        rollout_mode=rollout_mode,
+                    )
                 except BaseException as exc:
                     if global_step is not None:
                         self._progress(
-                            "free_rollout_failed",
+                            f"{rollout_mode}_rollout_failed",
                             global_step=global_step,
                             accumulation_index=accumulation_index,
                             sample_id=sample.sample_id,
                             rollout_id=rollout_id,
+                            rollout_mode=rollout_mode,
                             **_stage3_exception_payload(exc),
                         )
                     raise
                 if global_step is not None:
                     self._progress(
-                        "free_rollout_done",
+                        f"{rollout_mode}_rollout_done",
                         global_step=global_step,
                         accumulation_index=accumulation_index,
                         sample_id=sample.sample_id,
                         rollout_id=rollout_id,
+                        rollout_mode=rollout_mode,
                         used_tool=bool(rollout.used_tool),
                         token_count=len(rollout.token_ids or ()),
                         old_logprob_count=len(rollout.old_logprobs or ()),
@@ -123,6 +131,24 @@ class Stage3GRPOTrainer:
                 else:
                     rollouts.append(rollout)
         return rollouts
+
+    def _rollout_mode(self, sample: Stage3Sample, rollout_id: int) -> str:
+        return _stage3_rollout_mode(self.config, sample, rollout_id)
+
+    def _run_rollout_mode(
+        self,
+        sample: Stage3Sample,
+        *,
+        rollout_id: int,
+        rollout_mode: str,
+    ) -> RolloutRecord:
+        if rollout_mode == "free":
+            return self.engine.free_rollout(sample, rollout_id=rollout_id)
+        if rollout_mode == "soft_tool_prompt":
+            return self.engine.soft_tool_prompt(sample, rollout_id=rollout_id)
+        if rollout_mode == "forced_on_clean":
+            return self.engine.forced_on_clean(sample, rollout_id=rollout_id)
+        raise ValueError(f"unsupported Stage3 rollout mode: {rollout_mode}")
 
     def _scheduled_prompts(
         self,
@@ -741,6 +767,46 @@ def _append_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
     with path.open("a", encoding="utf-8") as handle:
         for row in rows:
             handle.write(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n")
+
+
+_STAGE3_TOOL_NEEDED_HINTS = {"likely_required", "useful_tool"}
+
+
+def _stage3_rollout_mode(
+    config: Stage3GRPOConfig,
+    sample: Stage3Sample,
+    rollout_id: int,
+) -> str:
+    soft_count = int(config.rollout.tool_exploration_soft_count)
+    hard_count = int(config.rollout.tool_exploration_hard_count)
+    if soft_count + hard_count <= 0:
+        return "free"
+    if not _stage3_sample_matches_tool_exploration(
+        sample,
+        apply_to=config.rollout.tool_exploration_apply_to,
+    ):
+        return "free"
+    group_size = int(config.rollout.group_size)
+    rollout_index = int(rollout_id)
+    hard_start = group_size - hard_count
+    soft_start = hard_start - soft_count
+    if hard_count > 0 and rollout_index >= hard_start:
+        return "forced_on_clean"
+    if soft_count > 0 and rollout_index >= soft_start:
+        return "soft_tool_prompt"
+    return "free"
+
+
+def _stage3_sample_matches_tool_exploration(
+    sample: Stage3Sample,
+    *,
+    apply_to: str,
+) -> bool:
+    if apply_to == "all":
+        return True
+    if apply_to == "tool_needed":
+        return str(sample.tool_need_hint or "").lower() in _STAGE3_TOOL_NEEDED_HINTS
+    raise ValueError(f"unsupported tool exploration target: {apply_to}")
 
 
 def _setup_stage3_distributed_context(config: Stage3GRPOConfig) -> dict[str, Any]:

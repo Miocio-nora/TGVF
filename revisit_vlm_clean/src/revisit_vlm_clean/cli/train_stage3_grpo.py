@@ -13,6 +13,7 @@ from revisit_vlm_clean.defaults import DEFAULT_MAX_IMAGE_RESOLUTION, DEFAULT_PRO
 from revisit_vlm_clean.schema import DeepStackScope, DeepStackState
 from revisit_vlm_clean.stage3_grpo.data import dataset_identity, load_stage3_samples, sample_schedule_identity
 from revisit_vlm_clean.stage3_grpo.schemas import (
+    DEFAULT_STAGE3_TOOL_EXPLORATION_PROMPT,
     JudgeConfig,
     ProbeConfig,
     RewardConfig,
@@ -75,6 +76,29 @@ def build_parser() -> argparse.ArgumentParser:
         default="log",
     )
     parser.add_argument("--low-variance-eps", type=float, default=1e-6)
+    parser.add_argument(
+        "--tool-exploration-apply-to",
+        choices=("tool_needed", "all"),
+        default="tool_needed",
+        help="Prompt subset eligible for Stage3 tool-exploration rollout modes.",
+    )
+    parser.add_argument(
+        "--tool-exploration-soft-count",
+        type=int,
+        default=0,
+        help="Number of rollout slots per eligible prompt that receive a soft tool-use prompt.",
+    )
+    parser.add_argument(
+        "--tool-exploration-hard-count",
+        type=int,
+        default=0,
+        help="Number of rollout slots per eligible prompt that use forced_on_clean exploration.",
+    )
+    parser.add_argument(
+        "--tool-exploration-prompt-text",
+        default=DEFAULT_STAGE3_TOOL_EXPLORATION_PROMPT,
+        help="Question suffix used by soft_tool_prompt exploration rollouts.",
+    )
 
     parser.add_argument("--probe-enabled", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--probe-cache-path", default=None)
@@ -248,6 +272,12 @@ def build_stage3_grpo_training_plan(
                 "gate_answer_without_required_tool": config.reward.gate_answer_without_required_tool,
                 "required_tool_no_call_penalty": config.reward.required_tool_no_call_penalty,
             },
+            "tool_exploration": {
+                "apply_to": config.rollout.tool_exploration_apply_to,
+                "soft_count": config.rollout.tool_exploration_soft_count,
+                "hard_count": config.rollout.tool_exploration_hard_count,
+                "prompt_text": config.rollout.tool_exploration_prompt_text,
+            },
             "reference_policy": config.train.reference_policy,
             "will_launch_training": False,
             "plan_only": True,
@@ -335,6 +365,10 @@ def _config_from_args(args: argparse.Namespace) -> Stage3GRPOConfig:
             runtime_backend=args.runtime_backend,
             dynamic_filter_action=args.dynamic_filter_action,
             low_variance_eps=args.low_variance_eps,
+            tool_exploration_apply_to=args.tool_exploration_apply_to,
+            tool_exploration_soft_count=args.tool_exploration_soft_count,
+            tool_exploration_hard_count=args.tool_exploration_hard_count,
+            tool_exploration_prompt_text=args.tool_exploration_prompt_text,
         ),
         probe=ProbeConfig(
             enabled=args.probe_enabled,
@@ -449,6 +483,11 @@ def _plan_text(plan: dict[str, Any]) -> str:
         "reward_gate: "
         f"gate_answer_without_required_tool={reward_gate.get('gate_answer_without_required_tool')} "
         f"required_tool_no_call_penalty={reward_gate.get('required_tool_no_call_penalty')}",
+        "tool_exploration: "
+        f"apply_to={config['rollout'].get('tool_exploration_apply_to')} "
+        f"soft_count={config['rollout'].get('tool_exploration_soft_count')} "
+        f"hard_count={config['rollout'].get('tool_exploration_hard_count')} "
+        f"prompt_text={config['rollout'].get('tool_exploration_prompt_text')}",
         f"judge_mode: {config['judge']['mode']}",
         f"probe_enabled: {config['probe']['enabled']}",
         f"wandb_project: {config['wandb'].get('project')}",

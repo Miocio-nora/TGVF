@@ -192,6 +192,7 @@ def preflight_stage3_grpo_plan(
         "output_dir": config.output_dir,
         "deepstack": config.deepstack.to_dict(),
         "reference_policy": config.train.reference_policy,
+        "rollout": config.rollout.to_dict(),
         "group_size": config.rollout.group_size,
         "world_size": config.train.world_size,
         "global_rollouts_per_step": (
