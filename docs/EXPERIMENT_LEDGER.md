@@ -9496,3 +9496,45 @@ entry, update this file immediately.
     `diag_hr200_softforce_kv_deepstack_tailchunk_20260629`.
   - Command:
     `cd /nvmesv/dredvpn009/projects/r-vlm/revisit_vlm && outputs/clean_benchmarks/diagnostic_hr200_softforce_kv_deepstack_equiv_tailchunk_20260629/run_kv_tailchunk.sh`.
+  - Result:
+    VALID.
+  - Output:
+    `outputs/clean_benchmarks/diagnostic_hr200_softforce_kv_deepstack_equiv_tailchunk_20260629/kv/merged`.
+  - Wall time:
+    `2026-06-29T11:59:39+09:00` to `2026-06-29T12:05:25+09:00`,
+    about `5m46s` on 4 GPUs.
+  - Metrics:
+    - n_rows `200`, n_scored `200`.
+    - accuracy `0.510000`.
+    - answer_parse_rate `0.995000`.
+    - trigger/focus_valid `0.720000`.
+    - append_success_rate `1.000000`.
+    - malformed_rate `0.000000`.
+    - deepstack append reported rows `144/144`, all using DeepStack.
+  - Tail/cache diagnostics:
+    - Triggered rows: `144`.
+    - `kv_cache_initial_seq_len < kv_cache_input_len`: `144/144`.
+    - `kv_cache_tail_prefill_tokens=1`: `144/144`.
+    - `kv_cache_tail_prefill_used=False`: `144/144`.
+    - Interpretation: every triggered row used the intended `tail + D` cached
+      append chunk instead of a separate tail prefill call.
+  - Comparison to prior no-KV HR200
+    `outputs/clean_benchmarks/diagnostic_hr200_softforce_kv_vs_nokv_20260629/nokv/merged`:
+    - Same sample ids/order: `200/200`.
+    - Accuracy/parse/trigger/focus/append/malformed: identical.
+    - Final output exact match: `177/200`.
+    - Parsed answer exact match: `195/200`.
+    - Score match: `198/200`.
+    - KV better: `1` row
+      (`hr_bench_4k_800/hr_bench_4k_snapshot_hr_bench_4k_parquet/607_000607`,
+      gold `D`, no-KV parsed `A`, KV parsed `D`).
+    - No-KV better: `1` row
+      (`hr_bench_4k_800/hr_bench_4k_snapshot_hr_bench_4k_parquet/150_000150`,
+      gold `C`, no-KV parsed `C`, KV parsed `B`).
+    - Row wall-time sum/p50:
+      KV `1210.99s` / `4.916s`; no-KV `1232.50s` / `5.013s`.
+  - Conclusion:
+    clean native Qwen3 `kv_cache + DeepStack through_answer` is now benchmark
+    runnable and metric-equivalent to `no_kv_full_sequence` on the HR200
+    soft-force diagnostic. It is not bitwise output-identical, but the score
+    disagreement is balanced (`+1/-1`) and aggregate metrics match.
