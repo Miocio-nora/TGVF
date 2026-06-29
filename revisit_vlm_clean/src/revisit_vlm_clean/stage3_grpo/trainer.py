@@ -795,6 +795,7 @@ def _append_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
 
 
 _STAGE3_TOOL_NEEDED_HINTS = {"likely_required", "useful_tool"}
+_STAGE3_OPTIONAL_TOOL_HINTS = {"optional_tool"}
 
 
 def _stage3_rollout_mode(
@@ -831,6 +832,10 @@ def _stage3_sample_matches_tool_exploration(
         return True
     if apply_to == "tool_needed":
         return str(sample.tool_need_hint or "").lower() in _STAGE3_TOOL_NEEDED_HINTS
+    if apply_to == "tool_needed_or_optional":
+        return str(sample.tool_need_hint or "").lower() in (
+            _STAGE3_TOOL_NEEDED_HINTS | _STAGE3_OPTIONAL_TOOL_HINTS
+        )
     raise ValueError(f"unsupported tool exploration target: {apply_to}")
 
 

@@ -1011,6 +1011,14 @@ def test_stage3_tool_exploration_soft_prompt_modes(tmp_path: Path) -> None:
             "rank": 0,
             "accumulation_index": 0,
             "prompt_index": 1,
+            "sample_id": "s3",
+            "tool_need_hint": "optional_tool",
+        },
+        {
+            "global_step": 1,
+            "rank": 0,
+            "accumulation_index": 0,
+            "prompt_index": 2,
             "sample_id": "s1",
             "tool_need_hint": "no_tool",
         },
@@ -1028,11 +1036,12 @@ def test_stage3_tool_exploration_soft_prompt_modes(tmp_path: Path) -> None:
         rollout=RolloutConfig(
             group_size=5,
             runtime_backend="fake",
+            tool_exploration_apply_to="tool_needed_or_optional",
             tool_exploration_soft_count=2,
             tool_exploration_prompt_text="Use the focus tool if useful.",
         ),
         judge=JudgeConfig(enabled=False),
-        train=TrainConfig(per_device_prompt_batch_size=2),
+        train=TrainConfig(per_device_prompt_batch_size=3),
     )
 
     trainer = Stage3GRPOTrainer(config)
@@ -1053,6 +1062,17 @@ def test_stage3_tool_exploration_soft_prompt_modes(tmp_path: Path) -> None:
         rollout.runtime["question_suffix"] == "Use the focus tool if useful."
         for rollout in s2_rollouts[-2:]
     )
+    s3_rollouts = sorted(
+        [rollout for rollout in rollouts if rollout.sample_id == "s3"],
+        key=lambda rollout: rollout.rollout_id,
+    )
+    assert [rollout.rollout_type for rollout in s3_rollouts] == [
+        "free",
+        "free",
+        "free",
+        "soft_tool_prompt",
+        "soft_tool_prompt",
+    ]
     assert all(
         rollout.rollout_type == "free"
         for rollout in rollouts

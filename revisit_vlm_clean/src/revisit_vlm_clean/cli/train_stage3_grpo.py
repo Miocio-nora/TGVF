@@ -78,7 +78,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--low-variance-eps", type=float, default=1e-6)
     parser.add_argument(
         "--tool-exploration-apply-to",
-        choices=("tool_needed", "all"),
+        choices=("tool_needed", "tool_needed_or_optional", "all"),
         default="tool_needed",
         help="Prompt subset eligible for Stage3 tool-exploration rollout modes.",
     )

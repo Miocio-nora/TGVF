@@ -60,8 +60,11 @@ class RolloutConfig:
             raise ValueError("rollout.dynamic_filter_action must be log, skip, or downweight")
         if float(self.low_variance_eps) < 0:
             raise ValueError("rollout.low_variance_eps must be >= 0")
-        if self.tool_exploration_apply_to not in {"tool_needed", "all"}:
-            raise ValueError("rollout.tool_exploration_apply_to must be tool_needed or all")
+        if self.tool_exploration_apply_to not in {"tool_needed", "tool_needed_or_optional", "all"}:
+            raise ValueError(
+                "rollout.tool_exploration_apply_to must be tool_needed, "
+                "tool_needed_or_optional, or all"
+            )
         if int(self.tool_exploration_soft_count) < 0:
             raise ValueError("rollout.tool_exploration_soft_count must be >= 0")
         if int(self.tool_exploration_hard_count) < 0:
