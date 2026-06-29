@@ -8864,7 +8864,7 @@ entry, update this file immediately.
 
 ### EXP-20260629-000300-stage3-formal-all5-g16-res768-200step-wandb-online
 
-- Status: RUNNING.
+- Status: FAILED.
 - Question:
   - Relaunch the formal Stage3 all-5 GRPO 200-step run with W&B cloud upload
     enabled, while keeping checkpoint artifacts disabled.
@@ -9161,3 +9161,76 @@ entry, update this file immediately.
     Stage3 focus marks under the current code, but the spontaneous rate is very
     low. This matches the stopped formal run's near-zero tool-call average and
     means the current GRPO setup lacks enough tool-action exploration.
+
+### DIAG-20260629-102455-clean-softforce-hr200-kv-vs-nokv
+
+- Status: PLANNED.
+- Question:
+  - On a small high-trigger benchmark, test whether `kv_cache` and
+    `no_kv_full_sequence` have matching accuracy and whether `kv_cache` is
+    faster once DeepStack state is controlled.
+- Macro plan:
+  - Repository/worktree strategy: diagnostic run on the current clean branch;
+    no executable code changes.
+  - What changes now: run two fresh HR-Bench-4K 200-row soft-force benchmark
+    evaluations, one with `post_tgvf_forward_mode=no_kv_full_sequence` and one
+    with `post_tgvf_forward_mode=kv_cache`.
+  - What will not be touched: training, parser/scorer, checkpoint, protocol,
+    benchmark adapter code, Stage3/RL code, and existing benchmark outputs.
+  - Verification: compare sample manifests, run configs, wall time, accuracy,
+    parse rate, trigger/focus-valid rate, append success, malformed/OOM rows,
+    and row-level answer agreement.
+- Baseline anchors:
+  - Full clean soft-force CoreDev run:
+    `EXP-20260628-1027-clean-qwen3-stage2-norm01-softforce-coredev2511`.
+  - Baseline output:
+    `outputs/clean_benchmarks/qwen3_stage2_norm01_softforce_coredev2511_deepstack512_recovery_4shard_20260628_102713/merged`.
+  - HR slice in that output: `200` rows, accuracy `0.510000`, trigger
+    `0.720000`, parse `0.995000`.
+- Model / processor:
+  - `/nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking`.
+- Stage2 checkpoint:
+  - `outputs/clean_training/qwen3_stage2_norm01_stage1_mask075_deepstack_4gpu_20260627_163250/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt`.
+  - SHA256:
+    `50245a11c27ad9755eb815b5f008af50a659fa07a4043f0f9427f5bbea3c0236`.
+- Stage2 runtime eval JSONL:
+  - `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend_open_answer/splits/tgvf_v4_teacher_stage2_protocol_c.test.jsonl`.
+  - SHA256:
+    `3b719e1bd03a09741cc05dac3ed85e423a9b2c29209b07546792a6795cdbbfc5`.
+- Benchmark:
+  - Diagnostic manifest:
+    `outputs/clean_benchmarks/diagnostic_hr200_softforce_kv_vs_nokv_20260629/preflight/hr_core200_from_coredev2511_softforce_manifest.json`.
+  - Manifest id:
+    `diagnostic_hr_core200_from_coredev2511_seed20260625`.
+  - Manifest hash:
+    `705b29fc3c380d97a31947b54f3423f3c4da94da7fa79826c05ad8b2df297e76`.
+  - Source rule: filter `benchmark == hr_bench_4k` from the completed
+    CoreDev-2511 soft-force merged sample manifest, preserving order.
+  - Sample identity check: `200/200` overlap with old HR rows, same order.
+  - Benchmark root:
+    `/home/dredvpn009/Flash_Storage/datasets/benchmarks`.
+- Evaluation identity:
+  - Eval family: `project_native_external`.
+  - Mode: `tgvf_softforce`.
+  - Soft-force prompt: `Use focus tool.`
+  - Runner backend: `tgvf_stage2_qwen3_native`.
+  - Protocol: `protocol_c_tool_observation`.
+  - Stage2 D condition: `correct_D`.
+  - DeepStack: enabled; `original_image_scope=through_answer`;
+    D DeepStack-like features disabled.
+  - Max image resolution: `512`.
+  - Max action tokens: `64`.
+  - Max answer tokens: `512`.
+  - Scoring backend: `auto`.
+  - Attention implementation: `sdpa`.
+- Planned outputs:
+  - No-KV:
+    `outputs/clean_benchmarks/diagnostic_hr200_softforce_kv_vs_nokv_20260629/nokv`.
+  - KV:
+    `outputs/clean_benchmarks/diagnostic_hr200_softforce_kv_vs_nokv_20260629/kv`.
+- GPUs:
+  - Planned: physical GPUs `4,5,6,7`, one shard per GPU.
+  - Current GPUs `0-7` were idle at preflight; using `4-7` to avoid any
+    future overlap with Stage3/RL conventions on `0-3`.
+- Launch command:
+  - To be recorded after the PLANNED ledger entry is committed.
