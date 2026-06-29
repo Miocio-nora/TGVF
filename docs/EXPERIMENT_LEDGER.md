@@ -9566,8 +9566,12 @@ entry, update this file immediately.
     - `reference_policy`;
     - `reference_logprobs_source`;
     - `reference_policy_snapshot` summary.
-  - Stage3 planner default model changed to `Qwen/Qwen3-VL-32B-Thinking`
-    without changing the global clean default used by Stage1/Stage2/eval.
+  - Stage3 judge defaults/presets continue to use
+    `Qwen/Qwen3-VL-32B-Thinking` for offline VLM judging.
+  - Correction recorded on 2026-06-29: the Stage3 policy-model planner default
+    must remain the clean Qwen3 policy default (`Qwen/Qwen3-VL-8B-Thinking`).
+    The 32B model is a judge preset, not the policy model for the current 8B
+    Stage2 adapter checkpoint.
   - Stage3 still does not enable post-D original-image visual-key blocking by
     default. The DeepStack/key-block capability remains an explicit runtime
     configuration, not the intended default Stage3 RL setting.
@@ -9896,3 +9900,131 @@ entry, update this file immediately.
   - On this checkpoint and current intended inference path, no-block is better
     than the old through-answer results in overall accuracy, but it introduces
     a formatting/append regression that should be inspected next.
+
+## 2026-06-29 - Stage3 No-Block Frozen-Reference 20-Step Pilot Prepared
+
+- Status:
+  PLANNED_PREPARED. No training launched in this entry.
+- Question:
+  Prepare the next Stage3 training run after promoting
+  `DeepStack enabled + original_image_scope=no_block + kv_cache` as the current
+  Qwen3 Stage2 inference setting.
+- Motivation:
+  - Previous long Stage3 all-5 run
+    `EXP-20260629-002900-stage3-formal-all5-g12-res768-200step-wandb-online`
+    reached step 145 but was stopped as invalid for tool learning: legal
+    TGVF focus actions were nearly absent.
+  - Since then, Qwen3 benchmark/eval default moved to `no_block + kv_cache`,
+    and Stage3 now has a frozen Stage2 reference KL path.
+  - This run is a short pilot to verify mechanics and rollout/reward behavior
+    before committing to another 200-step formal run.
+- Code/worktree:
+  - Branch: `clean/tgvf-clean-project-20260625`.
+  - Code commit: `eb80962 Fix Stage3 policy model default`.
+  - Worktree during preparation: dirty only from this ledger update and local
+    output-root launch scripts.
+- Important correction:
+  - Stage3 policy model must be the current Stage2 adapter's 8B base:
+    `/nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking`.
+  - The 32B model is used as offline judge only:
+    `qwen3_vl_32b_thinking` / `Qwen/Qwen3-VL-32B-Thinking`.
+  - `DEFAULT_STAGE3_MODEL_ID` was corrected to inherit the clean 8B policy
+    default; the launch plan still passes explicit local 8B model and processor
+    paths.
+- Source checkpoint:
+  - `outputs/clean_training/qwen3_stage2_norm01_stage1_mask075_deepstack_4gpu_20260627_163250/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt`.
+  - SHA256:
+    `50245a11c27ad9755eb815b5f008af50a659fa07a4043f0f9427f5bbea3c0236`.
+  - Checkpoint global step: `1200`.
+  - Checkpoint protocol: `protocol_c_tool_observation`.
+- Train data:
+  - `revisit_vlm_clean/data/stage3_rl/v1_direct_20k_20260627_032447/accepted_rl_prompts.jsonl`.
+  - Rows: `20000`.
+  - SHA256:
+    `2e39a1dadcc020001bd3d763635f461d2b7dc6d94bfb3cfecdb9bb20240fa758`.
+- Output root:
+  - `outputs/stage3_grpo/all5_hint_no_block_frozenref_4gpu_g12_res768_20step_20260629`.
+- Sample schedule:
+  - `outputs/stage3_grpo/all5_hint_no_block_frozenref_4gpu_g12_res768_20step_20260629/stage3_grpo_sample_schedule.jsonl`.
+  - Rows: `80` = 20 steps x 4 ranks x 1 prompt.
+  - SHA256:
+    `57b7701a325fcdc1fbf355b5d87a1518bac2b475ddb153854c84561e6208c078`.
+  - Duplicate sample ids: `0`.
+  - Duplicate image uids: `0`.
+  - Tool buckets: `tool_helpful=46`, `tool_unnecessary=18`,
+    `uncertain=16`.
+  - Tool hints: `useful_tool=41`, `likely_required=5`, `no_tool=18`,
+    `optional_tool=16`.
+  - Source mix: `visual_genome=32`, `textvqa=28`, `docvqa=14`,
+    `chartqa=6`.
+- Planned Stage3 config:
+  - Runtime backend: `native_single_focus`.
+  - Policy model/processor:
+    `/nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking`.
+  - Judge model: `qwen3_vl_32b_thinking`, no-thinking JSON judge via the
+    stepwise runner.
+  - DeepStack: `enabled=true`, `original_image_scope=no_block`,
+    `d_features_enabled=false`.
+  - Reference policy: `frozen_stage2`.
+  - Optimizer: `manual_sgd`.
+  - Trainable scope: policy LoRA/adapter parameters only; foveal/TGVF frozen.
+  - GPUs: physical `0,1,2,3`.
+  - World size: `4`.
+  - Group size: `12`.
+  - Per-device prompt batch: `1`.
+  - Global rollouts per step: `48`.
+  - Total pilot steps: `20`.
+  - Total scheduled prompts: `80`.
+  - Total sampled rollouts if complete: `960`.
+  - Max image resolution: `768`.
+  - Max new/action/answer tokens: `256/128/160`.
+  - Sampling: `temperature=1.0`, `top_p=0.95`.
+  - Reward weights: answer `2.0`, tool `1.0`, focus `1.0`,
+    grounding `1.0`, protocol gate additive with penalty `-1.0`.
+  - ToolDecision labels: forced probes disabled; use `teacher_hint` with
+    `hint_label_weight=1.0`.
+  - W&B: project `tgvf-stage3`, mode `online`, group
+    `stage3-no-block-frozenref-pilot`, checkpoint artifact upload disabled.
+- Plan/preflight:
+  - Plan:
+    `outputs/stage3_grpo/all5_hint_no_block_frozenref_4gpu_g12_res768_20step_20260629/step_000001/stage3_grpo_training_plan.json`.
+  - Plan SHA256:
+    `ea032b5235f251801768e57a5b8ee342911a16a188162f2085878c01200eb23d`.
+  - Stage3 executor preflight:
+    `outputs/stage3_grpo/all5_hint_no_block_frozenref_4gpu_g12_res768_20step_20260629/step_000001/stage3_grpo_preflight_report.json`.
+  - Preflight status: `passed`.
+  - Stepwise preflight status: `passed`.
+  - Expected warnings: judge cache paths are missing in the template plan
+    because stepwise execution creates judge pending rows, fills 32B judge
+    caches, then reruns preflight before each train update.
+- Launch scripts:
+  - Foreground:
+    `outputs/stage3_grpo/all5_hint_no_block_frozenref_4gpu_g12_res768_20step_20260629/run_stepwise_foreground.sh`.
+  - Tmux:
+    `outputs/stage3_grpo/all5_hint_no_block_frozenref_4gpu_g12_res768_20step_20260629/launch_tmux.sh`.
+  - Tmux session name if launched:
+    `stage3_no_block_frozenref_20step`.
+- Launch command:
+  - Not launched yet.
+  - When approved:
+    `outputs/stage3_grpo/all5_hint_no_block_frozenref_4gpu_g12_res768_20step_20260629/launch_tmux.sh`.
+- Estimated runtime:
+  - 20-step pilot, likely a few hours. Treat as a behavior/throughput pilot,
+    not a final training lineage.
+- Verification already completed:
+  - `python -m compileall -q revisit_vlm_clean/src/revisit_vlm_clean/stage3_grpo/schemas.py revisit_vlm_clean/src/revisit_vlm_clean/cli/train_stage3_grpo.py revisit_vlm_clean/tests/test_stage3_grpo.py`
+    passed.
+  - `PYTHONPATH=revisit_vlm_clean/src:src pytest -q revisit_vlm_clean/tests/test_stage3_grpo.py::test_stage3_cli_plan_preflight_rollout_and_launch revisit_vlm_clean/tests/test_stage3_grpo.py::test_stage3_cli_plan_records_wandb_config revisit_vlm_clean/tests/test_stage3_grpo.py::test_stage3_cli_deepstack_enabled_defaults_to_no_block`
+    passed: `3 passed`.
+- Metrics to inspect after launch:
+  - `rollout/tool_trigger_rate`.
+  - `rollout/avg_tool_calls`.
+  - legal focus-action count vs textual pseudo-tool emissions.
+  - `reward/tool_label_count/*` and `reward/tool_label_source_count/*`.
+  - `reward/focus_judge_hit_rate`, `reward/grounding_judge_hit_rate`.
+  - `train/reference_logprobs_source` should be
+    `teacher_forced_frozen_stage2_snapshot`.
+  - GPU memory trace under `gpu_mem_trace.csv`.
+- Conclusion:
+  - Stage3 training is prepared but deliberately not launched.
+  - This should be the next small pilot before another 200-step formal run.

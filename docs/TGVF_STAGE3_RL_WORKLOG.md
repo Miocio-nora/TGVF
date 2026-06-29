@@ -475,3 +475,34 @@ Operational decision:
 - Direct concurrent smoke is much better for small quality checks than Batch API.
 - V1 prompt/schema is materially better than V0 and is the right baseline for
   the next smoke/formal candidate generation.
+
+## 2026-06-29 Current Stage3 Training Recipe
+
+Keep policy and judge model identities separate:
+
+```text
+policy model: /nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking
+policy checkpoint: clean Stage2 step1200 adapter checkpoint
+judge model: qwen3_vl_32b_thinking / Qwen3-VL-32B-Thinking
+```
+
+The 32B model is for offline focus/grounding judge caches only. It must not be
+used as the default policy model for the current 8B Stage2 adapter checkpoint.
+
+The next prepared pilot is:
+
+```text
+output_root: outputs/stage3_grpo/all5_hint_no_block_frozenref_4gpu_g12_res768_20step_20260629
+steps: 20
+world_size: 4
+group_size: 12
+global_rollouts_per_step: 48
+DeepStack: enabled, original_image_scope=no_block
+reference_policy: frozen_stage2
+tool labels: teacher_hint, hint_label_weight=1.0
+reward: answer/tool/focus/ground/protocol all active
+```
+
+This is intentionally a pilot, not a 200-step formal lineage. The first thing to
+inspect after launch is whether legal TGVF focus actions recover under the
+current no-block DeepStack and frozen-reference setup.
