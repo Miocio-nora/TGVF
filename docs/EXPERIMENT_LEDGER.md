@@ -11345,7 +11345,7 @@ entry, update this file immediately.
 ## 2026-06-30 - Stage3 G8 PB2 Optional SoftPrompt4 Gradient Diagnostic
 
 - Status:
-  PLANNED.
+  RUNNING.
 - Question:
   Before launching a longer formal Stage3 run, does the lighter candidate
   `group_size=8`, `per_device_prompt_batch_size=2`, `4 free + 4 soft_tool_prompt`
@@ -11425,3 +11425,11 @@ entry, update this file immediately.
   - Template plan SHA256:
     `94b306f5f4f43014f44f66d2865aea1a6fc5e4d9f24135254517ed5a60c6cd46`.
   - Stepwise preflight: `passed`.
+- Launch status:
+  - Started: `2026-06-30 03:14:51 JST`.
+  - Tmux session:
+    `stage3_g8_pb2_opt_graddiag_20260630_032030`.
+  - Runtime commit from `run_config.txt`:
+    `d3817c6e0aefb2c5f5697c43c7694c8dd9937f6f`, git status short count `0`.
+  - Command:
+    `outputs/stage3_grpo/all5_hint_no_block_frozenref_rewardgate_softprompt4_4gpu_g8_pb2_opt_res512_graddiag_1step_20260630_032030/launch_tmux.sh`.
