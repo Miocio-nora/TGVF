@@ -9285,7 +9285,7 @@ entry, update this file immediately.
 
 ### DIAG-20260629-111358-clean-kv-deepstack-implementation-smoke
 
-- Status: PLANNED.
+- Status: RUNNING.
 - Question:
   - Implement and validate clean Stage2 benchmark support for
     `kv_cache + DeepStack` so cached post-D continuation can be compared to
@@ -9355,4 +9355,10 @@ entry, update this file immediately.
 - GPUs:
   - Planned: physical GPUs `4,5,6,7`, one shard per GPU.
 - Launch command:
-  - To be recorded after implementation and PLANNED ledger entry are committed.
+  - Implementation / launch commit:
+    `6a638c15ccea5fd986e63619b7202b9cc0c52b5a`.
+  - Started: `2026-06-29 11:17 JST`.
+  - tmux session:
+    `diag_hr200_softforce_kv_deepstack_20260629`.
+  - Command:
+    `cd /nvmesv/dredvpn009/projects/r-vlm/revisit_vlm && outputs/clean_benchmarks/diagnostic_hr200_softforce_kv_deepstack_equiv_20260629_1114/run_kv.sh`.
