@@ -9285,7 +9285,7 @@ entry, update this file immediately.
 
 ### DIAG-20260629-111358-clean-kv-deepstack-implementation-smoke
 
-- Status: RUNNING_AFTER_TAIL_ALIGN_FIX.
+- Status: RUNNING_AFTER_SINGLE_TOKEN_TAIL_DECODE_FIX.
 - Question:
   - Implement and validate clean Stage2 benchmark support for
     `kv_cache + DeepStack` so cached post-D continuation can be compared to
@@ -9413,3 +9413,43 @@ entry, update this file immediately.
     `diag_hr200_softforce_kv_deepstack_tailfix_20260629`.
   - Command:
     `cd /nvmesv/dredvpn009/projects/r-vlm/revisit_vlm && outputs/clean_benchmarks/diagnostic_hr200_softforce_kv_deepstack_equiv_tailfix_20260629/run_kv_tailfix.sh`.
+  - Result:
+    INVALID_FOR_ACCURACY_COMPARISON.
+  - Output:
+    `outputs/clean_benchmarks/diagnostic_hr200_softforce_kv_deepstack_equiv_tailfix_20260629/kv/merged`.
+  - Metrics:
+    - n_rows `200`, n_scored `56`.
+    - reported accuracy `0.642857`, again only over untriggered/direct rows.
+    - answer_parse_rate `0.275000`.
+    - trigger/focus_valid `0.720000`.
+    - append_success_rate `0.000000`.
+    - malformed_rate `0.720000`.
+  - Failure reason:
+    cache-tail prefill used `_prepare_decode_step()`, whose
+    `prepare_inputs_for_generation()` path did not slice `full_input_ids` down
+    to the final token in this generate-returned-cache state. One prefill step
+    therefore reprocessed the whole prefix and roughly doubled cache length, for
+    example `cache=769` vs `input_ids=385`.
+- Single-token tail-decode implementation:
+  - Fix commit:
+    `89906b2`.
+  - Change:
+    cache-tail prefill now calls the model with exactly `input_ids=next_token`,
+    the current 2D attention mask, explicit Qwen3 decode `position_ids` when
+    `rope_deltas` are available, and explicit one-token `cache_position`.
+    It no longer calls `prepare_inputs_for_generation()` for tail alignment.
+  - Tests:
+    - `PYTHONPATH=revisit_vlm_clean/src:src pytest -q revisit_vlm_clean/tests/test_deepstack.py revisit_vlm_clean/tests/test_runner_backend.py::test_stage2_native_kv_deepstack_append_uses_cached_chunk_mask revisit_vlm_clean/tests/test_runner_backend.py::test_stage2_native_kv_deepstack_prefills_generate_cache_tail revisit_vlm_clean/tests/test_runner_backend.py::test_stage2_native_deepstack_evidence_only_restores_attention_after_answer_boundary`
+      passed: `8 passed`.
+    - `PYTHONPATH=revisit_vlm_clean/src:src pytest -q revisit_vlm_clean/tests/test_runner_backend.py revisit_vlm_clean/tests/test_benchmark_data.py revisit_vlm_clean/tests/test_cli.py::test_stage2_deepstack_plan_disables_legacy_command revisit_vlm_clean/tests/test_cli.py::test_stage2_deepstack_prepare_writes_training_plan`
+      passed: `45 passed`.
+- Single-token tail-decode rerun:
+  - Planned output:
+    `outputs/clean_benchmarks/diagnostic_hr200_softforce_kv_deepstack_equiv_taildecode_20260629/kv`.
+  - Intended diff from prior invalid runs: code commit only; same checkpoint,
+    processor/model, HR200 manifest, sample order, prompt, parser/scorer,
+    DeepStack scope, max resolution, action/answer token budgets, and GPUs.
+  - Launch commit:
+    `89906b2`.
+  - Planned tmux session:
+    `diag_hr200_softforce_kv_deepstack_taildecode_20260629`.
