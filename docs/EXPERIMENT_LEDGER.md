@@ -8949,8 +8949,7 @@ entry, update this file immediately.
 
 ### EXP-20260629-002900-stage3-formal-all5-g12-res768-200step-wandb-online
 
-- Status: RUNNING_RESUME4 from step 34 with HuggingFace offline cache and
-  checkpoint retention.
+- Status: STOPPED_INVALID_FOR_TOOL_LEARNING.
 - Question:
   - Relaunch formal Stage3 all-5 GRPO after the G16/res768 online run OOMed
     before metrics, keeping W&B online upload and checkpoint artifact exclusion.
@@ -9088,6 +9087,17 @@ entry, update this file immediately.
     - Step 33 retry succeeded with HF offline cache, wrote
       `step_000033/checkpoint_step_1.pt`, and advanced state to
       `next_step=34`.
+    - User stopped the run on 2026-06-29 after observing average tool calls near
+      zero. The run was killed during step 146 launch-training and GPUs were
+      verified idle afterward.
+    - Completed steps at stop: 145. Current checkpoint:
+      `outputs/stage3_grpo/formal_all5_hint_4gpu_g12_res768_200step_wandb_online_20260629/step_000145/checkpoint_step_1.pt`.
+    - Step 146 is an interrupted partial directory with empty rollout/reward/
+      train metrics and no checkpoint.
+    - Diagnostic aggregation through step 141 found all-rank `used_tool` =
+      1/6816 rollouts, with many textual `<tool_response>` / `<tool_call>`
+      emissions but almost no legal `<|focus_start|>...<|focus_end|>` actions.
+      This run is invalid for judging Stage3 tool-use learning.
   - Stage3 RL 20k train data direct/focus distribution:
     - `tool_need_hint`: useful_tool 10,510; likely_required 1,744;
       optional_tool 4,668; no_tool 3,078.
@@ -9095,3 +9105,59 @@ entry, update this file immediately.
       direct/no_tool 3,078.
     - If optional is grouped with focus-like local/reasoning samples:
       focus/useful_or_required 16,876; direct/no_tool 3,124.
+
+### DIAG-20260629-094323-stage3-original-ckpt-toolmark
+
+- Status: DONE.
+- Question:
+  - After stopping the invalid Stage3 GRPO run with near-zero tool calls, test
+    whether the original Stage2 checkpoint can generate legal Stage3 tool marks
+    under the current Stage3 rollout code.
+- Baseline / context:
+  - Invalid stopped run:
+    `EXP-20260629-002900-stage3-formal-all5-g12-res768-200step-wandb-online`.
+  - Stopped at completed step 145; step 146 interrupted.
+- Planned checkpoint / processor:
+  - Policy checkpoint:
+    `outputs/clean_training/qwen3_stage2_norm01_stage1_mask075_deepstack_4gpu_20260627_163250/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt`.
+  - SHA256:
+    `50245a11c27ad9755eb815b5f008af50a659fa07a4043f0f9427f5bbea3c0236`.
+  - Checkpoint config model/processor:
+    `/nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking`.
+- Data:
+  - `revisit_vlm_clean/data/stage3_rl/v1_direct_20k_20260627_032447/accepted_rl_prompts.jsonl`.
+  - SHA256:
+    `2e39a1dadcc020001bd3d763635f461d2b7dc6d94bfb3cfecdb9bb20240fa758`.
+- Planned output:
+  - `outputs/stage3_grpo/diagnostics/original_ckpt_toolmark_current_stage3_20260629_094323`.
+- Planned diagnostic:
+  - Current code commit: `915c8dddbcfdf47a798f1e2eb32079e00b642c15`.
+  - 4 GPUs, rollout-only, no training update, no W&B.
+  - `runtime_backend=native_single_focus`.
+  - `protocol=protocol_c_tool_observation`.
+  - `group_size=12`, `world_size=4`, `per_device_prompt_batch_size=1`,
+    `max_steps=1`, yielding 48 free rollouts.
+  - `max_image_resolution=768`, `max_action_tokens=128`,
+    `max_answer_tokens=160`, `temperature=1.0`, `top_p=0.95`.
+  - DeepStack state: clean `RunConfig` default is disabled,
+    `original_image_scope=off`, `d_features_enabled=false`.
+- Results:
+  - 4-GPU rollout-only command completed, but the direct executor output
+    retained only rank-0 rollout rows in root output; it produced 12 root
+    rollouts for one prompt and no legal tool marks:
+    `used_tool=0/12`, `<|focus_start|>` count 0.
+  - Follow-up single-rank batch-4 diagnostic:
+    `outputs/stage3_grpo/diagnostics/original_ckpt_toolmark_current_stage3_20260629_094323_single_rank_pb4`.
+  - Single-rank batch-4 result: 48 rollouts across four prompts,
+    `used_tool=1/48`, `<|focus_start|>` count 1,
+    `<|focus_end|>` count 1, `<tool_call>` count 0,
+    `<tool_response>` count 0.
+  - The one legal tool call came from sample
+    `e80b6dd7f757f309deef6627` (`chartqa`, `optional_tool`,
+    question: "What was Tanzania's fertility rate in 2019?").
+  - Example legal action:
+    `<|focus_start|>the 2019 bar with its value label and nearby year tick on the x-axis<|focus_end|>`.
+  - The diagnostic confirms the original Stage2 checkpoint can generate legal
+    Stage3 focus marks under the current code, but the spontaneous rate is very
+    low. This matches the stopped formal run's near-zero tool-call average and
+    means the current GRPO setup lacks enough tool-action exploration.
