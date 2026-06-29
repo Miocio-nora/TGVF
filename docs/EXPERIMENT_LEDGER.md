@@ -9164,7 +9164,7 @@ entry, update this file immediately.
 
 ### DIAG-20260629-102455-clean-softforce-hr200-kv-vs-nokv
 
-- Status: PLANNED.
+- Status: RUNNING.
 - Question:
   - On a small high-trigger benchmark, test whether `kv_cache` and
     `no_kv_full_sequence` have matching accuracy and whether `kv_cache` is
@@ -9233,4 +9233,10 @@ entry, update this file immediately.
   - Current GPUs `0-7` were idle at preflight; using `4-7` to avoid any
     future overlap with Stage3/RL conventions on `0-3`.
 - Launch command:
-  - To be recorded after the PLANNED ledger entry is committed.
+  - Planned ledger commit:
+    `6712f40611c0e14e7f1816e6ef88bf42822c0c67`.
+  - Started: `2026-06-29 10:27 JST`.
+  - tmux session:
+    `diag_hr200_softforce_kv_vs_nokv_20260629`.
+  - Command:
+    `cd /nvmesv/dredvpn009/projects/r-vlm/revisit_vlm && outputs/clean_benchmarks/diagnostic_hr200_softforce_kv_vs_nokv_20260629/run_kv_vs_nokv.sh`.
