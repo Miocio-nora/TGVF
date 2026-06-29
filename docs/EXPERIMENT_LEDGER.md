@@ -11195,7 +11195,7 @@ entry, update this file immediately.
 ## 2026-06-30 - Stage3 SoftPrompt8 G20 Res512 Worst-Case 1-Step Memory Probe
 
 - Status:
-  RUNNING.
+  COMPLETED.
 - Question:
   With canonical `max_image_resolution=512`, can `group_size=20` with the
   canonical `12 free + 8 soft_tool_prompt` tool-needed split fit when all four
@@ -11302,3 +11302,43 @@ entry, update this file immediately.
     `714a2c3fd4f44a52a2da9b225b0a08ae8b6fd39a`, git status short count `0`.
   - State immediately after launch:
     `status=running`, `next_step=1`, `completed_steps=[]`.
+- Outcome:
+  - Completed the single Stage3 step.
+  - Finished: `2026-06-30 02:59:58 JST`.
+  - Final state: `status=completed`, `completed_steps=[1]`, `next_step=2`.
+  - Checkpoint:
+    `outputs/stage3_grpo/all5_hint_no_block_frozenref_rewardgate_softprompt8_4gpu_g20_res512_1step_worstmem_20260630_024144/step_000001/checkpoint_step_1.pt`.
+- GPU memory:
+  - Overall peak from `gpu_mem_trace.csv`: GPU0 `108194 MiB`, GPU1 `161980 MiB`,
+    GPU2 `100988 MiB`, GPU3 `92912 MiB`.
+  - Peak was near `2026-06-30 02:59:51 JST`, around backward/allreduce/optimizer tail.
+  - This worst-case all-tool-needed `g20` step fits on 180G cards, but GPU1 used
+    about `162G`, so it is a heavy edge configuration rather than a comfortable
+    default.
+- Rollout/reward metrics:
+  - Total rollouts: `80`.
+  - Rollout split: `free=48`, `soft_tool_prompt=32`.
+  - Trigger count/rate: `21/80 = 26.25%`.
+  - Free trigger count/rate: `6/48 = 12.50%`.
+  - Soft-prompt trigger count/rate: `15/32 = 46.875%`.
+  - Tool labels: `tool_needed=80`.
+  - Answer accuracy over reward rows: `56/80 = 70.0%`.
+  - Mean reward: `-0.43125`.
+  - Distributed replayed tokens: `4080`.
+  - Distributed rollout count: `80`.
+  - Distributed loss mean: `-0.2869115`.
+  - Reported `grad_norm=0.0` on all ranks; this requires diagnosis before any
+    formal Stage3 training run is treated as real learning.
+- Analysis:
+  - The memory question is answered: canonical `res512 + g20 + 12:8` can fit even
+    in an all-tool-needed sampled step, but it leaves much less headroom than the
+    non-worst-case step.
+  - The more important training-quality issue is the zero-gradient metric. A
+    follow-up diagnostic patch will log whether replay logprobs retain autograd
+    and whether nonzero gradients reach the trainable Stage3 policy parameters.
+- Conclusion:
+  - Prefer the lighter formal candidate `group_size=8` with `4 free + 4
+    soft_tool_prompt` for tool-needed prompts.
+  - Do not launch a long formal Stage3 run until the zero-gradient diagnostic is
+    resolved.
+

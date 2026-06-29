@@ -685,6 +685,21 @@ class Stage3GRPOTrainer:
         params = [param for param in model.parameters() if getattr(param, "requires_grad", False)]
         if not params:
             raise RuntimeError("native GRPO update found no trainable parameters")
+        self._progress(
+            "replay_autograd_debug",
+            global_step=global_step,
+            new_tensor_requires_grad=bool(getattr(new_tensor, "requires_grad", False)),
+            new_rows_requires_grad=sum(
+                1 for row in new_rows if bool(getattr(row, "requires_grad", False))
+            ),
+            new_rows_count=len(new_rows),
+            ref_rows_requires_grad=sum(
+                1 for row in ref_rows if bool(getattr(row, "requires_grad", False))
+            ),
+            ref_rows_count=len(ref_rows),
+            trainable_parameter_tensors=len(params),
+            trainable_parameter_count=sum(int(param.numel()) for param in params),
+        )
         optimizer = None
         if self.config.train.optimizer == "adamw":
             if not hasattr(self, "_native_optimizer"):
@@ -709,9 +724,19 @@ class Stage3GRPOTrainer:
             token_count=float(mask_tensor.sum().detach().cpu()),
         )
         loss.backward()
+        self._progress(
+            "grad_debug_after_backward",
+            global_step=global_step,
+            **_stage3_grad_debug(params),
+        )
         self._progress("backward_done", global_step=global_step)
         self._progress("gradient_allreduce_start", global_step=global_step)
         _stage3_distributed_average_gradients(params, self.distributed)
+        self._progress(
+            "grad_debug_after_allreduce",
+            global_step=global_step,
+            **_stage3_grad_debug(params),
+        )
         self._progress("gradient_allreduce_done", global_step=global_step)
         self._progress("grad_clip_start", global_step=global_step)
         grad_norm = _stage3_clip_grad_norm(params, float(self.config.train.max_grad_norm))
@@ -951,6 +976,42 @@ def _stage3_clip_grad_norm(params: list[Any], max_norm: float) -> float:
             for grad in grads:
                 grad.mul_(clip_coef.to(grad.device, dtype=grad.dtype))
     return float(total_norm.detach().cpu())
+
+
+def _stage3_grad_debug(params: list[Any]) -> dict[str, Any]:
+    import torch
+
+    grad_tensors = [param.grad for param in params if getattr(param, "grad", None) is not None]
+    nonzero_tensors = 0
+    total_nonzero = 0
+    total_elements = 0
+    max_abs = 0.0
+    if grad_tensors:
+        norms = []
+        device = grad_tensors[0].device
+        for grad in grad_tensors:
+            detached = grad.detach()
+            finite = detached.float()
+            total_elements += int(detached.numel())
+            nonzero = int(torch.count_nonzero(detached).detach().cpu())
+            total_nonzero += nonzero
+            if nonzero > 0:
+                nonzero_tensors += 1
+            if detached.numel() > 0:
+                max_abs = max(max_abs, float(finite.abs().max().detach().cpu()))
+            norms.append(finite.norm(2).to(device))
+        total_norm = float(torch.linalg.vector_norm(torch.stack(norms), ord=2).detach().cpu())
+    else:
+        total_norm = 0.0
+    return {
+        "grad_tensor_count": len(grad_tensors),
+        "grad_none_tensor_count": len(params) - len(grad_tensors),
+        "grad_nonzero_tensor_count": nonzero_tensors,
+        "grad_nonzero_element_count": total_nonzero,
+        "grad_element_count": total_elements,
+        "grad_total_norm": total_norm,
+        "grad_max_abs": max_abs,
+    }
 
 
 def _stage3_native_adamw(params: list[Any], *, lr: float) -> Any:
