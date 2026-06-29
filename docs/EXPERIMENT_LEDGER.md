@@ -9285,7 +9285,7 @@ entry, update this file immediately.
 
 ### DIAG-20260629-111358-clean-kv-deepstack-implementation-smoke
 
-- Status: RUNNING_AFTER_SINGLE_TOKEN_TAIL_DECODE_FIX.
+- Status: RUNNING_AFTER_TAIL_PLUS_D_CHUNK_FIX.
 - Question:
   - Implement and validate clean Stage2 benchmark support for
     `kv_cache + DeepStack` so cached post-D continuation can be compared to
@@ -9457,3 +9457,38 @@ entry, update this file immediately.
     `diag_hr200_softforce_kv_deepstack_taildecode_20260629`.
   - Command:
     `cd /nvmesv/dredvpn009/projects/r-vlm/revisit_vlm && outputs/clean_benchmarks/diagnostic_hr200_softforce_kv_deepstack_equiv_taildecode_20260629/run_kv_taildecode.sh`.
+  - Result:
+    INVALID_RUNTIME_FAILURE.
+  - Failure:
+    all four shards segfaulted after the first progress row; merge failed
+    because no shard `run_config.json` files were produced.
+  - Diagnosis:
+    direct one-token decode into a `generate()`-returned Qwen3VL cache is not a
+    safe runtime path under this SDPA/cache state. It avoids the length-doubling
+    Python error, but can crash below Python.
+- Tail-plus-D chunk implementation:
+  - Fix commit:
+    `09a11aa`.
+  - Change:
+    if `past_key_values.get_seq_length()` is shorter than captured
+    `input_ids`, the missing tail token(s) are embedded and prepended to the D
+    append chunk. The model sees one cached append chunk: `tail + D`.
+    The 4D mask keeps original-image keys visible for tail queries, then blocks
+    original-image keys starting at the D query offset.
+  - Tests:
+    - `python -m py_compile revisit_vlm_clean/src/revisit_vlm_clean/stage2_native.py revisit_vlm_clean/src/revisit_vlm_clean/deepstack.py`
+      passed.
+    - `PYTHONPATH=revisit_vlm_clean/src:src pytest -q revisit_vlm_clean/tests/test_deepstack.py revisit_vlm_clean/tests/test_runner_backend.py::test_stage2_native_kv_deepstack_append_uses_cached_chunk_mask revisit_vlm_clean/tests/test_runner_backend.py::test_stage2_native_kv_deepstack_prefills_generate_cache_tail revisit_vlm_clean/tests/test_runner_backend.py::test_stage2_native_deepstack_evidence_only_restores_attention_after_answer_boundary`
+      passed: `9 passed`.
+    - `PYTHONPATH=revisit_vlm_clean/src:src pytest -q revisit_vlm_clean/tests/test_runner_backend.py revisit_vlm_clean/tests/test_benchmark_data.py revisit_vlm_clean/tests/test_cli.py::test_stage2_deepstack_plan_disables_legacy_command revisit_vlm_clean/tests/test_cli.py::test_stage2_deepstack_prepare_writes_training_plan`
+      passed: `45 passed`.
+- Tail-plus-D chunk rerun:
+  - Planned output:
+    `outputs/clean_benchmarks/diagnostic_hr200_softforce_kv_deepstack_equiv_tailchunk_20260629/kv`.
+  - Intended diff from prior invalid runs: code commit only; same checkpoint,
+    processor/model, HR200 manifest, sample order, prompt, parser/scorer,
+    DeepStack scope, max resolution, action/answer token budgets, and GPUs.
+  - Launch commit:
+    `09a11aa`.
+  - Planned tmux session:
+    `diag_hr200_softforce_kv_deepstack_tailchunk_20260629`.
