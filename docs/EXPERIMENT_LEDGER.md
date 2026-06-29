@@ -11005,3 +11005,34 @@ entry, update this file immediately.
     next run should pin `max_image_resolution=512` first; if that still leaves
     little headroom, the proper fix is memory-safe Stage3 replay/backward rather
     than suppressing tool exploration.
+
+## 2026-06-30 - Stage3 Canonical Soft Exploration Ratio Decision
+
+- Status:
+  CONFIG_DECISION.
+- Decision:
+  - Keep the canonical Stage3 soft exploration ratio at `12:8` within each
+    `group_size=20` tool-needed group:
+    `tool_exploration_apply_to=tool_needed`,
+    `tool_exploration_soft_count=8`,
+    `tool_exploration_hard_count=0`.
+  - This means tool-needed samples receive `12` normal free rollouts and `8`
+    soft-prompt rollouts. Non-tool-needed samples remain all-free under the
+    current implementation unless a separate global-soft-exploration mode is
+    explicitly approved.
+  - Canonical max image resolution remains `512`; res768 Stage3 pilots are side
+    results unless explicitly requested.
+- Rationale:
+  - Lowering the soft-prompt proportion is not the right main solution because
+    it suppresses the tool-use exploration signal that Stage3 is meant to
+    learn from.
+  - The res768 `softprompt8` run already showed the desired qualitative effect:
+    soft prompting increased tool triggers without hard forcing.
+  - If the canonical `512` setting still has memory pressure at `12:8`, the fix
+    should be the Stage3 update path, e.g. chunked replay/backward or equivalent
+    graph release, not reducing the soft exploration ratio.
+- Launch status:
+  - No run launched by this decision entry.
+  - Any future launch must prove the full experiment identity again, including
+    checkpoint, sample schedule, DeepStack scope, reward gate, `max_image_resolution=512`,
+    and the `12:8` rollout split.
