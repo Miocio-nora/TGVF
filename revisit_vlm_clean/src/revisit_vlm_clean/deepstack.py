@@ -383,6 +383,7 @@ def build_cached_chunk_original_image_key_block_attention_mask(
     original_image_token_indices: Any,
     query_start: int,
     query_length: int,
+    block_query_offset: int = 0,
     dtype: Any,
 ) -> Any:
     """Create a cached-generation 4D mask for a multi-token append chunk.
@@ -418,9 +419,12 @@ def build_cached_chunk_original_image_key_block_attention_mask(
     key_padding = attention_mask_2d[:, None, None, :] == 0
     mask = mask.masked_fill(key_padding, min_value)
 
+    block_offset = int(block_query_offset)
+    if block_offset < 0 or block_offset > q_len:
+        raise ValueError("block_query_offset must be within the query span")
     original_indices = original_image_token_indices.to(device=device, dtype=torch.long).view(-1)
-    if int(original_indices.numel()) > 0:
-        mask[:, :, :, original_indices] = min_value
+    if int(original_indices.numel()) > 0 and block_offset < q_len:
+        mask[:, :, block_offset:, original_indices] = min_value
     return mask
 
 

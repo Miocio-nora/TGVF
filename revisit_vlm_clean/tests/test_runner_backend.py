@@ -903,26 +903,11 @@ def test_stage2_native_kv_deepstack_prefills_generate_cache_tail(
 
         def __call__(self, **kwargs):
             self.calls.append(kwargs)
-            if "input_ids" in kwargs:
-                return SimpleNamespace(
-                    past_key_values=FakeCache(5),
-                    logits=torch.zeros((1, 1, 8), dtype=torch.float32),
-                )
             return SimpleNamespace(
                 past_key_values=FakeCache(9),
                 logits=torch.zeros((1, 1, 8), dtype=torch.float32),
             )
 
-    monkeypatch.setattr(
-        qwen3_vl_tgvf,
-        "_prepare_decode_step",
-        lambda model, **kwargs: {
-            "input_ids": kwargs["next_token"],
-            "past_key_values": kwargs["past_key_values"],
-            "attention_mask": kwargs["attention_mask"],
-            "use_cache": True,
-        },
-    )
     monkeypatch.setattr(
         qwen3_vl_tgvf,
         "render_tgvf_prefix_suffix",
@@ -956,6 +941,11 @@ def test_stage2_native_kv_deepstack_prefills_generate_cache_tail(
     )
     monkeypatch.setattr(
         qwen3_vl_tgvf,
+        "_compute_qwen3_position_ids_for_sequence",
+        lambda **kwargs: torch.zeros((3, 1, 9), dtype=torch.long),
+    )
+    monkeypatch.setattr(
+        qwen3_vl_tgvf,
         "_next_position_ids_after_prefill",
         lambda position_ids: torch.zeros((3, 1, 1), dtype=torch.long),
     )
@@ -976,26 +966,37 @@ def test_stage2_native_kv_deepstack_prefills_generate_cache_tail(
         input_ids=torch.arange(5, dtype=torch.long).view(1, -1),
         cache_position=None,
         model_kwargs={},
+        image_grid_thw=None,
+        video_grid_thw=None,
         source_visual_geometry=SimpleNamespace(
             source_visual_token_count=2,
             source_visual_token_indices=torch.tensor([1, 2], dtype=torch.long),
             source_visual_position_ids=torch.zeros((3, 2), dtype=torch.long),
+            image_grid_thw=torch.tensor([[1, 1, 2]], dtype=torch.long),
         ),
     )
 
     result = engine._append_visual_d(capture, torch.ones((2, 4), dtype=torch.float32))
 
-    assert len(model.calls) == 2
-    assert "input_ids" in model.calls[0]
-    assert model.calls[0]["input_ids"].tolist() == [[4]]
-    assert "inputs_embeds" in model.calls[1]
-    assert model.calls[1]["past_key_values"].get_seq_length() == 5
-    assert list(model.calls[1]["attention_mask"].shape) == [1, 1, 4, 9]
+    assert len(model.calls) == 1
+    assert "inputs_embeds" in model.calls[0]
+    assert "input_ids" not in model.calls[0]
+    assert model.calls[0]["past_key_values"].get_seq_length() == 4
+    assert list(model.calls[0]["inputs_embeds"].shape) == [1, 5, 4]
+    attention_mask = model.calls[0]["attention_mask"]
+    blocked = torch.finfo(torch.float32).min
+    assert list(attention_mask.shape) == [1, 1, 5, 9]
+    assert attention_mask[0, 0, 0, 1].item() == 0.0
+    assert attention_mask[0, 0, 1, 1].item() == blocked
+    assert attention_mask[0, 0, 0, 5].item() == blocked
+    assert attention_mask[0, 0, 1, 5].item() == 0.0
     assert result.debug_metadata["kv_cache_initial_seq_len"] == 4
     assert result.debug_metadata["kv_cache_input_len"] == 5
     assert result.debug_metadata["kv_cache_tail_prefill_tokens"] == 1
-    assert result.debug_metadata["kv_cache_aligned_seq_len"] == 5
-    assert result.debug_metadata["kv_cache_tail_prefill_used"] is True
+    assert result.debug_metadata["kv_cache_aligned_seq_len"] == 4
+    assert result.debug_metadata["kv_cache_tail_prefill_used"] is False
+    assert result.debug_metadata["kv_cache_tail_in_append_chunk"] is True
+    assert result.debug_metadata["kv_cache_tail_chunk_tokens"] == 1
 
 
 def test_stage2_native_backend_reports_runtime_errors_as_row_error(monkeypatch, tmp_path) -> None:

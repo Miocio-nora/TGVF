@@ -91,6 +91,7 @@ class _AlignedCaptureCache:
     past_key_values: Any
     attention_mask: Any
     input_ids: Any
+    tail_token_ids: Any
     debug: dict[str, Any]
 
 
@@ -657,11 +658,14 @@ class NativeStage2Engine:
         from revisit_vlm.qwen3_vl_tgvf import (
             EVIDENCE_START,
             THINK_START,
+            _append_source_image_grid,
             _bracketed_visual_token_ids,
             _chunk_position_ids_inherit_source_visual_positions,
             _chunk_position_ids_native_source_grid,
+            _compute_qwen3_position_ids_for_sequence,
             _encode_text,
             _extend_attention,
+            _full_mm_token_type_ids_for_append,
             _fvt_mm_token_type_ids,
             _next_position_ids_after_prefill,
             protocol_uses_evidence_tags,
@@ -710,8 +714,12 @@ class NativeStage2Engine:
         prefix_ids = _encode_text(tokenizer, prefix, self.device)
         fvt_token_start = int(prefix_ids.shape[0]) + 1
         fvt_token_end = fvt_token_start + int(d.shape[0])
-        embeds = embed(token_ids.view(1, -1).to(self.device)).detach().clone()
-        embeds[0, fvt_token_start:fvt_token_end] = d.to(device=self.device, dtype=embeds.dtype)
+        d_chunk_token_ids = token_ids.view(1, -1).to(self.device)
+        d_chunk_embeds = embed(d_chunk_token_ids).detach().clone()
+        d_chunk_embeds[0, fvt_token_start:fvt_token_end] = d.to(
+            device=self.device,
+            dtype=d_chunk_embeds.dtype,
+        )
         base_attention_mask = (
             None if capture.attention_mask is None else capture.attention_mask.to(self.device)
         )
@@ -725,25 +733,46 @@ class NativeStage2Engine:
             "kv_cache_tail_prefill_tokens": 0,
             "kv_cache_aligned_seq_len": _past_key_values_sequence_length(past_key_values),
             "kv_cache_tail_prefill_used": False,
+            "kv_cache_tail_in_append_chunk": False,
         }
+        tail_token_ids = None
         if self._deepstack_enabled():
             aligned_cache = self._align_capture_cache_to_input_ids(capture)
             past_key_values = aligned_cache.past_key_values
             base_attention_mask = aligned_cache.attention_mask
             base_input_ids = aligned_cache.input_ids
+            tail_token_ids = aligned_cache.tail_token_ids
             cache_alignment_debug = aligned_cache.debug
         attention_mask = base_attention_mask
         if attention_mask is not None:
-            attention_mask = _extend_attention(attention_mask, int(token_ids.shape[0]))
+            attention_mask = _extend_attention(attention_mask, int(d_chunk_token_ids.shape[-1]))
         input_ids = base_input_ids
         if input_ids is not None:
-            input_ids = torch.cat([input_ids, token_ids.view(1, -1).to(self.device)], dim=-1)
+            input_ids = torch.cat([input_ids, d_chunk_token_ids], dim=-1)
         mm_token_type_ids = _fvt_mm_token_type_ids(
-            chunk_length=int(token_ids.shape[0]),
+            chunk_length=int(d_chunk_token_ids.shape[-1]),
             fvt_token_start=fvt_token_start,
             fvt_token_end=fvt_token_end,
             device=self.device,
         )
+        model_token_ids = d_chunk_token_ids
+        model_embeds = d_chunk_embeds
+        model_mm_token_type_ids = mm_token_type_ids
+        tail_len = 0 if tail_token_ids is None else int(tail_token_ids.shape[-1])
+        if tail_len > 0:
+            tail_token_ids = tail_token_ids.to(self.device)
+            tail_embeds = embed(tail_token_ids).detach().clone()
+            model_token_ids = torch.cat([tail_token_ids, d_chunk_token_ids], dim=-1)
+            model_embeds = torch.cat([tail_embeds.to(dtype=d_chunk_embeds.dtype), d_chunk_embeds], dim=1)
+            tail_mm_token_type_ids = torch.zeros(
+                (1, tail_len),
+                dtype=model_mm_token_type_ids.dtype,
+                device=self.device,
+            )
+            model_mm_token_type_ids = torch.cat(
+                [tail_mm_token_type_ids, model_mm_token_type_ids],
+                dim=-1,
+            )
         position_ids = _chunk_position_ids_native_source_grid(
             model=self.utility_model,
             capture=capture,
@@ -764,6 +793,30 @@ class NativeStage2Engine:
                 source_visual_position_ids=source_geometry.source_visual_position_ids,
                 device=self.device,
             )
+        cache_seq_len = cache_alignment_debug.get("kv_cache_initial_seq_len")
+        if self._deepstack_enabled() and cache_seq_len is not None:
+            full_mm_token_type_ids = _full_mm_token_type_ids_for_append(
+                model=self.utility_model,
+                capture_input_ids=base_input_ids.to(self.device),
+                chunk_mm_token_type_ids=mm_token_type_ids.to(self.device),
+                device=self.device,
+            )
+            image_grid_thw = _append_source_image_grid(
+                capture.image_grid_thw,
+                source_geometry.image_grid_thw,
+                device=self.device,
+            )
+            full_position_ids = _compute_qwen3_position_ids_for_sequence(
+                model=self.utility_model,
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                image_grid_thw=image_grid_thw,
+                video_grid_thw=capture.video_grid_thw,
+                mm_token_type_ids=full_mm_token_type_ids,
+            )
+            if full_position_ids is None:
+                raise ValueError("Qwen3 model does not expose compute_3d_position_ids")
+            position_ids = full_position_ids[:, :, int(cache_seq_len) :].to(device=self.device)
         append_attention = attention_mask
         block_original_image_keys = False
         original_positions = None
@@ -775,22 +828,34 @@ class NativeStage2Engine:
             if source_geometry.source_visual_token_indices is None:
                 raise ValueError("KV DeepStack append requires source visual token indices")
             original_positions = source_geometry.source_visual_token_indices.to(self.device)
-            chunk_length = int(token_ids.shape[0])
+            chunk_length = int(model_token_ids.shape[-1])
             query_start = int(attention_mask.shape[-1]) - chunk_length
+            if cache_seq_len is not None:
+                query_start = int(cache_seq_len)
+            cached_attention = attention_mask
+            if cache_seq_len is not None and tail_len > 0:
+                cached_prefix_attention = base_attention_mask[:, : int(cache_seq_len)]
+                chunk_attention = torch.ones(
+                    (cached_prefix_attention.shape[0], chunk_length),
+                    dtype=cached_prefix_attention.dtype,
+                    device=cached_prefix_attention.device,
+                )
+                cached_attention = torch.cat([cached_prefix_attention, chunk_attention], dim=-1)
             append_attention = build_cached_chunk_original_image_key_block_attention_mask(
-                attention_mask_2d=attention_mask,
+                attention_mask_2d=cached_attention,
                 original_image_token_indices=original_positions,
                 query_start=query_start,
                 query_length=chunk_length,
-                dtype=embeds.dtype,
+                block_query_offset=tail_len,
+                dtype=model_embeds.dtype,
             )
             block_original_image_keys = True
         outputs = self.model(
-            inputs_embeds=embeds,
+            inputs_embeds=model_embeds,
             past_key_values=past_key_values,
             attention_mask=append_attention,
             position_ids=position_ids,
-            mm_token_type_ids=mm_token_type_ids,
+            mm_token_type_ids=model_mm_token_type_ids,
             use_cache=True,
             return_dict=True,
         )
@@ -812,21 +877,23 @@ class NativeStage2Engine:
             input_ids=input_ids,
             last_logits=outputs.logits,
             appended_token_ids=token_ids.detach().cpu(),
-            appended_inputs_embeds=embeds.detach().cpu(),
-            fvt_token_start=fvt_token_start,
-            fvt_token_end=fvt_token_end,
+            appended_inputs_embeds=model_embeds.detach().cpu(),
+            fvt_token_start=fvt_token_start + tail_len,
+            fvt_token_end=fvt_token_end + tail_len,
             model_kwargs=model_kwargs,
             debug_metadata={
                 "fvt_append_path": "clean_native_qwen3_visual_special_tokens_embedding_replace",
                 "tgvf_protocol": self.stage2_config.protocol,
                 "fvt_shape": list(d.shape),
                 "num_fvt_tokens": int(d.shape[0]),
+                "model_append_chunk_length": int(model_token_ids.shape[-1]),
+                "kv_cache_tail_chunk_tokens": tail_len,
                 "source_visual_token_count": source_token_count,
                 "fvt_position_mode": "native_source_grid",
                 "position_ids_shape": (
                     list(position_ids.shape) if position_ids is not None else None
                 ),
-                "mm_token_type_ids_shape": list(mm_token_type_ids.shape),
+                "mm_token_type_ids_shape": list(model_mm_token_type_ids.shape),
                 "append_attention_mask_shape": (
                     list(append_attention.shape) if append_attention is not None else None
                 ),
@@ -872,18 +939,14 @@ class NativeStage2Engine:
         )
 
     def _align_capture_cache_to_input_ids(self, capture: Any) -> _AlignedCaptureCache:
-        """Make generated cache length match captured input_ids before appending D.
+        """Prepare a cached prefix plus any uncached tail tokens for D append.
 
         `generate(..., return_dict_in_generate=True)` may return a cache whose
-        sequence length is one token shorter than `sequences`. Appending the D
-        chunk with a 4D DeepStack/key-block mask requires key length to match the
-        actual cached prefix, so missing tail tokens are prefilled through the same
-        Qwen3 cached decode path used by post-D continuation.
+        sequence length is one token shorter than `sequences`. The clean KV
+        append keeps the cache unchanged and includes the missing tail token(s)
+        in the same `inputs_embeds` chunk as D. Tail queries keep access to the
+        original image; D queries use the configured original-image key block.
         """
-
-        import torch
-
-        from revisit_vlm.qwen3_vl_tgvf import _decode_position_ids
 
         if self.model is None:
             raise RuntimeError("native Stage2 model is not loaded")
@@ -909,12 +972,14 @@ class NativeStage2Engine:
             "kv_cache_tail_prefill_tokens": 0,
             "kv_cache_aligned_seq_len": initial_seq_len,
             "kv_cache_tail_prefill_used": False,
+            "kv_cache_tail_in_append_chunk": False,
         }
         if initial_seq_len is None:
             return _AlignedCaptureCache(
                 past_key_values=past_key_values,
                 attention_mask=attention_mask,
                 input_ids=input_ids,
+                tail_token_ids=None,
                 debug=debug,
             )
         if initial_seq_len > input_len:
@@ -928,61 +993,23 @@ class NativeStage2Engine:
                 past_key_values=past_key_values,
                 attention_mask=attention_mask,
                 input_ids=input_ids,
+                tail_token_ids=None,
                 debug=debug,
             )
 
-        model_kwargs = dict(getattr(capture, "model_kwargs", {}) or {})
-        cache_position = getattr(capture, "cache_position", None)
         missing = input_len - initial_seq_len
-        for absolute_index in range(initial_seq_len, input_len):
-            next_token = input_ids[:, absolute_index : absolute_index + 1]
-            step_attention = attention_mask[:, : absolute_index + 1]
-            position_ids = _decode_position_ids(
-                attention_mask=step_attention,
-                next_token=next_token,
-                past_key_values=past_key_values,
-                rope_deltas=model_kwargs.get("rope_deltas"),
-                generated_token_count=absolute_index - initial_seq_len + 1,
-            )
-            step_inputs = {
-                "input_ids": next_token,
-                "past_key_values": past_key_values,
-                "attention_mask": step_attention,
-                "use_cache": True,
-                "return_dict": True,
-                "cache_position": torch.arange(
-                    absolute_index,
-                    absolute_index + 1,
-                    device=next_token.device,
-                    dtype=torch.long,
-                ),
-            }
-            if position_ids is not None:
-                step_inputs["position_ids"] = position_ids
-            if cache_position is not None:
-                step_inputs["cache_position"] = cache_position.to(device=next_token.device)
-            outputs = self.model(
-                **step_inputs,
-                output_hidden_states=False,
-            )
-            past_key_values = outputs.past_key_values
-            cache_position = None
-
-        aligned_seq_len = _past_key_values_sequence_length(past_key_values)
-        if aligned_seq_len is not None and aligned_seq_len != input_len:
-            raise ValueError(
-                "KV DeepStack cache tail prefill did not align cache length: "
-                f"cache={aligned_seq_len} input_ids={input_len}"
-            )
+        tail_token_ids = input_ids[:, initial_seq_len:]
         debug.update(
             kv_cache_tail_prefill_tokens=missing,
-            kv_cache_aligned_seq_len=aligned_seq_len if aligned_seq_len is not None else input_len,
-            kv_cache_tail_prefill_used=True,
+            kv_cache_aligned_seq_len=initial_seq_len,
+            kv_cache_tail_prefill_used=False,
+            kv_cache_tail_in_append_chunk=True,
         )
         return _AlignedCaptureCache(
             past_key_values=past_key_values,
             attention_mask=attention_mask,
             input_ids=input_ids,
+            tail_token_ids=tail_token_ids,
             debug=debug,
         )
 
