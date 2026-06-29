@@ -344,9 +344,14 @@ Stage2 重要边界：
 - Stage2 必须绑定 exact Stage1 checkpoint。
 - clean benchmark runner 当前只支持 `d_condition=correct_D`。
 - clean benchmark runner 当前只支持 `force_prefix_mode=target_hint`。
-- `mask_original_image_after_tgvf_prob` 仍可配置，但默认是 `1.0`。
-- 当前主线 mask scope 默认是 `through_answer`。
-- `evidence_only` 仍支持，但必须作为独立 setting，不要和 through-answer 混比。
+- `mask_original_image_after_tgvf_prob` 和 mask scope 必须按实验显式记录；
+  当前强 Stage2 checkpoint 来自 mask prob `0.75` 的训练线。
+- 当前 benchmark/inference 主线默认是 `DeepStack enabled +
+  original_image_scope=no_block + post_tgvf_forward_mode=kv_cache`。
+- 旧 `through_answer + no_kv_full_sequence` CoreDev 结果降为
+  side/reference，不再作为主表默认。
+- `evidence_only` 仍支持，但必须作为独立 setting，不要和 no-block 或
+  through-answer 混比。
 
 ## 11. DeepStack 和 Mask 语义
 
@@ -368,6 +373,7 @@ DeepStack 默认关闭。
 - Clean Qwen3 Stage2 training 支持 enabled DeepStack 的 `through_answer` 和 `evidence_only`。
 - Clean Qwen3 Stage2 benchmark eval 支持 full-sequence/KV DeepStack 的
   `no_block`、`through_answer` 和 `evidence_only`。
+- 当前 Qwen3 benchmark/inference 默认使用 `no_block + kv_cache`。
 - Legacy bridge DeepStack 会被拒绝，不能默默当成有效结果。
 
 ## 12. Benchmark Sets
@@ -388,7 +394,8 @@ mathverse_testmini_3940: MathVerse testmini, n=3940
 
 ```text
 CoreSmoke-256: 快速代码/parser/scorer/DeepStack 字段 smoke，不用于效果结论
-CoreDev-2511: 主 fast experimental comparison subset
+CoreDev-2511: 主 fast experimental comparison subset；当前主表使用
+no-block + kv-cache 的 original/free/softforce 对比
 CoreFull-19562: 最终 full clean image-core confirmation
 ```
 

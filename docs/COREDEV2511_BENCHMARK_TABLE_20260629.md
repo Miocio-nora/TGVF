@@ -1,8 +1,17 @@
 # CoreDev-2511 Benchmark Table, 2026-06-29
 
-This table summarizes the clean Qwen3 CoreDev-2511 benchmark results, including
-the full no-block rerun completed on 2026-06-29. Metrics are read from existing
-`summary.json` files.
+This table summarizes the current clean Qwen3 CoreDev-2511 benchmark status.
+As of 2026-06-29, the default evaluation/inference setting is:
+
+```text
+DeepStack enabled
+original_image_scope=no_block
+post_tgvf_forward_mode=kv_cache
+post_tgvf_continuation=natural_continue
+```
+
+Older `through_answer + no_kv_full_sequence` runs are retained as side/reference
+results only.
 
 ## CoreDev-2511 Identity
 
@@ -21,39 +30,49 @@ the full no-block rerun completed on 2026-06-29. Metrics are read from existing
 | MathVista | 300 |
 | MathVerse | 500 |
 
-## Main CoreDev-2511 Results
+## Main CoreDev-2511 Table
+
+This is the primary table for current reporting. Trigger is reported only for
+TGVF modes; there is no trigger delta against original.
+
+| Benchmark | n | Original Acc | Free Acc | Free Delta | Free Trigger | Softforce Acc | Softforce Delta | Softforce Trigger |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| VStar | 191 | 53.93 | 49.74 | -4.19 | 16.75 | 50.26 | -3.66 | 63.87 |
+| HRBench4K | 200 | 52.00 | 54.00 | +2.00 | 37.00 | 52.50 | +0.50 | 72.00 |
+| BLINK | 420 | 46.43 | 55.56 | +9.13 | 8.10 | 54.05 | +7.62 | 23.33 |
+| OCRBench v2 | 600 | 20.46 | 23.21 | +2.75 | 22.00 | 24.93 | +4.47 | 40.67 |
+| MMMU-Pro | 300 | 34.33 | 28.42 | -5.91 | 14.33 | 28.67 | -5.66 | 18.00 |
+| MathVista | 300 | 41.00 | 44.19 | +3.19 | 11.00 | 45.31 | +4.31 | 18.33 |
+| MathVerse | 500 | 4.80 | 6.20 | +1.40 | 24.00 | 7.00 | +2.20 | 27.40 |
+| Overall | 2511 | 30.86 | 32.64 | +1.79 | 18.64 | 32.65 | +1.80 | 34.01 |
+
+## Main Run Details
 
 | Run | Mode | Scope | Forward | n | Acc | Delta vs Original | Parse | Trigger | Focus | Append | Malformed | Output |
 |---|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|
 | Qwen3 original final | `original` | `off` | `kv_cache` | 2511 | 30.86 | 0.00 | 94.15 | 0.00 | n/a | n/a | 0.00 | `outputs/clean_benchmarks/qwen3_original_coredev2511_4shard_maxans512_20260628_0216_rescored_bboxfix_20260628_035759/merged` |
-| TGVF free old | `tgvf_free` | `through_answer` | `no_kv_full_sequence` | 2511 | 32.07 | +1.21 | 98.73 | 18.64 | 18.64 | 96.79 | 0.60 | `outputs/clean_benchmarks/qwen3_stage2_norm01_free_coredev2511_deepstack512_recovery_4shard_20260628_0615/merged` |
-| TGVF softforce old | `tgvf_softforce` | `through_answer` | `no_kv_full_sequence` | 2511 | 31.38 | +0.52 | 98.09 | 34.01 | 34.01 | 97.19 | 0.96 | `outputs/clean_benchmarks/qwen3_stage2_norm01_softforce_coredev2511_deepstack512_recovery_4shard_20260628_102713/merged` |
 | TGVF free no-block | `tgvf_free` | `no_block` | `kv_cache` | 2511 | 32.64 | +1.79 | 97.37 | 18.64 | 18.64 | 89.96 | 1.87 | `outputs/clean_benchmarks/qwen3_stage2_norm01_coredev2511_kv_deepstack_no_block_4shard_20260629_201340/tgvf_free/merged` |
 | TGVF softforce no-block | `tgvf_softforce` | `no_block` | `kv_cache` | 2511 | 32.65 | +1.80 | 95.10 | 34.01 | 34.01 | 88.41 | 3.94 | `outputs/clean_benchmarks/qwen3_stage2_norm01_coredev2511_kv_deepstack_no_block_4shard_20260629_201340/tgvf_softforce/merged` |
 
-## Per-Benchmark CoreDev-2511 Results
+## Side Reference: Older Through-Answer Runs
 
-| Benchmark | n | Original | Free old | Free no-block | Softforce old | Softforce no-block | Free trigger | Softforce trigger |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| VStar | 191 | 53.93 | 49.74 | 49.74 | 48.17 | 50.26 | 16.75 | 63.87 |
-| HRBench4K | 200 | 52.00 | 54.00 | 54.00 | 51.00 | 52.50 | 37.00 | 72.00 |
-| BLINK | 420 | 46.43 | 55.48 | 55.56 | 53.57 | 54.05 | 8.10 | 23.33 |
-| OCRBench v2 | 600 | 20.46 | 22.23 | 23.21 | 21.89 | 24.93 | 22.00 | 40.67 |
-| MMMU-Pro | 300 | 34.33 | 28.19 | 28.42 | 27.76 | 28.67 | 14.33 | 18.00 |
-| MathVista | 300 | 41.00 | 41.95 | 44.19 | 41.75 | 45.31 | 11.00 | 18.33 |
-| MathVerse | 500 | 4.80 | 4.82 | 6.20 | 5.42 | 7.00 | 24.00 | 27.40 |
-| Overall | 2511 | 30.86 | 32.07 | 32.64 | 31.38 | 32.65 | 18.64 | 34.01 |
+These runs are no longer the primary reporting baseline. They are kept for
+historical comparison because they use the same CoreDev-2511 manifest but a
+different post-TGVF setting:
 
-## No-Block Delta Summary
+```text
+original_image_scope=through_answer
+post_tgvf_forward_mode=no_kv_full_sequence
+```
 
-| Comparison | Acc Delta | Parse Delta | Append Delta | Notes |
-|---|---:|---:|---:|---|
-| Free no-block vs free old | +0.57 | -1.35 | -6.84 | Same trigger rate. Accuracy gains mainly from OCRBench, MathVista, and MathVerse. |
-| Softforce no-block vs softforce old | +1.27 | -2.99 | -8.78 | Same trigger rate. Strongest gains on OCRBench, MathVista, MathVerse, and VStar. |
+| Run | Mode | Scope | Forward | n | Acc | Parse | Trigger | Append | Status |
+|---|---|---|---|---:|---:|---:|---:|---:|---|
+| TGVF free old | `tgvf_free` | `through_answer` | `no_kv_full_sequence` | 2511 | 32.07 | 98.73 | 18.64 | 96.79 | Side/reference |
+| TGVF softforce old | `tgvf_softforce` | `through_answer` | `no_kv_full_sequence` | 2511 | 31.38 | 98.09 | 34.01 | 97.19 | Side/reference |
 
-The no-block full rerun is not a pure single-variable ablation against the old
-CoreDev runs because the forward mode also changed from `no_kv_full_sequence`
-to `kv_cache`. It is the current intended inference path.
+No-block improves overall accuracy versus these side references, but the
+comparison is not a pure single-variable ablation because the forward mode also
+changed.
 
 ## Latest HR200 No-Block Diagnostic
 

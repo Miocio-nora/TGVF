@@ -9886,6 +9886,13 @@ entry, update this file immediately.
     no-block, need follow-up before claiming the mechanism is clean.
 - Conclusion:
   - The requested full CoreDev-2511 no-block benchmark is complete.
+  - Promote `DeepStack enabled + original_image_scope=no_block +
+    post_tgvf_forward_mode=kv_cache` to the default Qwen3 benchmark/inference
+    setting.
+  - Use the no-block CoreDev-2511 original/free/softforce table as the main
+    reporting table for this checkpoint.
+  - Demote older `through_answer + no_kv_full_sequence` CoreDev-2511 results to
+    side/reference status.
   - On this checkpoint and current intended inference path, no-block is better
     than the old through-answer results in overall accuracy, but it introduces
     a formatting/append regression that should be inspected next.

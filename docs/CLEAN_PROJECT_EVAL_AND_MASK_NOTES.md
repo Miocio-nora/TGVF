@@ -92,6 +92,11 @@ mainline behavior.
 Stage2 training can block post-TGVF queries from attending to original image
 visual keys.
 
+Do not conflate two related but distinct settings:
+
+- training-time original-image-key mask behavior;
+- benchmark/inference-time DeepStack `original_image_scope`.
+
 The relevant deterministic dimensions are:
 
 - `mask_original_image_after_tgvf`: enabled/disabled
@@ -99,8 +104,9 @@ The relevant deterministic dimensions are:
   - `evidence_only`
   - `through_answer`
 
-The stochastic mask probability option is not part of the clean mainline. If the
-legacy implementation still exposes it, the clean mainline fixes it to `1.0`.
+The stochastic mask probability option must be recorded explicitly. The current
+strong Qwen3 Stage2 checkpoint used `mask_original_image_after_tgvf_prob=0.75`
+with DeepStack enabled during Stage2 training.
 
 ### `through_answer`
 
@@ -125,15 +131,20 @@ Historical note:
 
 Clean-project rule:
 
-- Use `through_answer` with effective probability `1.0` as the Qwen3 Stage2
-  clean mainline.
+- Use `DeepStack enabled + original_image_scope=no_block +
+  post_tgvf_forward_mode=kv_cache` as the Qwen3 benchmark/inference mainline.
+- Treat older `through_answer + no_kv_full_sequence` benchmark results as
+  side/reference unless the task is explicitly reproducing those runs.
 - Keep `evidence_only` only as an explicitly named ablation/reference setting.
-- Do not use "old mask behavior" as a config label. Write the exact tuple:
+- Do not use "old mask behavior" as a config label. Write exact tuples, for
+  example:
 
 ```text
-mask_original_image_after_tgvf=true
-mask_scope=through_answer
-mask_probability=1.0
+training_mask_original_image_after_tgvf=true
+training_mask_scope=through_answer
+training_mask_probability=0.75
+eval_deepstack_original_image_scope=no_block
+eval_post_tgvf_forward_mode=kv_cache
 ```
 
 ## Forward Mode Is Separate
