@@ -9627,3 +9627,103 @@ entry, update this file immediately.
     passed: `81 passed, 2 warnings`.
   - `PYTHONPATH=revisit_vlm_clean/src:src pytest -q revisit_vlm_clean/tests/test_benchmark_data.py revisit_vlm_clean/tests/test_deepstack.py`
     passed: `24 passed`.
+
+## 2026-06-29 - HR200 Free/Softforce No-Block DeepStack Rerun
+
+- Status:
+  DONE.
+- Question:
+  Rerun the current Stage2 checkpoint with `DeepStack enabled + no_block` so
+  triggered rows can answer with both original-image access and D, matching the
+  intended Stage3/inference setting. Compare against the recent HR200
+  `through_answer` soft-force diagnostic.
+- Code/worktree:
+  - Code commit: `d8f42a2 Add DeepStack no-block scope`.
+  - Branch: `clean/tgvf-clean-project-20260625`.
+  - Worktree dirty at launch only because this ledger entry and the run script
+    are being prepared.
+- Stage2 checkpoint:
+  - `outputs/clean_training/qwen3_stage2_norm01_stage1_mask075_deepstack_4gpu_20260627_163250/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt`.
+- Model/processor:
+  - `/nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking`.
+- Stage2 runtime eval JSONL:
+  - `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend_open_answer/splits/tgvf_v4_teacher_stage2_protocol_c.test.jsonl`.
+- Benchmark source:
+  - Population: `hr_bench_4k_800`.
+  - Manifest:
+    `outputs/clean_benchmarks/diagnostic_hr200_softforce_kv_vs_nokv_20260629/preflight/hr_core200_from_coredev2511_softforce_manifest.json`.
+  - Manifest id: `diagnostic_hr_core200_from_coredev2511_seed20260625`.
+  - Manifest hash:
+    `705b29fc3c380d97a31947b54f3423f3c4da94da7fa79826c05ad8b2df297e76`.
+  - Sample count/order: `200`, same HR200 slice as the recent KV/no-KV and
+    tailchunk diagnostics.
+- Planned modes:
+  - `tgvf_free`.
+  - `tgvf_softforce` with softforce prompt text `Use focus tool.`.
+- Held fixed:
+  - Native runner backend: `tgvf_stage2_qwen3_native`.
+  - Forward mode: `kv_cache`.
+  - Max image resolution: `512`.
+  - Max action tokens: `64`.
+  - Max answer tokens: `512`.
+  - Scoring backend: `auto`.
+  - Stage2 D condition: `correct_D`.
+  - Protocol inherited from clean benchmark defaults / Stage2 runtime.
+- Changed variable:
+  - DeepStack scope: `through_answer` -> `no_block`.
+- GPUs:
+  - Physical GPUs `0,1,2,3`, four shards per mode.
+  - Modes run sequentially to avoid oversubscribing the same GPUs.
+- Output:
+  - `outputs/clean_benchmarks/diagnostic_hr200_free_softforce_kv_deepstack_no_block_20260629`.
+- Command:
+  - `cd /nvmesv/dredvpn009/projects/r-vlm/revisit_vlm && outputs/clean_benchmarks/diagnostic_hr200_free_softforce_kv_deepstack_no_block_20260629/run_free_softforce_no_block.sh`.
+- Started:
+  - `2026-06-29 18:40:29 JST`.
+- tmux session:
+  - `diag_hr200_free_softforce_no_block_20260629`.
+- Finished:
+  - `2026-06-29 18:50:22 JST`.
+  - Elapsed wall time: `9m53s`.
+- Metrics:
+  - `tgvf_free`, DeepStack `no_block`, KV cache:
+    - `n=200`, `accuracy=54.00`, `answer_parse_rate=97.50`,
+      `trigger_rate=37.00`, `focus_valid_rate=37.00`,
+      `append_success_rate=100.00`, `malformed_rate=0.00`.
+    - Output:
+      `outputs/clean_benchmarks/diagnostic_hr200_free_softforce_kv_deepstack_no_block_20260629/tgvf_free/merged`.
+  - `tgvf_softforce`, DeepStack `no_block`, KV cache:
+    - `n=200`, `accuracy=52.50`, `answer_parse_rate=99.50`,
+      `trigger_rate=72.00`, `focus_valid_rate=72.00`,
+      `append_success_rate=100.00`, `malformed_rate=0.00`.
+    - Output:
+      `outputs/clean_benchmarks/diagnostic_hr200_free_softforce_kv_deepstack_no_block_20260629/tgvf_softforce/merged`.
+  - DeepStack execution checks:
+    - Free: `74/74` reported FVT appends used DeepStack; requested rows
+      `200/200`; unsupported rows `0`.
+    - Softforce: `144/144` reported FVT appends used DeepStack; requested rows
+      `200/200`; unsupported rows `0`.
+- Comparison:
+  - Strict same-manifest valid softforce baseline:
+    `outputs/clean_benchmarks/diagnostic_hr200_softforce_kv_deepstack_equiv_tailchunk_20260629/kv/merged`.
+  - Through-answer softforce baseline:
+    `accuracy=51.00`, `answer_parse_rate=99.50`,
+    `trigger_rate=72.00`, `append_success_rate=100.00`.
+  - No-block softforce delta:
+    `+1.50` accuracy points with the same trigger rate and parse rate.
+  - Earlier files
+    `diagnostic_hr200_softforce_kv_deepstack_equiv_20260629_1114` and
+    `diagnostic_hr200_softforce_kv_deepstack_equiv_tailfix_20260629`
+    are not valid accuracy baselines for this comparison because their
+    `append_success_rate=0.00` and `answer_parse_rate=27.50`.
+- Analysis:
+  - On this HR200 slice, allowing original-image keys after D is modestly
+    positive for softforce versus the valid `through_answer` control.
+  - Free no-block is recorded as a new result on this exact manifest; no strict
+    same-manifest free `through_answer` control was found in
+    `outputs/clean_benchmarks`.
+- Conclusion:
+  - `DeepStack enabled + no_block` works mechanically in the clean runner and is
+    comparable on the same HR200 manifest.
+  - Result is evidence in favor of keeping `no_block` as the inference setting
+    for the Stage2 checkpoint trained with `mask_original_image_after_tgvf_prob=0.75`.
