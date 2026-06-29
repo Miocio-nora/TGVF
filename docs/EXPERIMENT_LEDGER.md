@@ -11477,3 +11477,105 @@ entry, update this file immediately.
     rollout-only pass for judge preparation and then reruns rollouts during
     training. Reusing judged trajectories is a future speed optimization, not a
     blocker for this formal pilot.
+
+## 2026-06-30 - Stage3 G8 PB2 Optional SoftPrompt4 Formal 8-Step Pilot
+
+- Status:
+  PLANNED.
+- Question:
+  With the batch/resource setting validated by the 1-step diagnostic, can the
+  current Stage3 all-5 reward recipe run an 8-step formal pilot from the clean
+  Stage2 checkpoint, using `group_size=8`, `per_device_prompt_batch_size=2`,
+  and soft tool prompting for both required and optional tool prompts?
+- Baseline anchor:
+  - `2026-06-30 - Stage3 G8 PB2 Optional SoftPrompt4 Gradient Diagnostic`.
+  - The diagnostic completed one step, fit comfortably in memory, and verified
+    nonzero gradients after backward/allreduce.
+- Intended diff:
+  - Increase outer stepwise target from `1` to `8` steps.
+  - Keep the inner per-step training plan at `max_steps=1`; the stepwise runner
+    controls the 8 optimizer steps via `target_step=8`.
+  - Keep Stage2 checkpoint, Qwen3 model/processor, DeepStack `no_block`,
+    frozen Stage2 reference, reward gate, token budgets, optimizer, learning
+    rate, KL coefficient, `max_grad_norm=0.0`, and `max_image_resolution=512`
+    fixed.
+  - Enable W&B parent logging online under project `tgvf-stage3`.
+- Code/worktree:
+  - Branch: `clean/tgvf-clean-project-20260625`.
+  - Code commit before plan generation:
+    `88aba5ff0ff56da1abaeb38f2de68b23d7e960c9`.
+  - Template plan generation was done from a clean git worktree.
+- Source checkpoint:
+  - `outputs/clean_training/qwen3_stage2_norm01_stage1_mask075_deepstack_4gpu_20260627_163250/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt`.
+  - SHA256:
+    `50245a11c27ad9755eb815b5f008af50a659fa07a4043f0f9427f5bbea3c0236`.
+- Train data:
+  - `revisit_vlm_clean/data/stage3_rl/v1_direct_20k_20260627_032447/accepted_rl_prompts.jsonl`.
+  - Rows: `20000`.
+  - SHA256:
+    `2e39a1dadcc020001bd3d763635f461d2b7dc6d94bfb3cfecdb9bb20240fa758`.
+- Sample schedule:
+  - `outputs/stage3_grpo/all5_hint_no_block_frozenref_rewardgate_softprompt4_4gpu_g8_pb2_opt_res512_formal8_20260630_033130/stage3_grpo_sample_schedule.jsonl`.
+  - Rows: `64` prompt rows, covering `8` steps x `4` ranks x `2` prompts/rank.
+  - SHA256:
+    `9acb96d6f42e91cfdf49bb43870f0ebc1743e31ae2d2fb1fdf34b78372ee6990`.
+  - Duplicate sample/image ids: `0/0`.
+  - Source datasets: `visual_genome=28`, `textvqa=21`, `docvqa=11`,
+    `chartqa=4`.
+  - Tool hints: `useful_tool=28`, `likely_required=5`, `optional_tool=8`,
+    `no_tool=23`.
+  - Expected rollout split: `free=348`, `soft_tool_prompt=164`, total `512`.
+- Planned Stage3 config:
+  - Runtime backend: `native_single_focus`.
+  - Policy model/processor:
+    `/nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking`.
+  - Judge model: `qwen3_vl_32b_thinking`, no-thinking JSON judge.
+  - DeepStack: `enabled=true`, `original_image_scope=no_block`,
+    `d_features_enabled=false`.
+  - Reference policy: `frozen_stage2`.
+  - Optimizer: `manual_sgd`.
+  - GPUs: physical `0,1,2,3`.
+  - World size: `4`.
+  - Group size: `8`.
+  - Per-device prompt batch: `2`.
+  - Gradient accumulation: `1`.
+  - Stepwise target steps: `8`.
+  - Inner train `max_steps`: `1`.
+  - Max image resolution: `512`.
+  - Judge max image resolution: `512`.
+  - Max new/action/answer tokens: `256/128/160`.
+  - Reward gate: `gate_answer_without_required_tool=true`,
+    `required_tool_no_call_penalty=2.0`.
+  - Tool exploration:
+    `apply_to=tool_needed_or_optional`, `soft_count=4`, `hard_count=0`,
+    prompt suffix `Use the focus tool if it helps answer precisely.`
+  - KL coefficient: `0.02`.
+  - Max grad norm: `0.0`; clipping disabled, but gradient diagnostic events are
+    logged in each step.
+  - W&B: project `tgvf-stage3`, mode `online`, group
+    `stage3-g8-pb2-opt-formal`, checkpoint artifact upload disabled.
+- Output root:
+  - `outputs/stage3_grpo/all5_hint_no_block_frozenref_rewardgate_softprompt4_4gpu_g8_pb2_opt_res512_formal8_20260630_033130`.
+- Plan/preflight:
+  - Template plan:
+    `outputs/stage3_grpo/all5_hint_no_block_frozenref_rewardgate_softprompt4_4gpu_g8_pb2_opt_res512_formal8_20260630_033130/template_plan/stage3_grpo_training_plan.json`.
+  - Template plan SHA256:
+    `6d1583da957361a74281367a5a7612bb1125fcc6fd373a74af317c9038400561`.
+  - Executor preflight: `passed`.
+  - Stepwise preflight: `passed`.
+  - Preflight warnings about missing judge caches are expected for the template:
+    the stepwise runner writes per-step 32B judge caches before cache-only
+    training.
+- Launch scripts:
+  - Foreground:
+    `outputs/stage3_grpo/all5_hint_no_block_frozenref_rewardgate_softprompt4_4gpu_g8_pb2_opt_res512_formal8_20260630_033130/run_stepwise_foreground.sh`.
+  - Tmux:
+    `outputs/stage3_grpo/all5_hint_no_block_frozenref_rewardgate_softprompt4_4gpu_g8_pb2_opt_res512_formal8_20260630_033130/launch_tmux.sh`.
+  - Planned tmux session:
+    `stage3_g8_pb2_opt_formal8_20260630_033130`.
+- Planned launch command:
+  - `outputs/stage3_grpo/all5_hint_no_block_frozenref_rewardgate_softprompt4_4gpu_g8_pb2_opt_res512_formal8_20260630_033130/launch_tmux.sh`.
+- Estimate:
+  - Based on the 1-step diagnostic wall time of about `10m22s`, this 8-step
+    pilot should take roughly `80-90 min` unless judge/model-loading overheads
+    drift.
