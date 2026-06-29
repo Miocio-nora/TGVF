@@ -10032,7 +10032,7 @@ entry, update this file immediately.
 ## 2026-06-29 - Stage3 No-Block Frozen-Reference 8-Step Pilot
 
 - Status:
-  PLANNED.
+  RUNNING.
 - Question:
   Run a shorter 8-step pilot before the prepared 20-step pilot, to quickly
   check legal TGVF trigger rate, format stability, reward distribution, and
@@ -10060,6 +10060,7 @@ entry, update this file immediately.
 - Code/worktree:
   - Branch: `clean/tgvf-clean-project-20260625`.
   - Code commit at preparation: `2bb1edd Prepare Stage3 no-block frozen-reference pilot`.
+  - Launch-record commit: `edba6d2 Prepare Stage3 no-block frozen-reference 8-step pilot`.
 - Source checkpoint:
   - `outputs/clean_training/qwen3_stage2_norm01_stage1_mask075_deepstack_4gpu_20260627_163250/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt`.
   - SHA256:
@@ -10132,6 +10133,13 @@ entry, update this file immediately.
     `stage3_no_block_frozenref_8step`.
 - Planned launch command:
   - `revisit_vlm_clean/scripts/launch_stage3_no_block_frozenref_8step_20260629.sh`.
+- Actual launch:
+  - Started: `2026-06-29 22:46:48 JST`.
+  - Tmux session: `stage3_no_block_frozenref_8step`.
+  - Command:
+    `revisit_vlm_clean/scripts/launch_stage3_no_block_frozenref_8step_20260629.sh`.
+  - W&B:
+    `https://wandb.ai/mio_nora/tgvf-stage3/runs/ryal9ybs`.
 - Metrics to inspect early:
   - Step 1 `rollout/tool_trigger_rate`.
   - Legal `<|focus_start|>...<|focus_end|>` count.
