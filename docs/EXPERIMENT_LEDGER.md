@@ -11581,6 +11581,8 @@ entry, update this file immediately.
     `stage3_g8_pb2_opt_formal8_20260630_033130`.
   - Runtime commit from `run_config.txt`:
     `18cc71d31d190e0bca860dd2ea76378eadfa0f1c`, git status short count `0`.
+  - W&B:
+    `https://wandb.ai/mio_nora/tgvf-stage3/runs/v5xxjfbn`.
   - State immediately after launch:
     `status=running`, `next_step=1`, `completed_steps=[]`, `target_steps=8`.
   - Command:
