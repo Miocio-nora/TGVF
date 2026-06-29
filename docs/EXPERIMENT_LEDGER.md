@@ -11191,3 +11191,106 @@ entry, update this file immediately.
     result.
   - If future 512 steps with more tool-needed prompts hit memory pressure, fix
     the Stage3 update path rather than suppressing soft exploration.
+
+## 2026-06-30 - Stage3 SoftPrompt8 G20 Res512 Worst-Case 1-Step Memory Probe
+
+- Status:
+  PLANNED.
+- Question:
+  With canonical `max_image_resolution=512`, can `group_size=20` with the
+  canonical `12 free + 8 soft_tool_prompt` tool-needed split fit when all four
+  distributed ranks receive tool-needed prompts in the same step?
+- Baseline anchor:
+  - Previous non-worst-case memory probe:
+    `2026-06-30 - Stage3 SoftPrompt8 G20 Res512 1-Step Memory Probe`.
+  - Configuration decision:
+    `2026-06-30 - Stage3 Canonical Soft Exploration Ratio Decision`.
+- Intended diff:
+  - Keep the Stage2 checkpoint, model/processor, `max_image_resolution=512`,
+    no-block DeepStack, reward gate, frozen Stage2 reference, token budgets,
+    optimizer, `group_size=20`, and `tool_exploration_soft_count=8` fixed.
+  - Change only the one-step sample schedule so ranks `0,1,2,3` are all
+    tool-needed (`useful_tool`).
+  - Expected rollout split: `48 free + 32 soft_tool_prompt`.
+  - Run exactly one step for memory measurement, not for learning conclusions.
+- Code/worktree:
+  - Branch: `clean/tgvf-clean-project-20260625`.
+  - Code commit before plan generation:
+    `c5e87a798b5b1e5c8d97375a99649668916f0526`.
+  - Template plan generation was done from a clean git worktree.
+- Source checkpoint:
+  - `outputs/clean_training/qwen3_stage2_norm01_stage1_mask075_deepstack_4gpu_20260627_163250/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt`.
+  - SHA256:
+    `50245a11c27ad9755eb815b5f008af50a659fa07a4043f0f9427f5bbea3c0236`.
+- Train data:
+  - `revisit_vlm_clean/data/stage3_rl/v1_direct_20k_20260627_032447/accepted_rl_prompts.jsonl`.
+  - Rows: `20000`.
+  - SHA256:
+    `2e39a1dadcc020001bd3d763635f461d2b7dc6d94bfb3cfecdb9bb20240fa758`.
+- Source schedule used to construct worst-case schedule:
+  - `outputs/stage3_grpo/all5_hint_no_block_frozenref_4gpu_g20_res768_8step_retry2_20260629/stage3_grpo_sample_schedule.jsonl`.
+  - Rows: `32`.
+  - SHA256:
+    `6e1154d856adc83a4de85837e40b6890927a0727382694bfbad33db7bc828a87`.
+- Worst-case sample schedule:
+  - `outputs/stage3_grpo/all5_hint_no_block_frozenref_rewardgate_softprompt8_4gpu_g20_res512_1step_worstmem_20260630_024144/stage3_grpo_sample_schedule.jsonl`.
+  - Rows: `4`.
+  - SHA256:
+    `b5d6130e59a80d266b2894a259a9821fbec7406a5d9076e86883d7d2306e5593`.
+  - Tool hints: `useful_tool=4`.
+  - Source datasets: `docvqa=1`, `chartqa=2`, `textvqa=1`.
+  - Rank samples:
+    - rank0 `0f8688074066d91a8dc1f922`, source old step/rank `1/0`,
+      uid `docvqa:yxyk0226_9`.
+    - rank1 `ba040df3546b22e5e1f38f18`, source old step/rank `2/0`,
+      uid `chartqa:train_012953`.
+    - rank2 `c77efd9a4a36bd6415ad4132`, source old step/rank `2/1`,
+      uid `textvqa:c808d272f2f666ff`.
+    - rank3 `3433883c5bffa358ef004981`, source old step/rank `2/2`,
+      uid `chartqa:train_013351`.
+- Planned Stage3 config:
+  - Runtime backend: `native_single_focus`.
+  - Policy model/processor:
+    `/nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking`.
+  - Judge model: `qwen3_vl_32b_thinking`, no-thinking JSON judge.
+  - DeepStack: `enabled=true`, `original_image_scope=no_block`,
+    `d_features_enabled=false`.
+  - Reference policy: `frozen_stage2`.
+  - Optimizer: `manual_sgd`.
+  - GPUs: physical `0,1,2,3`.
+  - World size: `4`.
+  - Group size: `20`.
+  - Per-device prompt batch: `1`.
+  - Max steps: `1`.
+  - Global rollouts in the step: `80`.
+  - Max image resolution: `512`.
+  - Judge max image resolution: `512`.
+  - Max new/action/answer tokens: `256/128/160`.
+  - Reward gate: `gate_answer_without_required_tool=true`,
+    `required_tool_no_call_penalty=2.0`.
+  - Tool exploration:
+    `apply_to=tool_needed`, `soft_count=8`, `hard_count=0`,
+    prompt suffix `Use the focus tool if it helps answer precisely.`
+  - W&B: disabled for this memory probe.
+  - GPU memory sampling: every `2s` via `gpu_mem_trace.csv`.
+- Output root:
+  - `outputs/stage3_grpo/all5_hint_no_block_frozenref_rewardgate_softprompt8_4gpu_g20_res512_1step_worstmem_20260630_024144`.
+- Plan/preflight:
+  - Template plan:
+    `outputs/stage3_grpo/all5_hint_no_block_frozenref_rewardgate_softprompt8_4gpu_g20_res512_1step_worstmem_20260630_024144/step_000001/stage3_grpo_training_plan.json`.
+  - Template plan SHA256:
+    `8a4b7848521a15973be2c83a2c3f78e6094d63676a04321a3e029a15b16c7b50`.
+  - Stepwise preflight: `passed`.
+- Launch scripts:
+  - Foreground:
+    `outputs/stage3_grpo/all5_hint_no_block_frozenref_rewardgate_softprompt8_4gpu_g20_res512_1step_worstmem_20260630_024144/run_stepwise_foreground.sh`.
+  - Tmux:
+    `outputs/stage3_grpo/all5_hint_no_block_frozenref_rewardgate_softprompt8_4gpu_g20_res512_1step_worstmem_20260630_024144/launch_tmux.sh`.
+  - Run config:
+    `outputs/stage3_grpo/all5_hint_no_block_frozenref_rewardgate_softprompt8_4gpu_g20_res512_1step_worstmem_20260630_024144/run_config.txt`.
+  - Tracked wrapper:
+    `revisit_vlm_clean/scripts/launch_stage3_softprompt8_g20_res512_1step_worstmem_20260630_024144.sh`.
+  - Planned tmux session:
+    `stage3_softprompt8_g20_res512_1step_worstmem_20260630_024144`.
+- Launch status:
+  - Not launched yet in this PLANNED entry.
