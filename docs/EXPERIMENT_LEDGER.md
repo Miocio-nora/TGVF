@@ -10710,7 +10710,7 @@ entry, update this file immediately.
 ## 2026-06-30 - Stage3 Reward-Gated Soft-Prompt Tool Exploration G20 8-Step Pilot
 
 - Status:
-  RUNNING.
+  FAILED_OOM_SIDE_RESULT.
 - Question:
   The reward-gated `g20` pilot produced `0/640` tool triggers. If we keep the
   same Stage2 checkpoint, same 32-row schedule, same reward gate, and same
@@ -10814,3 +10814,35 @@ entry, update this file immediately.
     `https://wandb.ai/mio_nora/tgvf-stage3/runs/0lwvvmrq`.
   - State immediately after launch:
     `status=running`, `next_step=1`, `completed_steps=[]`.
+- Outcome:
+  - Failed during `step_000001` launch-training.
+  - Failed at: `2026-06-30 01:33:55 JST`.
+  - Final state:
+    `status=failed`, `next_step=1`, `completed_steps=[]`.
+  - Failure:
+    CUDA OOM on GPU0 during policy replay for a soft-prompt rollout. The
+    rank0 process was replaying `rollout_id=18` after several soft tool
+    trajectories had already built graph state; GPU0 reached about `178.35
+    GiB` used.
+  - W&B:
+    `https://wandb.ai/mio_nora/tgvf-stage3/runs/0lwvvmrq`.
+  - No checkpoint was produced.
+- Partial rollout diagnostics from failed step 1:
+  - Training rollout rows written before OOM: `80`.
+  - Rollout type counts: `free=72`, `soft_tool_prompt=8`.
+  - Trigger count/rate: `8/80 = 10.0%`.
+  - Free trigger count/rate: `3/72 = 4.17%`.
+  - Soft-prompt trigger count/rate: `5/8 = 62.5%`.
+  - Reward rows: `80`.
+  - Tool labels: `tool_needed=20`, `tool_unnecessary=60`.
+  - Answer accuracy over reward rows: `65.0%`.
+  - Mean reward over available rows: `1.8544`.
+- Conclusion:
+  - The soft prompt works as an exploration mechanism: it is not hard forced,
+    and on the first tool-needed sample it yielded `5/8` tool triggers while
+    `3/8` still chose not to use the tool.
+  - `soft_count=8` is too memory-heavy for the current Stage3 replay/update
+    implementation because native GRPO retains all per-rollout computation
+    graphs before the grouped loss/backward.
+  - Retry with a softer/lower-memory setting: keep `group_size=20` but reduce
+    to `tool_exploration_soft_count=4`, `hard_count=0`.
