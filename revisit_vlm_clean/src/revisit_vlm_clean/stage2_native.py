@@ -86,6 +86,14 @@ class NativeStage2Sample:
         return self.question.rstrip() + "\nChoices:\n" + "\n".join(choice_lines)
 
 
+@dataclass(frozen=True)
+class _AlignedCaptureCache:
+    past_key_values: Any
+    attention_mask: Any
+    input_ids: Any
+    debug: dict[str, Any]
+
+
 class NativeStage2Engine:
     """Clean-native Stage2 runtime owner.
 
@@ -344,6 +352,19 @@ class NativeStage2Engine:
                     "uses_deepstack_for_fvt"
                 ),
                 deepstack_caution=append_result.debug_metadata.get("deepstack_caution"),
+                kv_cache_input_len=append_result.debug_metadata.get("kv_cache_input_len"),
+                kv_cache_initial_seq_len=append_result.debug_metadata.get(
+                    "kv_cache_initial_seq_len"
+                ),
+                kv_cache_tail_prefill_tokens=append_result.debug_metadata.get(
+                    "kv_cache_tail_prefill_tokens"
+                ),
+                kv_cache_aligned_seq_len=append_result.debug_metadata.get(
+                    "kv_cache_aligned_seq_len"
+                ),
+                kv_cache_tail_prefill_used=append_result.debug_metadata.get(
+                    "kv_cache_tail_prefill_used"
+                ),
                 second_full_forward_used=bool(
                     getattr(capture, "second_full_forward_used", False)
                     or append_result.debug_metadata.get("second_full_forward_used")
@@ -691,18 +712,32 @@ class NativeStage2Engine:
         fvt_token_end = fvt_token_start + int(d.shape[0])
         embeds = embed(token_ids.view(1, -1).to(self.device)).detach().clone()
         embeds[0, fvt_token_start:fvt_token_end] = d.to(device=self.device, dtype=embeds.dtype)
-        attention_mask = capture.attention_mask
+        base_attention_mask = (
+            None if capture.attention_mask is None else capture.attention_mask.to(self.device)
+        )
+        base_input_ids = None if capture.input_ids is None else capture.input_ids.to(self.device)
+        past_key_values = capture.past_key_values
+        cache_alignment_debug: dict[str, Any] = {
+            "kv_cache_input_len": (
+                None if base_input_ids is None else int(base_input_ids.shape[-1])
+            ),
+            "kv_cache_initial_seq_len": _past_key_values_sequence_length(past_key_values),
+            "kv_cache_tail_prefill_tokens": 0,
+            "kv_cache_aligned_seq_len": _past_key_values_sequence_length(past_key_values),
+            "kv_cache_tail_prefill_used": False,
+        }
+        if self._deepstack_enabled():
+            aligned_cache = self._align_capture_cache_to_input_ids(capture)
+            past_key_values = aligned_cache.past_key_values
+            base_attention_mask = aligned_cache.attention_mask
+            base_input_ids = aligned_cache.input_ids
+            cache_alignment_debug = aligned_cache.debug
+        attention_mask = base_attention_mask
         if attention_mask is not None:
-            attention_mask = _extend_attention(
-                attention_mask.to(self.device),
-                int(token_ids.shape[0]),
-            )
-        input_ids = capture.input_ids
+            attention_mask = _extend_attention(attention_mask, int(token_ids.shape[0]))
+        input_ids = base_input_ids
         if input_ids is not None:
-            input_ids = torch.cat(
-                [input_ids.to(self.device), token_ids.view(1, -1).to(self.device)],
-                dim=-1,
-            )
+            input_ids = torch.cat([input_ids, token_ids.view(1, -1).to(self.device)], dim=-1)
         mm_token_type_ids = _fvt_mm_token_type_ids(
             chunk_length=int(token_ids.shape[0]),
             fvt_token_start=fvt_token_start,
@@ -733,7 +768,7 @@ class NativeStage2Engine:
         block_original_image_keys = False
         original_positions = None
         if self._deepstack_enabled():
-            if capture.past_key_values is None:
+            if past_key_values is None:
                 raise ValueError("KV DeepStack append requires capture.past_key_values")
             if attention_mask is None or input_ids is None:
                 raise ValueError("KV DeepStack append requires attention_mask and input_ids")
@@ -752,7 +787,7 @@ class NativeStage2Engine:
             block_original_image_keys = True
         outputs = self.model(
             inputs_embeds=embeds,
-            past_key_values=capture.past_key_values,
+            past_key_values=past_key_values,
             attention_mask=append_attention,
             position_ids=position_ids,
             mm_token_type_ids=mm_token_type_ids,
@@ -798,8 +833,9 @@ class NativeStage2Engine:
                 "native_qwen3_position_compute_used": True,
                 "second_full_forward_used": False,
                 "past_key_values_preserved": (
-                    capture.past_key_values is not None and outputs.past_key_values is not None
+                    past_key_values is not None and outputs.past_key_values is not None
                 ),
+                **cache_alignment_debug,
                 "deepstack_caution": None
                 if block_original_image_keys
                 else (
@@ -833,6 +869,104 @@ class NativeStage2Engine:
                 ),
                 "deepstack_original_image_key_block": bool(block_original_image_keys),
             },
+        )
+
+    def _align_capture_cache_to_input_ids(self, capture: Any) -> _AlignedCaptureCache:
+        """Make generated cache length match captured input_ids before appending D.
+
+        `generate(..., return_dict_in_generate=True)` may return a cache whose
+        sequence length is one token shorter than `sequences`. Appending the D
+        chunk with a 4D DeepStack/key-block mask requires key length to match the
+        actual cached prefix, so missing tail tokens are prefilled through the same
+        Qwen3 decode helper used by the legacy capture loop.
+        """
+
+        from revisit_vlm.qwen3_vl_tgvf import _prepare_decode_step
+
+        if self.model is None:
+            raise RuntimeError("native Stage2 model is not loaded")
+        if capture.past_key_values is None:
+            raise ValueError("KV DeepStack append requires capture.past_key_values")
+        if capture.attention_mask is None or capture.input_ids is None:
+            raise ValueError("KV DeepStack append requires attention_mask and input_ids")
+
+        past_key_values = capture.past_key_values
+        input_ids = capture.input_ids.to(self.device)
+        attention_mask = capture.attention_mask.to(self.device)
+        input_len = int(input_ids.shape[-1])
+        attention_len = int(attention_mask.shape[-1])
+        if attention_len != input_len:
+            raise ValueError(
+                "KV DeepStack append requires attention_mask/input_ids length match: "
+                f"attention={attention_len} input_ids={input_len}"
+            )
+        initial_seq_len = _past_key_values_sequence_length(past_key_values)
+        debug = {
+            "kv_cache_input_len": input_len,
+            "kv_cache_initial_seq_len": initial_seq_len,
+            "kv_cache_tail_prefill_tokens": 0,
+            "kv_cache_aligned_seq_len": initial_seq_len,
+            "kv_cache_tail_prefill_used": False,
+        }
+        if initial_seq_len is None:
+            return _AlignedCaptureCache(
+                past_key_values=past_key_values,
+                attention_mask=attention_mask,
+                input_ids=input_ids,
+                debug=debug,
+            )
+        if initial_seq_len > input_len:
+            raise ValueError(
+                "KV DeepStack cache is longer than captured input_ids: "
+                f"cache={initial_seq_len} input_ids={input_len}"
+            )
+        if initial_seq_len == input_len:
+            debug["kv_cache_aligned_seq_len"] = input_len
+            return _AlignedCaptureCache(
+                past_key_values=past_key_values,
+                attention_mask=attention_mask,
+                input_ids=input_ids,
+                debug=debug,
+            )
+
+        model_kwargs = dict(getattr(capture, "model_kwargs", {}) or {})
+        cache_position = getattr(capture, "cache_position", None)
+        missing = input_len - initial_seq_len
+        for absolute_index in range(initial_seq_len, input_len):
+            next_token = input_ids[:, absolute_index : absolute_index + 1]
+            step_input_ids = input_ids[:, : absolute_index + 1]
+            step_attention = attention_mask[:, : absolute_index + 1]
+            step_inputs = _prepare_decode_step(
+                self.model,
+                full_input_ids=step_input_ids,
+                next_token=next_token,
+                past_key_values=past_key_values,
+                attention_mask=step_attention,
+                base_inputs=model_kwargs,
+                cache_position=cache_position,
+                generated_token_count=absolute_index - initial_seq_len + 1,
+            )
+            step_inputs["return_dict"] = True
+            outputs = self.model(**step_inputs)
+            past_key_values = outputs.past_key_values
+            cache_position = step_inputs.get("cache_position")
+
+        aligned_seq_len = _past_key_values_sequence_length(past_key_values)
+        if aligned_seq_len is not None and aligned_seq_len != input_len:
+            raise ValueError(
+                "KV DeepStack cache tail prefill did not align cache length: "
+                f"cache={aligned_seq_len} input_ids={input_len}"
+            )
+        debug.update(
+            kv_cache_tail_prefill_tokens=missing,
+            kv_cache_aligned_seq_len=aligned_seq_len if aligned_seq_len is not None else input_len,
+            kv_cache_tail_prefill_used=True,
+        )
+        return _AlignedCaptureCache(
+            past_key_values=past_key_values,
+            attention_mask=attention_mask,
+            input_ids=input_ids,
+            debug=debug,
         )
 
     def _append_visual_d_full_sequence(
@@ -1740,6 +1874,23 @@ def _generated_answer_has_started(
     if uses_evidence:
         return "<|evidence_end|>" in text
     return "<ANSWER>" in text
+
+
+def _past_key_values_sequence_length(past_key_values: Any) -> int | None:
+    if past_key_values is None:
+        return None
+    get_seq_length = getattr(past_key_values, "get_seq_length", None)
+    if callable(get_seq_length):
+        value = get_seq_length()
+        return None if value is None else int(value)
+    try:
+        layer0 = past_key_values[0]
+        key = layer0[0] if isinstance(layer0, (tuple, list)) else getattr(layer0, "key", None)
+        if key is not None and hasattr(key, "shape") and len(key.shape) >= 3:
+            return int(key.shape[-2])
+    except Exception:
+        return None
+    return None
 
 
 def _collect_cuda_garbage() -> None:

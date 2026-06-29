@@ -873,6 +873,131 @@ def test_stage2_native_kv_deepstack_append_uses_cached_chunk_mask(
     )
 
 
+def test_stage2_native_kv_deepstack_prefills_generate_cache_tail(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    import torch
+    import revisit_vlm.qwen3_vl_tgvf as qwen3_vl_tgvf
+
+    class FakeCache:
+        def __init__(self, seq_len: int) -> None:
+            self.seq_len = seq_len
+
+        def get_seq_length(self):
+            return self.seq_len
+
+    class FakeEmbedding:
+        weight = torch.zeros((32, 4), dtype=torch.float32)
+
+        def __call__(self, token_ids):
+            return torch.zeros((*token_ids.shape, 4), dtype=torch.float32)
+
+    class RecordingModel:
+        def __init__(self) -> None:
+            self.calls = []
+            self.embed = FakeEmbedding()
+
+        def get_input_embeddings(self):
+            return self.embed
+
+        def __call__(self, **kwargs):
+            self.calls.append(kwargs)
+            if "input_ids" in kwargs:
+                return SimpleNamespace(
+                    past_key_values=FakeCache(5),
+                    logits=torch.zeros((1, 1, 8), dtype=torch.float32),
+                )
+            return SimpleNamespace(
+                past_key_values=FakeCache(9),
+                logits=torch.zeros((1, 1, 8), dtype=torch.float32),
+            )
+
+    monkeypatch.setattr(
+        qwen3_vl_tgvf,
+        "_prepare_decode_step",
+        lambda model, **kwargs: {
+            "input_ids": kwargs["next_token"],
+            "past_key_values": kwargs["past_key_values"],
+            "attention_mask": kwargs["attention_mask"],
+            "use_cache": True,
+        },
+    )
+    monkeypatch.setattr(
+        qwen3_vl_tgvf,
+        "render_tgvf_prefix_suffix",
+        lambda **kwargs: ("P", "S"),
+    )
+    monkeypatch.setattr(qwen3_vl_tgvf, "protocol_uses_tool_observation", lambda protocol: True)
+    monkeypatch.setattr(qwen3_vl_tgvf, "protocol_uses_think_tags", lambda protocol: False)
+    monkeypatch.setattr(qwen3_vl_tgvf, "protocol_uses_evidence_tags", lambda protocol: False)
+    monkeypatch.setattr(
+        qwen3_vl_tgvf,
+        "_bracketed_visual_token_ids",
+        lambda *args, **kwargs: torch.tensor([10, 11, 12, 13], dtype=torch.long),
+    )
+    monkeypatch.setattr(
+        qwen3_vl_tgvf,
+        "_encode_text",
+        lambda tokenizer, text, device: torch.empty((0,), dtype=torch.long),
+    )
+    monkeypatch.setattr(
+        qwen3_vl_tgvf,
+        "_fvt_mm_token_type_ids",
+        lambda *, chunk_length, fvt_token_start, fvt_token_end, device: torch.zeros(
+            (1, chunk_length),
+            dtype=torch.long,
+        ),
+    )
+    monkeypatch.setattr(
+        qwen3_vl_tgvf,
+        "_chunk_position_ids_native_source_grid",
+        lambda **kwargs: torch.zeros((3, 1, 4), dtype=torch.long),
+    )
+    monkeypatch.setattr(
+        qwen3_vl_tgvf,
+        "_next_position_ids_after_prefill",
+        lambda position_ids: torch.zeros((3, 1, 1), dtype=torch.long),
+    )
+
+    runtime = _runtime(tmp_path, append_forward_mode=ForwardMode.KV_CACHE)
+    config = _deepstack_run_config()
+    engine = NativeStage2Engine(stage2_config=runtime)
+    engine.prepare(config)
+    model = RecordingModel()
+    engine.model = model
+    engine.utility_model = model
+    engine.processor = SimpleNamespace(tokenizer=object())
+    engine.device = torch.device("cpu")
+    capture = SimpleNamespace(
+        capture_found=True,
+        past_key_values=FakeCache(4),
+        attention_mask=torch.ones((1, 5), dtype=torch.long),
+        input_ids=torch.arange(5, dtype=torch.long).view(1, -1),
+        cache_position=None,
+        model_kwargs={},
+        source_visual_geometry=SimpleNamespace(
+            source_visual_token_count=2,
+            source_visual_token_indices=torch.tensor([1, 2], dtype=torch.long),
+            source_visual_position_ids=torch.zeros((3, 2), dtype=torch.long),
+        ),
+    )
+
+    result = engine._append_visual_d(capture, torch.ones((2, 4), dtype=torch.float32))
+
+    assert len(model.calls) == 2
+    assert "input_ids" in model.calls[0]
+    assert model.calls[0]["input_ids"].tolist() == [[4]]
+    assert "inputs_embeds" in model.calls[1]
+    assert model.calls[1]["past_key_values"].get_seq_length() == 5
+    assert list(model.calls[1]["attention_mask"].shape) == [1, 1, 4, 9]
+    assert result.debug_metadata["kv_cache_initial_seq_len"] == 4
+    assert result.debug_metadata["kv_cache_input_len"] == 5
+    assert result.debug_metadata["kv_cache_tail_prefill_tokens"] == 1
+    assert result.debug_metadata["kv_cache_aligned_seq_len"] == 5
+    assert result.debug_metadata["kv_cache_tail_prefill_used"] is True
+
+
 def test_stage2_native_backend_reports_runtime_errors_as_row_error(monkeypatch, tmp_path) -> None:
     runtime = _runtime(tmp_path)
     config = _run_config()
