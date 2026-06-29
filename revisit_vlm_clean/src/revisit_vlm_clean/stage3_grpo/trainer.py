@@ -530,6 +530,7 @@ class Stage3GRPOTrainer:
         new_rows = []
         old_rows = []
         ref_rows = []
+        recorded_old_logprob_mismatches = 0
         for rollout_index, rollout in enumerate(rollouts):
             sample = sample_by_id[rollout.sample_id]
             self._progress(
@@ -552,42 +553,26 @@ class Stage3GRPOTrainer:
                 rollout_id=rollout.rollout_id,
                 token_count=int(new_logprobs.numel()),
             )
+            replay_token_count = _stage3_rollout_replay_token_count(rollout)
+            if int(new_logprobs.numel()) != replay_token_count:
+                raise ValueError(
+                    f"replay length mismatch for {rollout.sample_id}/{rollout.rollout_id}: "
+                    f"new={int(new_logprobs.numel())} replay_tokens={replay_token_count}"
+                )
+            recorded_old_count = len(rollout.old_logprobs or ())
+            if recorded_old_count not in {0, int(new_logprobs.numel())}:
+                recorded_old_logprob_mismatches += 1
+            old_logprobs = new_logprobs.detach().float()
+            ref_logprobs = old_logprobs.clone()
             self._progress(
-                "replay_reference_start",
-                global_step=global_step,
-                rollout_index=rollout_index,
-                sample_id=rollout.sample_id,
-                rollout_id=rollout.rollout_id,
-            )
-            with torch.no_grad():
-                ref_logprobs = self.engine.replay_rollout_logprobs(  # type: ignore[attr-defined]
-                    sample,
-                    rollout,
-                    reference=True,
-                ).detach()
-            self._progress(
-                "replay_reference_done",
+                "reference_logprobs_reused_from_replay_policy",
                 global_step=global_step,
                 rollout_index=rollout_index,
                 sample_id=rollout.sample_id,
                 rollout_id=rollout.rollout_id,
                 token_count=int(ref_logprobs.numel()),
+                recorded_old_logprob_count=recorded_old_count,
             )
-            old_logprobs = torch.tensor(
-                list(rollout.old_logprobs),
-                dtype=torch.float32,
-                device=new_logprobs.device,
-            )
-            if int(new_logprobs.numel()) != int(old_logprobs.numel()):
-                raise ValueError(
-                    f"replay length mismatch for {rollout.sample_id}/{rollout.rollout_id}: "
-                    f"new={int(new_logprobs.numel())} old={int(old_logprobs.numel())}"
-                )
-            if int(ref_logprobs.numel()) != int(old_logprobs.numel()):
-                raise ValueError(
-                    f"reference replay length mismatch for {rollout.sample_id}/{rollout.rollout_id}: "
-                    f"ref={int(ref_logprobs.numel())} old={int(old_logprobs.numel())}"
-                )
             new_rows.append(new_logprobs)
             old_rows.append(old_logprobs)
             ref_rows.append(ref_logprobs)
@@ -659,6 +644,9 @@ class Stage3GRPOTrainer:
             "rollout_count": len(rollouts),
             "mean_reward": sum(reward_map.values()) / max(len(reward_map), 1),
             "replayed_tokens": float(mask_tensor.sum().detach().cpu()),
+            "behavior_logprobs_source": "teacher_forced_policy_replay_detached",
+            "reference_logprobs_source": "teacher_forced_policy_replay_detached",
+            "recorded_old_logprob_mismatches": int(recorded_old_logprob_mismatches),
             "gradient_accumulation_steps": int(self.config.train.gradient_accumulation_steps),
             "rank": int(self.distributed["rank"]),
             "world_size": int(self.distributed["world_size"]),
@@ -959,6 +947,16 @@ def _pad_logprob_rows(rows: list[Any], old_rows: list[Any]) -> tuple[Any, Any, A
     return torch.stack(new_padded), torch.stack(old_padded), torch.stack(mask_padded)
 
 
+def _stage3_rollout_replay_token_count(rollout: RolloutRecord) -> int:
+    protocol = rollout.protocol or {}
+    focus_ids = protocol.get("focus_generated_ids") or []
+    continuation_ids = protocol.get("continuation_generated_ids") or []
+    segmented_count = len(focus_ids) + len(continuation_ids)
+    if segmented_count > 0:
+        return int(segmented_count)
+    return len(rollout.token_ids or ())
+
+
 def _save_native_checkpoint(
     path: Path,
     config: Stage3GRPOConfig,
@@ -1007,6 +1005,7 @@ def native_grpo_readiness_report(
     advantages: dict[tuple[str, int], float],
 ) -> dict[str, Any]:
     replay_ready = []
+    recorded_old_logprobs_aligned = []
     blockers: list[str] = []
     for rollout in rollouts:
         focus_ids = list((rollout.protocol or {}).get("focus_generated_ids") or [])
@@ -1016,18 +1015,16 @@ def native_grpo_readiness_report(
             (rollout.protocol or {}).get("continuation_generated_logprobs") or []
         )
         has_segmented_ids = bool(focus_ids or continuation_ids)
-        has_segmented_old_logprobs = (
-            len(focus_ids) == len(focus_logprobs)
+        recorded_old_logprobs_aligned.append(
+            has_segmented_ids
+            and len(focus_ids) == len(focus_logprobs)
             and len(continuation_ids) == len(continuation_logprobs)
-            and has_segmented_ids
         )
         has_advantage = (rollout.sample_id, rollout.rollout_id) in advantages
-        item_ready = has_segmented_ids and has_segmented_old_logprobs and has_advantage
+        item_ready = has_segmented_ids and has_advantage
         replay_ready.append(item_ready)
         if not has_segmented_ids:
             blockers.append("missing_segmented_token_ids")
-        if has_segmented_ids and not has_segmented_old_logprobs:
-            blockers.append("missing_or_misaligned_segmented_old_logprobs")
         if not has_advantage:
             blockers.append("missing_group_advantage")
     all_segmented = bool(replay_ready) and all(replay_ready)
@@ -1038,6 +1035,10 @@ def native_grpo_readiness_report(
         "reward_count": len(rewards),
         "rollouts_with_segmented_replay_inputs": sum(1 for item in replay_ready if item),
         "all_rollouts_have_segmented_replay_inputs": all_segmented,
+        "recorded_old_logprobs_are_diagnostic_only": True,
+        "rollouts_with_aligned_recorded_old_logprobs": sum(
+            1 for item in recorded_old_logprobs_aligned if item
+        ),
         "unique_blockers": sorted(set(blockers)),
         "next_required_implementation": [
             "run native launch-training smoke against the actual Stage2 checkpoint",

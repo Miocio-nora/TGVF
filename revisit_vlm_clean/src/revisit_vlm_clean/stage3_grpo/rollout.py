@@ -420,7 +420,7 @@ class NativeSingleFocusRolloutEngine:
             post_tool_reasoning=post_tool_reasoning,
             token_ids=tuple(token_ids),
             old_logprobs=tuple(old_logprobs),
-            loss_mask=tuple(1 for _ in old_logprobs),
+            loss_mask=tuple(1 for _ in token_ids),
             protocol={
                 "focus_valid": getattr(result, "focus_valid", None),
                 "append_success": getattr(result, "append_success", None),
@@ -490,7 +490,8 @@ def _is_finite_float(value: object) -> bool:
 
 
 def _reference_model_context(model: object):
-    disable_adapter = getattr(model, "disable_adapter", None)
-    if callable(disable_adapter):
-        return disable_adapter()
+    # Stage3 currently continues training the Stage2 LoRA adapter directly.
+    # Disabling adapters would make the reference path the base Qwen model, not
+    # the frozen Stage2 policy. Native updates therefore use detached
+    # teacher-forced replay logprobs as the behavior/reference baseline instead.
     return nullcontext()

@@ -24,7 +24,7 @@ from revisit_vlm_clean.stage3_grpo.native_replay import (
 from revisit_vlm_clean.stage3_grpo.probe import ProbeCache
 from revisit_vlm_clean.stage3_grpo.reward import answer_is_correct, score_rollout_reward
 from revisit_vlm_clean.stage3_grpo.rollout import FakeRolloutEngine
-from revisit_vlm_clean.stage3_grpo.rollout import build_rollout_engine
+from revisit_vlm_clean.stage3_grpo.rollout import _reference_model_context, build_rollout_engine
 from revisit_vlm_clean.stage3_grpo.schemas import (
     JudgeConfig,
     RewardConfig,
@@ -38,6 +38,7 @@ from revisit_vlm_clean.stage3_grpo.schemas import (
 from revisit_vlm_clean.stage3_grpo.trainer import (
     _stage3_configure_native_trainables,
     _stage3_distributed_average_gradients,
+    _stage3_rollout_replay_token_count,
     _stage3_manual_sgd_step,
     _stage3_native_adamw,
     _stage3_clip_grad_norm,
@@ -173,6 +174,27 @@ def test_stage3_grpo_math_smoke() -> None:
     )
     assert float(loss.detach().cpu()) == stats["loss"]
     assert stats["token_count"] == 3.0
+
+
+def test_stage3_grpo_loss_preserves_new_logprob_gradients() -> None:
+    import torch
+
+    new_logprobs = torch.tensor([[-1.0, -1.1]], requires_grad=True)
+    old_logprobs = new_logprobs.detach().clone()
+    loss, _stats = grpo_loss_from_tensors(
+        new_logprobs=new_logprobs,
+        old_logprobs=old_logprobs,
+        advantages=torch.tensor([1.0]),
+        loss_mask=torch.ones_like(new_logprobs),
+        ref_logprobs=old_logprobs,
+        clip_range=0.2,
+        kl_coef=0.0,
+    )
+
+    loss.backward()
+
+    assert new_logprobs.grad is not None
+    assert torch.all(new_logprobs.grad < 0)
 
 
 def test_stage3_clip_grad_norm_zero_disables_norm_and_clip() -> None:
@@ -326,6 +348,56 @@ def test_stage3_native_readiness_requires_segmented_replay_inputs() -> None:
     assert report["status"] == "ready"
     assert report["all_rollouts_have_segmented_replay_inputs"] is True
     assert report["unique_blockers"] == []
+
+
+def test_stage3_native_readiness_treats_recorded_old_logprobs_as_diagnostic() -> None:
+    rollout = RolloutRecord(
+        sample_id="s1",
+        rollout_id=0,
+        rollout_type="free",
+        raw_output="raw",
+        final_answer="red",
+        used_tool=True,
+        num_tool_calls=1,
+        targets=("the cup",),
+        token_ids=(1, 2, 3),
+        old_logprobs=(),
+        loss_mask=(1, 1, 1),
+        protocol={
+            "focus_generated_ids": [1],
+            "focus_generated_logprobs": [],
+            "continuation_generated_ids": [2, 3],
+            "continuation_generated_logprobs": [],
+        },
+        runtime={"backend": "native_single_focus"},
+    )
+
+    report = native_grpo_readiness_report(
+        [rollout],
+        [{"sample_id": "s1", "rollout_id": 0, "reward_total": 1.0}],
+        {("s1", 0): 0.0},
+    )
+
+    assert report["status"] == "ready"
+    assert report["recorded_old_logprobs_are_diagnostic_only"] is True
+    assert report["rollouts_with_aligned_recorded_old_logprobs"] == 0
+    assert _stage3_rollout_replay_token_count(rollout) == 3
+
+
+def test_stage3_reference_context_does_not_disable_stage2_adapter() -> None:
+    class Policy:
+        def __init__(self) -> None:
+            self.disable_called = False
+
+        def disable_adapter(self):
+            self.disable_called = True
+            raise AssertionError("Stage3 reference must not disable the Stage2 adapter")
+
+    policy = Policy()
+    with _reference_model_context(policy):
+        pass
+
+    assert policy.disable_called is False
 
 
 def test_stage3_judge_json_parser() -> None:
