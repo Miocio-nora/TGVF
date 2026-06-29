@@ -10176,7 +10176,7 @@ entry, update this file immediately.
 ## 2026-06-29 - Stage3 No-Block Frozen-Reference G24 8-Step Retry1
 
 - Status:
-  RUNNING.
+  FAILED.
 - Question:
   Retry the failed 8-step Stage3 pilot after fixing frozen-reference replay
   ordering, while using the 180G GPUs more effectively but still conservatively.
@@ -10285,3 +10285,18 @@ entry, update this file immediately.
   - Record step 1 GPU peak from `gpu_mem_trace.csv`.
   - Inspect trigger rate, legal focus format, malformed rate, reward
     distribution, and `reference_logprobs_source`.
+- Outcome:
+  - Failed at step 1 during policy replay/backward preparation with CUDA OOM.
+  - The frozen-reference replay ordering fix worked far enough to enter the
+    two-phase replay path; the previous inplace-backward error did not recur.
+  - Trigger/pending for step 1: `10/24 = 41.7%`.
+  - Judge cache rows: focus `5`, grounding `5`.
+  - Observed peak GPU memory from `gpu_mem_trace.csv`:
+    GPU0 `174286 MiB`, GPU1 `182630 MiB`, GPU2 `163062 MiB`,
+    GPU3 `166206 MiB`.
+  - Root error:
+    rank1 OOM at `178.34 GiB` in use, only `12.12 MiB` free, while trying to
+    allocate `30 MiB`.
+  - Conclusion:
+    `group_size=24` uses the 180G cards aggressively but has no safety margin.
+    Use `group_size=20` for the next retry.
