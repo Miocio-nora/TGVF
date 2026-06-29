@@ -10710,7 +10710,7 @@ entry, update this file immediately.
 ## 2026-06-30 - Stage3 Reward-Gated Soft-Prompt Tool Exploration G20 8-Step Pilot
 
 - Status:
-  PLANNED.
+  RUNNING.
 - Question:
   The reward-gated `g20` pilot produced `0/640` tool triggers. If we keep the
   same Stage2 checkpoint, same 32-row schedule, same reward gate, and same
@@ -10804,3 +10804,13 @@ entry, update this file immediately.
     `stage3_softprompt8_g20_8step_20260630_011952`.
   - Planned launch command:
     `revisit_vlm_clean/scripts/launch_stage3_softprompt8_g20_8step_20260630_011952.sh`.
+- Actual launch:
+  - Started: `2026-06-30 01:26:41 JST`.
+  - Tmux session:
+    `stage3_softprompt8_g20_8step_20260630_011952`.
+  - Command:
+    `revisit_vlm_clean/scripts/launch_stage3_softprompt8_g20_8step_20260630_011952.sh`.
+  - W&B:
+    `https://wandb.ai/mio_nora/tgvf-stage3/runs/0lwvvmrq`.
+  - State immediately after launch:
+    `status=running`, `next_step=1`, `completed_steps=[]`.
