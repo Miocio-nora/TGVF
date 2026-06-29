@@ -10838,14 +10838,22 @@ entry, update this file immediately.
   - Answer accuracy over reward rows: `65.0%`.
   - Mean reward over available rows: `1.8544`.
 - Conclusion:
+  - Correction after review on `2026-06-30`: this pilot used
+    `max_image_resolution=768`, inherited from the earlier Stage3 VRAM/formal
+    res768 exploration line. The current canonical clean setting should remain
+    `max_image_resolution=512` unless the user explicitly approves a res change.
+    Therefore this run is a res768 side result, not evidence for the canonical
+    512 Stage3 setting.
   - The soft prompt works as an exploration mechanism: it is not hard forced,
     and on the first tool-needed sample it yielded `5/8` tool triggers while
     `3/8` still chose not to use the tool.
   - `soft_count=8` is too memory-heavy for the current Stage3 replay/update
     implementation because native GRPO retains all per-rollout computation
     graphs before the grouped loss/backward.
-  - Retry with a softer/lower-memory setting: keep `group_size=20` but reduce
-    to `tool_exploration_soft_count=4`, `hard_count=0`.
+  - Lowering `tool_exploration_soft_count` is only a diagnostic workaround, not
+    the correct main solution. The next canonical attempt should return to
+    `max_image_resolution=512` and, if memory pressure remains, fix the Stage3
+    update path with chunked replay/backward or equivalent graph release.
 
 ## 2026-06-30 - Stage3 Reward-Gated Soft-Prompt4 Tool Exploration G20 8-Step Pilot
 
@@ -10983,6 +10991,9 @@ entry, update this file immediately.
     tool-needed rank0 sample it triggered `3/4` times while remaining
     non-forced.
 - Conclusion:
+  - Correction after review on `2026-06-30`: this pilot also used
+    `max_image_resolution=768`, inherited from the earlier Stage3 res768 line.
+    It must not be treated as a canonical 512 result.
   - `soft_count=4` is still too close to the 180G memory boundary for the
     current implementation at `group_size=20`, `max_image_resolution=768`,
     DeepStack no-block, and 4-GPU distributed update.
@@ -10990,6 +11001,7 @@ entry, update this file immediately.
     that Stage3 needs a memory-safe update path, e.g. chunked policy
     replay/backward or another way to avoid retaining all triggered rollout
     graphs through all-reduce.
-  - A lower `soft_count=2` or lower group size could be used only as a quick
-    diagnostic; it should not be the main fix if we want stable soft tool
-    exploration.
+  - Do not continue by simply lowering the soft-prompt ratio. The corrected
+    next run should pin `max_image_resolution=512` first; if that still leaves
+    little headroom, the proper fix is memory-safe Stage3 replay/backward rather
+    than suppressing tool exploration.
