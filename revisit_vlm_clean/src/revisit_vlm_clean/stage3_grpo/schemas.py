@@ -91,13 +91,22 @@ class RewardConfig:
     w_focus: float = 1.0
     w_ground: float = 1.0
     lambda_call: float = 0.05
+    gate_answer_without_required_tool: bool = True
+    required_tool_no_call_penalty: float = 2.0
     protocol_penalty: float = -1.0
     focus_zero_reward: float = 0.0
     grounding_zero_reward: float = -1.0
     reward_normalization: bool = True
 
     def validate(self) -> None:
-        for name in ("w_answer", "w_tool", "w_focus", "w_ground", "lambda_call"):
+        for name in (
+            "w_answer",
+            "w_tool",
+            "w_focus",
+            "w_ground",
+            "lambda_call",
+            "required_tool_no_call_penalty",
+        ):
             if float(getattr(self, name)) < 0:
                 raise ValueError(f"reward.{name} must be >= 0")
         if float(self.protocol_penalty) > 0:

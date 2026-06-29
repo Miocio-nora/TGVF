@@ -93,6 +93,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--w-focus", type=float, default=1.0)
     parser.add_argument("--w-ground", type=float, default=1.0)
     parser.add_argument("--lambda-call", type=float, default=0.05)
+    parser.add_argument(
+        "--gate-answer-without-required-tool",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="For tool-needed samples, zero answer reward when the rollout does not use the tool.",
+    )
+    parser.add_argument("--required-tool-no-call-penalty", type=float, default=2.0)
     parser.add_argument("--protocol-penalty", type=float, default=-1.0)
     parser.add_argument("--focus-zero-reward", type=float, default=0.0)
     parser.add_argument("--grounding-zero-reward", type=float, default=-1.0)
@@ -237,6 +244,10 @@ def build_stage3_grpo_training_plan(
                 "ground": config.reward.w_ground,
                 "protocol_gate": "additive",
             },
+            "reward_gate": {
+                "gate_answer_without_required_tool": config.reward.gate_answer_without_required_tool,
+                "required_tool_no_call_penalty": config.reward.required_tool_no_call_penalty,
+            },
             "reference_policy": config.train.reference_policy,
             "will_launch_training": False,
             "plan_only": True,
@@ -340,6 +351,8 @@ def _config_from_args(args: argparse.Namespace) -> Stage3GRPOConfig:
             w_focus=args.w_focus,
             w_ground=args.w_ground,
             lambda_call=args.lambda_call,
+            gate_answer_without_required_tool=args.gate_answer_without_required_tool,
+            required_tool_no_call_penalty=args.required_tool_no_call_penalty,
             protocol_penalty=args.protocol_penalty,
             focus_zero_reward=args.focus_zero_reward,
             grounding_zero_reward=args.grounding_zero_reward,
@@ -406,6 +419,7 @@ def _plan_text(plan: dict[str, Any]) -> str:
     config = plan["config"]
     summary = plan["summary"]
     weights = summary["reward_weights"]
+    reward_gate = summary.get("reward_gate", {})
     lines = [
         f"schema_version: {plan['schema_version']}",
         f"created_at: {plan['created_at']}",
@@ -432,6 +446,9 @@ def _plan_text(plan: dict[str, Any]) -> str:
         "reward_weights: "
         f"answer={weights['answer']} tool={weights['tool']} focus={weights['focus']} "
         f"ground={weights['ground']}",
+        "reward_gate: "
+        f"gate_answer_without_required_tool={reward_gate.get('gate_answer_without_required_tool')} "
+        f"required_tool_no_call_penalty={reward_gate.get('required_tool_no_call_penalty')}",
         f"judge_mode: {config['judge']['mode']}",
         f"probe_enabled: {config['probe']['enabled']}",
         f"wandb_project: {config['wandb'].get('project')}",

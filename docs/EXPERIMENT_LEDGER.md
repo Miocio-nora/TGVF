@@ -10458,3 +10458,58 @@ entry, update this file immediately.
   - `max_grad_norm=0.0` currently means clipping disabled, but the metric logs
     `grad_norm=0.0`. This is misleading and should be split into
     `clip_enabled=false` plus a true `grad_norm_before_clip` metric.
+
+## 2026-06-30 - Stage3 Required-Tool Reward Gate Implementation
+
+- Status:
+  COMPLETED.
+- Question:
+  Encourage tool use for samples labeled `tool_needed` before another Stage3
+  run, after the `g20` pilot showed only `3/640 = 0.47%` tool trigger rate and
+  `0/400` triggers on `tool_needed` reward rows.
+- Motivation:
+  - In the previous reward shape, a `tool_needed` rollout that did not trigger
+    the tool could still receive positive reward if the direct answer was
+    correct: `w_answer=2.0` minus a no-tool penalty of `1.0`.
+  - That makes direct guessing a positive-reward strategy on examples where
+    the training signal says the tool should be used.
+- Code changes:
+  - `RewardConfig` now has:
+    - `gate_answer_without_required_tool=True`.
+    - `required_tool_no_call_penalty=2.0`.
+  - For labels with `tool_label == "tool_needed"` and positive label weight:
+    - if the rollout does not use the tool, answer reward is gated to `0.0`
+      even when `answer_correct=true`;
+    - the no-tool tool reward is `-required_tool_no_call_penalty`, default
+      `-2.0`;
+    - reward metadata records `tool_required`, `answer_reward_gated`,
+      `answer_reward_gate_reason`, and `required_tool_no_call_penalty`.
+  - `train_stage3_grpo` exposes the gate in CLI/config/preflight text:
+    `--gate-answer-without-required-tool / --no-gate-answer-without-required-tool`
+    and `--required-tool-no-call-penalty`.
+- Offline impact on the completed `g20` pilot rows:
+  - Rows: `640`.
+  - Rows gated by the new rule: `400`.
+  - Overall reward_total mean would change from `+0.4748` to `-0.5471`.
+  - `tool_needed` reward_total mean would change from `-0.3725` to `-2.0075`.
+  - This is intentional: tool-needed/no-trigger direct answers are no longer a
+    positive-reward strategy.
+- KL/metric observations from the `g20` pilot:
+  - `distributed_kl_mean`, `kl`, and clip fraction were `0.0` for all 8 steps.
+  - This is expected for the current one-update replay implementation because
+    `old_logprobs` are `new_logprobs.detach()` and the frozen-reference replay
+    snapshot is taken before the policy update in each step.
+  - Therefore KL is not currently an informative drift metric or active
+    regularizer for this stepwise pilot path.
+  - Other known abnormal/weak indicators:
+    trigger collapsed after step 1, all rollouts were `free`, `tool_needed`
+    had `0/400` triggers, `protocol_reasons` included `loop_detected=4`, and
+    `grad_norm=0.0` is a logging artifact when `max_grad_norm=0.0` disables
+    clipping.
+- Verification:
+  - `python -m py_compile revisit_vlm_clean/src/revisit_vlm_clean/stage3_grpo/reward.py revisit_vlm_clean/src/revisit_vlm_clean/stage3_grpo/schemas.py revisit_vlm_clean/src/revisit_vlm_clean/cli/train_stage3_grpo.py`
+    passed.
+  - `PYTHONPATH=revisit_vlm_clean/src:src python -m pytest revisit_vlm_clean/tests/test_stage3_grpo.py`
+    passed: `45 passed`.
+- Launch status:
+  - No new training launched under this entry.

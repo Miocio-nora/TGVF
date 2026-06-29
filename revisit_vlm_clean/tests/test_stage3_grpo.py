@@ -121,6 +121,56 @@ def test_stage3_reward_uses_answer_and_tool_hint(tmp_path: Path) -> None:
     assert reward.reward_protocol == 0.0
 
 
+def test_stage3_reward_gates_answer_when_required_tool_is_not_used() -> None:
+    sample = Stage3Sample.from_record(
+        {
+            "sample_id": "s_tool_no_trigger",
+            "image_path": "/tmp/image.png",
+            "question": "What word is printed on the small blue label?",
+            "gold_answer": "Open",
+            "answer_aliases": ["OPEN"],
+            "source_dataset": "textvqa",
+            "answer_type": "ocr_text",
+            "eval_metric": "normalized_exact_match",
+            "tool_need_hint": "likely_required",
+            "reference_target": "the small blue label on the box",
+            "target_spec": {"target_text": "the small blue label on the box"},
+        }
+    )
+    rollout = RolloutRecord(
+        sample_id=sample.sample_id,
+        rollout_id=0,
+        rollout_type="free",
+        raw_output="Open",
+        final_answer="Open",
+        used_tool=False,
+        num_tool_calls=0,
+        targets=(),
+    )
+
+    reward = score_rollout_reward(
+        sample=sample,
+        rollout=rollout,
+        reward_config=RewardConfig(w_focus=0.0, w_ground=0.0),
+        probe_cache=ProbeCache(),
+        judge_bundle=JudgeBundle(JudgeConfig(enabled=False)),
+        tau=0.25,
+        missing_probe_policy="teacher_hint",
+        hint_label_weight=1.0,
+        protocol="protocol_c_tool_observation",
+        max_tool_calls=1,
+    )
+
+    assert reward.answer_correct is True
+    assert reward.tool_label == "tool_needed"
+    assert reward.reward_answer == 0.0
+    assert reward.reward_tool == -2.0
+    assert reward.reward_total == -2.0
+    assert reward.metadata["tool_required"] is True
+    assert reward.metadata["answer_reward_gated"] is True
+    assert reward.metadata["answer_reward_gate_reason"] == "required_tool_not_used"
+
+
 def test_stage3_reward_uses_configured_judge_cache_miss_reward(tmp_path: Path) -> None:
     record = {
         "sample_id": "s_tool",
@@ -802,6 +852,11 @@ def test_stage3_cli_plan_accepts_processor_directory(tmp_path: Path) -> None:
     plan = json.loads((output_dir / "stage3_grpo_training_plan.json").read_text(encoding="utf-8"))
     assert plan["processor_identity"]["type"] == "directory"
     assert plan["processor_identity"]["child_count"] == 1
+    assert plan["config"]["reward"]["gate_answer_without_required_tool"] is True
+    assert plan["config"]["reward"]["required_tool_no_call_penalty"] == 2.0
+    assert plan["summary"]["reward_gate"]["gate_answer_without_required_tool"] is True
+    text = (output_dir / "stage3_grpo_training_plan.txt").read_text(encoding="utf-8")
+    assert "reward_gate: gate_answer_without_required_tool=True" in text
 
 
 def test_stage3_cli_plan_records_wandb_config(tmp_path: Path) -> None:

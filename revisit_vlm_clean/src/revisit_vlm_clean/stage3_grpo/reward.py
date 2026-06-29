@@ -42,17 +42,24 @@ def score_rollout_reward(
         rollout.final_answer or extract_final_answer(rollout.raw_output),
         sample,
     )
-    answer_reward = 1.0 if answer_correct else 0.0
     tool_label = probe_cache.label_for(
         sample,
         tau=tau,
         missing_policy=missing_probe_policy,
         hint_label_weight=hint_label_weight,
     )
+    tool_required = tool_label.label == "tool_needed" and float(tool_label.weight) > 0.0
+    answer_reward_gated = (
+        bool(reward_config.gate_answer_without_required_tool)
+        and bool(tool_required)
+        and not bool(rollout.used_tool)
+    )
+    answer_reward = 0.0 if answer_reward_gated else (1.0 if answer_correct else 0.0)
     tool_reward = tool_decision_reward(
         rollout,
         label=tool_label,
         lambda_call=reward_config.lambda_call,
+        required_tool_no_call_penalty=reward_config.required_tool_no_call_penalty,
     )
     focus_row = judge_bundle.focus_score(sample, rollout) if rollout.used_tool else None
     ground_row = judge_bundle.grounding_score(sample, rollout) if rollout.used_tool else None
@@ -103,6 +110,12 @@ def score_rollout_reward(
             "used_tool": rollout.used_tool,
             "num_tool_calls": rollout.num_tool_calls,
             "targets": list(rollout.targets),
+            "tool_required": tool_required,
+            "answer_reward_gated": answer_reward_gated,
+            "answer_reward_gate_reason": (
+                "required_tool_not_used" if answer_reward_gated else None
+            ),
+            "required_tool_no_call_penalty": reward_config.required_tool_no_call_penalty,
             "focus_judge_hit": focus_row is not None,
             "grounding_judge_hit": ground_row is not None,
             "judge_cache_miss_reward": judge_bundle.config.cache_miss_reward,
@@ -171,12 +184,13 @@ def tool_decision_reward(
     *,
     label: ToolDecisionLabel,
     lambda_call: float,
+    required_tool_no_call_penalty: float = 2.0,
 ) -> float:
     if label.label == "unknown" or float(label.weight) <= 0:
         return -extra_call_penalty(rollout.num_tool_calls, expected_calls=0, lambda_call=lambda_call)
     used = bool(rollout.used_tool)
     if label.label == "tool_needed":
-        base = 1.0 if used else -1.0
+        base = 1.0 if used else -float(required_tool_no_call_penalty)
         expected = 1
     elif label.label == "tool_unnecessary":
         base = 1.0 if not used else -0.5
