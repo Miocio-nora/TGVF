@@ -558,8 +558,14 @@ class Stage3GRPOTrainer:
         sample_by_id = {sample.sample_id: sample for sample in self.samples}
         new_rows = []
         old_rows = []
+        reference_rows: list[Any | None] = [None for _ in rollouts]
         ref_rows = []
         recorded_old_logprob_mismatches = 0
+        ref_source = (
+            "teacher_forced_frozen_stage2_snapshot"
+            if self.config.train.reference_policy == "frozen_stage2"
+            else "teacher_forced_policy_replay_detached"
+        )
         for rollout_index, rollout in enumerate(rollouts):
             sample = sample_by_id[rollout.sample_id]
             self._progress(
@@ -571,16 +577,12 @@ class Stage3GRPOTrainer:
                 reference_policy=self.config.train.reference_policy,
             )
             if self.config.train.reference_policy == "frozen_stage2":
-                ref_logprobs = self.engine.replay_rollout_logprobs(  # type: ignore[attr-defined]
+                reference_rows[rollout_index] = self.engine.replay_rollout_logprobs(  # type: ignore[attr-defined]
                     sample,
                     rollout,
                     reference=True,
                     reference_policy_snapshot=reference_snapshot,
                 ).detach().float()
-                ref_source = "teacher_forced_frozen_stage2_snapshot"
-            else:
-                ref_logprobs = None
-                ref_source = "teacher_forced_policy_replay_detached"
             self._progress(
                 "replay_reference_done",
                 global_step=global_step,
@@ -588,8 +590,14 @@ class Stage3GRPOTrainer:
                 sample_id=rollout.sample_id,
                 rollout_id=rollout.rollout_id,
                 reference_policy=self.config.train.reference_policy,
-                token_count=None if ref_logprobs is None else int(ref_logprobs.numel()),
+                token_count=(
+                    None
+                    if reference_rows[rollout_index] is None
+                    else int(reference_rows[rollout_index].numel())
+                ),
             )
+        for rollout_index, rollout in enumerate(rollouts):
+            sample = sample_by_id[rollout.sample_id]
             self._progress(
                 "replay_policy_start",
                 global_step=global_step,
@@ -620,6 +628,7 @@ class Stage3GRPOTrainer:
             if recorded_old_count not in {0, int(new_logprobs.numel())}:
                 recorded_old_logprob_mismatches += 1
             old_logprobs = new_logprobs.detach().float()
+            ref_logprobs = reference_rows[rollout_index]
             if ref_logprobs is None:
                 ref_logprobs = old_logprobs.clone()
             elif int(ref_logprobs.numel()) != int(new_logprobs.numel()):

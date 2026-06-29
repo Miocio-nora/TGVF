@@ -10032,7 +10032,7 @@ entry, update this file immediately.
 ## 2026-06-29 - Stage3 No-Block Frozen-Reference 8-Step Pilot
 
 - Status:
-  RUNNING.
+  FAILED.
 - Question:
   Run a shorter 8-step pilot before the prepared 20-step pilot, to quickly
   check legal TGVF trigger rate, format stability, reward distribution, and
@@ -10140,6 +10140,30 @@ entry, update this file immediately.
     `revisit_vlm_clean/scripts/launch_stage3_no_block_frozenref_8step_20260629.sh`.
   - W&B:
     `https://wandb.ai/mio_nora/tgvf-stage3/runs/ryal9ybs`.
+- Outcome:
+  - Failed at step 1 during `--launch-training`, before any checkpoint was
+    written.
+  - Root error:
+    `RuntimeError: one of the variables needed for gradient computation has been
+    modified by an inplace operation`.
+  - Failing path:
+    `Stage3GRPOTrainer.native_grpo_update -> loss.backward`.
+  - Diagnosis:
+    the frozen Stage2 reference replay used a temporary `copy_` swap of the
+    trainable LoRA/token adapter parameters. The old loop interleaved
+    reference replay and policy replay per rollout, so later reference swaps
+    bumped parameter version counters while earlier policy replay autograd
+    graphs were still alive.
+  - Fix:
+    compute and detach all frozen-reference logprobs first, then compute policy
+    logprobs with gradients. This preserves the frozen-reference semantics
+    without mutating trainable parameters after a live policy graph exists.
+  - Observed GPU memory:
+    training phase peaked around `21G/21G/32G/26G` on GPUs `0-3`;
+    32B judge phase used about `64G` on each active judge GPU.
+  - Conclusion:
+    invalid for Stage3 learning results; useful only as a launch-path failure
+    diagnostic.
 - Metrics to inspect early:
   - Step 1 `rollout/tool_trigger_rate`.
   - Legal `<|focus_start|>...<|focus_end|>` count.

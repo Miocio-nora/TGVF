@@ -467,6 +467,7 @@ def test_stage3_native_update_uses_frozen_stage2_reference_snapshot(tmp_path: Pa
         def __init__(self, model) -> None:
             self._engine = Runtime(model)
             self.reference_calls = 0
+            self.call_order = []
 
         def replay_rollout_logprobs(
             self,
@@ -477,10 +478,12 @@ def test_stage3_native_update_uses_frozen_stage2_reference_snapshot(tmp_path: Pa
             reference_policy_snapshot=None,
         ):
             if reference:
+                self.call_order.append("reference")
                 self.reference_calls += 1
                 assert reference_policy_snapshot is not None
                 assert reference_policy_snapshot.source == "stage2_policy_before_stage3_updates"
                 return torch.full((2,), -1.5)
+            self.call_order.append("policy")
             value = self._engine.model.lora_adapter.view(())
             return torch.stack([value, value + 0.1])
 
@@ -542,6 +545,7 @@ def test_stage3_native_update_uses_frozen_stage2_reference_snapshot(tmp_path: Pa
     update = trainer.native_grpo_update(rollouts, rewards, global_step=1)
 
     assert engine.reference_calls == 2
+    assert engine.call_order == ["reference", "reference", "policy", "policy"]
     assert update["reference_policy"] == "frozen_stage2"
     assert update["reference_logprobs_source"] == "teacher_forced_frozen_stage2_snapshot"
     assert update["reference_policy_snapshot"]["tensor_count"] == 1
