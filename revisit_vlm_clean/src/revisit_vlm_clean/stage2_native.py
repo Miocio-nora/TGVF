@@ -878,10 +878,12 @@ class NativeStage2Engine:
         sequence length is one token shorter than `sequences`. Appending the D
         chunk with a 4D DeepStack/key-block mask requires key length to match the
         actual cached prefix, so missing tail tokens are prefilled through the same
-        Qwen3 decode helper used by the legacy capture loop.
+        Qwen3 cached decode path used by post-D continuation.
         """
 
-        from revisit_vlm.qwen3_vl_tgvf import _prepare_decode_step
+        import torch
+
+        from revisit_vlm.qwen3_vl_tgvf import _decode_position_ids
 
         if self.model is None:
             raise RuntimeError("native Stage2 model is not loaded")
@@ -934,22 +936,37 @@ class NativeStage2Engine:
         missing = input_len - initial_seq_len
         for absolute_index in range(initial_seq_len, input_len):
             next_token = input_ids[:, absolute_index : absolute_index + 1]
-            step_input_ids = input_ids[:, : absolute_index + 1]
             step_attention = attention_mask[:, : absolute_index + 1]
-            step_inputs = _prepare_decode_step(
-                self.model,
-                full_input_ids=step_input_ids,
+            position_ids = _decode_position_ids(
+                attention_mask=step_attention,
                 next_token=next_token,
                 past_key_values=past_key_values,
-                attention_mask=step_attention,
-                base_inputs=model_kwargs,
-                cache_position=cache_position,
+                rope_deltas=model_kwargs.get("rope_deltas"),
                 generated_token_count=absolute_index - initial_seq_len + 1,
             )
-            step_inputs["return_dict"] = True
-            outputs = self.model(**step_inputs)
+            step_inputs = {
+                "input_ids": next_token,
+                "past_key_values": past_key_values,
+                "attention_mask": step_attention,
+                "use_cache": True,
+                "return_dict": True,
+                "cache_position": torch.arange(
+                    absolute_index,
+                    absolute_index + 1,
+                    device=next_token.device,
+                    dtype=torch.long,
+                ),
+            }
+            if position_ids is not None:
+                step_inputs["position_ids"] = position_ids
+            if cache_position is not None:
+                step_inputs["cache_position"] = cache_position.to(device=next_token.device)
+            outputs = self.model(
+                **step_inputs,
+                output_hidden_states=False,
+            )
             past_key_values = outputs.past_key_values
-            cache_position = step_inputs.get("cache_position")
+            cache_position = None
 
         aligned_seq_len = _past_key_values_sequence_length(past_key_values)
         if aligned_seq_len is not None and aligned_seq_len != input_len:
