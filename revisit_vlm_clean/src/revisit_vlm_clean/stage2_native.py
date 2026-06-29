@@ -366,6 +366,15 @@ class NativeStage2Engine:
                 kv_cache_tail_prefill_used=append_result.debug_metadata.get(
                     "kv_cache_tail_prefill_used"
                 ),
+                kv_cache_tail_in_append_chunk=append_result.debug_metadata.get(
+                    "kv_cache_tail_in_append_chunk"
+                ),
+                kv_cache_tail_chunk_tokens=append_result.debug_metadata.get(
+                    "kv_cache_tail_chunk_tokens"
+                ),
+                model_append_chunk_length=append_result.debug_metadata.get(
+                    "model_append_chunk_length"
+                ),
                 second_full_forward_used=bool(
                     getattr(capture, "second_full_forward_used", False)
                     or append_result.debug_metadata.get("second_full_forward_used")
