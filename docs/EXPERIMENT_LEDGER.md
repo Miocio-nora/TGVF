@@ -11869,7 +11869,7 @@ entry, update this file immediately.
 
 ## 2026-06-30 - Stage3 Final Dataset-Proportional Optional-Reward 200-Step
 
-- Status: `PLANNED`.
+- Status: `RUNNING`.
 - Purpose: start the long Stage3 run after fixing Stage3 checkpoint payload and
   optional-tool reward semantics; schedule now follows the full RL data
   `tool_need_hint` distribution instead of fixed bucket weights.
@@ -11924,3 +11924,11 @@ entry, update this file immediately.
   - Tmux session: `stage3_final_datasetprop_200_20260630_112809`.
   - Launcher:
     `outputs/stage3_grpo/final_datasetprop_optionalreward_no_block_frozenref_rewardgate_softprompt4_4gpu_g8_pb2_res512_200step_20260630_112809/launch_tmux.sh`.
+- Launch status:
+  - Started: `2026-06-30 11:32:16 JST`.
+  - Runtime commit from `run_config.txt`:
+    `723bb850cfb04d20d9071518bdb6c595e34ed586`, git status clean.
+  - State after launch: `status=running`, `next_step=1`,
+    `target_steps=200`.
+  - W&B:
+    `https://wandb.ai/mio_nora/tgvf-stage3/runs/0l3cvpjg`.
