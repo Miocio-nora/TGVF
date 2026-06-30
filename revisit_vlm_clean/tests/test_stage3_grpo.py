@@ -174,6 +174,59 @@ def test_stage3_reward_gates_answer_when_required_tool_is_not_used() -> None:
     assert reward.metadata["answer_reward_gate_reason"] == "required_tool_not_used"
 
 
+def test_stage3_reward_softly_encourages_optional_tool_without_answer_gate() -> None:
+    sample = Stage3Sample.from_record(
+        {
+            "sample_id": "s_optional_tool",
+            "image_path": "/tmp/image.png",
+            "question": "What word is printed on the sign?",
+            "gold_answer": "Open",
+            "answer_aliases": ["OPEN"],
+            "source_dataset": "textvqa",
+            "answer_type": "ocr_text",
+            "eval_metric": "normalized_exact_match",
+            "tool_need_hint": "optional_tool",
+            "reference_target": "the sign text",
+            "target_spec": {"target_text": "the sign text"},
+        }
+    )
+    engine = FakeRolloutEngine(RolloutConfig(group_size=4, max_tool_calls=1))
+    used_tool_rollout = engine.forced_on_clean(sample, rollout_id=0)
+    no_tool_rollout = RolloutRecord(
+        sample_id=sample.sample_id,
+        rollout_id=1,
+        rollout_type="free",
+        raw_output="Open",
+        final_answer="Open",
+        used_tool=False,
+        num_tool_calls=0,
+        targets=(),
+    )
+
+    kwargs = {
+        "sample": sample,
+        "reward_config": RewardConfig(w_focus=0.0, w_ground=0.0),
+        "probe_cache": ProbeCache(),
+        "judge_bundle": JudgeBundle(JudgeConfig(enabled=False)),
+        "tau": 0.25,
+        "missing_probe_policy": "teacher_hint",
+        "hint_label_weight": 0.5,
+        "protocol": "protocol_c_tool_observation",
+        "max_tool_calls": 1,
+    }
+    used_tool_reward = score_rollout_reward(rollout=used_tool_rollout, **kwargs)
+    no_tool_reward = score_rollout_reward(rollout=no_tool_rollout, **kwargs)
+
+    assert used_tool_reward.tool_label == "tool_optional"
+    assert used_tool_reward.reward_tool > 0.0
+    assert used_tool_reward.metadata["tool_required"] is False
+    assert used_tool_reward.metadata["answer_reward_gated"] is False
+    assert no_tool_reward.tool_label == "tool_optional"
+    assert no_tool_reward.reward_tool == 0.0
+    assert no_tool_reward.reward_answer == 1.0
+    assert no_tool_reward.metadata["answer_reward_gated"] is False
+
+
 def test_stage3_reward_uses_configured_judge_cache_miss_reward(tmp_path: Path) -> None:
     record = {
         "sample_id": "s_tool",

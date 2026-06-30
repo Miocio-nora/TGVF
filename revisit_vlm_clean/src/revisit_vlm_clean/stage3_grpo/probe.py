@@ -83,6 +83,8 @@ def label_from_tool_hint(hint: str | None, *, weight: float) -> ToolDecisionLabe
     value = str(hint or "").strip().lower()
     if value in {"likely_required", "useful_tool"}:
         return ToolDecisionLabel("tool_needed", None, "teacher_hint", float(weight))
+    if value == "optional_tool":
+        return ToolDecisionLabel("tool_optional", None, "teacher_hint", float(weight))
     if value == "no_tool":
         return ToolDecisionLabel("tool_unnecessary", None, "teacher_hint", float(weight))
     return ToolDecisionLabel("unknown", None, "teacher_hint", 0.0)

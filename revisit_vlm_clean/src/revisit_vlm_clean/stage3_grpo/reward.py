@@ -192,6 +192,9 @@ def tool_decision_reward(
     if label.label == "tool_needed":
         base = 1.0 if used else -float(required_tool_no_call_penalty)
         expected = 1
+    elif label.label == "tool_optional":
+        base = 0.5 if used else 0.0
+        expected = 1 if used else 0
     elif label.label == "tool_unnecessary":
         base = 1.0 if not used else -0.5
         expected = 0
