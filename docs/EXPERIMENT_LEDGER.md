@@ -11704,7 +11704,7 @@ entry, update this file immediately.
 ## 2026-06-30 - Stage3 G8 PB2 Checkpoint-Payload-Fix 2-Step Pilot
 
 - Status:
-  PLANNED.
+  RUNNING.
 - Question:
   After fixing Stage3 checkpoint saving so the Stage2 protocol-token/readout
   payload is preserved, does tool use remain nonzero after step1 when the run
@@ -11791,3 +11791,15 @@ entry, update this file immediately.
     generation.
 - Planned launch command:
   - `outputs/stage3_grpo/all5_hint_no_block_frozenref_rewardgate_softprompt4_4gpu_g8_pb2_opt_res512_ckptfix2_20260630_104203/launch_tmux.sh`.
+- Launch status:
+  - Started: `2026-06-30 10:44:58 JST`.
+  - Tmux session:
+    `stage3_g8_pb2_ckptfix2_20260630_104203`.
+  - Runtime commit from `run_config.txt`:
+    `90c0e91a3a6a4835576c11f4efe606809fa1f93c`, git status short count
+    `0`.
+  - W&B:
+    `https://wandb.ai/mio_nora/tgvf-stage3/runs/yjowscol`.
+  - State immediately after launch:
+    `status=running`, `next_step=1`, `completed_steps=[]`,
+    `target_steps=2`.
