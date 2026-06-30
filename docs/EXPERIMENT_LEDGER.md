@@ -11866,3 +11866,61 @@ entry, update this file immediately.
   - Efficiency remains poor because rollout/replay are serialized and gradient
     allreduce has a long tail; this is a throughput problem, not a payload
     correctness blocker.
+
+## 2026-06-30 - Stage3 Final Dataset-Proportional Optional-Reward 200-Step
+
+- Status: `PLANNED`.
+- Purpose: start the long Stage3 run after fixing Stage3 checkpoint payload and
+  optional-tool reward semantics; schedule now follows the full RL data
+  `tool_need_hint` distribution instead of fixed bucket weights.
+- Code:
+  - Branch: `clean/tgvf-clean-project-20260625`.
+  - Commit: `b54c80e526dd3649b0433802e09520ef52cda9ab`.
+  - Relevant changes:
+    - `tool_optional` gets soft positive tool reward when the tool is used.
+    - Stage3 schedule supports `sampling_mode=dataset_proportional`.
+  - Tests: `PYTHONPATH=revisit_vlm_clean/src:src pytest -q revisit_vlm_clean/tests/test_stage3_grpo.py`
+    passed, `52 passed`.
+- Run identity:
+  - Run id:
+    `stage3_grpo_final_datasetprop_optionalreward_no_block_frozenref_rewardgate_softprompt4_g8_pb2_res512_200step_20260630_112809`.
+  - Output root:
+    `outputs/stage3_grpo/final_datasetprop_optionalreward_no_block_frozenref_rewardgate_softprompt4_4gpu_g8_pb2_res512_200step_20260630_112809`.
+  - Stage2 checkpoint:
+    `outputs/clean_training/qwen3_stage2_norm01_stage1_mask075_deepstack_4gpu_20260627_163250/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt`,
+    sha256 `50245a11c27ad9755eb815b5f008af50a659fa07a4043f0f9427f5bbea3c0236`.
+  - RL data:
+    `revisit_vlm_clean/data/stage3_rl/v1_direct_20k_20260627_032447/accepted_rl_prompts.jsonl`,
+    `20000` rows, sha256
+    `2e39a1dadcc020001bd3d763635f461d2b7dc6d94bfb3cfecdb9bb20240fa758`.
+  - Schedule:
+    `stage3_grpo_sample_schedule.jsonl`, `1600` prompt rows,
+    sha256 `5393a84cacbb004a5682a8c211e639f56783f3423826624d71a809559c89cce3`.
+  - Sampling mode: `dataset_proportional`, strata `tool_need_hint`.
+  - Schedule hint counts:
+    `useful_tool=841`, `likely_required=140`, `optional_tool=373`,
+    `no_tool=246`; no duplicate sample ids or image ids.
+- Main settings:
+  - Qwen3-VL-8B-Thinking, `protocol_c_tool_observation`,
+    `max_image_resolution=512`.
+  - DeepStack enabled, `original_image_scope=no_block`.
+  - GRPO: `group_size=8`, `world_size=4`,
+    `per_device_prompt_batch_size=2`, global rollouts per step `64`.
+  - Tool exploration: soft prompt count `4`, hard count `0`,
+    apply to `tool_needed_or_optional`.
+  - Reward: answer/tool/focus/ground weights `2/1/1/1`,
+    required-tool answer gate enabled, optional-tool soft reward enabled.
+  - Reference policy: `frozen_stage2`; optimizer `manual_sgd`, lr `1e-6`,
+    KL `0.02`.
+  - W&B: project `tgvf-stage3`, group
+    `stage3-final-datasetprop-optionalreward-g8-pb2`.
+- Preflight:
+  - Executor preflight: `passed`.
+  - Stepwise preflight: `passed`.
+  - Stage2 qwen_lora contract: `506` LoRA keys, `embed_tokens=1`,
+    `lm_head=1`, full protocol token payload present.
+- Planned launch:
+  - GPUs: `0,1,2,3`.
+  - Tmux session: `stage3_final_datasetprop_200_20260630_112809`.
+  - Launcher:
+    `outputs/stage3_grpo/final_datasetprop_optionalreward_no_block_frozenref_rewardgate_softprompt4_4gpu_g8_pb2_res512_200step_20260630_112809/launch_tmux.sh`.
