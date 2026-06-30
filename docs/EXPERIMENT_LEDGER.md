@@ -11704,7 +11704,7 @@ entry, update this file immediately.
 ## 2026-06-30 - Stage3 G8 PB2 Checkpoint-Payload-Fix 2-Step Pilot
 
 - Status:
-  RUNNING.
+  COMPLETED_VALIDATION_SUCCESS.
 - Question:
   After fixing Stage3 checkpoint saving so the Stage2 protocol-token/readout
   payload is preserved, does tool use remain nonzero after step1 when the run
@@ -11803,3 +11803,66 @@ entry, update this file immediately.
   - State immediately after launch:
     `status=running`, `next_step=1`, `completed_steps=[]`,
     `target_steps=2`.
+- Outcome:
+  - Completed all `2/2` stepwise steps.
+  - Finished: `2026-06-30 11:02:08 JST`.
+  - Final state: `status=completed`, `completed_steps=[1,2]`,
+    `next_step=3`.
+  - Final checkpoint:
+    `outputs/stage3_grpo/all5_hint_no_block_frozenref_rewardgate_softprompt4_4gpu_g8_pb2_opt_res512_ckptfix2_20260630_104203/step_000002/checkpoint_step_1.pt`.
+  - Runtime wall time: about `17m10s`.
+- Checkpoint contract validation:
+  - Step1 checkpoint size: `3219600027` bytes, with `qwen_lora_key_count=506`,
+    `embed_tokens_key_count=1`, `lm_head_key_count=1`,
+    `has_full_protocol_token_payload=true`.
+  - Step2 checkpoint size: `3219600027` bytes, with `qwen_lora_key_count=506`,
+    `embed_tokens_key_count=1`, `lm_head_key_count=1`,
+    `has_full_protocol_token_payload=true`.
+  - Step2 preflight loaded the step1 checkpoint as the policy checkpoint and
+    passed the same protocol-token payload contract.
+- Rollout/tool-use metrics:
+  - Step1 distributed training rollouts: `64`.
+    - Trigger count/rate: `11/64 = 17.1875%`.
+    - Split: `free=5/44`, `soft_tool_prompt=6/20`.
+    - Tool labels: `unknown=16`, `tool_unnecessary=24`,
+      `tool_needed=24`.
+    - Answer accuracy over reward rows: `40/64 = 62.5%`.
+    - Mean reward: `1.26953125`.
+    - Pending judge rows: `22`.
+  - Step2 distributed training rollouts: `64`.
+    - Trigger count/rate: `6/64 = 9.375%`.
+    - Split: `free=1/48`, `soft_tool_prompt=5/16`.
+    - Tool labels: `tool_unnecessary=32`, `tool_needed=32`.
+    - Answer accuracy over reward rows: `37/64 = 57.8125%`.
+    - Mean reward: `0.690625`.
+    - Pending judge rows: `12`.
+  - Early step2 rollout-only check after reloading the step1 checkpoint also had
+    nonzero tool use: `5/16`, all from `soft_tool_prompt`.
+- Training metrics:
+  - Step1: `distributed_loss_mean=-0.13162667234428227`,
+    `distributed_kl_mean=0.0`, `distributed_replayed_tokens=2832`,
+    `recorded_old_logprob_mismatches=0`.
+  - Step2: `distributed_loss_mean=-0.15381193440407515`,
+    `distributed_kl_mean=0.0`, `distributed_replayed_tokens=2101`,
+    `recorded_old_logprob_mismatches=0`.
+  - `grad_norm=0.0` remains the known logging artifact from
+    `max_grad_norm=0.0`; backward/allreduce diagnostics in progress logs show
+    nonzero gradients before allreduce.
+- GPU memory/utilization:
+  - Peak memory on target GPUs from `gpu_mem_trace.csv`:
+    GPU0 `75320 MiB`, GPU1 `106754 MiB`, GPU2 `93104 MiB`,
+    GPU3 `69898 MiB`.
+  - Average utilization remained low and sparse:
+    GPU0 `6.88%`, GPU1 `10.42%`, GPU2 `10.27%`, GPU3 `6.09%`;
+    utilization >=50% only `6.4%`, `9.3%`, `11.5%`, and `6.0%` of samples.
+- Conclusion:
+  - The checkpoint-payload preservation fix addresses the observed step2+
+    collapse mechanism from the invalid 8-step pilot: after reloading a Stage3
+    checkpoint, step2 no longer loses `embed_tokens/lm_head` and tool use does
+    not collapse to zero.
+  - The run is a valid two-step bug-fix validation, not yet evidence of stable
+    long-horizon Stage3 learning. A longer pilot can now be run from the same
+    fixed code path.
+  - Efficiency remains poor because rollout/replay are serialized and gradient
+    allreduce has a long tail; this is a throughput problem, not a payload
+    correctness blocker.
