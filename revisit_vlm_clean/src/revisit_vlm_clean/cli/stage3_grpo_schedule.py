@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import argparse
-from collections import Counter
+import random
+from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
 
@@ -31,6 +32,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--gradient-accumulation-steps", type=int, default=1)
     parser.add_argument("--seed", type=int, default=20260628)
     parser.add_argument("--unique-image", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument(
+        "--sampling-mode",
+        choices=("balanced", "dataset_proportional"),
+        default="balanced",
+        help=(
+            "balanced keeps the historical fixed tool-bucket weights; "
+            "dataset_proportional uses deterministic strata quotas from the full RL data."
+        ),
+    )
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--write-schedule", action="store_true")
     return parser
@@ -49,6 +59,7 @@ def main(argv: list[str] | None = None) -> int:
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         seed=args.seed,
         unique_image=args.unique_image,
+        sampling_mode=args.sampling_mode,
     )
     if args.dry_run:
         print_json(summary)
@@ -101,6 +112,7 @@ def build_stage3_grpo_sample_schedule(
     gradient_accumulation_steps: int,
     seed: int,
     unique_image: bool,
+    sampling_mode: str = "balanced",
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     if int(steps) < 1:
         raise ValueError("steps must be >= 1")
@@ -119,9 +131,20 @@ def build_stage3_grpo_sample_schedule(
     )
     if required > len(samples):
         raise ValueError(f"schedule requires {required} samples but dataset only has {len(samples)}")
-    sampler = BalancedPromptSampler(samples, seed=int(seed))
-    ordered = _unique_sampler_order(sampler, len(samples))
-    chosen = _choose_schedule_samples(ordered, required=required, unique_image=unique_image)
+    sampling_summary: dict[str, Any] | None = None
+    if sampling_mode == "balanced":
+        sampler = BalancedPromptSampler(samples, seed=int(seed))
+        ordered = _unique_sampler_order(sampler, len(samples))
+        chosen = _choose_schedule_samples(ordered, required=required, unique_image=unique_image)
+    elif sampling_mode == "dataset_proportional":
+        chosen, sampling_summary = _choose_dataset_proportional_samples(
+            samples,
+            required=required,
+            unique_image=unique_image,
+            seed=int(seed),
+        )
+    else:
+        raise ValueError(f"unknown sampling_mode: {sampling_mode}")
     rows: list[dict[str, Any]] = []
     cursor = 0
     for global_step in range(1, int(steps) + 1):
@@ -169,6 +192,7 @@ def build_stage3_grpo_sample_schedule(
         "schedule_rows": len(rows),
         "seed": int(seed),
         "unique_image": bool(unique_image),
+        "sampling_mode": sampling_mode,
         "duplicate_sample_ids": _duplicate_count(sample_ids),
         "duplicate_image_uids": _duplicate_count(image_uids),
         "source_dataset": dict(Counter(str(row.get("source_dataset") or "unknown") for row in rows)),
@@ -178,6 +202,8 @@ def build_stage3_grpo_sample_schedule(
         "tool_bucket": dict(Counter(str(row.get("tool_bucket") or "unknown") for row in rows)),
         "examples": rows[:8],
     }
+    if sampling_summary is not None:
+        summary["sampling_summary"] = sampling_summary
     if summary["duplicate_sample_ids"]:
         raise ValueError(f"sample schedule produced duplicate samples: {summary['duplicate_sample_ids']}")
     if unique_image and summary["duplicate_image_uids"]:
@@ -221,6 +247,138 @@ def _choose_schedule_samples(
         f"not enough samples after unique_image={unique_image}: "
         f"required={required} available={len(chosen)}"
     )
+
+
+def _choose_dataset_proportional_samples(
+    samples: list[Any],
+    *,
+    required: int,
+    unique_image: bool,
+    seed: int,
+) -> tuple[list[Any], dict[str, Any]]:
+    rng = random.Random(int(seed))
+    by_hint: dict[str, list[Any]] = defaultdict(list)
+    for sample in samples:
+        by_hint[_tool_hint_key(sample)].append(sample)
+    dataset_counts = {key: len(items) for key, items in sorted(by_hint.items())}
+    quotas = _proportional_quotas(dataset_counts, required=int(required))
+
+    chosen: list[Any] = []
+    used_sample_ids: set[str] = set()
+    used_images: set[str] = set()
+    initial_taken: Counter[str] = Counter()
+    for key in sorted(by_hint):
+        items = list(by_hint[key])
+        rng.shuffle(items)
+        target = int(quotas.get(key, 0))
+        for sample in items:
+            if initial_taken[key] >= target:
+                break
+            if _try_add_schedule_sample(
+                sample,
+                chosen=chosen,
+                used_sample_ids=used_sample_ids,
+                used_images=used_images,
+                unique_image=unique_image,
+            ):
+                initial_taken[key] += 1
+
+    fallback_fill_count = 0
+    if len(chosen) < int(required):
+        remaining = list(samples)
+        rng.shuffle(remaining)
+        for sample in remaining:
+            if len(chosen) >= int(required):
+                break
+            if _try_add_schedule_sample(
+                sample,
+                chosen=chosen,
+                used_sample_ids=used_sample_ids,
+                used_images=used_images,
+                unique_image=unique_image,
+            ):
+                fallback_fill_count += 1
+
+    if len(chosen) < int(required):
+        raise ValueError(
+            f"not enough samples after dataset_proportional unique_image={unique_image}: "
+            f"required={required} available={len(chosen)}"
+        )
+
+    rng.shuffle(chosen)
+    chosen_counts = Counter(_tool_hint_key(sample) for sample in chosen)
+    return chosen, {
+        "strata": ["tool_need_hint"],
+        "dataset_counts": dataset_counts,
+        "target_quotas": quotas,
+        "initial_taken": dict(initial_taken),
+        "chosen_counts": dict(sorted(chosen_counts.items())),
+        "fallback_fill_count": fallback_fill_count,
+    }
+
+
+def _proportional_quotas(counts: dict[str, int], *, required: int) -> dict[str, int]:
+    if int(required) < 1:
+        raise ValueError("required must be >= 1")
+    total = sum(int(value) for value in counts.values())
+    if total < int(required):
+        raise ValueError(f"cannot draw {required} samples from {total} source samples")
+    quotas: dict[str, int] = {}
+    remainders: list[tuple[float, str]] = []
+    allocated = 0
+    for key, count in sorted(counts.items()):
+        exact = float(count) * float(required) / float(total)
+        base = min(int(exact), int(count))
+        quotas[key] = base
+        allocated += base
+        remainders.append((exact - base, key))
+    remaining = int(required) - allocated
+    for _, key in sorted(remainders, key=lambda item: (-item[0], item[1])):
+        if remaining <= 0:
+            break
+        if quotas[key] >= counts[key]:
+            continue
+        quotas[key] += 1
+        remaining -= 1
+    if remaining > 0:
+        for key, count in sorted(counts.items(), key=lambda item: (-item[1], item[0])):
+            while remaining > 0 and quotas[key] < count:
+                quotas[key] += 1
+                remaining -= 1
+            if remaining <= 0:
+                break
+    if remaining != 0:
+        raise ValueError(f"failed to allocate proportional quotas: remaining={remaining}")
+    return quotas
+
+
+def _try_add_schedule_sample(
+    sample: Any,
+    *,
+    chosen: list[Any],
+    used_sample_ids: set[str],
+    used_images: set[str],
+    unique_image: bool,
+) -> bool:
+    sample_id = str(sample.sample_id or "")
+    if not sample_id or sample_id in used_sample_ids:
+        return False
+    image_uid = _sample_image_uid(sample)
+    if unique_image and image_uid and image_uid in used_images:
+        return False
+    chosen.append(sample)
+    used_sample_ids.add(sample_id)
+    if image_uid:
+        used_images.add(image_uid)
+    return True
+
+
+def _sample_image_uid(sample: Any) -> str:
+    return str(sample.stable_image_uid or sample.image_sha256 or sample.image_path or "")
+
+
+def _tool_hint_key(sample: Any) -> str:
+    return str(sample.tool_need_hint or "unknown")
 
 
 def _duplicate_count(values: list[str]) -> int:

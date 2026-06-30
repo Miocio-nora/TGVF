@@ -1142,6 +1142,54 @@ def test_stage3_sample_schedule_controls_rollout_prompts(tmp_path: Path) -> None
     )
 
 
+def test_stage3_sample_schedule_dataset_proportional_mode(tmp_path: Path) -> None:
+    data = _write_rl_fixture(tmp_path)
+    schedule_dir = tmp_path / "schedule_dataset_proportional"
+    assert (
+        schedule_main(
+            [
+                "--write-schedule",
+                "--run-id",
+                "stage3_schedule_dataset_proportional_unit",
+                "--rl-data-path",
+                str(data),
+                "--output-dir",
+                str(schedule_dir),
+                "--steps",
+                "3",
+                "--world-size",
+                "1",
+                "--per-device-prompt-batch-size",
+                "1",
+                "--gradient-accumulation-steps",
+                "1",
+                "--seed",
+                "13",
+                "--sampling-mode",
+                "dataset_proportional",
+            ]
+        )
+        == 0
+    )
+    summary = json.loads(
+        (schedule_dir / "stage3_grpo_sample_schedule_summary.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert summary["sampling_mode"] == "dataset_proportional"
+    assert summary["sampling_summary"]["strata"] == ["tool_need_hint"]
+    assert summary["tool_need_hint"] == {
+        "likely_required": 1,
+        "no_tool": 1,
+        "optional_tool": 1,
+    }
+    assert summary["sampling_summary"]["target_quotas"] == {
+        "likely_required": 1,
+        "no_tool": 1,
+        "optional_tool": 1,
+    }
+
+
 def test_stage3_tool_exploration_soft_prompt_modes(tmp_path: Path) -> None:
     data = _write_rl_fixture(tmp_path)
     schedule_path = tmp_path / "soft_prompt_schedule.jsonl"
