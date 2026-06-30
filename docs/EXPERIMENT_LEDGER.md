@@ -11700,3 +11700,94 @@ entry, update this file immediately.
   - The secondary per-rank `train_metrics.json` race is still separate and
     should be fixed before relying on that JSON file; current analysis can use
     `train_metrics.jsonl`, reward files, and stepwise events.
+
+## 2026-06-30 - Stage3 G8 PB2 Checkpoint-Payload-Fix 2-Step Pilot
+
+- Status:
+  PLANNED.
+- Question:
+  After fixing Stage3 checkpoint saving so the Stage2 protocol-token/readout
+  payload is preserved, does tool use remain nonzero after step1 when the run
+  reloads the step1 Stage3 checkpoint for step2?
+- Baseline anchor:
+  - `2026-06-30 - Stage3 G8 PB2 Optional SoftPrompt4 Formal 8-Step Pilot`.
+  - That pilot is invalid for learning because step2+ reloaded Stage3
+    checkpoints whose `qwen_lora` payload dropped `embed_tokens.weight` and
+    `lm_head.weight`, and tool use collapsed to `0/64`.
+- Intended diff:
+  - Code commit includes the checkpoint-payload preservation fix.
+  - Reduce stepwise target from `8` to `2` steps for a quick validation.
+  - Keep Stage2 checkpoint, Qwen3 model/processor, DeepStack `no_block`,
+    frozen Stage2 reference, reward gate, token budgets, optimizer, learning
+    rate, KL coefficient, `max_grad_norm=0.0`, `max_image_resolution=512`,
+    `group_size=8`, `per_device_prompt_batch_size=2`, and soft-prompt count
+    fixed.
+- Code/worktree:
+  - Branch: `clean/tgvf-clean-project-20260625`.
+  - Planned code commit:
+    `49968890e2adceaf0a4d890354be773a6c97c4c8`.
+  - Worktree before plan generation was clean.
+- Source checkpoint:
+  - `outputs/clean_training/qwen3_stage2_norm01_stage1_mask075_deepstack_4gpu_20260627_163250/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt`.
+  - SHA256:
+    `50245a11c27ad9755eb815b5f008af50a659fa07a4043f0f9427f5bbea3c0236`.
+  - Preflight `qwen_lora_contract`:
+    `qwen_lora_key_count=506`, `embed_tokens_key_count=1`,
+    `lm_head_key_count=1`, `has_full_protocol_token_payload=true`.
+- Train data:
+  - `revisit_vlm_clean/data/stage3_rl/v1_direct_20k_20260627_032447/accepted_rl_prompts.jsonl`.
+  - Rows: `20000`.
+  - SHA256:
+    `2e39a1dadcc020001bd3d763635f461d2b7dc6d94bfb3cfecdb9bb20240fa758`.
+- Sample schedule:
+  - `outputs/stage3_grpo/all5_hint_no_block_frozenref_rewardgate_softprompt4_4gpu_g8_pb2_opt_res512_ckptfix2_20260630_104203/stage3_grpo_sample_schedule.jsonl`.
+  - Rows: `16` prompt rows, covering `2` steps x `4` ranks x `2`
+    prompts/rank.
+  - SHA256:
+    `e24ecc4351404c135c069a6a9ddb4e94f2a6a6607728565604d2efc3a9ec69fd`.
+  - Duplicate sample/image ids: `0/0`.
+  - Source datasets: `textvqa=7`, `chartqa=3`, `docvqa=3`,
+    `visual_genome=3`.
+  - Tool hints: `useful_tool=7`, `optional_tool=2`, `no_tool=7`.
+  - Expected rollouts: `128` total, `64` per step.
+- Planned Stage3 config:
+  - Runtime backend: `native_single_focus`.
+  - Policy model/processor:
+    `/nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking`.
+  - Judge model: `qwen3_vl_32b_thinking`, no-thinking JSON judge.
+  - DeepStack: `enabled=true`, `original_image_scope=no_block`,
+    `d_features_enabled=false`.
+  - Reference policy: `frozen_stage2`.
+  - Optimizer: `manual_sgd`.
+  - GPUs: physical `0,1,2,3`.
+  - World size: `4`.
+  - Group size: `8`.
+  - Per-device prompt batch: `2`.
+  - Gradient accumulation: `1`.
+  - Stepwise target steps: `2`.
+  - Inner train `max_steps`: `1`.
+  - Max image resolution: `512`.
+  - Judge max image resolution: `512`.
+  - Max new/action/answer tokens: `256/128/160`.
+  - Reward gate: `gate_answer_without_required_tool=true`,
+    `required_tool_no_call_penalty=2.0`.
+  - Tool exploration:
+    `apply_to=tool_needed_or_optional`, `soft_count=4`, `hard_count=0`,
+    prompt suffix `Use the focus tool if it helps answer precisely.`
+  - KL coefficient: `0.02`.
+  - Max grad norm: `0.0`; clipping disabled.
+  - W&B: project `tgvf-stage3`, mode `online`, group
+    `stage3-g8-pb2-opt-ckptfix2`, checkpoint artifact upload disabled.
+- Output root:
+  - `outputs/stage3_grpo/all5_hint_no_block_frozenref_rewardgate_softprompt4_4gpu_g8_pb2_opt_res512_ckptfix2_20260630_104203`.
+- Plan/preflight:
+  - Template plan:
+    `outputs/stage3_grpo/all5_hint_no_block_frozenref_rewardgate_softprompt4_4gpu_g8_pb2_opt_res512_ckptfix2_20260630_104203/template_plan/stage3_grpo_training_plan.json`.
+  - Template plan SHA256:
+    `4f67fbe1f5653be221fff054772579b3e3760af791363f24d81c1b0b7dabca90`.
+  - Executor preflight: `passed`.
+  - Stepwise preflight: `passed`.
+  - Expected preflight warnings: missing judge caches before stepwise judge
+    generation.
+- Planned launch command:
+  - `outputs/stage3_grpo/all5_hint_no_block_frozenref_rewardgate_softprompt4_4gpu_g8_pb2_opt_res512_ckptfix2_20260630_104203/launch_tmux.sh`.
