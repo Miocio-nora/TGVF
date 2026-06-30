@@ -11481,7 +11481,7 @@ entry, update this file immediately.
 ## 2026-06-30 - Stage3 G8 PB2 Optional SoftPrompt4 Formal 8-Step Pilot
 
 - Status:
-  RUNNING.
+  COMPLETED_INVALID_FOR_STAGE3_LEARNING.
 - Question:
   With the batch/resource setting validated by the 1-step diagnostic, can the
   current Stage3 all-5 reward recipe run an 8-step formal pilot from the clean
@@ -11591,3 +11591,60 @@ entry, update this file immediately.
   - Based on the 1-step diagnostic wall time of about `10m22s`, this 8-step
     pilot should take roughly `80-90 min` unless judge/model-loading overheads
     drift.
+- Outcome:
+  - Completed all `8/8` stepwise steps.
+  - Finished: `2026-06-30 04:17:04 JST`.
+  - Final state: `status=completed`, `completed_steps=[1,2,3,4,5,6,7,8]`,
+    `next_step=9`.
+  - Final checkpoint:
+    `outputs/stage3_grpo/all5_hint_no_block_frozenref_rewardgate_softprompt4_4gpu_g8_pb2_opt_res512_formal8_20260630_033130/step_000008/checkpoint_step_1.pt`.
+  - Runtime wall time: about `38m52s`.
+- GPU memory:
+  - Peak memory on the intended GPUs from `gpu_mem_trace.csv`:
+    GPU0 `75320 MiB`, GPU1 `106754 MiB`, GPU2 `93104 MiB`,
+    GPU3 `74496 MiB`.
+  - Overall intended-GPU peak: GPU1 `106754 MiB`, about `104.25 GiB`.
+- Rollout/tool-use metrics:
+  - Actual rollout count: `64` per step, `512` total.
+  - Actual tool-use count by step:
+    - step1: `11/64 = 17.19%`
+      (`free=5/44`, `soft_tool_prompt=6/20`).
+    - steps2-8: `0/64` in every step.
+  - Reward rows show step1 did not directly punish tool use:
+    - step1 used-tool rollouts had mean reward `3.1136`.
+    - step1 non-tool rollouts had mean reward `0.8868`.
+    - step1 `tool_needed` without tool was gated/penalized, mean reward
+      `-1.0556`.
+  - Judge pending rows:
+    - step1 produced nonzero pending rows and judge caches.
+    - steps2-8 produced `0` pending rows because no rollout used the tool.
+- Checkpoint-chain issue:
+  - The source Stage2 checkpoint has `qwen_lora` with `506` keys, including
+    `base_model.model.model.language_model.embed_tokens.weight` and
+    `base_model.model.lm_head.weight`.
+  - The saved Stage3 checkpoints have `qwen_lora` with only `504` keys:
+    LoRA A/B weights only; `embed_tokens`, `lm_head`, `modules_to_save`,
+    `trainable_tokens`, and `token_adapter` are all absent.
+  - Stage3 checkpoints are about `701M`, while the source Stage2 checkpoint is
+    about `9.0G`, consistent with losing the full saved embedding/head matrices.
+  - The Stage2 native loader currently validates missing adapter/module keys
+    using markers `lora_`, `modules_to_save`, `token_adapter`,
+    `trainable_tokens`, but it does not reject missing bare `embed_tokens` or
+    `lm_head` keys. Therefore a Stage3 checkpoint can reload without crashing
+    while losing the trained protocol-token embeddings/readout.
+- Conclusion:
+  - Treat this 8-step pilot as a useful bug-finding run, not a valid Stage3
+    learning result.
+  - Most likely explanation for "tool use becomes 0 after step1": step1 starts
+    from the valid Stage2 checkpoint; step2 and later reload Stage3 checkpoints
+    that lost the Stage2 `embed_tokens/lm_head` saved weights, so the protocol
+    tool tokens are no longer represented/read out as trained.
+  - Required fix before the next Stage3 run:
+    save and reload the full Stage2-required `qwen_lora` state, including
+    `embed_tokens.weight` and `lm_head.weight`, or explicitly fail checkpoint
+    preflight if those keys are missing.
+  - Secondary logging issue:
+    per-rank processes race on `train_metrics.json`; at least
+    `step_000003/train_metrics.json` is not valid pure JSON. Use
+    `train_metrics.jsonl`, reward files, and stepwise events for analysis until
+    this is fixed.
