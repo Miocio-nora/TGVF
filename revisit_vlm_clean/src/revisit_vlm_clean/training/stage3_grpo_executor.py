@@ -401,6 +401,8 @@ def _native_stage2_checkpoint_preflight(path: str | Path) -> dict[str, Any]:
             errors.append(f"stage2_checkpoint_missing_{key}")
     if "qwen_lora" in checkpoint and checkpoint.get("qwen_lora") is None:
         errors.append("stage2_checkpoint_empty_qwen_lora")
+    elif "qwen_lora" in checkpoint:
+        errors.extend(_qwen_lora_protocol_token_payload_errors(checkpoint.get("qwen_lora")))
     if "tgvf_module" in checkpoint and checkpoint.get("tgvf_module") is None:
         errors.append("stage2_checkpoint_empty_tgvf_module")
     if not isinstance(config, dict):
@@ -420,7 +422,47 @@ def _native_stage2_checkpoint_preflight(path: str | Path) -> dict[str, Any]:
         "has_tgvf_config": isinstance(config.get("tgvf"), dict),
         "has_training_config": isinstance(config.get("training"), dict),
         "has_lora_config": isinstance(config.get("lora"), dict),
+        "qwen_lora_contract": _qwen_lora_protocol_token_payload_summary(
+            checkpoint.get("qwen_lora")
+        ),
     }
+
+
+def _qwen_lora_protocol_token_payload_summary(qwen_lora_state: Any) -> dict[str, Any]:
+    if not isinstance(qwen_lora_state, dict):
+        return {
+            "qwen_lora_is_mapping": False,
+            "qwen_lora_key_count": 0,
+            "embed_tokens_key_count": 0,
+            "lm_head_key_count": 0,
+            "token_adapter_key_count": 0,
+            "has_full_protocol_token_payload": False,
+            "has_token_adapter_payload": False,
+        }
+    keys = [str(key) for key in qwen_lora_state]
+    embed_keys = [key for key in keys if "embed_tokens" in key]
+    lm_head_keys = [key for key in keys if "lm_head" in key]
+    token_adapter_keys = [
+        key for key in keys if "token_adapter" in key or "trainable_tokens" in key
+    ]
+    return {
+        "qwen_lora_is_mapping": True,
+        "qwen_lora_key_count": len(keys),
+        "embed_tokens_key_count": len(embed_keys),
+        "lm_head_key_count": len(lm_head_keys),
+        "token_adapter_key_count": len(token_adapter_keys),
+        "has_full_protocol_token_payload": bool(embed_keys and lm_head_keys),
+        "has_token_adapter_payload": bool(token_adapter_keys),
+    }
+
+
+def _qwen_lora_protocol_token_payload_errors(qwen_lora_state: Any) -> list[str]:
+    summary = _qwen_lora_protocol_token_payload_summary(qwen_lora_state)
+    if not summary["qwen_lora_is_mapping"]:
+        return ["stage2_checkpoint_qwen_lora_not_mapping"]
+    if summary["has_full_protocol_token_payload"] or summary["has_token_adapter_payload"]:
+        return []
+    return ["stage2_checkpoint_missing_protocol_token_payload"]
 
 
 def _judge_cache_preflight(config: Stage3GRPOConfig) -> dict[str, Any]:

@@ -1178,17 +1178,21 @@ def _save_native_checkpoint(
     optimizer_state: dict[str, Any] | None,
 ) -> None:
     import torch
-    from peft import get_peft_model_state_dict
 
     native_runtime = getattr(engine, "_engine", None)
     if native_runtime is None or getattr(native_runtime, "model", None) is None:
         raise RuntimeError("native runtime is not loaded; cannot save checkpoint")
+    source_checkpoint = dict(getattr(native_runtime, "_checkpoint", None) or {})
     source_checkpoint_config = (
-        dict((getattr(native_runtime, "_checkpoint", None) or {}).get("config") or {})
+        dict(source_checkpoint.get("config") or {})
     )
     if not source_checkpoint_config:
         raise RuntimeError("native runtime source checkpoint did not expose Stage2 config")
     path.parent.mkdir(parents=True, exist_ok=True)
+    qwen_lora_state = _stage3_qwen_lora_state_for_checkpoint(
+        native_runtime.model,
+        source_checkpoint=source_checkpoint,
+    )
     checkpoint = {
         "schema_version": "stage3_grpo_native_checkpoint_v0",
         "run_id": config.run_id,
@@ -1196,7 +1200,8 @@ def _save_native_checkpoint(
         "stage3_config": config.to_dict(),
         "global_step": int(global_step),
         "optimizer_step": int(global_step),
-        "qwen_lora": get_peft_model_state_dict(native_runtime.model),
+        "qwen_lora": qwen_lora_state,
+        "qwen_lora_contract": _stage3_qwen_lora_contract_summary(qwen_lora_state),
         "tgvf_module": (
             native_runtime.foveal_module.state_dict()
             if getattr(native_runtime, "foveal_module", None) is not None
@@ -1208,6 +1213,54 @@ def _save_native_checkpoint(
         "smoke_metrics": update,
     }
     torch.save(checkpoint, path)
+
+
+def _stage3_qwen_lora_state_for_checkpoint(
+    model: Any,
+    *,
+    source_checkpoint: dict[str, Any],
+) -> dict[str, Any]:
+    from peft import get_peft_model_state_dict
+
+    current = dict(get_peft_model_state_dict(model))
+    source_qwen = source_checkpoint.get("qwen_lora") or {}
+    if not isinstance(source_qwen, dict):
+        source_qwen = {}
+    for key, value in source_qwen.items():
+        if key in current or not _stage3_is_protocol_token_qwen_lora_key(str(key)):
+            continue
+        current[key] = value.detach().clone() if hasattr(value, "detach") else value
+    return current
+
+
+def _stage3_is_protocol_token_qwen_lora_key(key: str) -> bool:
+    return any(
+        marker in key
+        for marker in (
+            "embed_tokens",
+            "lm_head",
+            "modules_to_save",
+            "token_adapter",
+            "trainable_tokens",
+        )
+    )
+
+
+def _stage3_qwen_lora_contract_summary(qwen_lora_state: dict[str, Any]) -> dict[str, Any]:
+    keys = [str(key) for key in qwen_lora_state]
+    embed_keys = [key for key in keys if "embed_tokens" in key]
+    lm_head_keys = [key for key in keys if "lm_head" in key]
+    token_adapter_keys = [
+        key for key in keys if "token_adapter" in key or "trainable_tokens" in key
+    ]
+    return {
+        "qwen_lora_key_count": len(keys),
+        "embed_tokens_key_count": len(embed_keys),
+        "lm_head_key_count": len(lm_head_keys),
+        "token_adapter_key_count": len(token_adapter_keys),
+        "has_full_protocol_token_payload": bool(embed_keys and lm_head_keys),
+        "has_token_adapter_payload": bool(token_adapter_keys),
+    }
 
 
 def native_grpo_readiness_report(

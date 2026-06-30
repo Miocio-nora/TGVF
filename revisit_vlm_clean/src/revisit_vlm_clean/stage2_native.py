@@ -474,6 +474,7 @@ class NativeStage2Engine:
             )
         freeze_qwen_backbone(base_model)
         qwen_lora_state = checkpoint["qwen_lora"]
+        _validate_qwen_lora_protocol_token_payload(qwen_lora_state)
         checkpoint_has_trainable_token_adapter = any(
             "trainable_tokens" in key or "token_adapter" in key for key in qwen_lora_state
         )
@@ -1966,6 +1967,23 @@ def _validate_peft_load_result(load_result: Any) -> None:
             f"unexpected_keys={unexpected[:20]} "
             f"adapter_missing_keys={adapter_missing[:20]}"
         )
+
+
+def _validate_qwen_lora_protocol_token_payload(qwen_lora_state: Any) -> None:
+    if not isinstance(qwen_lora_state, dict):
+        raise RuntimeError("Incomplete Stage2 LoRA load: qwen_lora_state_not_mapping")
+    keys = [str(key) for key in qwen_lora_state]
+    embed_keys = [key for key in keys if "embed_tokens" in key]
+    lm_head_keys = [key for key in keys if "lm_head" in key]
+    token_adapter_keys = [
+        key for key in keys if "token_adapter" in key or "trainable_tokens" in key
+    ]
+    if (embed_keys and lm_head_keys) or token_adapter_keys:
+        return
+    raise RuntimeError(
+        "Incomplete Stage2 LoRA load: missing_protocol_token_payload "
+        "expected embed_tokens+lm_head or token_adapter/trainable_tokens keys"
+    )
 
 
 def _resolve_runtime_device(torch: Any, requested: Any) -> Any:

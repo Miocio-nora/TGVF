@@ -43,6 +43,8 @@ from revisit_vlm_clean.stage3_grpo.trainer import (
     Stage3GRPOTrainer,
     _stage3_configure_native_trainables,
     _stage3_distributed_average_gradients,
+    _stage3_qwen_lora_contract_summary,
+    _stage3_qwen_lora_state_for_checkpoint,
     _stage3_rollout_replay_token_count,
     _stage3_manual_sgd_step,
     _stage3_native_adamw,
@@ -63,6 +65,7 @@ from revisit_vlm_clean.stage3_grpo.judge_runner import (
 )
 from revisit_vlm_clean.training.stage3_grpo_executor import (
     main as executor_main,
+    _native_stage2_checkpoint_preflight,
     preflight_stage3_grpo_plan,
 )
 from revisit_vlm_clean.schema import DeepStackScope, DeepStackState
@@ -361,6 +364,98 @@ def test_stage3_configure_native_trainables_keeps_policy_adapters_only() -> None
     assert all(param.requires_grad is False for param in foveal.parameters())
     assert summary["policy"]["trainable_parameters"] == 2
     assert summary["foveal_module"]["trainable_parameters"] == 0
+
+
+def test_stage3_checkpoint_state_preserves_source_protocol_token_payload(monkeypatch) -> None:
+    import torch
+    import peft
+
+    source_qwen = {
+        "base_model.model.model.language_model.layers.0.self_attn.q_proj.lora_A.weight": torch.ones(
+            1, 1
+        ),
+        "base_model.model.model.language_model.embed_tokens.weight": torch.full((2, 2), 2.0),
+        "base_model.model.lm_head.weight": torch.full((2, 2), 3.0),
+    }
+
+    monkeypatch.setattr(
+        peft,
+        "get_peft_model_state_dict",
+        lambda _model: {
+            "base_model.model.model.language_model.layers.0.self_attn.q_proj.lora_A.weight": torch.zeros(
+                1, 1
+            )
+        },
+    )
+
+    state = _stage3_qwen_lora_state_for_checkpoint(
+        object(),
+        source_checkpoint={"qwen_lora": source_qwen},
+    )
+    contract = _stage3_qwen_lora_contract_summary(state)
+
+    assert torch.equal(
+        state["base_model.model.model.language_model.embed_tokens.weight"],
+        source_qwen["base_model.model.model.language_model.embed_tokens.weight"],
+    )
+    assert torch.equal(
+        state["base_model.model.lm_head.weight"],
+        source_qwen["base_model.model.lm_head.weight"],
+    )
+    assert contract["has_full_protocol_token_payload"] is True
+    assert contract["qwen_lora_key_count"] == 3
+
+
+def test_stage3_preflight_rejects_checkpoint_missing_protocol_token_payload(tmp_path: Path) -> None:
+    import torch
+
+    broken = tmp_path / "broken_stage3.pt"
+    torch.save(
+        {
+            "config": {"tgvf": {}, "training": {}, "tgvf_protocol": "protocol_c_tool_observation"},
+            "global_step": 1,
+            "qwen_lora": {
+                "base_model.model.model.language_model.layers.0.self_attn.q_proj.lora_A.weight": torch.zeros(
+                    1, 1
+                )
+            },
+            "tgvf_module": {"dummy": torch.zeros(1)},
+        },
+        broken,
+    )
+
+    report = _native_stage2_checkpoint_preflight(broken)
+
+    assert report["status"] == "failed"
+    assert "stage2_checkpoint_missing_protocol_token_payload" in report["errors"]
+
+
+def test_stage3_preflight_accepts_checkpoint_with_embed_and_lm_head_payload(
+    tmp_path: Path,
+) -> None:
+    import torch
+
+    valid = tmp_path / "valid_stage3.pt"
+    torch.save(
+        {
+            "config": {"tgvf": {}, "training": {}, "tgvf_protocol": "protocol_c_tool_observation"},
+            "global_step": 1,
+            "qwen_lora": {
+                "base_model.model.model.language_model.layers.0.self_attn.q_proj.lora_A.weight": torch.zeros(
+                    1, 1
+                ),
+                "base_model.model.model.language_model.embed_tokens.weight": torch.zeros(2, 2),
+                "base_model.model.lm_head.weight": torch.zeros(2, 2),
+            },
+            "tgvf_module": {"dummy": torch.zeros(1)},
+        },
+        valid,
+    )
+
+    report = _native_stage2_checkpoint_preflight(valid)
+
+    assert report["status"] == "passed"
+    assert report["qwen_lora_contract"]["has_full_protocol_token_payload"] is True
 
 
 def test_stage3_native_replay_gathers_next_token_logprobs() -> None:
@@ -1290,7 +1385,13 @@ def test_stage3_native_preflight_validates_stage2_checkpoint_contract(
     checkpoint = tmp_path / "stage2_checkpoint.pt"
     torch.save(
         {
-            "qwen_lora": {},
+            "qwen_lora": {
+                "base_model.model.model.language_model.layers.0.self_attn.q_proj.lora_A.weight": torch.zeros(
+                    1, 1
+                ),
+                "base_model.model.model.language_model.embed_tokens.weight": torch.zeros(2, 2),
+                "base_model.model.lm_head.weight": torch.zeros(2, 2),
+            },
             "tgvf_module": {},
             "config": {
                 "stage": "stage2",

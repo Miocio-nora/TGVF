@@ -11648,3 +11648,55 @@ entry, update this file immediately.
     `step_000003/train_metrics.json` is not valid pure JSON. Use
     `train_metrics.jsonl`, reward files, and stepwise events for analysis until
     this is fixed.
+
+## 2026-06-30 - Stage3 Checkpoint Protocol-Token Payload Fix
+
+- Status:
+  IMPLEMENTED_AND_TESTED. No new Stage3 training run launched in this entry.
+- Problem:
+  The `Stage3 G8 PB2 Optional SoftPrompt4 Formal 8-Step Pilot` found that
+  Stage3 checkpoints dropped the Stage2 `qwen_lora` protocol-token/readout
+  payload. Step1 started from the valid Stage2 checkpoint and still triggered
+  tools, while step2+ reloaded a Stage3 checkpoint whose `qwen_lora` contained
+  only LoRA A/B keys and no `embed_tokens.weight` or `lm_head.weight`.
+- Code changes:
+  - `revisit_vlm_clean/src/revisit_vlm_clean/stage3_grpo/trainer.py`
+    - Stage3 native checkpoint save now merges the current PEFT LoRA state with
+      the source checkpoint's protocol-token/readout keys.
+    - Preserved key families include `embed_tokens`, `lm_head`,
+      `modules_to_save`, `token_adapter`, and `trainable_tokens`.
+    - Saved checkpoints now include a `qwen_lora_contract` summary.
+  - `revisit_vlm_clean/src/revisit_vlm_clean/stage2_native.py`
+    - Native Stage2/Stage3 checkpoint loading now fails if `qwen_lora` has
+      neither `embed_tokens+lm_head` nor token-adapter payload.
+  - `revisit_vlm_clean/src/revisit_vlm_clean/training/stage3_grpo_executor.py`
+    - Native Stage3 preflight now reports `qwen_lora_contract` and fails on
+      `stage2_checkpoint_missing_protocol_token_payload`.
+  - `revisit_vlm_clean/tests/test_stage3_grpo.py`
+    - Added checkpoint-contract tests for preserving source
+      `embed_tokens/lm_head`, rejecting a broken Stage3 checkpoint, and
+      accepting a minimal valid checkpoint.
+- Verification:
+  - Unit tests:
+    `PYTHONPATH=revisit_vlm_clean/src:src pytest -q revisit_vlm_clean/tests/test_stage3_grpo.py`
+    passed: `50 passed`.
+  - Py-compile:
+    `python -m py_compile revisit_vlm_clean/src/revisit_vlm_clean/stage3_grpo/trainer.py revisit_vlm_clean/src/revisit_vlm_clean/stage2_native.py revisit_vlm_clean/src/revisit_vlm_clean/training/stage3_grpo_executor.py`
+    passed.
+  - Real source Stage2 checkpoint preflight:
+    `passed`, with `qwen_lora_key_count=506`,
+    `embed_tokens_key_count=1`, `lm_head_key_count=1`,
+    `has_full_protocol_token_payload=true`.
+  - Real broken Stage3 checkpoint preflight:
+    `failed`, with error `stage2_checkpoint_missing_protocol_token_payload`,
+    `qwen_lora_key_count=504`, `embed_tokens_key_count=0`,
+    `lm_head_key_count=0`.
+- Remaining work:
+  - The previous 8-step pilot remains invalid and should not be used as a
+    Stage3 learning result.
+  - A new Stage3 pilot must be launched from the clean Stage2 checkpoint after
+    this fix to verify that tool-use trigger rate no longer collapses after
+    step1.
+  - The secondary per-rank `train_metrics.json` race is still separate and
+    should be fixed before relying on that JSON file; current analysis can use
+    `train_metrics.jsonl`, reward files, and stepwise events.
