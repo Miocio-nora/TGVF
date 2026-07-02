@@ -139,8 +139,9 @@ retest:
   `core_balanced_dev_2511_seed20260625` / CoreDev-2511 manifest with internal
   manifest hash
   `a461d9b482b7165b42b9bbb0fbf0ea6aff31fde0a838c13d953f070e770b0579`.
-- Use `revisit_vlm_clean.cli.dynamic_benchmark` with dynamic queue scheduling
-  on GPUs `0,1,2,3,4,5,6,7` when those GPUs are available.
+- Use `revisit_vlm_clean.cli.dynamic_benchmark` with dynamic queue scheduling.
+  Choose the GPU set from the currently available devices, pass it explicitly,
+  and record the exact GPU list in `docs/EXPERIMENT_LEDGER.md`.
 - Use native clean backend `tgvf_stage2_qwen3_native`.
 - Use FlashAttention-2 via `--attn-implementation flash_attention_2`.
 - Use unified generation budget `--max-tokens 512`; do not use separate
