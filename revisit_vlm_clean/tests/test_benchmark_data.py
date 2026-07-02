@@ -1,3 +1,4 @@
+import base64
 import json
 
 import pytest
@@ -263,6 +264,61 @@ def test_materialize_samples_preserves_official_scorer_metadata(tmp_path) -> Non
     assert sample.metadata["type"] == "text recognition en"
     assert sample.metadata["eval"] == "case sensitive"
     assert sample.metadata["precision"] == 0
+
+
+def test_materialize_samples_dedupes_mathvista_decoded_image_duplicate(tmp_path) -> None:
+    pa = pytest.importorskip("pyarrow")
+    pq = pytest.importorskip("pyarrow.parquet")
+    image_bytes = base64.b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ"
+        "/pLvAAAAAElFTkSuQmCC"
+    )
+    root = tmp_path / "benchmarks"
+    image_dir = root / "mathvista" / "snapshot" / "images"
+    image_dir.mkdir(parents=True)
+    (image_dir / "555.jpg").write_bytes(image_bytes)
+    source = root / "mathvista" / "snapshot" / "data" / "toy.parquet"
+    source.parent.mkdir(parents=True)
+    pq.write_table(
+        pa.Table.from_pylist(
+            [
+                {
+                    "image": "images/555.jpg",
+                    "decoded_image": {"path": "555.jpg", "bytes": image_bytes},
+                    "query": "Question: Is this nest larger than a fist?",
+                    "answer": "No",
+                    "choices": ["Yes", "No"],
+                    "pid": "555",
+                }
+            ]
+        ),
+        source,
+    )
+    manifest = {
+        "manifest_id": "mathvista_toy",
+        "manifest_hash": "mathvistahash",
+        "samples": [
+            {
+                "sample_id": "mathvista/sample/555",
+                "benchmark": "mathvista",
+                "population_id": "mathvista_testmini_1000",
+                "source_file": "mathvista/snapshot/data/toy.parquet",
+                "metadata": {"row_index": 0, "raw_id": "555"},
+            }
+        ],
+    }
+    manifest_path = tmp_path / "mathvista_manifest.json"
+    manifest_path.write_text(json.dumps(manifest) + "\n")
+
+    samples = materialize_samples_from_manifest_path(
+        manifest_path,
+        benchmark_root=root,
+        metadata_only=False,
+    )
+
+    assert len(samples) == 1
+    assert [item["source_key"] for item in samples[0].media] == ["image"]
+    assert samples[0].media[0]["path"].endswith("mathvista/snapshot/images/555.jpg")
 
 
 def test_benchmark_materialize_samples_cli(tmp_path) -> None:

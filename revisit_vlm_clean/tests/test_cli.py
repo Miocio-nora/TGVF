@@ -3,6 +3,7 @@ import json
 import pytest
 import revisit_vlm_clean.training.executor as training_executor
 from revisit_vlm_clean.cli.benchmark import main as benchmark_main
+from revisit_vlm_clean.cli.dynamic_benchmark import main as dynamic_benchmark_main
 from revisit_vlm_clean.cli.generate_data import main as generate_data_main
 from revisit_vlm_clean.cli.manifest import main as manifest_main
 from revisit_vlm_clean.cli.train_stage1 import main as stage1_main
@@ -40,6 +41,176 @@ def _write_minimal_stage1_checkpoint(
         },
         path,
     )
+
+
+def test_dynamic_benchmark_dry_run_writes_partial_and_final_rows(tmp_path) -> None:
+    root = tmp_path / "benchmarks"
+    source = root / "vstar_bench" / "snapshot" / "test_questions.jsonl"
+    source.parent.mkdir(parents=True)
+    source.write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "question": f"Question {idx}?",
+                        "image": f"missing_{idx}.jpg",
+                        "options": ["red", "blue"],
+                        "label": "A",
+                    }
+                )
+                for idx in range(4)
+            ]
+        )
+        + "\n"
+    )
+    manifest = {
+        "manifest_id": "dynamic_unit",
+        "manifest_hash": "dynamic-unit-hash",
+        "source_population_ids": ["vstar_test_questions_191"],
+        "samples": [
+            {
+                "sample_id": f"vstar/unit/{idx:06d}",
+                "benchmark": "vstar_bench",
+                "population_id": "vstar_test_questions_191",
+                "source_file": "vstar_bench/snapshot/test_questions.jsonl",
+                "metadata": {"row_index": idx},
+            }
+            for idx in range(4)
+        ],
+    }
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(json.dumps(manifest))
+    out = tmp_path / "out"
+
+    rc = dynamic_benchmark_main(
+        [
+            "--run-id",
+            "dynamic_unit",
+            "--checkpoint-path",
+            "dry",
+            "--model-id",
+            "dry",
+            "--mode",
+            "original",
+            "--post-tgvf-forward-mode",
+            "kv_cache",
+            "--population-id",
+            "vstar_test_questions_191",
+            "--manifest-path",
+            str(manifest_path),
+            "--benchmark-root",
+            str(root),
+            "--output-dir",
+            str(out),
+            "--runner-backend",
+            "dry_run",
+            "--gpus",
+            "0",
+            "--batch-size",
+            "2",
+            "--max-samples",
+            "3",
+            "--progress-every",
+            "1",
+        ]
+    )
+
+    assert rc == 0
+    partial_rows = [
+        json.loads(line)
+        for line in (out / "partial_rows.jsonl").read_text().splitlines()
+        if line.strip()
+    ]
+    final_rows = [
+        json.loads(line) for line in (out / "rows.jsonl").read_text().splitlines() if line.strip()
+    ]
+    assert len(partial_rows) == 3
+    assert [row["sample_id"] for row in final_rows] == [
+        item["sample_id"] for item in manifest["samples"][:3]
+    ]
+    assert all("dynamic_worker_id" in row for row in final_rows)
+    assert {row["dynamic_batch_size"] for row in final_rows} == {1, 2}
+    assert (out / "dynamic_summary.json").is_file()
+    dynamic_summary = json.loads((out / "dynamic_summary.json").read_text())
+    assert dynamic_summary["max_samples"] == 3
+    assert dynamic_summary["source_sample_count"] == 4
+
+
+def test_dynamic_benchmark_dry_run_accepts_tgvf_softforce(tmp_path) -> None:
+    root = tmp_path / "benchmarks"
+    source = root / "vstar_bench" / "snapshot" / "test_questions.jsonl"
+    source.parent.mkdir(parents=True)
+    source.write_text(
+        json.dumps(
+            {
+                "question": "Question?",
+                "image": "missing.jpg",
+                "options": ["red", "blue"],
+                "label": "A",
+            }
+        )
+        + "\n"
+    )
+    manifest = {
+        "manifest_id": "dynamic_softforce_unit",
+        "manifest_hash": "dynamic-softforce-unit-hash",
+        "source_population_ids": ["vstar_test_questions_191"],
+        "samples": [
+            {
+                "sample_id": "vstar/unit/000000",
+                "benchmark": "vstar_bench",
+                "population_id": "vstar_test_questions_191",
+                "source_file": "vstar_bench/snapshot/test_questions.jsonl",
+                "metadata": {"row_index": 0},
+            }
+        ],
+    }
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(json.dumps(manifest))
+    out = tmp_path / "out"
+
+    rc = dynamic_benchmark_main(
+        [
+            "--run-id",
+            "dynamic_softforce_unit",
+            "--checkpoint-path",
+            "dry",
+            "--model-id",
+            "dry",
+            "--mode",
+            "tgvf_softforce",
+            "--post-tgvf-forward-mode",
+            "kv_cache",
+            "--population-id",
+            "vstar_test_questions_191",
+            "--manifest-path",
+            str(manifest_path),
+            "--benchmark-root",
+            str(root),
+            "--output-dir",
+            str(out),
+            "--runner-backend",
+            "dry_run",
+            "--max-tokens",
+            "512",
+            "--softforce-prompt-text",
+            "Use the focus tool if needed.",
+            "--gpus",
+            "0",
+            "--batch-size",
+            "1",
+        ]
+    )
+
+    assert rc == 0
+    row = json.loads((out / "rows.jsonl").read_text().splitlines()[0])
+    assert row["method"] == "tgvf_softforce"
+    assert row["trigger_policy"]["policy"] == "softforce_prompted_router"
+    assert row["trigger_policy"]["softforce_prompt_text"] == "Use the focus tool if needed."
+    run_config = json.loads((out / "run_config.json").read_text())
+    assert run_config["mode"] == "tgvf_softforce"
+    assert run_config["max_tokens"] == 512
+    assert run_config["softforce_prompt_text"] == "Use the focus tool if needed."
 
 
 def test_stage1_same_image_cursor_drops_incomplete_groups_without_duplicate_fill() -> None:

@@ -138,8 +138,15 @@ class NativeStage2Engine:
                 "post_tgvf_continuation": config.post_tgvf_continuation.value,
                 "tgvf_protocol": config.tgvf_protocol,
                 "max_image_resolution": config.max_image_resolution,
-                "max_action_tokens": config.max_action_tokens,
-                "max_answer_tokens": config.max_answer_tokens,
+                "token_budget_policy": (
+                    "unified_max_tokens" if config.max_tokens is not None else "legacy_split"
+                ),
+                "max_tokens": config.max_tokens,
+                "legacy_split_limits": {
+                    "active": config.max_tokens is None,
+                    "max_action_tokens": config.max_action_tokens,
+                    "max_answer_tokens": config.max_answer_tokens,
+                },
                 "deepstack": config.deepstack.to_dict(),
                 "parser_scorer": config.parser_scorer.to_dict(),
             },
@@ -237,6 +244,7 @@ class NativeStage2Engine:
                 "trigger_focus_decision": False,
                 "append_success": False,
                 "errors": ["focus_capture_not_found"],
+                "token_budget": self._token_budget_debug(capture, None),
                 "wall_time_sec": time.perf_counter() - started,
             }
             return NativeStage2RunResult(
@@ -281,6 +289,7 @@ class NativeStage2Engine:
                 "focus_miss": sample.need_focus,
                 "no_focus_false_trigger": False,
                 "continuation_not_im_end": _continuation_not_im_end(capture.generated_text),
+                "token_budget": self._token_budget_debug(capture, None),
                 "wall_time_sec": time.perf_counter() - started,
             }
             return NativeStage2RunResult(
@@ -325,8 +334,23 @@ class NativeStage2Engine:
             if self.stage2_config.append_forward_mode == ForwardMode.NO_KV_FULL_SEQUENCE:
                 append_result = self._append_visual_d_full_sequence(sample, capture, correct_d)
             else:
-                append_result = self._append_visual_d(capture, correct_d)
-            continuation = self._continue_generation(append_result)
+                try:
+                    append_result = self._append_visual_d(capture, correct_d)
+                except (RuntimeError, ValueError) as exc:
+                    if not _should_retry_full_sequence_multi_image_append(capture, exc):
+                        raise
+                    append_result = self._append_visual_d_full_sequence(
+                        sample,
+                        capture,
+                        correct_d,
+                    )
+                    append_result.debug_metadata[
+                        "kv_cache_append_retry_error"
+                    ] = f"{type(exc).__name__}: {exc}"
+                    append_result.debug_metadata[
+                        "kv_cache_append_retry_reason"
+                    ] = "multi_image_native_source_grid_position_ids"
+            continuation = self._continue_generation(append_result, capture=capture)
             full_text = _full_protocol_text(
                 capture.generated_text,
                 continuation.generated_text,
@@ -375,6 +399,12 @@ class NativeStage2Engine:
                 model_append_chunk_length=append_result.debug_metadata.get(
                     "model_append_chunk_length"
                 ),
+                kv_cache_append_retry_error=append_result.debug_metadata.get(
+                    "kv_cache_append_retry_error"
+                ),
+                kv_cache_append_retry_reason=append_result.debug_metadata.get(
+                    "kv_cache_append_retry_reason"
+                ),
                 second_full_forward_used=bool(
                     getattr(capture, "second_full_forward_used", False)
                     or append_result.debug_metadata.get("second_full_forward_used")
@@ -389,6 +419,7 @@ class NativeStage2Engine:
                 continuation_generated_logprobs=list(
                     getattr(continuation, "generated_logprobs", []) or []
                 ),
+                token_budget=self._token_budget_debug(capture, continuation),
                 wall_time_sec=time.perf_counter() - started,
             )
             return NativeStage2RunResult(
@@ -573,7 +604,7 @@ class NativeStage2Engine:
                 model=self.model,
                 tokenizer=self.processor.tokenizer,
                 inputs=inputs,
-                max_new_tokens=self.stage2_config.max_action_tokens,
+                max_new_tokens=self._action_token_budget(),
                 device=self.device,
                 forced_prefix_text=forced_text,
                 protocol=self.stage2_config.protocol,
@@ -585,7 +616,7 @@ class NativeStage2Engine:
             image=image,
             question=sample.prompt_question,
             messages=build_direct_messages(image, sample.prompt_question),
-            max_new_tokens=self.stage2_config.max_action_tokens,
+            max_new_tokens=self._action_token_budget(),
             device=self.device,
             protocol=self.stage2_config.protocol,
             **self._sampling_options(),
@@ -604,7 +635,7 @@ class NativeStage2Engine:
             image=image,
             question=sample.prompt_question,
             messages=messages,
-            max_new_tokens=self.stage2_config.max_action_tokens,
+            max_new_tokens=self._action_token_budget(),
             device=self.device,
             force_action_prefix=False,
             protocol=self.stage2_config.protocol,
@@ -1313,20 +1344,72 @@ class NativeStage2Engine:
             },
         )
 
-    def _continue_generation(self, append_result: Any) -> Any:
+    def _continue_generation(self, append_result: Any, *, capture: Any | None = None) -> Any:
         from revisit_vlm.qwen3_vl_tgvf import continue_generation_qwen3
 
         if self.model is None or self.processor is None:
             raise RuntimeError("native Stage2 model is not loaded")
+        max_new_tokens = self._answer_token_budget(capture)
+        if max_new_tokens <= 0:
+            return self._empty_continuation(append_result, stop_reason="max_tokens_exhausted")
         if bool((append_result.model_kwargs or {}).get("tgvf_block_original_image_keys")):
-            return self._continue_generation_blocking_original_image_keys(append_result)
+            return self._continue_generation_blocking_original_image_keys(
+                append_result,
+                max_new_tokens=max_new_tokens,
+            )
         return continue_generation_qwen3(
             self.model,
             self.processor,
             append_result,
-            max_new_tokens=self.stage2_config.max_answer_tokens,
+            max_new_tokens=max_new_tokens,
             eos_token_id=self.processor.tokenizer.eos_token_id,
             **self._sampling_options(),
+        )
+
+    def _action_token_budget(self) -> int:
+        return int(self.stage2_config.max_tokens or self.stage2_config.max_action_tokens)
+
+    def _answer_token_budget(self, capture: Any | None) -> int:
+        if self.stage2_config.max_tokens is None:
+            return int(self.stage2_config.max_answer_tokens)
+        action_tokens = len(getattr(capture, "generated_ids", []) or [])
+        return max(0, int(self.stage2_config.max_tokens) - int(action_tokens))
+
+    def _token_budget_debug(self, capture: Any | None, continuation: Any | None) -> dict[str, Any]:
+        action_tokens = len(getattr(capture, "generated_ids", []) or [])
+        answer_tokens = len(getattr(continuation, "generated_ids", []) or [])
+        max_tokens = self.stage2_config.max_tokens
+        return {
+            "schema_version": "clean_stage2_unified_token_budget_v1",
+            "token_budget_policy": (
+                "unified_max_tokens" if max_tokens is not None else "legacy_split"
+            ),
+            "max_tokens": max_tokens,
+            "legacy_split_limits": {
+                "active": max_tokens is None,
+                "max_action_tokens": self.stage2_config.max_action_tokens,
+                "max_answer_tokens": self.stage2_config.max_answer_tokens,
+            },
+            "action_budget": self._action_token_budget(),
+            "action_tokens": action_tokens,
+            "answer_budget": self._answer_token_budget(capture),
+            "answer_tokens": answer_tokens,
+            "total_generated_tokens": action_tokens + answer_tokens,
+            "unified_budget_active": max_tokens is not None,
+        }
+
+    def _empty_continuation(self, append_result: Any, *, stop_reason: str) -> Any:
+        from revisit_vlm.qwen3_vl_tgvf import Qwen3Continuation
+
+        return Qwen3Continuation(
+            generated_ids=[],
+            generated_text="",
+            past_key_values=append_result.past_key_values,
+            attention_mask=append_result.attention_mask,
+            input_ids=append_result.input_ids,
+            last_logits=append_result.last_logits,
+            stop_reason=stop_reason,
+            generated_logprobs=[],
         )
 
     def _sampling_options(self) -> dict[str, Any]:
@@ -1336,7 +1419,12 @@ class NativeStage2Engine:
             "top_p": float(self.backend_options.get("top_p", 1.0)),
         }
 
-    def _continue_generation_blocking_original_image_keys(self, append_result: Any) -> Any:
+    def _continue_generation_blocking_original_image_keys(
+        self,
+        append_result: Any,
+        *,
+        max_new_tokens: int | None = None,
+    ) -> Any:
         import torch
 
         from revisit_vlm.qwen3_vl_tgvf import Qwen3Continuation, _select_next_token
@@ -1375,7 +1463,11 @@ class NativeStage2Engine:
             ids = tokenizer.encode(marker, add_special_tokens=False)
             if len(ids) == 1:
                 blocked_focus_start_ids.append(int(ids[0]))
-        for _ in range(self.stage2_config.max_answer_tokens):
+        if max_new_tokens is None:
+            max_new_tokens = int(self.stage2_config.max_answer_tokens)
+        if max_new_tokens <= 0:
+            return self._empty_continuation(append_result, stop_reason="max_tokens_exhausted")
+        for _ in range(max_new_tokens):
             step_logits = logits[:, -1, :]
             if blocked_focus_start_ids:
                 step_logits = step_logits.clone()
@@ -1800,15 +1892,16 @@ def _validate_run_alignment(stage2_config: Stage2RuntimeConfig, config: RunConfi
 
 
 def _loadable_image_paths(sample: BenchmarkSample) -> tuple[list[str], list[dict[str, Any]]]:
-    image_paths: list[str] = []
-    media_report: list[dict[str, Any]] = []
-    for media_index, media in enumerate(sample.media):
+    resolved_images: list[tuple[str, dict[str, Any]]] = []
+    for media_index, media in _coalesce_duplicate_decoded_image_media_refs(sample.media):
         resolved = _loadable_image_path(sample, media, media_index=media_index)
         if resolved is None:
             continue
         path, report = resolved
-        image_paths.append(path)
-        media_report.append(report)
+        resolved_images.append((path, report))
+    resolved_images = _coalesce_duplicate_decoded_image_media(resolved_images)
+    image_paths = [path for path, _report in resolved_images]
+    media_report = [report for _path, report in resolved_images]
     if not image_paths:
         raise ValueError(
             "clean-native Stage2 requires loadable image media; "
@@ -1816,6 +1909,53 @@ def _loadable_image_paths(sample: BenchmarkSample) -> tuple[list[str], list[dict
             f"{[item.get('kind') for item in sample.media]}"
         )
     return image_paths, media_report
+
+
+def _coalesce_duplicate_decoded_image_media_refs(
+    media_refs: tuple[dict[str, Any], ...],
+) -> list[tuple[int, dict[str, Any]]]:
+    existing_path_basenames = {
+        Path(str(item.get("path"))).name
+        for item in media_refs
+        if item.get("source_key") == "image"
+        and item.get("kind") == "path"
+        and item.get("path")
+        and (item.get("exists") is True or Path(str(item.get("path"))).exists())
+    }
+    if not existing_path_basenames:
+        return list(enumerate(media_refs))
+    coalesced: list[tuple[int, dict[str, Any]]] = []
+    for media_index, media in enumerate(media_refs):
+        if (
+            media.get("source_key") == "decoded_image"
+            and Path(str(media.get("path_hint") or media.get("path") or "")).name
+            in existing_path_basenames
+        ):
+            continue
+        coalesced.append((media_index, media))
+    return coalesced
+
+
+def _coalesce_duplicate_decoded_image_media(
+    resolved_images: list[tuple[str, dict[str, Any]]],
+) -> list[tuple[str, dict[str, Any]]]:
+    existing_path_basenames = {
+        Path(path).name
+        for path, report in resolved_images
+        if report.get("source_key") == "image"
+        and report.get("materialization_source") == "existing_path"
+    }
+    if not existing_path_basenames:
+        return resolved_images
+    coalesced: list[tuple[str, dict[str, Any]]] = []
+    for path, report in resolved_images:
+        if (
+            report.get("source_key") == "decoded_image"
+            and Path(str(report.get("path_hint") or path)).name in existing_path_basenames
+        ):
+            continue
+        coalesced.append((path, report))
+    return coalesced
 
 
 def _loadable_image_path(
@@ -2031,6 +2171,20 @@ def _image_grid_count(image_grid_thw: Any) -> int:
         return int(image_grid_thw.detach().cpu().view(-1, 3).shape[0])
     except Exception:
         return 0
+
+
+def _should_retry_full_sequence_multi_image_append(capture: Any, exc: Exception) -> bool:
+    source_geometry = getattr(capture, "source_visual_geometry", None)
+    if source_geometry is None or _image_grid_count(getattr(source_geometry, "image_grid_thw", None)) <= 1:
+        return False
+    message = str(exc)
+    retry_markers = (
+        "native_source_grid",
+        "shape mismatch",
+        "position id",
+        "compute_3d_position_ids",
+    )
+    return any(marker in message for marker in retry_markers)
 
 
 def _full_protocol_text(action_text: str, continuation: str, *, protocol: str) -> str:

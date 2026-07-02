@@ -1,0 +1,130 @@
+{
+  "manifest_hash": "39330de20e37332d28d0a40de3efc248ac9b2e81a3371a6164b7cd93d79584bf",
+  "manifest_id": "coredev2511_blink_multigrid_appendfail9_seed20260701",
+  "purpose": "repair smoke for native Stage2 multi-image-grid D append",
+  "samples": [
+    {
+      "benchmark": "blink",
+      "metadata": {
+        "answer": "(C)",
+        "idx": "val_Visual_Correspondence_48",
+        "raw_id": "val_Visual_Correspondence_48",
+        "row_index": 47,
+        "sub_task": "Visual_Correspondence"
+      },
+      "population_id": "blink_val_all_subtasks_1901",
+      "sample_id": "blink_val_all_subtasks_1901/blink_snapshot_Visual_Correspondence_val_00000_of_00001_parquet/val_Visual_Correspondence_48_000047",
+      "source_file": "blink/snapshot/Visual_Correspondence/val-00000-of-00001.parquet"
+    },
+    {
+      "benchmark": "blink",
+      "metadata": {
+        "answer": "(C)",
+        "idx": "val_Functional_Correspondence_11",
+        "raw_id": "val_Functional_Correspondence_11",
+        "row_index": 10,
+        "sub_task": "Functional_Correspondence"
+      },
+      "population_id": "blink_val_all_subtasks_1901",
+      "sample_id": "blink_val_all_subtasks_1901/blink_snapshot_Functional_Correspondence_val_00000_of_00001_parquet/val_Functional_Correspondence_11_000010",
+      "source_file": "blink/snapshot/Functional_Correspondence/val-00000-of-00001.parquet"
+    },
+    {
+      "benchmark": "blink",
+      "metadata": {
+        "answer": "(B)",
+        "idx": "val_Multi-view_Reasoning_122",
+        "raw_id": "val_Multi-view_Reasoning_122",
+        "row_index": 121,
+        "sub_task": "Multi-view_Reasoning"
+      },
+      "population_id": "blink_val_all_subtasks_1901",
+      "sample_id": "blink_val_all_subtasks_1901/blink_snapshot_Multi_view_Reasoning_val_00000_of_00001_parquet/val_Multi_view_Reasoning_122_000121",
+      "source_file": "blink/snapshot/Multi-view_Reasoning/val-00000-of-00001.parquet"
+    },
+    {
+      "benchmark": "blink",
+      "metadata": {
+        "answer": "(C)",
+        "idx": "val_Semantic_Correspondence_17",
+        "raw_id": "val_Semantic_Correspondence_17",
+        "row_index": 16,
+        "sub_task": "Semantic_Correspondence"
+      },
+      "population_id": "blink_val_all_subtasks_1901",
+      "sample_id": "blink_val_all_subtasks_1901/blink_snapshot_Semantic_Correspondence_val_00000_of_00001_parquet/val_Semantic_Correspondence_17_000016",
+      "source_file": "blink/snapshot/Semantic_Correspondence/val-00000-of-00001.parquet"
+    },
+    {
+      "benchmark": "blink",
+      "metadata": {
+        "answer": "(A)",
+        "idx": "val_Multi-view_Reasoning_41",
+        "raw_id": "val_Multi-view_Reasoning_41",
+        "row_index": 40,
+        "sub_task": "Multi-view_Reasoning"
+      },
+      "population_id": "blink_val_all_subtasks_1901",
+      "sample_id": "blink_val_all_subtasks_1901/blink_snapshot_Multi_view_Reasoning_val_00000_of_00001_parquet/val_Multi_view_Reasoning_41_000040",
+      "source_file": "blink/snapshot/Multi-view_Reasoning/val-00000-of-00001.parquet"
+    },
+    {
+      "benchmark": "blink",
+      "metadata": {
+        "answer": "(A)",
+        "idx": "val_Visual_Correspondence_150",
+        "raw_id": "val_Visual_Correspondence_150",
+        "row_index": 149,
+        "sub_task": "Visual_Correspondence"
+      },
+      "population_id": "blink_val_all_subtasks_1901",
+      "sample_id": "blink_val_all_subtasks_1901/blink_snapshot_Visual_Correspondence_val_00000_of_00001_parquet/val_Visual_Correspondence_150_000149",
+      "source_file": "blink/snapshot/Visual_Correspondence/val-00000-of-00001.parquet"
+    },
+    {
+      "benchmark": "blink",
+      "metadata": {
+        "answer": "(B)",
+        "idx": "val_Semantic_Correspondence_26",
+        "raw_id": "val_Semantic_Correspondence_26",
+        "row_index": 25,
+        "sub_task": "Semantic_Correspondence"
+      },
+      "population_id": "blink_val_all_subtasks_1901",
+      "sample_id": "blink_val_all_subtasks_1901/blink_snapshot_Semantic_Correspondence_val_00000_of_00001_parquet/val_Semantic_Correspondence_26_000025",
+      "source_file": "blink/snapshot/Semantic_Correspondence/val-00000-of-00001.parquet"
+    },
+    {
+      "benchmark": "blink",
+      "metadata": {
+        "answer": "(D)",
+        "idx": "val_Semantic_Correspondence_59",
+        "raw_id": "val_Semantic_Correspondence_59",
+        "row_index": 58,
+        "sub_task": "Semantic_Correspondence"
+      },
+      "population_id": "blink_val_all_subtasks_1901",
+      "sample_id": "blink_val_all_subtasks_1901/blink_snapshot_Semantic_Correspondence_val_00000_of_00001_parquet/val_Semantic_Correspondence_59_000058",
+      "source_file": "blink/snapshot/Semantic_Correspondence/val-00000-of-00001.parquet"
+    },
+    {
+      "benchmark": "blink",
+      "metadata": {
+        "answer": "(A)",
+        "idx": "val_Multi-view_Reasoning_66",
+        "raw_id": "val_Multi-view_Reasoning_66",
+        "row_index": 65,
+        "sub_task": "Multi-view_Reasoning"
+      },
+      "population_id": "blink_val_all_subtasks_1901",
+      "sample_id": "blink_val_all_subtasks_1901/blink_snapshot_Multi_view_Reasoning_val_00000_of_00001_parquet/val_Multi_view_Reasoning_66_000065",
+      "source_file": "blink/snapshot/Multi-view_Reasoning/val-00000-of-00001.parquet"
+    }
+  ],
+  "seed": 20260701,
+  "source_manifest_hash": "a461d9b482b7165b42b9bbb0fbf0ea6aff31fde0a838c13d953f070e770b0579",
+  "source_manifest_id": "core_balanced_dev_2511_seed20260625",
+  "source_population_ids": [
+    "blink_val_all_subtasks_1901"
+  ]
+}

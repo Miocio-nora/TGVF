@@ -2964,8 +2964,6 @@ def _chunk_position_ids_native_source_grid(
         raise ValueError("capture.input_ids is required for native_source_grid position ids")
     if not isinstance(source_geometry.image_grid_thw, torch.Tensor):
         raise ValueError("source image_grid_thw is required for native_source_grid position ids")
-    if source_geometry.image_grid_thw.detach().cpu().view(-1, 3).shape[0] != 1:
-        raise ValueError("native_source_grid append currently supports exactly one source image grid")
     full_input_ids = torch.cat(
         [capture.input_ids.to(device), token_ids.view(1, -1).to(device)],
         dim=-1,

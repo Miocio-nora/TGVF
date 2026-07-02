@@ -19,6 +19,7 @@ class Stage2RuntimeConfig:
     d_condition: str = "correct_D"
     force_prefix_mode: str = "target_hint"
     append_forward_mode: ForwardMode = ForwardMode.KV_CACHE
+    max_tokens: int | None = None
     max_action_tokens: int = 64
     max_answer_tokens: int = 128
 
@@ -31,6 +32,8 @@ class Stage2RuntimeConfig:
             raise ValueError(
                 "clean Stage2 benchmark runner only supports force_prefix_mode='target_hint'"
             )
+        if self.max_tokens is not None and self.max_tokens <= 0:
+            raise ValueError("max_tokens must be positive when provided")
         if self.max_action_tokens <= 0 or self.max_answer_tokens <= 0:
             raise ValueError("max_action_tokens and max_answer_tokens must be positive")
         if not Path(self.stage2_checkpoint).exists():
@@ -39,6 +42,14 @@ class Stage2RuntimeConfig:
             raise FileNotFoundError(f"Stage2 eval_jsonl does not exist: {self.eval_jsonl}")
 
     def to_dict(self) -> dict[str, Any]:
+        token_budget_policy = (
+            "unified_max_tokens" if self.max_tokens is not None else "legacy_split"
+        )
+        legacy_split_limits = {
+            "active": self.max_tokens is None,
+            "max_action_tokens": self.max_action_tokens,
+            "max_answer_tokens": self.max_answer_tokens,
+        }
         return {
             "stage2_checkpoint": self.stage2_checkpoint,
             "eval_jsonl": self.eval_jsonl,
@@ -46,8 +57,9 @@ class Stage2RuntimeConfig:
             "d_condition": self.d_condition,
             "force_prefix_mode": self.force_prefix_mode,
             "append_forward_mode": self.append_forward_mode.value,
-            "max_action_tokens": self.max_action_tokens,
-            "max_answer_tokens": self.max_answer_tokens,
+            "token_budget_policy": token_budget_policy,
+            "max_tokens": self.max_tokens,
+            "legacy_split_limits": legacy_split_limits,
         }
 
 

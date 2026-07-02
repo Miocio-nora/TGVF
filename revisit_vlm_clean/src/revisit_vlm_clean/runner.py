@@ -103,6 +103,19 @@ class CleanRunnerBackend:
     ) -> ModelRunResult:
         raise NotImplementedError
 
+    def run_batch(
+        self,
+        samples: list[BenchmarkSample],
+        rendered_inputs: list[RenderedBenchmarkInput],
+        config: RunConfig,
+    ) -> list[ModelRunResult]:
+        if len(samples) != len(rendered_inputs):
+            raise ValueError("sample/rendered input count mismatch")
+        return [
+            self.run(sample, rendered, config)
+            for sample, rendered in zip(samples, rendered_inputs, strict=True)
+        ]
+
 
 class DryRunBackend(CleanRunnerBackend):
     def run(
@@ -152,48 +165,126 @@ class Qwen3OriginalBackend(CleanRunnerBackend):
         rendered: RenderedBenchmarkInput,
         config: RunConfig,
     ) -> ModelRunResult:
+        return self.run_batch([sample], [rendered], config)[0]
+
+    def run_batch(
+        self,
+        samples: list[BenchmarkSample],
+        rendered_inputs: list[RenderedBenchmarkInput],
+        config: RunConfig,
+    ) -> list[ModelRunResult]:
+        if len(samples) != len(rendered_inputs):
+            raise ValueError("sample/rendered input count mismatch")
         started = time.perf_counter()
+        timing: dict[str, float] = {}
         try:
             if config.mode != EvalMode.ORIGINAL:
                 raise NotImplementedError(
                     "qwen3_original backend currently supports only mode='original'"
                 )
             model, processor = self._load()
-            messages = [
-                {
-                    "role": "user",
-                    "content": [
-                        *self._vision_content_items(sample.media),
-                        {"type": "text", "text": rendered.user_prompt},
-                    ],
-                }
+            messages_batch = [
+                self._messages_for_sample(sample, rendered)
+                for sample, rendered in zip(samples, rendered_inputs, strict=True)
             ]
-            inputs = self._build_inputs(processor, messages)
+            phase = time.perf_counter()
+            inputs = self._build_batch_inputs(processor, messages_batch)
+            timing["preprocess_sec"] = time.perf_counter() - phase
+            phase = time.perf_counter()
             device = _resolve_generation_device(model, self.backend_config.device)
             inputs = _move_tensors(inputs, device)
+            timing["h2d_sec"] = time.perf_counter() - phase
             prompt_len = int(inputs["input_ids"].shape[-1])
+            phase = time.perf_counter()
             generated = model.generate(
                 **inputs,
                 max_new_tokens=self.max_answer_tokens,
                 do_sample=False,
             )
-            new_ids = generated[0, prompt_len:].detach().cpu().tolist()
-            raw = processor.tokenizer.decode(
-                new_ids,
-                skip_special_tokens=True,
-                clean_up_tokenization_spaces=False,
-            )
-            return ModelRunResult(
-                raw_output=raw,
-                output_tokens=len(new_ids),
-                wall_time_sec=time.perf_counter() - started,
-            )
+            timing["generate_sec"] = time.perf_counter() - phase
+            phase = time.perf_counter()
+            tokenizer = processor.tokenizer
+            padding_side = getattr(tokenizer, "padding_side", None)
+            batch_size = len(samples)
+            batch_wall = time.perf_counter() - started
+            results: list[ModelRunResult] = []
+            for batch_index in range(batch_size):
+                new_ids = generated[batch_index, prompt_len:].detach().cpu().tolist()
+                new_ids = _trim_generated_padding(new_ids, tokenizer)
+                raw = tokenizer.decode(
+                    new_ids,
+                    skip_special_tokens=True,
+                    clean_up_tokenization_spaces=False,
+                )
+                results.append(
+                    ModelRunResult(
+                        raw_output=raw,
+                        output_tokens=len(new_ids),
+                        wall_time_sec=batch_wall,
+                        debug={
+                            "timing": {
+                                **timing,
+                                "decode_batch_sec": 0.0,
+                                "batch_wall_sec": batch_wall,
+                            },
+                            "batch_generation": {
+                                "schema_version": "clean_qwen3_original_batch_generation_v1",
+                                "batch_size": batch_size,
+                                "batch_index": batch_index,
+                                "shared_prompt_len": prompt_len,
+                                "padding_side": padding_side,
+                            },
+                        },
+                    )
+                )
+            decode_sec = time.perf_counter() - phase
+            if results:
+                per_row_decode = decode_sec / len(results)
+                for result in results:
+                    result.debug["timing"]["decode_sec"] = per_row_decode
+                    result.debug["timing"]["decode_batch_sec"] = decode_sec
+            return results
         except Exception as exc:
-            return ModelRunResult(
-                raw_output="",
-                wall_time_sec=time.perf_counter() - started,
-                error=f"{type(exc).__name__}: {exc}",
-            )
+            error = f"{type(exc).__name__}: {exc}"
+            if len(samples) > 1:
+                fallback_results: list[ModelRunResult] = []
+                for index, (sample, rendered) in enumerate(
+                    zip(samples, rendered_inputs, strict=True)
+                ):
+                    fallback = self.run_batch([sample], [rendered], config)[0]
+                    fallback_results.append(
+                        replace(
+                            fallback,
+                            debug={
+                                **dict(fallback.debug or {}),
+                                "batch_generation_fallback": {
+                                    "schema_version": (
+                                        "clean_qwen3_original_batch_generation_fallback_v1"
+                                    ),
+                                    "failed_batch_size": len(samples),
+                                    "failed_batch_index": index,
+                                    "batch_error": error,
+                                },
+                            },
+                        )
+                    )
+                return fallback_results
+            return [
+                ModelRunResult(
+                    raw_output="",
+                    wall_time_sec=time.perf_counter() - started,
+                    error=error,
+                    debug={
+                        "batch_generation": {
+                            "schema_version": "clean_qwen3_original_batch_generation_v1",
+                            "batch_size": len(samples),
+                            "batch_index": index,
+                            "batch_failed": True,
+                        }
+                    },
+                )
+                for index, _sample in enumerate(samples)
+            ]
 
     def _load(self) -> tuple[Any, Any]:
         if self._loaded is not None:
@@ -237,26 +328,52 @@ class Qwen3OriginalBackend(CleanRunnerBackend):
         self._loaded = (model, processor)
         return self._loaded
 
+    def _messages_for_sample(
+        self,
+        sample: BenchmarkSample,
+        rendered: RenderedBenchmarkInput,
+    ) -> list[dict[str, Any]]:
+        return [
+            {
+                "role": "user",
+                "content": [
+                    *self._vision_content_items(sample.media),
+                    {"type": "text", "text": rendered.user_prompt},
+                ],
+            }
+        ]
+
     def _build_inputs(self, processor: Any, messages: list[dict[str, Any]]) -> dict[str, Any]:
+        return self._build_batch_inputs(processor, [messages])
+
+    def _build_batch_inputs(
+        self,
+        processor: Any,
+        messages_batch: list[list[dict[str, Any]]],
+    ) -> dict[str, Any]:
         from qwen_vl_utils import process_vision_info
 
-        text = processor.apply_chat_template(
-            messages,
-            tokenize=False,
-            add_generation_prompt=True,
-        )
+        _force_left_padding_for_generation(processor)
+        texts = [
+            processor.apply_chat_template(
+                messages,
+                tokenize=False,
+                add_generation_prompt=True,
+            )
+            for messages in messages_batch
+        ]
         image_patch_size = int(
             getattr(getattr(processor, "image_processor", None), "patch_size", 16) or 16
         )
         try:
             image_inputs, video_inputs, video_kwargs = process_vision_info(
-                messages,
+                messages_batch,
                 image_patch_size=image_patch_size,
                 return_video_kwargs=True,
                 return_video_metadata=True,
             )
         except TypeError:
-            image_inputs, video_inputs = process_vision_info(messages)
+            image_inputs, video_inputs = process_vision_info(messages_batch)
             video_kwargs = {}
         video_metadatas = None
         if video_inputs is not None and video_inputs and isinstance(video_inputs[0], tuple):
@@ -267,7 +384,7 @@ class Qwen3OriginalBackend(CleanRunnerBackend):
             kwargs["video_metadata"] = video_metadatas
         return dict(
             processor(
-                text=[text],
+                text=texts,
                 images=image_inputs,
                 videos=video_inputs,
                 do_resize=False,
@@ -1018,6 +1135,22 @@ def _dry_output(sample: BenchmarkSample) -> str:
     if sample.choices:
         return "A"
     return "dry_run_answer"
+
+
+def _trim_generated_padding(token_ids: list[int], tokenizer: Any) -> list[int]:
+    pad_id = getattr(tokenizer, "pad_token_id", None)
+    if pad_id is None:
+        return token_ids
+    trimmed = list(token_ids)
+    while trimmed and int(trimmed[-1]) == int(pad_id):
+        trimmed.pop()
+    return trimmed
+
+
+def _force_left_padding_for_generation(processor: Any) -> None:
+    tokenizer = getattr(processor, "tokenizer", None)
+    if tokenizer is not None and hasattr(tokenizer, "padding_side"):
+        tokenizer.padding_side = "left"
 
 
 def _media_to_image_input(media: dict[str, Any]) -> Any | None:

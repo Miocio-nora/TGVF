@@ -625,6 +625,7 @@ def _write_run_config_text(
     else:
         manifest_info = manifest
 
+    token_budget_policy = "unified_max_tokens" if config.max_tokens is not None else "legacy_split"
     lines = [
         f"run_id: {config.run_id}",
         f"output_schema_version: {config.output_schema_version}",
@@ -644,8 +645,8 @@ def _write_run_config_text(
         f"manifest_hash: {manifest_info.get('manifest_hash') or config.manifest_hash}",
         f"benchmark_root: {config.benchmark_root}",
         f"max_image_resolution: {config.max_image_resolution}",
-        f"max_action_tokens: {config.max_action_tokens}",
-        f"max_answer_tokens: {config.max_answer_tokens}",
+        f"token_budget_policy: {token_budget_policy}",
+        f"max_tokens: {config.max_tokens}",
         f"deepstack: {json.dumps(config.deepstack.to_dict(), sort_keys=True)}",
         f"parser_scorer: {json.dumps(config.parser_scorer.to_dict(), sort_keys=True)}",
         "benchmark_source_manifest: "
@@ -654,6 +655,25 @@ def _write_run_config_text(
         f"dirty_worktree: {config.dirty_worktree}",
         f"git_commit: {config.git_commit}",
     ]
+    if config.max_tokens is None:
+        lines.extend(
+            [
+                f"max_action_tokens: {config.max_action_tokens}",
+                f"max_answer_tokens: {config.max_answer_tokens}",
+            ]
+        )
+    else:
+        lines.append(
+            "legacy_split_limits: "
+            + json.dumps(
+                {
+                    "active": False,
+                    "max_action_tokens": config.max_action_tokens,
+                    "max_answer_tokens": config.max_answer_tokens,
+                },
+                sort_keys=True,
+            )
+        )
     if backend_config is not None:
         lines.append(f"runner_backend: {json.dumps(backend_config.to_dict(), sort_keys=True)}")
     lines.extend(

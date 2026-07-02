@@ -56,6 +56,21 @@ implement memory-saving micro-batch backward accumulation.
 The judge runner is real and can use local Qwen3/Qwen2.5-VL style models through
 Hugging Face `transformers`.
 
+## Attention Backend Default
+
+Prefer `--attn-implementation flash_attention_2` whenever the path supports it.
+The current clean Stage3 native path has passed a hard-focus one-step smoke with
+`flash_attention_2`, including `forced_on_clean`, focus append, TGVF D
+construction, post-D continuation, replay, optimizer update, and checkpoint
+save. Direct offline judge runs can also request FlashAttention-2 through the
+same flag.
+
+Keep `sdpa` for Stage1/Stage2-style paths that rely on custom weak-strict
+additive 4D masks until those masks have a Flash-compatible implementation or a
+separate compatibility proof. The Stage3 stepwise wrapper also needs a
+`--judge-attn-implementation` pass-through before its automatic judge shards can
+be controlled from the stepwise command.
+
 ## Plan
 
 ```bash
@@ -86,6 +101,7 @@ PYTHONPATH=revisit_vlm_clean/src python -m revisit_vlm_clean.cli.train_stage3_gr
   --policy-checkpoint outputs/clean_training/qwen3_stage2_norm01_stage1_mask075_deepstack_4gpu_20260627_163250/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt \
   --model-id /nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking \
   --processor-id /nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking \
+  --attn-implementation flash_attention_2 \
   --output-dir outputs/stage3_grpo/stage3_grpo_native_run \
   --runtime-backend native_single_focus \
   --wandb-project tgvf-stage3-grpo \
@@ -215,6 +231,7 @@ PYTHONPATH=revisit_vlm_clean/src python -m revisit_vlm_clean.cli.stage3_grpo_jud
   --require-local-model \
   --device-map auto \
   --dtype bfloat16 \
+  --attn-implementation flash_attention_2 \
   --max-new-tokens 512 \
   --execute
 ```

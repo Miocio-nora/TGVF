@@ -1,0 +1,5172 @@
+{
+  "diagnostic_manifest_id": "coredev2511_7bench_50each_seed20260701",
+  "manifest_hash": "3acd25bed95ef1361447840d7cd5dcf6b46d1609d49953e0592a3e40b3b37904",
+  "manifest_id": "core_balanced_dev_2511_seed20260625",
+  "samples": [
+    {
+      "benchmark": "vstar_bench",
+      "metadata": {
+        "_source_manifest_index": 2,
+        "category": "direct_attributes",
+        "label": "A",
+        "question_id": "2",
+        "raw_id": "2",
+        "row_index": 2
+      },
+      "population_id": "vstar_test_questions_191",
+      "sample_id": "vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/2_000002",
+      "source_file": "vstar_bench/snapshot/test_questions.jsonl"
+    },
+    {
+      "benchmark": "vstar_bench",
+      "metadata": {
+        "_source_manifest_index": 3,
+        "category": "direct_attributes",
+        "label": "B",
+        "question_id": "3",
+        "raw_id": "3",
+        "row_index": 3
+      },
+      "population_id": "vstar_test_questions_191",
+      "sample_id": "vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/3_000003",
+      "source_file": "vstar_bench/snapshot/test_questions.jsonl"
+    },
+    {
+      "benchmark": "vstar_bench",
+      "metadata": {
+        "_source_manifest_index": 11,
+        "category": "direct_attributes",
+        "label": "B",
+        "question_id": "11",
+        "raw_id": "11",
+        "row_index": 11
+      },
+      "population_id": "vstar_test_questions_191",
+      "sample_id": "vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/11_000011",
+      "source_file": "vstar_bench/snapshot/test_questions.jsonl"
+    },
+    {
+      "benchmark": "vstar_bench",
+      "metadata": {
+        "_source_manifest_index": 17,
+        "category": "direct_attributes",
+        "label": "D",
+        "question_id": "17",
+        "raw_id": "17",
+        "row_index": 17
+      },
+      "population_id": "vstar_test_questions_191",
+      "sample_id": "vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/17_000017",
+      "source_file": "vstar_bench/snapshot/test_questions.jsonl"
+    },
+    {
+      "benchmark": "vstar_bench",
+      "metadata": {
+        "_source_manifest_index": 18,
+        "category": "direct_attributes",
+        "label": "C",
+        "question_id": "18",
+        "raw_id": "18",
+        "row_index": 18
+      },
+      "population_id": "vstar_test_questions_191",
+      "sample_id": "vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/18_000018",
+      "source_file": "vstar_bench/snapshot/test_questions.jsonl"
+    },
+    {
+      "benchmark": "vstar_bench",
+      "metadata": {
+        "_source_manifest_index": 19,
+        "category": "direct_attributes",
+        "label": "A",
+        "question_id": "19",
+        "raw_id": "19",
+        "row_index": 19
+      },
+      "population_id": "vstar_test_questions_191",
+      "sample_id": "vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/19_000019",
+      "source_file": "vstar_bench/snapshot/test_questions.jsonl"
+    },
+    {
+      "benchmark": "vstar_bench",
+      "metadata": {
+        "_source_manifest_index": 30,
+        "category": "direct_attributes",
+        "label": "A",
+        "question_id": "30",
+        "raw_id": "30",
+        "row_index": 30
+      },
+      "population_id": "vstar_test_questions_191",
+      "sample_id": "vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/30_000030",
+      "source_file": "vstar_bench/snapshot/test_questions.jsonl"
+    },
+    {
+      "benchmark": "vstar_bench",
+      "metadata": {
+        "_source_manifest_index": 33,
+        "category": "direct_attributes",
+        "label": "C",
+        "question_id": "33",
+        "raw_id": "33",
+        "row_index": 33
+      },
+      "population_id": "vstar_test_questions_191",
+      "sample_id": "vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/33_000033",
+      "source_file": "vstar_bench/snapshot/test_questions.jsonl"
+    },
+    {
+      "benchmark": "vstar_bench",
+      "metadata": {
+        "_source_manifest_index": 35,
+        "category": "direct_attributes",
+        "label": "C",
+        "question_id": "35",
+        "raw_id": "35",
+        "row_index": 35
+      },
+      "population_id": "vstar_test_questions_191",
+      "sample_id": "vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/35_000035",
+      "source_file": "vstar_bench/snapshot/test_questions.jsonl"
+    },
+    {
+      "benchmark": "vstar_bench",
+      "metadata": {
+        "_source_manifest_index": 36,
+        "category": "direct_attributes",
+        "label": "D",
+        "question_id": "36",
+        "raw_id": "36",
+        "row_index": 36
+      },
+      "population_id": "vstar_test_questions_191",
+      "sample_id": "vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/36_000036",
+      "source_file": "vstar_bench/snapshot/test_questions.jsonl"
+    },
+    {
+      "benchmark": "vstar_bench",
+      "metadata": {
+        "_source_manifest_index": 38,
+        "category": "direct_attributes",
+        "label": "B",
+        "question_id": "38",
+        "raw_id": "38",
+        "row_index": 38
+      },
+      "population_id": "vstar_test_questions_191",
+      "sample_id": "vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/38_000038",
+      "source_file": "vstar_bench/snapshot/test_questions.jsonl"
+    },
+    {
+      "benchmark": "vstar_bench",
+      "metadata": {
+        "_source_manifest_index": 41,
+        "category": "direct_attributes",
+        "label": "C",
+        "question_id": "41",
+        "raw_id": "41",
+        "row_index": 41
+      },
+      "population_id": "vstar_test_questions_191",
+      "sample_id": "vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/41_000041",
+      "source_file": "vstar_bench/snapshot/test_questions.jsonl"
+    },
+    {
+      "benchmark": "vstar_bench",
+      "metadata": {
+        "_source_manifest_index": 42,
+        "category": "direct_attributes",
+        "label": "A",
+        "question_id": "42",
+        "raw_id": "42",
+        "row_index": 42
+      },
+      "population_id": "vstar_test_questions_191",
+      "sample_id": "vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/42_000042",
+      "source_file": "vstar_bench/snapshot/test_questions.jsonl"
+    },
+    {
+      "benchmark": "vstar_bench",
+      "metadata": {
+        "_source_manifest_index": 47,
+        "category": "direct_attributes",
+        "label": "A",
+        "question_id": "47",
+        "raw_id": "47",
+        "row_index": 47
+      },
+      "population_id": "vstar_test_questions_191",
+      "sample_id": "vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/47_000047",
+      "source_file": "vstar_bench/snapshot/test_questions.jsonl"
+    },
+    {
+      "benchmark": "vstar_bench",
+      "metadata": {
+        "_source_manifest_index": 49,
+        "category": "direct_attributes",
+        "label": "C",
+        "question_id": "49",
+        "raw_id": "49",
+        "row_index": 49
+      },
+      "population_id": "vstar_test_questions_191",
+      "sample_id": "vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/49_000049",
+      "source_file": "vstar_bench/snapshot/test_questions.jsonl"
+    },
+    {
+      "benchmark": "vstar_bench",
+      "metadata": {
+        "_source_manifest_index": 57,
+        "category": "direct_attributes",
+        "label": "C",
+        "question_id": "57",
+        "raw_id": "57",
+        "row_index": 57
+      },
+      "population_id": "vstar_test_questions_191",
+      "sample_id": "vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/57_000057",
+      "source_file": "vstar_bench/snapshot/test_questions.jsonl"
+    },
+    {
+      "benchmark": "vstar_bench",
+      "metadata": {
+        "_source_manifest_index": 60,
+        "category": "direct_attributes",
+        "label": "D",
+        "question_id": "60",
+        "raw_id": "60",
+        "row_index": 60
+      },
+      "population_id": "vstar_test_questions_191",
+      "sample_id": "vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/60_000060",
+      "source_file": "vstar_bench/snapshot/test_questions.jsonl"
+    },
+    {
+      "benchmark": "vstar_bench",
+      "metadata": {
+        "_source_manifest_index": 61,
+        "category": "direct_attributes",
+        "label": "A",
+        "question_id": "61",
+        "raw_id": "61",
+        "row_index": 61
+      },
+      "population_id": "vstar_test_questions_191",
+      "sample_id": "vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/61_000061",
+      "source_file": "vstar_bench/snapshot/test_questions.jsonl"
+    },
+    {
+      "benchmark": "vstar_bench",
+      "metadata": {
+        "_source_manifest_index": 62,
+        "category": "direct_attributes",
+        "label": "D",
+        "question_id": "62",
+        "raw_id": "62",
+        "row_index": 62
+      },
+      "population_id": "vstar_test_questions_191",
+      "sample_id": "vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/62_000062",
+      "source_file": "vstar_bench/snapshot/test_questions.jsonl"
+    },
+    {
+      "benchmark": "vstar_bench",
+      "metadata": {
+        "_source_manifest_index": 63,
+        "category": "direct_attributes",
+        "label": "D",
+        "question_id": "63",
+        "raw_id": "63",
+        "row_index": 63
+      },
+      "population_id": "vstar_test_questions_191",
+      "sample_id": "vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/63_000063",
+      "source_file": "vstar_bench/snapshot/test_questions.jsonl"
+    },
+    {
+      "benchmark": "vstar_bench",
+      "metadata": {
+        "_source_manifest_index": 66,
+        "category": "direct_attributes",
+        "label": "B",
+        "question_id": "66",
+        "raw_id": "66",
+        "row_index": 66
+      },
+      "population_id": "vstar_test_questions_191",
+      "sample_id": "vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/66_000066",
+      "source_file": "vstar_bench/snapshot/test_questions.jsonl"
+    },
+    {
+      "benchmark": "vstar_bench",
+      "metadata": {
+        "_source_manifest_index": 67,
+        "category": "direct_attributes",
+        "label": "B",
+        "question_id": "67",
+        "raw_id": "67",
+        "row_index": 67
+      },
+      "population_id": "vstar_test_questions_191",
+      "sample_id": "vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/67_000067",
+      "source_file": "vstar_bench/snapshot/test_questions.jsonl"
+    },
+    {
+      "benchmark": "vstar_bench",
+      "metadata": {
+        "_source_manifest_index": 75,
+        "category": "direct_attributes",
+        "label": "A",
+        "question_id": "75",
+        "raw_id": "75",
+        "row_index": 75
+      },
+      "population_id": "vstar_test_questions_191",
+      "sample_id": "vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/75_000075",
+      "source_file": "vstar_bench/snapshot/test_questions.jsonl"
+    },
+    {
+      "benchmark": "vstar_bench",
+      "metadata": {
+        "_source_manifest_index": 92,
+        "category": "direct_attributes",
+        "label": "D",
+        "question_id": "92",
+        "raw_id": "92",
+        "row_index": 92
+      },
+      "population_id": "vstar_test_questions_191",
+      "sample_id": "vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/92_000092",
+      "source_file": "vstar_bench/snapshot/test_questions.jsonl"
+    },
+    {
+      "benchmark": "vstar_bench",
+      "metadata": {
+        "_source_manifest_index": 102,
+        "category": "direct_attributes",
+        "label": "C",
+        "question_id": "102",
+        "raw_id": "102",
+        "row_index": 102
+      },
+      "population_id": "vstar_test_questions_191",
+      "sample_id": "vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/102_000102",
+      "source_file": "vstar_bench/snapshot/test_questions.jsonl"
+    },
+    {
+      "benchmark": "vstar_bench",
+      "metadata": {
+        "_source_manifest_index": 104,
+        "category": "direct_attributes",
+        "label": "B",
+        "question_id": "104",
+        "raw_id": "104",
+        "row_index": 104
+      },
+      "population_id": "vstar_test_questions_191",
+      "sample_id": "vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/104_000104",
+      "source_file": "vstar_bench/snapshot/test_questions.jsonl"
+    },
+    {
+      "benchmark": "vstar_bench",
+      "metadata": {
+        "_source_manifest_index": 107,
+        "category": "direct_attributes",
+        "label": "A",
+        "question_id": "107",
+        "raw_id": "107",
+        "row_index": 107
+      },
+      "population_id": "vstar_test_questions_191",
+      "sample_id": "vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/107_000107",
+      "source_file": "vstar_bench/snapshot/test_questions.jsonl"
+    },
+    {
+      "benchmark": "vstar_bench",
+      "metadata": {
+        "_source_manifest_index": 118,
+        "category": "relative_position",
+        "label": "A",
+        "question_id": "118",
+        "raw_id": "118",
+        "row_index": 118
+      },
+      "population_id": "vstar_test_questions_191",
+      "sample_id": "vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/118_000118",
+      "source_file": "vstar_bench/snapshot/test_questions.jsonl"
+    },
+    {
+      "benchmark": "vstar_bench",
+      "metadata": {
+        "_source_manifest_index": 120,
+        "category": "relative_position",
+        "label": "B",
+        "question_id": "120",
+        "raw_id": "120",
+        "row_index": 120
+      },
+      "population_id": "vstar_test_questions_191",
+      "sample_id": "vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/120_000120",
+      "source_file": "vstar_bench/snapshot/test_questions.jsonl"
+    },
+    {
+      "benchmark": "vstar_bench",
+      "metadata": {
+        "_source_manifest_index": 127,
+        "category": "relative_position",
+        "label": "A",
+        "question_id": "127",
+        "raw_id": "127",
+        "row_index": 127
+      },
+      "population_id": "vstar_test_questions_191",
+      "sample_id": "vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/127_000127",
+      "source_file": "vstar_bench/snapshot/test_questions.jsonl"
+    },
+    {
+      "benchmark": "vstar_bench",
+      "metadata": {
+        "_source_manifest_index": 128,
+        "category": "relative_position",
+        "label": "B",
+        "question_id": "128",
+        "raw_id": "128",
+        "row_index": 128
+      },
+      "population_id": "vstar_test_questions_191",
+      "sample_id": "vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/128_000128",
+      "source_file": "vstar_bench/snapshot/test_questions.jsonl"
+    },
+    {
+      "benchmark": "vstar_bench",
+      "metadata": {
+        "_source_manifest_index": 131,
+        "category": "relative_position",
+        "label": "B",
+        "question_id": "131",
+        "raw_id": "131",
+        "row_index": 131
+      },
+      "population_id": "vstar_test_questions_191",
+      "sample_id": "vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/131_000131",
+      "source_file": "vstar_bench/snapshot/test_questions.jsonl"
+    },
+    {
+      "benchmark": "vstar_bench",
+      "metadata": {
+        "_source_manifest_index": 133,
+        "category": "relative_position",
+        "label": "B",
+        "question_id": "133",
+        "raw_id": "133",
+        "row_index": 133
+      },
+      "population_id": "vstar_test_questions_191",
+      "sample_id": "vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/133_000133",
+      "source_file": "vstar_bench/snapshot/test_questions.jsonl"
+    },
+    {
+      "benchmark": "vstar_bench",
+      "metadata": {
+        "_source_manifest_index": 134,
+        "category": "relative_position",
+        "label": "B",
+        "question_id": "134",
+        "raw_id": "134",
+        "row_index": 134
+      },
+      "population_id": "vstar_test_questions_191",
+      "sample_id": "vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/134_000134",
+      "source_file": "vstar_bench/snapshot/test_questions.jsonl"
+    },
+    {
+      "benchmark": "vstar_bench",
+      "metadata": {
+        "_source_manifest_index": 135,
+        "category": "relative_position",
+        "label": "B",
+        "question_id": "135",
+        "raw_id": "135",
+        "row_index": 135
+      },
+      "population_id": "vstar_test_questions_191",
+      "sample_id": "vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/135_000135",
+      "source_file": "vstar_bench/snapshot/test_questions.jsonl"
+    },
+    {
+      "benchmark": "vstar_bench",
+      "metadata": {
+        "_source_manifest_index": 139,
+        "category": "relative_position",
+        "label": "A",
+        "question_id": "139",
+        "raw_id": "139",
+        "row_index": 139
+      },
+      "population_id": "vstar_test_questions_191",
+      "sample_id": "vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/139_000139",
+      "source_file": "vstar_bench/snapshot/test_questions.jsonl"
+    },
+    {
+      "benchmark": "vstar_bench",
+      "metadata": {
+        "_source_manifest_index": 144,
+        "category": "relative_position",
+        "label": "B",
+        "question_id": "144",
+        "raw_id": "144",
+        "row_index": 144
+      },
+      "population_id": "vstar_test_questions_191",
+      "sample_id": "vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/144_000144",
+      "source_file": "vstar_bench/snapshot/test_questions.jsonl"
+    },
+    {
+      "benchmark": "vstar_bench",
+      "metadata": {
+        "_source_manifest_index": 145,
+        "category": "relative_position",
+        "label": "A",
+        "question_id": "145",
+        "raw_id": "145",
+        "row_index": 145
+      },
+      "population_id": "vstar_test_questions_191",
+      "sample_id": "vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/145_000145",
+      "source_file": "vstar_bench/snapshot/test_questions.jsonl"
+    },
+    {
+      "benchmark": "vstar_bench",
+      "metadata": {
+        "_source_manifest_index": 147,
+        "category": "relative_position",
+        "label": "B",
+        "question_id": "147",
+        "raw_id": "147",
+        "row_index": 147
+      },
+      "population_id": "vstar_test_questions_191",
+      "sample_id": "vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/147_000147",
+      "source_file": "vstar_bench/snapshot/test_questions.jsonl"
+    },
+    {
+      "benchmark": "vstar_bench",
+      "metadata": {
+        "_source_manifest_index": 148,
+        "category": "relative_position",
+        "label": "B",
+        "question_id": "148",
+        "raw_id": "148",
+        "row_index": 148
+      },
+      "population_id": "vstar_test_questions_191",
+      "sample_id": "vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/148_000148",
+      "source_file": "vstar_bench/snapshot/test_questions.jsonl"
+    },
+    {
+      "benchmark": "vstar_bench",
+      "metadata": {
+        "_source_manifest_index": 149,
+        "category": "relative_position",
+        "label": "B",
+        "question_id": "149",
+        "raw_id": "149",
+        "row_index": 149
+      },
+      "population_id": "vstar_test_questions_191",
+      "sample_id": "vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/149_000149",
+      "source_file": "vstar_bench/snapshot/test_questions.jsonl"
+    },
+    {
+      "benchmark": "vstar_bench",
+      "metadata": {
+        "_source_manifest_index": 156,
+        "category": "relative_position",
+        "label": "A",
+        "question_id": "156",
+        "raw_id": "156",
+        "row_index": 156
+      },
+      "population_id": "vstar_test_questions_191",
+      "sample_id": "vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/156_000156",
+      "source_file": "vstar_bench/snapshot/test_questions.jsonl"
+    },
+    {
+      "benchmark": "vstar_bench",
+      "metadata": {
+        "_source_manifest_index": 158,
+        "category": "relative_position",
+        "label": "B",
+        "question_id": "158",
+        "raw_id": "158",
+        "row_index": 158
+      },
+      "population_id": "vstar_test_questions_191",
+      "sample_id": "vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/158_000158",
+      "source_file": "vstar_bench/snapshot/test_questions.jsonl"
+    },
+    {
+      "benchmark": "vstar_bench",
+      "metadata": {
+        "_source_manifest_index": 159,
+        "category": "relative_position",
+        "label": "A",
+        "question_id": "159",
+        "raw_id": "159",
+        "row_index": 159
+      },
+      "population_id": "vstar_test_questions_191",
+      "sample_id": "vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/159_000159",
+      "source_file": "vstar_bench/snapshot/test_questions.jsonl"
+    },
+    {
+      "benchmark": "vstar_bench",
+      "metadata": {
+        "_source_manifest_index": 166,
+        "category": "relative_position",
+        "label": "B",
+        "question_id": "166",
+        "raw_id": "166",
+        "row_index": 166
+      },
+      "population_id": "vstar_test_questions_191",
+      "sample_id": "vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/166_000166",
+      "source_file": "vstar_bench/snapshot/test_questions.jsonl"
+    },
+    {
+      "benchmark": "vstar_bench",
+      "metadata": {
+        "_source_manifest_index": 176,
+        "category": "relative_position",
+        "label": "B",
+        "question_id": "176",
+        "raw_id": "176",
+        "row_index": 176
+      },
+      "population_id": "vstar_test_questions_191",
+      "sample_id": "vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/176_000176",
+      "source_file": "vstar_bench/snapshot/test_questions.jsonl"
+    },
+    {
+      "benchmark": "vstar_bench",
+      "metadata": {
+        "_source_manifest_index": 179,
+        "category": "relative_position",
+        "label": "A",
+        "question_id": "179",
+        "raw_id": "179",
+        "row_index": 179
+      },
+      "population_id": "vstar_test_questions_191",
+      "sample_id": "vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/179_000179",
+      "source_file": "vstar_bench/snapshot/test_questions.jsonl"
+    },
+    {
+      "benchmark": "vstar_bench",
+      "metadata": {
+        "_source_manifest_index": 182,
+        "category": "relative_position",
+        "label": "A",
+        "question_id": "182",
+        "raw_id": "182",
+        "row_index": 182
+      },
+      "population_id": "vstar_test_questions_191",
+      "sample_id": "vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/182_000182",
+      "source_file": "vstar_bench/snapshot/test_questions.jsonl"
+    },
+    {
+      "benchmark": "vstar_bench",
+      "metadata": {
+        "_source_manifest_index": 187,
+        "category": "relative_position",
+        "label": "A",
+        "question_id": "187",
+        "raw_id": "187",
+        "row_index": 187
+      },
+      "population_id": "vstar_test_questions_191",
+      "sample_id": "vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/187_000187",
+      "source_file": "vstar_bench/snapshot/test_questions.jsonl"
+    },
+    {
+      "benchmark": "vstar_bench",
+      "metadata": {
+        "_source_manifest_index": 188,
+        "category": "relative_position",
+        "label": "A",
+        "question_id": "188",
+        "raw_id": "188",
+        "row_index": 188
+      },
+      "population_id": "vstar_test_questions_191",
+      "sample_id": "vstar_test_questions_191/vstar_bench_snapshot_test_questions_jsonl/188_000188",
+      "source_file": "vstar_bench/snapshot/test_questions.jsonl"
+    },
+    {
+      "benchmark": "hr_bench_4k",
+      "metadata": {
+        "_source_manifest_index": 192,
+        "answer": "B",
+        "category": "cross",
+        "cycle_category": 1,
+        "index": 757,
+        "raw_id": "757",
+        "row_index": 757
+      },
+      "population_id": "hr_bench_4k_800",
+      "sample_id": "hr_bench_4k_800/hr_bench_4k_snapshot_hr_bench_4k_parquet/757_000757",
+      "source_file": "hr_bench_4k/snapshot/hr_bench_4k.parquet"
+    },
+    {
+      "benchmark": "hr_bench_4k",
+      "metadata": {
+        "_source_manifest_index": 195,
+        "answer": "A",
+        "category": "single",
+        "cycle_category": 0,
+        "index": 284,
+        "raw_id": "284",
+        "row_index": 284
+      },
+      "population_id": "hr_bench_4k_800",
+      "sample_id": "hr_bench_4k_800/hr_bench_4k_snapshot_hr_bench_4k_parquet/284_000284",
+      "source_file": "hr_bench_4k/snapshot/hr_bench_4k.parquet"
+    },
+    {
+      "benchmark": "hr_bench_4k",
+      "metadata": {
+        "_source_manifest_index": 199,
+        "answer": "A",
+        "category": "cross",
+        "cycle_category": 0,
+        "index": 576,
+        "raw_id": "576",
+        "row_index": 576
+      },
+      "population_id": "hr_bench_4k_800",
+      "sample_id": "hr_bench_4k_800/hr_bench_4k_snapshot_hr_bench_4k_parquet/576_000576",
+      "source_file": "hr_bench_4k/snapshot/hr_bench_4k.parquet"
+    },
+    {
+      "benchmark": "hr_bench_4k",
+      "metadata": {
+        "_source_manifest_index": 201,
+        "answer": "C",
+        "category": "cross",
+        "cycle_category": 2,
+        "index": 450,
+        "raw_id": "450",
+        "row_index": 450
+      },
+      "population_id": "hr_bench_4k_800",
+      "sample_id": "hr_bench_4k_800/hr_bench_4k_snapshot_hr_bench_4k_parquet/450_000450",
+      "source_file": "hr_bench_4k/snapshot/hr_bench_4k.parquet"
+    },
+    {
+      "benchmark": "hr_bench_4k",
+      "metadata": {
+        "_source_manifest_index": 214,
+        "answer": "D",
+        "category": "single",
+        "cycle_category": 3,
+        "index": 223,
+        "raw_id": "223",
+        "row_index": 223
+      },
+      "population_id": "hr_bench_4k_800",
+      "sample_id": "hr_bench_4k_800/hr_bench_4k_snapshot_hr_bench_4k_parquet/223_000223",
+      "source_file": "hr_bench_4k/snapshot/hr_bench_4k.parquet"
+    },
+    {
+      "benchmark": "hr_bench_4k",
+      "metadata": {
+        "_source_manifest_index": 215,
+        "answer": "A",
+        "category": "cross",
+        "cycle_category": 0,
+        "index": 688,
+        "raw_id": "688",
+        "row_index": 688
+      },
+      "population_id": "hr_bench_4k_800",
+      "sample_id": "hr_bench_4k_800/hr_bench_4k_snapshot_hr_bench_4k_parquet/688_000688",
+      "source_file": "hr_bench_4k/snapshot/hr_bench_4k.parquet"
+    },
+    {
+      "benchmark": "hr_bench_4k",
+      "metadata": {
+        "_source_manifest_index": 217,
+        "answer": "C",
+        "category": "cross",
+        "cycle_category": 2,
+        "index": 742,
+        "raw_id": "742",
+        "row_index": 742
+      },
+      "population_id": "hr_bench_4k_800",
+      "sample_id": "hr_bench_4k_800/hr_bench_4k_snapshot_hr_bench_4k_parquet/742_000742",
+      "source_file": "hr_bench_4k/snapshot/hr_bench_4k.parquet"
+    },
+    {
+      "benchmark": "hr_bench_4k",
+      "metadata": {
+        "_source_manifest_index": 227,
+        "answer": "A",
+        "category": "single",
+        "cycle_category": 0,
+        "index": 244,
+        "raw_id": "244",
+        "row_index": 244
+      },
+      "population_id": "hr_bench_4k_800",
+      "sample_id": "hr_bench_4k_800/hr_bench_4k_snapshot_hr_bench_4k_parquet/244_000244",
+      "source_file": "hr_bench_4k/snapshot/hr_bench_4k.parquet"
+    },
+    {
+      "benchmark": "hr_bench_4k",
+      "metadata": {
+        "_source_manifest_index": 235,
+        "answer": "A",
+        "category": "single",
+        "cycle_category": 0,
+        "index": 152,
+        "raw_id": "152",
+        "row_index": 152
+      },
+      "population_id": "hr_bench_4k_800",
+      "sample_id": "hr_bench_4k_800/hr_bench_4k_snapshot_hr_bench_4k_parquet/152_000152",
+      "source_file": "hr_bench_4k/snapshot/hr_bench_4k.parquet"
+    },
+    {
+      "benchmark": "hr_bench_4k",
+      "metadata": {
+        "_source_manifest_index": 236,
+        "answer": "B",
+        "category": "single",
+        "cycle_category": 1,
+        "index": 501,
+        "raw_id": "501",
+        "row_index": 501
+      },
+      "population_id": "hr_bench_4k_800",
+      "sample_id": "hr_bench_4k_800/hr_bench_4k_snapshot_hr_bench_4k_parquet/501_000501",
+      "source_file": "hr_bench_4k/snapshot/hr_bench_4k.parquet"
+    },
+    {
+      "benchmark": "hr_bench_4k",
+      "metadata": {
+        "_source_manifest_index": 238,
+        "answer": "D",
+        "category": "single",
+        "cycle_category": 3,
+        "index": 175,
+        "raw_id": "175",
+        "row_index": 175
+      },
+      "population_id": "hr_bench_4k_800",
+      "sample_id": "hr_bench_4k_800/hr_bench_4k_snapshot_hr_bench_4k_parquet/175_000175",
+      "source_file": "hr_bench_4k/snapshot/hr_bench_4k.parquet"
+    },
+    {
+      "benchmark": "hr_bench_4k",
+      "metadata": {
+        "_source_manifest_index": 241,
+        "answer": "C",
+        "category": "cross",
+        "cycle_category": 2,
+        "index": 594,
+        "raw_id": "594",
+        "row_index": 594
+      },
+      "population_id": "hr_bench_4k_800",
+      "sample_id": "hr_bench_4k_800/hr_bench_4k_snapshot_hr_bench_4k_parquet/594_000594",
+      "source_file": "hr_bench_4k/snapshot/hr_bench_4k.parquet"
+    },
+    {
+      "benchmark": "hr_bench_4k",
+      "metadata": {
+        "_source_manifest_index": 243,
+        "answer": "A",
+        "category": "single",
+        "cycle_category": 0,
+        "index": 500,
+        "raw_id": "500",
+        "row_index": 500
+      },
+      "population_id": "hr_bench_4k_800",
+      "sample_id": "hr_bench_4k_800/hr_bench_4k_snapshot_hr_bench_4k_parquet/500_000500",
+      "source_file": "hr_bench_4k/snapshot/hr_bench_4k.parquet"
+    },
+    {
+      "benchmark": "hr_bench_4k",
+      "metadata": {
+        "_source_manifest_index": 245,
+        "answer": "C",
+        "category": "single",
+        "cycle_category": 2,
+        "index": 278,
+        "raw_id": "278",
+        "row_index": 278
+      },
+      "population_id": "hr_bench_4k_800",
+      "sample_id": "hr_bench_4k_800/hr_bench_4k_snapshot_hr_bench_4k_parquet/278_000278",
+      "source_file": "hr_bench_4k/snapshot/hr_bench_4k.parquet"
+    },
+    {
+      "benchmark": "hr_bench_4k",
+      "metadata": {
+        "_source_manifest_index": 247,
+        "answer": "A",
+        "category": "cross",
+        "cycle_category": 0,
+        "index": 112,
+        "raw_id": "112",
+        "row_index": 112
+      },
+      "population_id": "hr_bench_4k_800",
+      "sample_id": "hr_bench_4k_800/hr_bench_4k_snapshot_hr_bench_4k_parquet/112_000112",
+      "source_file": "hr_bench_4k/snapshot/hr_bench_4k.parquet"
+    },
+    {
+      "benchmark": "hr_bench_4k",
+      "metadata": {
+        "_source_manifest_index": 248,
+        "answer": "B",
+        "category": "cross",
+        "cycle_category": 1,
+        "index": 653,
+        "raw_id": "653",
+        "row_index": 653
+      },
+      "population_id": "hr_bench_4k_800",
+      "sample_id": "hr_bench_4k_800/hr_bench_4k_snapshot_hr_bench_4k_parquet/653_000653",
+      "source_file": "hr_bench_4k/snapshot/hr_bench_4k.parquet"
+    },
+    {
+      "benchmark": "hr_bench_4k",
+      "metadata": {
+        "_source_manifest_index": 262,
+        "answer": "D",
+        "category": "single",
+        "cycle_category": 3,
+        "index": 187,
+        "raw_id": "187",
+        "row_index": 187
+      },
+      "population_id": "hr_bench_4k_800",
+      "sample_id": "hr_bench_4k_800/hr_bench_4k_snapshot_hr_bench_4k_parquet/187_000187",
+      "source_file": "hr_bench_4k/snapshot/hr_bench_4k.parquet"
+    },
+    {
+      "benchmark": "hr_bench_4k",
+      "metadata": {
+        "_source_manifest_index": 264,
+        "answer": "B",
+        "category": "cross",
+        "cycle_category": 1,
+        "index": 429,
+        "raw_id": "429",
+        "row_index": 429
+      },
+      "population_id": "hr_bench_4k_800",
+      "sample_id": "hr_bench_4k_800/hr_bench_4k_snapshot_hr_bench_4k_parquet/429_000429",
+      "source_file": "hr_bench_4k/snapshot/hr_bench_4k.parquet"
+    },
+    {
+      "benchmark": "hr_bench_4k",
+      "metadata": {
+        "_source_manifest_index": 267,
+        "answer": "A",
+        "category": "single",
+        "cycle_category": 0,
+        "index": 748,
+        "raw_id": "748",
+        "row_index": 748
+      },
+      "population_id": "hr_bench_4k_800",
+      "sample_id": "hr_bench_4k_800/hr_bench_4k_snapshot_hr_bench_4k_parquet/748_000748",
+      "source_file": "hr_bench_4k/snapshot/hr_bench_4k.parquet"
+    },
+    {
+      "benchmark": "hr_bench_4k",
+      "metadata": {
+        "_source_manifest_index": 268,
+        "answer": "B",
+        "category": "single",
+        "cycle_category": 1,
+        "index": 489,
+        "raw_id": "489",
+        "row_index": 489
+      },
+      "population_id": "hr_bench_4k_800",
+      "sample_id": "hr_bench_4k_800/hr_bench_4k_snapshot_hr_bench_4k_parquet/489_000489",
+      "source_file": "hr_bench_4k/snapshot/hr_bench_4k.parquet"
+    },
+    {
+      "benchmark": "hr_bench_4k",
+      "metadata": {
+        "_source_manifest_index": 269,
+        "answer": "C",
+        "category": "single",
+        "cycle_category": 2,
+        "index": 42,
+        "raw_id": "42",
+        "row_index": 42
+      },
+      "population_id": "hr_bench_4k_800",
+      "sample_id": "hr_bench_4k_800/hr_bench_4k_snapshot_hr_bench_4k_parquet/42_000042",
+      "source_file": "hr_bench_4k/snapshot/hr_bench_4k.parquet"
+    },
+    {
+      "benchmark": "hr_bench_4k",
+      "metadata": {
+        "_source_manifest_index": 271,
+        "answer": "A",
+        "category": "cross",
+        "cycle_category": 0,
+        "index": 408,
+        "raw_id": "408",
+        "row_index": 408
+      },
+      "population_id": "hr_bench_4k_800",
+      "sample_id": "hr_bench_4k_800/hr_bench_4k_snapshot_hr_bench_4k_parquet/408_000408",
+      "source_file": "hr_bench_4k/snapshot/hr_bench_4k.parquet"
+    },
+    {
+      "benchmark": "hr_bench_4k",
+      "metadata": {
+        "_source_manifest_index": 273,
+        "answer": "C",
+        "category": "cross",
+        "cycle_category": 2,
+        "index": 638,
+        "raw_id": "638",
+        "row_index": 638
+      },
+      "population_id": "hr_bench_4k_800",
+      "sample_id": "hr_bench_4k_800/hr_bench_4k_snapshot_hr_bench_4k_parquet/638_000638",
+      "source_file": "hr_bench_4k/snapshot/hr_bench_4k.parquet"
+    },
+    {
+      "benchmark": "hr_bench_4k",
+      "metadata": {
+        "_source_manifest_index": 281,
+        "answer": "C",
+        "category": "cross",
+        "cycle_category": 2,
+        "index": 126,
+        "raw_id": "126",
+        "row_index": 126
+      },
+      "population_id": "hr_bench_4k_800",
+      "sample_id": "hr_bench_4k_800/hr_bench_4k_snapshot_hr_bench_4k_parquet/126_000126",
+      "source_file": "hr_bench_4k/snapshot/hr_bench_4k.parquet"
+    },
+    {
+      "benchmark": "hr_bench_4k",
+      "metadata": {
+        "_source_manifest_index": 283,
+        "answer": "A",
+        "category": "single",
+        "cycle_category": 0,
+        "index": 44,
+        "raw_id": "44",
+        "row_index": 44
+      },
+      "population_id": "hr_bench_4k_800",
+      "sample_id": "hr_bench_4k_800/hr_bench_4k_snapshot_hr_bench_4k_parquet/44_000044",
+      "source_file": "hr_bench_4k/snapshot/hr_bench_4k.parquet"
+    },
+    {
+      "benchmark": "hr_bench_4k",
+      "metadata": {
+        "_source_manifest_index": 288,
+        "answer": "B",
+        "category": "cross",
+        "cycle_category": 1,
+        "index": 401,
+        "raw_id": "401",
+        "row_index": 401
+      },
+      "population_id": "hr_bench_4k_800",
+      "sample_id": "hr_bench_4k_800/hr_bench_4k_snapshot_hr_bench_4k_parquet/401_000401",
+      "source_file": "hr_bench_4k/snapshot/hr_bench_4k.parquet"
+    },
+    {
+      "benchmark": "hr_bench_4k",
+      "metadata": {
+        "_source_manifest_index": 290,
+        "answer": "D",
+        "category": "cross",
+        "cycle_category": 3,
+        "index": 687,
+        "raw_id": "687",
+        "row_index": 687
+      },
+      "population_id": "hr_bench_4k_800",
+      "sample_id": "hr_bench_4k_800/hr_bench_4k_snapshot_hr_bench_4k_parquet/687_000687",
+      "source_file": "hr_bench_4k/snapshot/hr_bench_4k.parquet"
+    },
+    {
+      "benchmark": "hr_bench_4k",
+      "metadata": {
+        "_source_manifest_index": 296,
+        "answer": "B",
+        "category": "cross",
+        "cycle_category": 1,
+        "index": 309,
+        "raw_id": "309",
+        "row_index": 309
+      },
+      "population_id": "hr_bench_4k_800",
+      "sample_id": "hr_bench_4k_800/hr_bench_4k_snapshot_hr_bench_4k_parquet/309_000309",
+      "source_file": "hr_bench_4k/snapshot/hr_bench_4k.parquet"
+    },
+    {
+      "benchmark": "hr_bench_4k",
+      "metadata": {
+        "_source_manifest_index": 305,
+        "answer": "C",
+        "category": "cross",
+        "cycle_category": 2,
+        "index": 86,
+        "raw_id": "86",
+        "row_index": 86
+      },
+      "population_id": "hr_bench_4k_800",
+      "sample_id": "hr_bench_4k_800/hr_bench_4k_snapshot_hr_bench_4k_parquet/86_000086",
+      "source_file": "hr_bench_4k/snapshot/hr_bench_4k.parquet"
+    },
+    {
+      "benchmark": "hr_bench_4k",
+      "metadata": {
+        "_source_manifest_index": 310,
+        "answer": "D",
+        "category": "single",
+        "cycle_category": 3,
+        "index": 191,
+        "raw_id": "191",
+        "row_index": 191
+      },
+      "population_id": "hr_bench_4k_800",
+      "sample_id": "hr_bench_4k_800/hr_bench_4k_snapshot_hr_bench_4k_parquet/191_000191",
+      "source_file": "hr_bench_4k/snapshot/hr_bench_4k.parquet"
+    },
+    {
+      "benchmark": "hr_bench_4k",
+      "metadata": {
+        "_source_manifest_index": 313,
+        "answer": "C",
+        "category": "cross",
+        "cycle_category": 2,
+        "index": 622,
+        "raw_id": "622",
+        "row_index": 622
+      },
+      "population_id": "hr_bench_4k_800",
+      "sample_id": "hr_bench_4k_800/hr_bench_4k_snapshot_hr_bench_4k_parquet/622_000622",
+      "source_file": "hr_bench_4k/snapshot/hr_bench_4k.parquet"
+    },
+    {
+      "benchmark": "hr_bench_4k",
+      "metadata": {
+        "_source_manifest_index": 319,
+        "answer": "A",
+        "category": "cross",
+        "cycle_category": 0,
+        "index": 312,
+        "raw_id": "312",
+        "row_index": 312
+      },
+      "population_id": "hr_bench_4k_800",
+      "sample_id": "hr_bench_4k_800/hr_bench_4k_snapshot_hr_bench_4k_parquet/312_000312",
+      "source_file": "hr_bench_4k/snapshot/hr_bench_4k.parquet"
+    },
+    {
+      "benchmark": "hr_bench_4k",
+      "metadata": {
+        "_source_manifest_index": 330,
+        "answer": "D",
+        "category": "cross",
+        "cycle_category": 3,
+        "index": 663,
+        "raw_id": "663",
+        "row_index": 663
+      },
+      "population_id": "hr_bench_4k_800",
+      "sample_id": "hr_bench_4k_800/hr_bench_4k_snapshot_hr_bench_4k_parquet/663_000663",
+      "source_file": "hr_bench_4k/snapshot/hr_bench_4k.parquet"
+    },
+    {
+      "benchmark": "hr_bench_4k",
+      "metadata": {
+        "_source_manifest_index": 335,
+        "answer": "A",
+        "category": "cross",
+        "cycle_category": 0,
+        "index": 616,
+        "raw_id": "616",
+        "row_index": 616
+      },
+      "population_id": "hr_bench_4k_800",
+      "sample_id": "hr_bench_4k_800/hr_bench_4k_snapshot_hr_bench_4k_parquet/616_000616",
+      "source_file": "hr_bench_4k/snapshot/hr_bench_4k.parquet"
+    },
+    {
+      "benchmark": "hr_bench_4k",
+      "metadata": {
+        "_source_manifest_index": 338,
+        "answer": "D",
+        "category": "cross",
+        "cycle_category": 3,
+        "index": 427,
+        "raw_id": "427",
+        "row_index": 427
+      },
+      "population_id": "hr_bench_4k_800",
+      "sample_id": "hr_bench_4k_800/hr_bench_4k_snapshot_hr_bench_4k_parquet/427_000427",
+      "source_file": "hr_bench_4k/snapshot/hr_bench_4k.parquet"
+    },
+    {
+      "benchmark": "hr_bench_4k",
+      "metadata": {
+        "_source_manifest_index": 339,
+        "answer": "A",
+        "category": "single",
+        "cycle_category": 0,
+        "index": 512,
+        "raw_id": "512",
+        "row_index": 512
+      },
+      "population_id": "hr_bench_4k_800",
+      "sample_id": "hr_bench_4k_800/hr_bench_4k_snapshot_hr_bench_4k_parquet/512_000512",
+      "source_file": "hr_bench_4k/snapshot/hr_bench_4k.parquet"
+    },
+    {
+      "benchmark": "hr_bench_4k",
+      "metadata": {
+        "_source_manifest_index": 341,
+        "answer": "C",
+        "category": "single",
+        "cycle_category": 2,
+        "index": 262,
+        "raw_id": "262",
+        "row_index": 262
+      },
+      "population_id": "hr_bench_4k_800",
+      "sample_id": "hr_bench_4k_800/hr_bench_4k_snapshot_hr_bench_4k_parquet/262_000262",
+      "source_file": "hr_bench_4k/snapshot/hr_bench_4k.parquet"
+    },
+    {
+      "benchmark": "hr_bench_4k",
+      "metadata": {
+        "_source_manifest_index": 345,
+        "answer": "C",
+        "category": "cross",
+        "cycle_category": 2,
+        "index": 398,
+        "raw_id": "398",
+        "row_index": 398
+      },
+      "population_id": "hr_bench_4k_800",
+      "sample_id": "hr_bench_4k_800/hr_bench_4k_snapshot_hr_bench_4k_parquet/398_000398",
+      "source_file": "hr_bench_4k/snapshot/hr_bench_4k.parquet"
+    },
+    {
+      "benchmark": "hr_bench_4k",
+      "metadata": {
+        "_source_manifest_index": 347,
+        "answer": "A",
+        "category": "single",
+        "cycle_category": 0,
+        "index": 524,
+        "raw_id": "524",
+        "row_index": 524
+      },
+      "population_id": "hr_bench_4k_800",
+      "sample_id": "hr_bench_4k_800/hr_bench_4k_snapshot_hr_bench_4k_parquet/524_000524",
+      "source_file": "hr_bench_4k/snapshot/hr_bench_4k.parquet"
+    },
+    {
+      "benchmark": "hr_bench_4k",
+      "metadata": {
+        "_source_manifest_index": 351,
+        "answer": "A",
+        "category": "cross",
+        "cycle_category": 0,
+        "index": 784,
+        "raw_id": "784",
+        "row_index": 784
+      },
+      "population_id": "hr_bench_4k_800",
+      "sample_id": "hr_bench_4k_800/hr_bench_4k_snapshot_hr_bench_4k_parquet/784_000784",
+      "source_file": "hr_bench_4k/snapshot/hr_bench_4k.parquet"
+    },
+    {
+      "benchmark": "hr_bench_4k",
+      "metadata": {
+        "_source_manifest_index": 354,
+        "answer": "D",
+        "category": "cross",
+        "cycle_category": 3,
+        "index": 399,
+        "raw_id": "399",
+        "row_index": 399
+      },
+      "population_id": "hr_bench_4k_800",
+      "sample_id": "hr_bench_4k_800/hr_bench_4k_snapshot_hr_bench_4k_parquet/399_000399",
+      "source_file": "hr_bench_4k/snapshot/hr_bench_4k.parquet"
+    },
+    {
+      "benchmark": "hr_bench_4k",
+      "metadata": {
+        "_source_manifest_index": 357,
+        "answer": "C",
+        "category": "single",
+        "cycle_category": 2,
+        "index": 66,
+        "raw_id": "66",
+        "row_index": 66
+      },
+      "population_id": "hr_bench_4k_800",
+      "sample_id": "hr_bench_4k_800/hr_bench_4k_snapshot_hr_bench_4k_parquet/66_000066",
+      "source_file": "hr_bench_4k/snapshot/hr_bench_4k.parquet"
+    },
+    {
+      "benchmark": "hr_bench_4k",
+      "metadata": {
+        "_source_manifest_index": 365,
+        "answer": "C",
+        "category": "single",
+        "cycle_category": 2,
+        "index": 518,
+        "raw_id": "518",
+        "row_index": 518
+      },
+      "population_id": "hr_bench_4k_800",
+      "sample_id": "hr_bench_4k_800/hr_bench_4k_snapshot_hr_bench_4k_parquet/518_000518",
+      "source_file": "hr_bench_4k/snapshot/hr_bench_4k.parquet"
+    },
+    {
+      "benchmark": "hr_bench_4k",
+      "metadata": {
+        "_source_manifest_index": 371,
+        "answer": "A",
+        "category": "single",
+        "cycle_category": 0,
+        "index": 316,
+        "raw_id": "316",
+        "row_index": 316
+      },
+      "population_id": "hr_bench_4k_800",
+      "sample_id": "hr_bench_4k_800/hr_bench_4k_snapshot_hr_bench_4k_parquet/316_000316",
+      "source_file": "hr_bench_4k/snapshot/hr_bench_4k.parquet"
+    },
+    {
+      "benchmark": "hr_bench_4k",
+      "metadata": {
+        "_source_manifest_index": 374,
+        "answer": "D",
+        "category": "single",
+        "cycle_category": 3,
+        "index": 239,
+        "raw_id": "239",
+        "row_index": 239
+      },
+      "population_id": "hr_bench_4k_800",
+      "sample_id": "hr_bench_4k_800/hr_bench_4k_snapshot_hr_bench_4k_parquet/239_000239",
+      "source_file": "hr_bench_4k/snapshot/hr_bench_4k.parquet"
+    },
+    {
+      "benchmark": "hr_bench_4k",
+      "metadata": {
+        "_source_manifest_index": 377,
+        "answer": "C",
+        "category": "cross",
+        "cycle_category": 2,
+        "index": 586,
+        "raw_id": "586",
+        "row_index": 586
+      },
+      "population_id": "hr_bench_4k_800",
+      "sample_id": "hr_bench_4k_800/hr_bench_4k_snapshot_hr_bench_4k_parquet/586_000586",
+      "source_file": "hr_bench_4k/snapshot/hr_bench_4k.parquet"
+    },
+    {
+      "benchmark": "hr_bench_4k",
+      "metadata": {
+        "_source_manifest_index": 384,
+        "answer": "B",
+        "category": "cross",
+        "cycle_category": 1,
+        "index": 621,
+        "raw_id": "621",
+        "row_index": 621
+      },
+      "population_id": "hr_bench_4k_800",
+      "sample_id": "hr_bench_4k_800/hr_bench_4k_snapshot_hr_bench_4k_parquet/621_000621",
+      "source_file": "hr_bench_4k/snapshot/hr_bench_4k.parquet"
+    },
+    {
+      "benchmark": "hr_bench_4k",
+      "metadata": {
+        "_source_manifest_index": 386,
+        "answer": "D",
+        "category": "cross",
+        "cycle_category": 3,
+        "index": 739,
+        "raw_id": "739",
+        "row_index": 739
+      },
+      "population_id": "hr_bench_4k_800",
+      "sample_id": "hr_bench_4k_800/hr_bench_4k_snapshot_hr_bench_4k_parquet/739_000739",
+      "source_file": "hr_bench_4k/snapshot/hr_bench_4k.parquet"
+    },
+    {
+      "benchmark": "hr_bench_4k",
+      "metadata": {
+        "_source_manifest_index": 388,
+        "answer": "B",
+        "category": "single",
+        "cycle_category": 1,
+        "index": 105,
+        "raw_id": "105",
+        "row_index": 105
+      },
+      "population_id": "hr_bench_4k_800",
+      "sample_id": "hr_bench_4k_800/hr_bench_4k_snapshot_hr_bench_4k_parquet/105_000105",
+      "source_file": "hr_bench_4k/snapshot/hr_bench_4k.parquet"
+    },
+    {
+      "benchmark": "hr_bench_4k",
+      "metadata": {
+        "_source_manifest_index": 389,
+        "answer": "C",
+        "category": "single",
+        "cycle_category": 2,
+        "index": 254,
+        "raw_id": "254",
+        "row_index": 254
+      },
+      "population_id": "hr_bench_4k_800",
+      "sample_id": "hr_bench_4k_800/hr_bench_4k_snapshot_hr_bench_4k_parquet/254_000254",
+      "source_file": "hr_bench_4k/snapshot/hr_bench_4k.parquet"
+    },
+    {
+      "benchmark": "blink",
+      "metadata": {
+        "_source_manifest_index": 408,
+        "answer": "(D)",
+        "idx": "val_Functional_Correspondence_107",
+        "raw_id": "val_Functional_Correspondence_107",
+        "row_index": 106,
+        "sub_task": "Functional_Correspondence"
+      },
+      "population_id": "blink_val_all_subtasks_1901",
+      "sample_id": "blink_val_all_subtasks_1901/blink_snapshot_Functional_Correspondence_val_00000_of_00001_parquet/val_Functional_Correspondence_107_000106",
+      "source_file": "blink/snapshot/Functional_Correspondence/val-00000-of-00001.parquet"
+    },
+    {
+      "benchmark": "blink",
+      "metadata": {
+        "_source_manifest_index": 418,
+        "answer": "(B)",
+        "idx": "val_Visual_Similarity_21",
+        "raw_id": "val_Visual_Similarity_21",
+        "row_index": 20,
+        "sub_task": "Visual_Similarity"
+      },
+      "population_id": "blink_val_all_subtasks_1901",
+      "sample_id": "blink_val_all_subtasks_1901/blink_snapshot_Visual_Similarity_val_00000_of_00001_parquet/val_Visual_Similarity_21_000020",
+      "source_file": "blink/snapshot/Visual_Similarity/val-00000-of-00001.parquet"
+    },
+    {
+      "benchmark": "blink",
+      "metadata": {
+        "_source_manifest_index": 434,
+        "answer": "(D)",
+        "idx": "val_Counting_1",
+        "raw_id": "val_Counting_1",
+        "row_index": 0,
+        "sub_task": "Counting"
+      },
+      "population_id": "blink_val_all_subtasks_1901",
+      "sample_id": "blink_val_all_subtasks_1901/blink_snapshot_Counting_val_00000_of_00001_parquet/val_Counting_1_000000",
+      "source_file": "blink/snapshot/Counting/val-00000-of-00001.parquet"
+    },
+    {
+      "benchmark": "blink",
+      "metadata": {
+        "_source_manifest_index": 440,
+        "answer": "(B)",
+        "idx": "val_Object_Localization_60",
+        "raw_id": "val_Object_Localization_60",
+        "row_index": 59,
+        "sub_task": "Object_Localization"
+      },
+      "population_id": "blink_val_all_subtasks_1901",
+      "sample_id": "blink_val_all_subtasks_1901/blink_snapshot_Object_Localization_val_00000_of_00001_parquet/val_Object_Localization_60_000059",
+      "source_file": "blink/snapshot/Object_Localization/val-00000-of-00001.parquet"
+    },
+    {
+      "benchmark": "blink",
+      "metadata": {
+        "_source_manifest_index": 450,
+        "answer": "(A)",
+        "idx": "val_Functional_Correspondence_12",
+        "raw_id": "val_Functional_Correspondence_12",
+        "row_index": 11,
+        "sub_task": "Functional_Correspondence"
+      },
+      "population_id": "blink_val_all_subtasks_1901",
+      "sample_id": "blink_val_all_subtasks_1901/blink_snapshot_Functional_Correspondence_val_00000_of_00001_parquet/val_Functional_Correspondence_12_000011",
+      "source_file": "blink/snapshot/Functional_Correspondence/val-00000-of-00001.parquet"
+    },
+    {
+      "benchmark": "blink",
+      "metadata": {
+        "_source_manifest_index": 456,
+        "answer": "C",
+        "idx": "val_Relative_Reflectance_58",
+        "raw_id": "val_Relative_Reflectance_58",
+        "row_index": 57,
+        "sub_task": "Relative_Reflectance"
+      },
+      "population_id": "blink_val_all_subtasks_1901",
+      "sample_id": "blink_val_all_subtasks_1901/blink_snapshot_Relative_Reflectance_val_00000_of_00001_parquet/val_Relative_Reflectance_58_000057",
+      "source_file": "blink/snapshot/Relative_Reflectance/val-00000-of-00001.parquet"
+    },
+    {
+      "benchmark": "blink",
+      "metadata": {
+        "_source_manifest_index": 462,
+        "answer": "(C)",
+        "idx": "val_Counting_92",
+        "raw_id": "val_Counting_92",
+        "row_index": 91,
+        "sub_task": "Counting"
+      },
+      "population_id": "blink_val_all_subtasks_1901",
+      "sample_id": "blink_val_all_subtasks_1901/blink_snapshot_Counting_val_00000_of_00001_parquet/val_Counting_92_000091",
+      "source_file": "blink/snapshot/Counting/val-00000-of-00001.parquet"
+    },
+    {
+      "benchmark": "blink",
+      "metadata": {
+        "_source_manifest_index": 468,
+        "answer": "(B)",
+        "idx": "val_Object_Localization_57",
+        "raw_id": "val_Object_Localization_57",
+        "row_index": 56,
+        "sub_task": "Object_Localization"
+      },
+      "population_id": "blink_val_all_subtasks_1901",
+      "sample_id": "blink_val_all_subtasks_1901/blink_snapshot_Object_Localization_val_00000_of_00001_parquet/val_Object_Localization_57_000056",
+      "source_file": "blink/snapshot/Object_Localization/val-00000-of-00001.parquet"
+    },
+    {
+      "benchmark": "blink",
+      "metadata": {
+        "_source_manifest_index": 469,
+        "answer": "(A)",
+        "idx": "val_Relative_Depth_54",
+        "raw_id": "val_Relative_Depth_54",
+        "row_index": 53,
+        "sub_task": "Relative_Depth"
+      },
+      "population_id": "blink_val_all_subtasks_1901",
+      "sample_id": "blink_val_all_subtasks_1901/blink_snapshot_Relative_Depth_val_00000_of_00001_parquet/val_Relative_Depth_54_000053",
+      "source_file": "blink/snapshot/Relative_Depth/val-00000-of-00001.parquet"
+    },
+    {
+      "benchmark": "blink",
+      "metadata": {
+        "_source_manifest_index": 476,
+        "answer": "(A)",
+        "idx": "val_Counting_82",
+        "raw_id": "val_Counting_82",
+        "row_index": 81,
+        "sub_task": "Counting"
+      },
+      "population_id": "blink_val_all_subtasks_1901",
+      "sample_id": "blink_val_all_subtasks_1901/blink_snapshot_Counting_val_00000_of_00001_parquet/val_Counting_82_000081",
+      "source_file": "blink/snapshot/Counting/val-00000-of-00001.parquet"
+    },
+    {
+      "benchmark": "blink",
+      "metadata": {
+        "_source_manifest_index": 490,
+        "answer": "(B)",
+        "idx": "val_Counting_77",
+        "raw_id": "val_Counting_77",
+        "row_index": 76,
+        "sub_task": "Counting"
+      },
+      "population_id": "blink_val_all_subtasks_1901",
+      "sample_id": "blink_val_all_subtasks_1901/blink_snapshot_Counting_val_00000_of_00001_parquet/val_Counting_77_000076",
+      "source_file": "blink/snapshot/Counting/val-00000-of-00001.parquet"
+    },
+    {
+      "benchmark": "blink",
+      "metadata": {
+        "_source_manifest_index": 491,
+        "answer": "(B)",
+        "idx": "val_Forensic_Detection_73",
+        "raw_id": "val_Forensic_Detection_73",
+        "row_index": 72,
+        "sub_task": "Forensic_Detection"
+      },
+      "population_id": "blink_val_all_subtasks_1901",
+      "sample_id": "blink_val_all_subtasks_1901/blink_snapshot_Forensic_Detection_val_00000_of_00001_parquet/val_Forensic_Detection_73_000072",
+      "source_file": "blink/snapshot/Forensic_Detection/val-00000-of-00001.parquet"
+    },
+    {
+      "benchmark": "blink",
+      "metadata": {
+        "_source_manifest_index": 495,
+        "answer": "(A)",
+        "idx": "val_Multi-view_Reasoning_127",
+        "raw_id": "val_Multi-view_Reasoning_127",
+        "row_index": 126,
+        "sub_task": "Multi-view_Reasoning"
+      },
+      "population_id": "blink_val_all_subtasks_1901",
+      "sample_id": "blink_val_all_subtasks_1901/blink_snapshot_Multi_view_Reasoning_val_00000_of_00001_parquet/val_Multi_view_Reasoning_127_000126",
+      "source_file": "blink/snapshot/Multi-view_Reasoning/val-00000-of-00001.parquet"
+    },
+    {
+      "benchmark": "blink",
+      "metadata": {
+        "_source_manifest_index": 514,
+        "answer": "(B)",
+        "idx": "val_Spatial_Relation_115",
+        "raw_id": "val_Spatial_Relation_115",
+        "row_index": 114,
+        "sub_task": "Spatial_Relation"
+      },
+      "population_id": "blink_val_all_subtasks_1901",
+      "sample_id": "blink_val_all_subtasks_1901/blink_snapshot_Spatial_Relation_val_00000_of_00001_parquet/val_Spatial_Relation_115_000114",
+      "source_file": "blink/snapshot/Spatial_Relation/val-00000-of-00001.parquet"
+    },
+    {
+      "benchmark": "blink",
+      "metadata": {
+        "_source_manifest_index": 540,
+        "answer": "C",
+        "idx": "val_Relative_Reflectance_16",
+        "raw_id": "val_Relative_Reflectance_16",
+        "row_index": 15,
+        "sub_task": "Relative_Reflectance"
+      },
+      "population_id": "blink_val_all_subtasks_1901",
+      "sample_id": "blink_val_all_subtasks_1901/blink_snapshot_Relative_Reflectance_val_00000_of_00001_parquet/val_Relative_Reflectance_16_000015",
+      "source_file": "blink/snapshot/Relative_Reflectance/val-00000-of-00001.parquet"
+    },
+    {
+      "benchmark": "blink",
+      "metadata": {
+        "_source_manifest_index": 544,
+        "answer": "(A)",
+        "idx": "val_Visual_Similarity_124",
+        "raw_id": "val_Visual_Similarity_124",
+        "row_index": 123,
+        "sub_task": "Visual_Similarity"
+      },
+      "population_id": "blink_val_all_subtasks_1901",
+      "sample_id": "blink_val_all_subtasks_1901/blink_snapshot_Visual_Similarity_val_00000_of_00001_parquet/val_Visual_Similarity_124_000123",
+      "source_file": "blink/snapshot/Visual_Similarity/val-00000-of-00001.parquet"
+    },
+    {
+      "benchmark": "blink",
+      "metadata": {
+        "_source_manifest_index": 546,
+        "answer": "(D)",
+        "idx": "val_Counting_85",
+        "raw_id": "val_Counting_85",
+        "row_index": 84,
+        "sub_task": "Counting"
+      },
+      "population_id": "blink_val_all_subtasks_1901",
+      "sample_id": "blink_val_all_subtasks_1901/blink_snapshot_Counting_val_00000_of_00001_parquet/val_Counting_85_000084",
+      "source_file": "blink/snapshot/Counting/val-00000-of-00001.parquet"
+    },
+    {
+      "benchmark": "blink",
+      "metadata": {
+        "_source_manifest_index": 553,
+        "answer": "(B)",
+        "idx": "val_Relative_Depth_75",
+        "raw_id": "val_Relative_Depth_75",
+        "row_index": 74,
+        "sub_task": "Relative_Depth"
+      },
+      "population_id": "blink_val_all_subtasks_1901",
+      "sample_id": "blink_val_all_subtasks_1901/blink_snapshot_Relative_Depth_val_00000_of_00001_parquet/val_Relative_Depth_75_000074",
+      "source_file": "blink/snapshot/Relative_Depth/val-00000-of-00001.parquet"
+    },
+    {
+      "benchmark": "blink",
+      "metadata": {
+        "_source_manifest_index": 560,
+        "answer": "(C)",
+        "idx": "val_Counting_71",
+        "raw_id": "val_Counting_71",
+        "row_index": 70,
+        "sub_task": "Counting"
+      },
+      "population_id": "blink_val_all_subtasks_1901",
+      "sample_id": "blink_val_all_subtasks_1901/blink_snapshot_Counting_val_00000_of_00001_parquet/val_Counting_71_000070",
+      "source_file": "blink/snapshot/Counting/val-00000-of-00001.parquet"
+    },
+    {
+      "benchmark": "blink",
+      "metadata": {
+        "_source_manifest_index": 563,
+        "answer": "(B)",
+        "idx": "val_IQ_Test_60",
+        "raw_id": "val_IQ_Test_60",
+        "row_index": 59,
+        "sub_task": "IQ_Test"
+      },
+      "population_id": "blink_val_all_subtasks_1901",
+      "sample_id": "blink_val_all_subtasks_1901/blink_snapshot_IQ_Test_val_00000_of_00001_parquet/val_IQ_Test_60_000059",
+      "source_file": "blink/snapshot/IQ_Test/val-00000-of-00001.parquet"
+    },
+    {
+      "benchmark": "blink",
+      "metadata": {
+        "_source_manifest_index": 573,
+        "answer": "(B)",
+        "idx": "val_Art_Style_85",
+        "raw_id": "val_Art_Style_85",
+        "row_index": 84,
+        "sub_task": "Art_Style"
+      },
+      "population_id": "blink_val_all_subtasks_1901",
+      "sample_id": "blink_val_all_subtasks_1901/blink_snapshot_Art_Style_val_00000_of_00001_parquet/val_Art_Style_85_000084",
+      "source_file": "blink/snapshot/Art_Style/val-00000-of-00001.parquet"
+    },
+    {
+      "benchmark": "blink",
+      "metadata": {
+        "_source_manifest_index": 591,
+        "answer": "(A)",
+        "idx": "val_IQ_Test_25",
+        "raw_id": "val_IQ_Test_25",
+        "row_index": 24,
+        "sub_task": "IQ_Test"
+      },
+      "population_id": "blink_val_all_subtasks_1901",
+      "sample_id": "blink_val_all_subtasks_1901/blink_snapshot_IQ_Test_val_00000_of_00001_parquet/val_IQ_Test_25_000024",
+      "source_file": "blink/snapshot/IQ_Test/val-00000-of-00001.parquet"
+    },
+    {
+      "benchmark": "blink",
+      "metadata": {
+        "_source_manifest_index": 597,
+        "answer": "(A)",
+        "idx": "val_Semantic_Correspondence_37",
+        "raw_id": "val_Semantic_Correspondence_37",
+        "row_index": 36,
+        "sub_task": "Semantic_Correspondence"
+      },
+      "population_id": "blink_val_all_subtasks_1901",
+      "sample_id": "blink_val_all_subtasks_1901/blink_snapshot_Semantic_Correspondence_val_00000_of_00001_parquet/val_Semantic_Correspondence_37_000036",
+      "source_file": "blink/snapshot/Semantic_Correspondence/val-00000-of-00001.parquet"
+    },
+    {
+      "benchmark": "blink",
+      "metadata": {
+        "_source_manifest_index": 607,
+        "answer": "(B)",
+        "idx": "val_Multi-view_Reasoning_54",
+        "raw_id": "val_Multi-view_Reasoning_54",
+        "row_index": 53,
+        "sub_task": "Multi-view_Reasoning"
+      },
+      "population_id": "blink_val_all_subtasks_1901",
+      "sample_id": "blink_val_all_subtasks_1901/blink_snapshot_Multi_view_Reasoning_val_00000_of_00001_parquet/val_Multi_view_Reasoning_54_000053",
+      "source_file": "blink/snapshot/Multi-view_Reasoning/val-00000-of-00001.parquet"
+    },
+    {
+      "benchmark": "blink",
+      "metadata": {
+        "_source_manifest_index": 609,
+        "answer": "(B)",
+        "idx": "val_Relative_Depth_104",
+        "raw_id": "val_Relative_Depth_104",
+        "row_index": 103,
+        "sub_task": "Relative_Depth"
+      },
+      "population_id": "blink_val_all_subtasks_1901",
+      "sample_id": "blink_val_all_subtasks_1901/blink_snapshot_Relative_Depth_val_00000_of_00001_parquet/val_Relative_Depth_104_000103",
+      "source_file": "blink/snapshot/Relative_Depth/val-00000-of-00001.parquet"
+    },
+    {
+      "benchmark": "blink",
+      "metadata": {
+        "_source_manifest_index": 615,
+        "answer": "(A)",
+        "idx": "val_Art_Style_53",
+        "raw_id": "val_Art_Style_53",
+        "row_index": 52,
+        "sub_task": "Art_Style"
+      },
+      "population_id": "blink_val_all_subtasks_1901",
+      "sample_id": "blink_val_all_subtasks_1901/blink_snapshot_Art_Style_val_00000_of_00001_parquet/val_Art_Style_53_000052",
+      "source_file": "blink/snapshot/Art_Style/val-00000-of-00001.parquet"
+    },
+    {
+      "benchmark": "blink",
+      "metadata": {
+        "_source_manifest_index": 616,
+        "answer": "(D)",
+        "idx": "val_Counting_55",
+        "raw_id": "val_Counting_55",
+        "row_index": 54,
+        "sub_task": "Counting"
+      },
+      "population_id": "blink_val_all_subtasks_1901",
+      "sample_id": "blink_val_all_subtasks_1901/blink_snapshot_Counting_val_00000_of_00001_parquet/val_Counting_55_000054",
+      "source_file": "blink/snapshot/Counting/val-00000-of-00001.parquet"
+    },
+    {
+      "benchmark": "blink",
+      "metadata": {
+        "_source_manifest_index": 650,
+        "answer": "(A)",
+        "idx": "val_Object_Localization_65",
+        "raw_id": "val_Object_Localization_65",
+        "row_index": 64,
+        "sub_task": "Object_Localization"
+      },
+      "population_id": "blink_val_all_subtasks_1901",
+      "sample_id": "blink_val_all_subtasks_1901/blink_snapshot_Object_Localization_val_00000_of_00001_parquet/val_Object_Localization_65_000064",
+      "source_file": "blink/snapshot/Object_Localization/val-00000-of-00001.parquet"
+    },
+    {
+      "benchmark": "blink",
+      "metadata": {
+        "_source_manifest_index": 651,
+        "answer": "(A)",
+        "idx": "val_Relative_Depth_69",
+        "raw_id": "val_Relative_Depth_69",
+        "row_index": 68,
+        "sub_task": "Relative_Depth"
+      },
+      "population_id": "blink_val_all_subtasks_1901",
+      "sample_id": "blink_val_all_subtasks_1901/blink_snapshot_Relative_Depth_val_00000_of_00001_parquet/val_Relative_Depth_69_000068",
+      "source_file": "blink/snapshot/Relative_Depth/val-00000-of-00001.parquet"
+    },
+    {
+      "benchmark": "blink",
+      "metadata": {
+        "_source_manifest_index": 658,
+        "answer": "(A)",
+        "idx": "val_Counting_116",
+        "raw_id": "val_Counting_116",
+        "row_index": 115,
+        "sub_task": "Counting"
+      },
+      "population_id": "blink_val_all_subtasks_1901",
+      "sample_id": "blink_val_all_subtasks_1901/blink_snapshot_Counting_val_00000_of_00001_parquet/val_Counting_116_000115",
+      "source_file": "blink/snapshot/Counting/val-00000-of-00001.parquet"
+    },
+    {
+      "benchmark": "blink",
+      "metadata": {
+        "_source_manifest_index": 662,
+        "answer": "(B)",
+        "idx": "val_Jigsaw_27",
+        "raw_id": "val_Jigsaw_27",
+        "row_index": 26,
+        "sub_task": "Jigsaw"
+      },
+      "population_id": "blink_val_all_subtasks_1901",
+      "sample_id": "blink_val_all_subtasks_1901/blink_snapshot_Jigsaw_val_00000_of_00001_parquet/val_Jigsaw_27_000026",
+      "source_file": "blink/snapshot/Jigsaw/val-00000-of-00001.parquet"
+    },
+    {
+      "benchmark": "blink",
+      "metadata": {
+        "_source_manifest_index": 665,
+        "answer": "(A)",
+        "idx": "val_Relative_Depth_34",
+        "raw_id": "val_Relative_Depth_34",
+        "row_index": 33,
+        "sub_task": "Relative_Depth"
+      },
+      "population_id": "blink_val_all_subtasks_1901",
+      "sample_id": "blink_val_all_subtasks_1901/blink_snapshot_Relative_Depth_val_00000_of_00001_parquet/val_Relative_Depth_34_000033",
+      "source_file": "blink/snapshot/Relative_Depth/val-00000-of-00001.parquet"
+    },
+    {
+      "benchmark": "blink",
+      "metadata": {
+        "_source_manifest_index": 674,
+        "answer": "(A)",
+        "idx": "val_Functional_Correspondence_80",
+        "raw_id": "val_Functional_Correspondence_80",
+        "row_index": 79,
+        "sub_task": "Functional_Correspondence"
+      },
+      "population_id": "blink_val_all_subtasks_1901",
+      "sample_id": "blink_val_all_subtasks_1901/blink_snapshot_Functional_Correspondence_val_00000_of_00001_parquet/val_Functional_Correspondence_80_000079",
+      "source_file": "blink/snapshot/Functional_Correspondence/val-00000-of-00001.parquet"
+    },
+    {
+      "benchmark": "blink",
+      "metadata": {
+        "_source_manifest_index": 678,
+        "answer": "(A)",
+        "idx": "val_Object_Localization_63",
+        "raw_id": "val_Object_Localization_63",
+        "row_index": 62,
+        "sub_task": "Object_Localization"
+      },
+      "population_id": "blink_val_all_subtasks_1901",
+      "sample_id": "blink_val_all_subtasks_1901/blink_snapshot_Object_Localization_val_00000_of_00001_parquet/val_Object_Localization_63_000062",
+      "source_file": "blink/snapshot/Object_Localization/val-00000-of-00001.parquet"
+    },
+    {
+      "benchmark": "blink",
+      "metadata": {
+        "_source_manifest_index": 679,
+        "answer": "(B)",
+        "idx": "val_Relative_Depth_70",
+        "raw_id": "val_Relative_Depth_70",
+        "row_index": 69,
+        "sub_task": "Relative_Depth"
+      },
+      "population_id": "blink_val_all_subtasks_1901",
+      "sample_id": "blink_val_all_subtasks_1901/blink_snapshot_Relative_Depth_val_00000_of_00001_parquet/val_Relative_Depth_70_000069",
+      "source_file": "blink/snapshot/Relative_Depth/val-00000-of-00001.parquet"
+    },
+    {
+      "benchmark": "blink",
+      "metadata": {
+        "_source_manifest_index": 681,
+        "answer": "(B)",
+        "idx": "val_Semantic_Correspondence_131",
+        "raw_id": "val_Semantic_Correspondence_131",
+        "row_index": 130,
+        "sub_task": "Semantic_Correspondence"
+      },
+      "population_id": "blink_val_all_subtasks_1901",
+      "sample_id": "blink_val_all_subtasks_1901/blink_snapshot_Semantic_Correspondence_val_00000_of_00001_parquet/val_Semantic_Correspondence_131_000130",
+      "source_file": "blink/snapshot/Semantic_Correspondence/val-00000-of-00001.parquet"
+    },
+    {
+      "benchmark": "blink",
+      "metadata": {
+        "_source_manifest_index": 685,
+        "answer": "(B)",
+        "idx": "val_Art_Style_111",
+        "raw_id": "val_Art_Style_111",
+        "row_index": 110,
+        "sub_task": "Art_Style"
+      },
+      "population_id": "blink_val_all_subtasks_1901",
+      "sample_id": "blink_val_all_subtasks_1901/blink_snapshot_Art_Style_val_00000_of_00001_parquet/val_Art_Style_111_000110",
+      "source_file": "blink/snapshot/Art_Style/val-00000-of-00001.parquet"
+    },
+    {
+      "benchmark": "blink",
+      "metadata": {
+        "_source_manifest_index": 687,
+        "answer": "(B)",
+        "idx": "val_Forensic_Detection_4",
+        "raw_id": "val_Forensic_Detection_4",
+        "row_index": 3,
+        "sub_task": "Forensic_Detection"
+      },
+      "population_id": "blink_val_all_subtasks_1901",
+      "sample_id": "blink_val_all_subtasks_1901/blink_snapshot_Forensic_Detection_val_00000_of_00001_parquet/val_Forensic_Detection_4_000003",
+      "source_file": "blink/snapshot/Forensic_Detection/val-00000-of-00001.parquet"
+    },
+    {
+      "benchmark": "blink",
+      "metadata": {
+        "_source_manifest_index": 701,
+        "answer": "(C)",
+        "idx": "val_Forensic_Detection_129",
+        "raw_id": "val_Forensic_Detection_129",
+        "row_index": 128,
+        "sub_task": "Forensic_Detection"
+      },
+      "population_id": "blink_val_all_subtasks_1901",
+      "sample_id": "blink_val_all_subtasks_1901/blink_snapshot_Forensic_Detection_val_00000_of_00001_parquet/val_Forensic_Detection_129_000128",
+      "source_file": "blink/snapshot/Forensic_Detection/val-00000-of-00001.parquet"
+    },
+    {
+      "benchmark": "blink",
+      "metadata": {
+        "_source_manifest_index": 713,
+        "answer": "(A)",
+        "idx": "val_Art_Style_95",
+        "raw_id": "val_Art_Style_95",
+        "row_index": 94,
+        "sub_task": "Art_Style"
+      },
+      "population_id": "blink_val_all_subtasks_1901",
+      "sample_id": "blink_val_all_subtasks_1901/blink_snapshot_Art_Style_val_00000_of_00001_parquet/val_Art_Style_95_000094",
+      "source_file": "blink/snapshot/Art_Style/val-00000-of-00001.parquet"
+    },
+    {
+      "benchmark": "blink",
+      "metadata": {
+        "_source_manifest_index": 722,
+        "answer": "C",
+        "idx": "val_Relative_Reflectance_102",
+        "raw_id": "val_Relative_Reflectance_102",
+        "row_index": 101,
+        "sub_task": "Relative_Reflectance"
+      },
+      "population_id": "blink_val_all_subtasks_1901",
+      "sample_id": "blink_val_all_subtasks_1901/blink_snapshot_Relative_Reflectance_val_00000_of_00001_parquet/val_Relative_Reflectance_102_000101",
+      "source_file": "blink/snapshot/Relative_Reflectance/val-00000-of-00001.parquet"
+    },
+    {
+      "benchmark": "blink",
+      "metadata": {
+        "_source_manifest_index": 731,
+        "answer": "(C)",
+        "idx": "val_IQ_Test_130",
+        "raw_id": "val_IQ_Test_130",
+        "row_index": 129,
+        "sub_task": "IQ_Test"
+      },
+      "population_id": "blink_val_all_subtasks_1901",
+      "sample_id": "blink_val_all_subtasks_1901/blink_snapshot_IQ_Test_val_00000_of_00001_parquet/val_IQ_Test_130_000129",
+      "source_file": "blink/snapshot/IQ_Test/val-00000-of-00001.parquet"
+    },
+    {
+      "benchmark": "blink",
+      "metadata": {
+        "_source_manifest_index": 734,
+        "answer": "(A)",
+        "idx": "val_Object_Localization_111",
+        "raw_id": "val_Object_Localization_111",
+        "row_index": 110,
+        "sub_task": "Object_Localization"
+      },
+      "population_id": "blink_val_all_subtasks_1901",
+      "sample_id": "blink_val_all_subtasks_1901/blink_snapshot_Object_Localization_val_00000_of_00001_parquet/val_Object_Localization_111_000110",
+      "source_file": "blink/snapshot/Object_Localization/val-00000-of-00001.parquet"
+    },
+    {
+      "benchmark": "blink",
+      "metadata": {
+        "_source_manifest_index": 744,
+        "answer": "(C)",
+        "idx": "val_Functional_Correspondence_63",
+        "raw_id": "val_Functional_Correspondence_63",
+        "row_index": 62,
+        "sub_task": "Functional_Correspondence"
+      },
+      "population_id": "blink_val_all_subtasks_1901",
+      "sample_id": "blink_val_all_subtasks_1901/blink_snapshot_Functional_Correspondence_val_00000_of_00001_parquet/val_Functional_Correspondence_63_000062",
+      "source_file": "blink/snapshot/Functional_Correspondence/val-00000-of-00001.parquet"
+    },
+    {
+      "benchmark": "blink",
+      "metadata": {
+        "_source_manifest_index": 750,
+        "answer": "C",
+        "idx": "val_Relative_Reflectance_11",
+        "raw_id": "val_Relative_Reflectance_11",
+        "row_index": 10,
+        "sub_task": "Relative_Reflectance"
+      },
+      "population_id": "blink_val_all_subtasks_1901",
+      "sample_id": "blink_val_all_subtasks_1901/blink_snapshot_Relative_Reflectance_val_00000_of_00001_parquet/val_Relative_Reflectance_11_000010",
+      "source_file": "blink/snapshot/Relative_Reflectance/val-00000-of-00001.parquet"
+    },
+    {
+      "benchmark": "blink",
+      "metadata": {
+        "_source_manifest_index": 753,
+        "answer": "(C)",
+        "idx": "val_Visual_Correspondence_75",
+        "raw_id": "val_Visual_Correspondence_75",
+        "row_index": 74,
+        "sub_task": "Visual_Correspondence"
+      },
+      "population_id": "blink_val_all_subtasks_1901",
+      "sample_id": "blink_val_all_subtasks_1901/blink_snapshot_Visual_Correspondence_val_00000_of_00001_parquet/val_Visual_Correspondence_75_000074",
+      "source_file": "blink/snapshot/Visual_Correspondence/val-00000-of-00001.parquet"
+    },
+    {
+      "benchmark": "blink",
+      "metadata": {
+        "_source_manifest_index": 763,
+        "answer": "(A)",
+        "idx": "val_Relative_Depth_30",
+        "raw_id": "val_Relative_Depth_30",
+        "row_index": 29,
+        "sub_task": "Relative_Depth"
+      },
+      "population_id": "blink_val_all_subtasks_1901",
+      "sample_id": "blink_val_all_subtasks_1901/blink_snapshot_Relative_Depth_val_00000_of_00001_parquet/val_Relative_Depth_30_000029",
+      "source_file": "blink/snapshot/Relative_Depth/val-00000-of-00001.parquet"
+    },
+    {
+      "benchmark": "blink",
+      "metadata": {
+        "_source_manifest_index": 768,
+        "answer": "(A)",
+        "idx": "val_Visual_Similarity_114",
+        "raw_id": "val_Visual_Similarity_114",
+        "row_index": 113,
+        "sub_task": "Visual_Similarity"
+      },
+      "population_id": "blink_val_all_subtasks_1901",
+      "sample_id": "blink_val_all_subtasks_1901/blink_snapshot_Visual_Similarity_val_00000_of_00001_parquet/val_Visual_Similarity_114_000113",
+      "source_file": "blink/snapshot/Visual_Similarity/val-00000-of-00001.parquet"
+    },
+    {
+      "benchmark": "blink",
+      "metadata": {
+        "_source_manifest_index": 793,
+        "answer": "(B)",
+        "idx": "val_Semantic_Correspondence_88",
+        "raw_id": "val_Semantic_Correspondence_88",
+        "row_index": 87,
+        "sub_task": "Semantic_Correspondence"
+      },
+      "population_id": "blink_val_all_subtasks_1901",
+      "sample_id": "blink_val_all_subtasks_1901/blink_snapshot_Semantic_Correspondence_val_00000_of_00001_parquet/val_Semantic_Correspondence_88_000087",
+      "source_file": "blink/snapshot/Semantic_Correspondence/val-00000-of-00001.parquet"
+    },
+    {
+      "benchmark": "blink",
+      "metadata": {
+        "_source_manifest_index": 804,
+        "answer": "(A)",
+        "idx": "val_Object_Localization_105",
+        "raw_id": "val_Object_Localization_105",
+        "row_index": 104,
+        "sub_task": "Object_Localization"
+      },
+      "population_id": "blink_val_all_subtasks_1901",
+      "sample_id": "blink_val_all_subtasks_1901/blink_snapshot_Object_Localization_val_00000_of_00001_parquet/val_Object_Localization_105_000104",
+      "source_file": "blink/snapshot/Object_Localization/val-00000-of-00001.parquet"
+    },
+    {
+      "benchmark": "ocrbench_v2",
+      "metadata": {
+        "_source_manifest_index": 823,
+        "dataset_name": "M2E",
+        "id": "4739",
+        "raw_id": "4739",
+        "row_index": 2239,
+        "type": "formula recognition en"
+      },
+      "population_id": "ocrbench_v2_data_test_10000",
+      "sample_id": "ocrbench_v2_data_test_10000/ocrbench_v2_snapshot_data_test_00001_of_00004_parquet/4739_002239",
+      "source_file": "ocrbench_v2/snapshot/data/test-00001-of-00004.parquet"
+    },
+    {
+      "benchmark": "ocrbench_v2",
+      "metadata": {
+        "_source_manifest_index": 828,
+        "dataset_name": "POIE",
+        "id": "1243",
+        "raw_id": "1243",
+        "row_index": 1243,
+        "type": "key information extraction en"
+      },
+      "population_id": "ocrbench_v2_data_test_10000",
+      "sample_id": "ocrbench_v2_data_test_10000/ocrbench_v2_snapshot_data_test_00000_of_00004_parquet/1243_001243",
+      "source_file": "ocrbench_v2/snapshot/data/test-00000-of-00004.parquet"
+    },
+    {
+      "benchmark": "ocrbench_v2",
+      "metadata": {
+        "_source_manifest_index": 836,
+        "dataset_name": "totaltext",
+        "id": "8312",
+        "raw_id": "8312",
+        "row_index": 812,
+        "type": "text counting en"
+      },
+      "population_id": "ocrbench_v2_data_test_10000",
+      "sample_id": "ocrbench_v2_data_test_10000/ocrbench_v2_snapshot_data_test_00003_of_00004_parquet/8312_000812",
+      "source_file": "ocrbench_v2/snapshot/data/test-00003-of-00004.parquet"
+    },
+    {
+      "benchmark": "ocrbench_v2",
+      "metadata": {
+        "_source_manifest_index": 840,
+        "dataset_name": "ocrvqa",
+        "id": "9957",
+        "raw_id": "9957",
+        "row_index": 2457,
+        "type": "text translation cn"
+      },
+      "population_id": "ocrbench_v2_data_test_10000",
+      "sample_id": "ocrbench_v2_data_test_10000/ocrbench_v2_snapshot_data_test_00003_of_00004_parquet/9957_002457",
+      "source_file": "ocrbench_v2/snapshot/data/test-00003-of-00004.parquet"
+    },
+    {
+      "benchmark": "ocrbench_v2",
+      "metadata": {
+        "_source_manifest_index": 843,
+        "dataset_name": "textvqa",
+        "id": "1788",
+        "raw_id": "1788",
+        "row_index": 1788,
+        "type": "VQA with position en"
+      },
+      "population_id": "ocrbench_v2_data_test_10000",
+      "sample_id": "ocrbench_v2_data_test_10000/ocrbench_v2_snapshot_data_test_00000_of_00004_parquet/1788_001788",
+      "source_file": "ocrbench_v2/snapshot/data/test-00000-of-00004.parquet"
+    },
+    {
+      "benchmark": "ocrbench_v2",
+      "metadata": {
+        "_source_manifest_index": 854,
+        "dataset_name": "CDLA",
+        "id": "5713",
+        "raw_id": "5713",
+        "row_index": 713,
+        "type": "full-page OCR cn"
+      },
+      "population_id": "ocrbench_v2_data_test_10000",
+      "sample_id": "ocrbench_v2_data_test_10000/ocrbench_v2_snapshot_data_test_00002_of_00004_parquet/5713_000713",
+      "source_file": "ocrbench_v2/snapshot/data/test-00002-of-00004.parquet"
+    },
+    {
+      "benchmark": "ocrbench_v2",
+      "metadata": {
+        "_source_manifest_index": 861,
+        "dataset_name": "CMMU",
+        "id": "6606",
+        "raw_id": "6606",
+        "row_index": 1606,
+        "type": "reasoning VQA cn"
+      },
+      "population_id": "ocrbench_v2_data_test_10000",
+      "sample_id": "ocrbench_v2_data_test_10000/ocrbench_v2_snapshot_data_test_00002_of_00004_parquet/6606_001606",
+      "source_file": "ocrbench_v2/snapshot/data/test-00002-of-00004.parquet"
+    },
+    {
+      "benchmark": "ocrbench_v2",
+      "metadata": {
+        "_source_manifest_index": 868,
+        "dataset_name": "ORAND",
+        "id": "8921",
+        "raw_id": "8921",
+        "row_index": 1421,
+        "type": "text recognition en"
+      },
+      "population_id": "ocrbench_v2_data_test_10000",
+      "sample_id": "ocrbench_v2_data_test_10000/ocrbench_v2_snapshot_data_test_00003_of_00004_parquet/8921_001421",
+      "source_file": "ocrbench_v2/snapshot/data/test-00003-of-00004.parquet"
+    },
+    {
+      "benchmark": "ocrbench_v2",
+      "metadata": {
+        "_source_manifest_index": 873,
+        "dataset_name": "textvqa",
+        "id": "1641",
+        "raw_id": "1641",
+        "row_index": 1641,
+        "type": "VQA with position en"
+      },
+      "population_id": "ocrbench_v2_data_test_10000",
+      "sample_id": "ocrbench_v2_data_test_10000/ocrbench_v2_snapshot_data_test_00000_of_00004_parquet/1641_001641",
+      "source_file": "ocrbench_v2/snapshot/data/test-00000-of-00004.parquet"
+    },
+    {
+      "benchmark": "ocrbench_v2",
+      "metadata": {
+        "_source_manifest_index": 891,
+        "dataset_name": "CMMU",
+        "id": "6629",
+        "raw_id": "6629",
+        "row_index": 1629,
+        "type": "reasoning VQA cn"
+      },
+      "population_id": "ocrbench_v2_data_test_10000",
+      "sample_id": "ocrbench_v2_data_test_10000/ocrbench_v2_snapshot_data_test_00002_of_00004_parquet/6629_001629",
+      "source_file": "ocrbench_v2/snapshot/data/test-00002-of-00004.parquet"
+    },
+    {
+      "benchmark": "ocrbench_v2",
+      "metadata": {
+        "_source_manifest_index": 894,
+        "dataset_name": "Table_Parsing",
+        "id": "7647",
+        "raw_id": "7647",
+        "row_index": 147,
+        "type": "table parsing cn"
+      },
+      "population_id": "ocrbench_v2_data_test_10000",
+      "sample_id": "ocrbench_v2_data_test_10000/ocrbench_v2_snapshot_data_test_00003_of_00004_parquet/7647_000147",
+      "source_file": "ocrbench_v2/snapshot/data/test-00003-of-00004.parquet"
+    },
+    {
+      "benchmark": "ocrbench_v2",
+      "metadata": {
+        "_source_manifest_index": 897,
+        "dataset_name": "spotting_ctw1500",
+        "id": "8428",
+        "raw_id": "8428",
+        "row_index": 928,
+        "type": "text grounding en"
+      },
+      "population_id": "ocrbench_v2_data_test_10000",
+      "sample_id": "ocrbench_v2_data_test_10000/ocrbench_v2_snapshot_data_test_00003_of_00004_parquet/8428_000928",
+      "source_file": "ocrbench_v2/snapshot/data/test-00003-of-00004.parquet"
+    },
+    {
+      "benchmark": "ocrbench_v2",
+      "metadata": {
+        "_source_manifest_index": 912,
+        "dataset_name": "ZH_Formula",
+        "id": "4588",
+        "raw_id": "4588",
+        "row_index": 2088,
+        "type": "formula recognition cn"
+      },
+      "population_id": "ocrbench_v2_data_test_10000",
+      "sample_id": "ocrbench_v2_data_test_10000/ocrbench_v2_snapshot_data_test_00001_of_00004_parquet/4588_002088",
+      "source_file": "ocrbench_v2/snapshot/data/test-00001-of-00004.parquet"
+    },
+    {
+      "benchmark": "ocrbench_v2",
+      "metadata": {
+        "_source_manifest_index": 921,
+        "dataset_name": "CMMU",
+        "id": "6757",
+        "raw_id": "6757",
+        "row_index": 1757,
+        "type": "reasoning VQA cn"
+      },
+      "population_id": "ocrbench_v2_data_test_10000",
+      "sample_id": "ocrbench_v2_data_test_10000/ocrbench_v2_snapshot_data_test_00002_of_00004_parquet/6757_001757",
+      "source_file": "ocrbench_v2/snapshot/data/test-00002-of-00004.parquet"
+    },
+    {
+      "benchmark": "ocrbench_v2",
+      "metadata": {
+        "_source_manifest_index": 982,
+        "dataset_name": "DVQA",
+        "id": "6479",
+        "raw_id": "6479",
+        "row_index": 1479,
+        "type": "reasoning VQA en"
+      },
+      "population_id": "ocrbench_v2_data_test_10000",
+      "sample_id": "ocrbench_v2_data_test_10000/ocrbench_v2_snapshot_data_test_00002_of_00004_parquet/6479_001479",
+      "source_file": "ocrbench_v2/snapshot/data/test-00002-of-00004.parquet"
+    },
+    {
+      "benchmark": "ocrbench_v2",
+      "metadata": {
+        "_source_manifest_index": 1002,
+        "dataset_name": "ZH_Formula",
+        "id": "4521",
+        "raw_id": "4521",
+        "row_index": 2021,
+        "type": "formula recognition cn"
+      },
+      "population_id": "ocrbench_v2_data_test_10000",
+      "sample_id": "ocrbench_v2_data_test_10000/ocrbench_v2_snapshot_data_test_00001_of_00004_parquet/4521_002021",
+      "source_file": "ocrbench_v2/snapshot/data/test-00001-of-00004.parquet"
+    },
+    {
+      "benchmark": "ocrbench_v2",
+      "metadata": {
+        "_source_manifest_index": 1003,
+        "dataset_name": "Mini-CASIA-CSDB",
+        "id": "4891",
+        "raw_id": "4891",
+        "row_index": 2391,
+        "type": "formula recognition en"
+      },
+      "population_id": "ocrbench_v2_data_test_10000",
+      "sample_id": "ocrbench_v2_data_test_10000/ocrbench_v2_snapshot_data_test_00001_of_00004_parquet/4891_002391",
+      "source_file": "ocrbench_v2/snapshot/data/test-00001-of-00004.parquet"
+    },
+    {
+      "benchmark": "ocrbench_v2",
+      "metadata": {
+        "_source_manifest_index": 1004,
+        "dataset_name": "ReCTS",
+        "id": "5705",
+        "raw_id": "5705",
+        "row_index": 705,
+        "type": "full-page OCR cn"
+      },
+      "population_id": "ocrbench_v2_data_test_10000",
+      "sample_id": "ocrbench_v2_data_test_10000/ocrbench_v2_snapshot_data_test_00002_of_00004_parquet/5705_000705",
+      "source_file": "ocrbench_v2/snapshot/data/test-00002-of-00004.parquet"
+    },
+    {
+      "benchmark": "ocrbench_v2",
+      "metadata": {
+        "_source_manifest_index": 1007,
+        "dataset_name": "SCID",
+        "id": "615",
+        "raw_id": "615",
+        "row_index": 615,
+        "type": "key information extraction cn"
+      },
+      "population_id": "ocrbench_v2_data_test_10000",
+      "sample_id": "ocrbench_v2_data_test_10000/ocrbench_v2_snapshot_data_test_00000_of_00004_parquet/615_000615",
+      "source_file": "ocrbench_v2/snapshot/data/test-00000-of-00004.parquet"
+    },
+    {
+      "benchmark": "ocrbench_v2",
+      "metadata": {
+        "_source_manifest_index": 1018,
+        "dataset_name": "ORAND",
+        "id": "9020",
+        "raw_id": "9020",
+        "row_index": 1520,
+        "type": "text recognition en"
+      },
+      "population_id": "ocrbench_v2_data_test_10000",
+      "sample_id": "ocrbench_v2_data_test_10000/ocrbench_v2_snapshot_data_test_00003_of_00004_parquet/9020_001520",
+      "source_file": "ocrbench_v2/snapshot/data/test-00003-of-00004.parquet"
+    },
+    {
+      "benchmark": "ocrbench_v2",
+      "metadata": {
+        "_source_manifest_index": 1035,
+        "dataset_name": "spotting_HierText",
+        "id": "5976",
+        "raw_id": "5976",
+        "row_index": 976,
+        "type": "full-page OCR en"
+      },
+      "population_id": "ocrbench_v2_data_test_10000",
+      "sample_id": "ocrbench_v2_data_test_10000/ocrbench_v2_snapshot_data_test_00002_of_00004_parquet/5976_000976",
+      "source_file": "ocrbench_v2/snapshot/data/test-00002-of-00004.parquet"
+    },
+    {
+      "benchmark": "ocrbench_v2",
+      "metadata": {
+        "_source_manifest_index": 1041,
+        "dataset_name": "CMMU",
+        "id": "6917",
+        "raw_id": "6917",
+        "row_index": 1917,
+        "type": "reasoning VQA cn"
+      },
+      "population_id": "ocrbench_v2_data_test_10000",
+      "sample_id": "ocrbench_v2_data_test_10000/ocrbench_v2_snapshot_data_test_00002_of_00004_parquet/6917_001917",
+      "source_file": "ocrbench_v2/snapshot/data/test-00002-of-00004.parquet"
+    },
+    {
+      "benchmark": "ocrbench_v2",
+      "metadata": {
+        "_source_manifest_index": 1045,
+        "dataset_name": "MMTab",
+        "id": "7979",
+        "raw_id": "7979",
+        "row_index": 479,
+        "type": "table parsing en"
+      },
+      "population_id": "ocrbench_v2_data_test_10000",
+      "sample_id": "ocrbench_v2_data_test_10000/ocrbench_v2_snapshot_data_test_00003_of_00004_parquet/7979_000479",
+      "source_file": "ocrbench_v2/snapshot/data/test-00003-of-00004.parquet"
+    },
+    {
+      "benchmark": "ocrbench_v2",
+      "metadata": {
+        "_source_manifest_index": 1047,
+        "dataset_name": "spotting_cocotext",
+        "id": "8421",
+        "raw_id": "8421",
+        "row_index": 921,
+        "type": "text grounding en"
+      },
+      "population_id": "ocrbench_v2_data_test_10000",
+      "sample_id": "ocrbench_v2_data_test_10000/ocrbench_v2_snapshot_data_test_00003_of_00004_parquet/8421_000921",
+      "source_file": "ocrbench_v2/snapshot/data/test-00003-of-00004.parquet"
+    },
+    {
+      "benchmark": "ocrbench_v2",
+      "metadata": {
+        "_source_manifest_index": 1055,
+        "dataset_name": "ZH_DocVQA",
+        "id": "2310",
+        "raw_id": "2310",
+        "row_index": 2310,
+        "type": "cognition VQA cn"
+      },
+      "population_id": "ocrbench_v2_data_test_10000",
+      "sample_id": "ocrbench_v2_data_test_10000/ocrbench_v2_snapshot_data_test_00000_of_00004_parquet/2310_002310",
+      "source_file": "ocrbench_v2/snapshot/data/test-00000-of-00004.parquet"
+    },
+    {
+      "benchmark": "ocrbench_v2",
+      "metadata": {
+        "_source_manifest_index": 1084,
+        "dataset_name": "OneChart",
+        "id": "1903",
+        "raw_id": "1903",
+        "row_index": 1903,
+        "type": "chart parsing en"
+      },
+      "population_id": "ocrbench_v2_data_test_10000",
+      "sample_id": "ocrbench_v2_data_test_10000/ocrbench_v2_snapshot_data_test_00000_of_00004_parquet/1903_001903",
+      "source_file": "ocrbench_v2/snapshot/data/test-00000-of-00004.parquet"
+    },
+    {
+      "benchmark": "ocrbench_v2",
+      "metadata": {
+        "_source_manifest_index": 1085,
+        "dataset_name": "ZH_DocVQA",
+        "id": "2377",
+        "raw_id": "2377",
+        "row_index": 2377,
+        "type": "cognition VQA cn"
+      },
+      "population_id": "ocrbench_v2_data_test_10000",
+      "sample_id": "ocrbench_v2_data_test_10000/ocrbench_v2_snapshot_data_test_00000_of_00004_parquet/2377_002377",
+      "source_file": "ocrbench_v2/snapshot/data/test-00000-of-00004.parquet"
+    },
+    {
+      "benchmark": "ocrbench_v2",
+      "metadata": {
+        "_source_manifest_index": 1106,
+        "dataset_name": "IC13_857",
+        "id": "8220",
+        "raw_id": "8220",
+        "row_index": 720,
+        "type": "text counting en"
+      },
+      "population_id": "ocrbench_v2_data_test_10000",
+      "sample_id": "ocrbench_v2_data_test_10000/ocrbench_v2_snapshot_data_test_00003_of_00004_parquet/8220_000720",
+      "source_file": "ocrbench_v2/snapshot/data/test-00003-of-00004.parquet"
+    },
+    {
+      "benchmark": "ocrbench_v2",
+      "metadata": {
+        "_source_manifest_index": 1136,
+        "dataset_name": "IC13_857",
+        "id": "8230",
+        "raw_id": "8230",
+        "row_index": 730,
+        "type": "text counting en"
+      },
+      "population_id": "ocrbench_v2_data_test_10000",
+      "sample_id": "ocrbench_v2_data_test_10000/ocrbench_v2_snapshot_data_test_00003_of_00004_parquet/8230_000730",
+      "source_file": "ocrbench_v2/snapshot/data/test-00003-of-00004.parquet"
+    },
+    {
+      "benchmark": "ocrbench_v2",
+      "metadata": {
+        "_source_manifest_index": 1138,
+        "dataset_name": "IAM",
+        "id": "9312",
+        "raw_id": "9312",
+        "row_index": 1812,
+        "type": "text recognition en"
+      },
+      "population_id": "ocrbench_v2_data_test_10000",
+      "sample_id": "ocrbench_v2_data_test_10000/ocrbench_v2_snapshot_data_test_00003_of_00004_parquet/9312_001812",
+      "source_file": "ocrbench_v2/snapshot/data/test-00003-of-00004.parquet"
+    },
+    {
+      "benchmark": "ocrbench_v2",
+      "metadata": {
+        "_source_manifest_index": 1147,
+        "dataset_name": "AI2D",
+        "id": "3559",
+        "raw_id": "3559",
+        "row_index": 1059,
+        "type": "diagram QA en"
+      },
+      "population_id": "ocrbench_v2_data_test_10000",
+      "sample_id": "ocrbench_v2_data_test_10000/ocrbench_v2_snapshot_data_test_00001_of_00004_parquet/3559_001059",
+      "source_file": "ocrbench_v2/snapshot/data/test-00001-of-00004.parquet"
+    },
+    {
+      "benchmark": "ocrbench_v2",
+      "metadata": {
+        "_source_manifest_index": 1181,
+        "dataset_name": "spotting_ctw1500",
+        "id": "7107",
+        "raw_id": "7107",
+        "row_index": 2107,
+        "type": "fine-grained text recognition en"
+      },
+      "population_id": "ocrbench_v2_data_test_10000",
+      "sample_id": "ocrbench_v2_data_test_10000/ocrbench_v2_snapshot_data_test_00002_of_00004_parquet/7107_002107",
+      "source_file": "ocrbench_v2/snapshot/data/test-00002-of-00004.parquet"
+    },
+    {
+      "benchmark": "ocrbench_v2",
+      "metadata": {
+        "_source_manifest_index": 1197,
+        "dataset_name": "spotting_cocotext",
+        "id": "8517",
+        "raw_id": "8517",
+        "row_index": 1017,
+        "type": "text grounding en"
+      },
+      "population_id": "ocrbench_v2_data_test_10000",
+      "sample_id": "ocrbench_v2_data_test_10000/ocrbench_v2_snapshot_data_test_00003_of_00004_parquet/8517_001017",
+      "source_file": "ocrbench_v2/snapshot/data/test-00003-of-00004.parquet"
+    },
+    {
+      "benchmark": "ocrbench_v2",
+      "metadata": {
+        "_source_manifest_index": 1202,
+        "dataset_name": "ASCII art",
+        "id": "310",
+        "raw_id": "310",
+        "row_index": 310,
+        "type": "ASCII art classification en"
+      },
+      "population_id": "ocrbench_v2_data_test_10000",
+      "sample_id": "ocrbench_v2_data_test_10000/ocrbench_v2_snapshot_data_test_00000_of_00004_parquet/310_000310",
+      "source_file": "ocrbench_v2/snapshot/data/test-00000-of-00004.parquet"
+    },
+    {
+      "benchmark": "ocrbench_v2",
+      "metadata": {
+        "_source_manifest_index": 1229,
+        "dataset_name": "spotting_cocotext",
+        "id": "9483",
+        "raw_id": "9483",
+        "row_index": 1983,
+        "type": "text spotting en"
+      },
+      "population_id": "ocrbench_v2_data_test_10000",
+      "sample_id": "ocrbench_v2_data_test_10000/ocrbench_v2_snapshot_data_test_00003_of_00004_parquet/9483_001983",
+      "source_file": "ocrbench_v2/snapshot/data/test-00003-of-00004.parquet"
+    },
+    {
+      "benchmark": "ocrbench_v2",
+      "metadata": {
+        "_source_manifest_index": 1234,
+        "dataset_name": "OneChart",
+        "id": "2104",
+        "raw_id": "2104",
+        "row_index": 2104,
+        "type": "chart parsing en"
+      },
+      "population_id": "ocrbench_v2_data_test_10000",
+      "sample_id": "ocrbench_v2_data_test_10000/ocrbench_v2_snapshot_data_test_00000_of_00004_parquet/2104_002104",
+      "source_file": "ocrbench_v2/snapshot/data/test-00000-of-00004.parquet"
+    },
+    {
+      "benchmark": "ocrbench_v2",
+      "metadata": {
+        "_source_manifest_index": 1253,
+        "dataset_name": "mmmu_pro",
+        "id": "7447",
+        "raw_id": "7447",
+        "row_index": 2447,
+        "type": "science QA en"
+      },
+      "population_id": "ocrbench_v2_data_test_10000",
+      "sample_id": "ocrbench_v2_data_test_10000/ocrbench_v2_snapshot_data_test_00002_of_00004_parquet/7447_002447",
+      "source_file": "ocrbench_v2/snapshot/data/test-00002-of-00004.parquet"
+    },
+    {
+      "benchmark": "ocrbench_v2",
+      "metadata": {
+        "_source_manifest_index": 1264,
+        "dataset_name": "OneChart",
+        "id": "2235",
+        "raw_id": "2235",
+        "row_index": 2235,
+        "type": "chart parsing en"
+      },
+      "population_id": "ocrbench_v2_data_test_10000",
+      "sample_id": "ocrbench_v2_data_test_10000/ocrbench_v2_snapshot_data_test_00000_of_00004_parquet/2235_002235",
+      "source_file": "ocrbench_v2/snapshot/data/test-00000-of-00004.parquet"
+    },
+    {
+      "benchmark": "ocrbench_v2",
+      "metadata": {
+        "_source_manifest_index": 1268,
+        "dataset_name": "RVL-CDIP",
+        "id": "3627",
+        "raw_id": "3627",
+        "row_index": 1127,
+        "type": "document classification en"
+      },
+      "population_id": "ocrbench_v2_data_test_10000",
+      "sample_id": "ocrbench_v2_data_test_10000/ocrbench_v2_snapshot_data_test_00001_of_00004_parquet/3627_001127",
+      "source_file": "ocrbench_v2/snapshot/data/test-00001-of-00004.parquet"
+    },
+    {
+      "benchmark": "ocrbench_v2",
+      "metadata": {
+        "_source_manifest_index": 1279,
+        "dataset_name": "FUNSD",
+        "id": "1519",
+        "raw_id": "1519",
+        "row_index": 1519,
+        "type": "key information mapping en"
+      },
+      "population_id": "ocrbench_v2_data_test_10000",
+      "sample_id": "ocrbench_v2_data_test_10000/ocrbench_v2_snapshot_data_test_00000_of_00004_parquet/1519_001519",
+      "source_file": "ocrbench_v2/snapshot/data/test-00000-of-00004.parquet"
+    },
+    {
+      "benchmark": "ocrbench_v2",
+      "metadata": {
+        "_source_manifest_index": 1282,
+        "dataset_name": "publaynet",
+        "id": "6269",
+        "raw_id": "6269",
+        "row_index": 1269,
+        "type": "reasoning VQA en"
+      },
+      "population_id": "ocrbench_v2_data_test_10000",
+      "sample_id": "ocrbench_v2_data_test_10000/ocrbench_v2_snapshot_data_test_00002_of_00004_parquet/6269_001269",
+      "source_file": "ocrbench_v2/snapshot/data/test-00002-of-00004.parquet"
+    },
+    {
+      "benchmark": "ocrbench_v2",
+      "metadata": {
+        "_source_manifest_index": 1286,
+        "dataset_name": "IIIT5K",
+        "id": "8332",
+        "raw_id": "8332",
+        "row_index": 832,
+        "type": "text counting en"
+      },
+      "population_id": "ocrbench_v2_data_test_10000",
+      "sample_id": "ocrbench_v2_data_test_10000/ocrbench_v2_snapshot_data_test_00003_of_00004_parquet/8332_000832",
+      "source_file": "ocrbench_v2/snapshot/data/test-00003-of-00004.parquet"
+    },
+    {
+      "benchmark": "ocrbench_v2",
+      "metadata": {
+        "_source_manifest_index": 1293,
+        "dataset_name": "textvqa",
+        "id": "1846",
+        "raw_id": "1846",
+        "row_index": 1846,
+        "type": "VQA with position en"
+      },
+      "population_id": "ocrbench_v2_data_test_10000",
+      "sample_id": "ocrbench_v2_data_test_10000/ocrbench_v2_snapshot_data_test_00000_of_00004_parquet/1846_001846",
+      "source_file": "ocrbench_v2/snapshot/data/test-00000-of-00004.parquet"
+    },
+    {
+      "benchmark": "ocrbench_v2",
+      "metadata": {
+        "_source_manifest_index": 1297,
+        "dataset_name": "AI2D",
+        "id": "3494",
+        "raw_id": "3494",
+        "row_index": 994,
+        "type": "diagram QA en"
+      },
+      "population_id": "ocrbench_v2_data_test_10000",
+      "sample_id": "ocrbench_v2_data_test_10000/ocrbench_v2_snapshot_data_test_00001_of_00004_parquet/3494_000994",
+      "source_file": "ocrbench_v2/snapshot/data/test-00001-of-00004.parquet"
+    },
+    {
+      "benchmark": "ocrbench_v2",
+      "metadata": {
+        "_source_manifest_index": 1330,
+        "dataset_name": "DoTA",
+        "id": "4173",
+        "raw_id": "4173",
+        "row_index": 1673,
+        "type": "document parsing en"
+      },
+      "population_id": "ocrbench_v2_data_test_10000",
+      "sample_id": "ocrbench_v2_data_test_10000/ocrbench_v2_snapshot_data_test_00001_of_00004_parquet/4173_001673",
+      "source_file": "ocrbench_v2/snapshot/data/test-00001-of-00004.parquet"
+    },
+    {
+      "benchmark": "ocrbench_v2",
+      "metadata": {
+        "_source_manifest_index": 1332,
+        "dataset_name": "ZH_Formula",
+        "id": "4618",
+        "raw_id": "4618",
+        "row_index": 2118,
+        "type": "formula recognition cn"
+      },
+      "population_id": "ocrbench_v2_data_test_10000",
+      "sample_id": "ocrbench_v2_data_test_10000/ocrbench_v2_snapshot_data_test_00001_of_00004_parquet/4618_002118",
+      "source_file": "ocrbench_v2/snapshot/data/test-00001-of-00004.parquet"
+    },
+    {
+      "benchmark": "ocrbench_v2",
+      "metadata": {
+        "_source_manifest_index": 1349,
+        "dataset_name": "spotting_IC15",
+        "id": "9478",
+        "raw_id": "9478",
+        "row_index": 1978,
+        "type": "text spotting en"
+      },
+      "population_id": "ocrbench_v2_data_test_10000",
+      "sample_id": "ocrbench_v2_data_test_10000/ocrbench_v2_snapshot_data_test_00003_of_00004_parquet/9478_001978",
+      "source_file": "ocrbench_v2/snapshot/data/test-00003-of-00004.parquet"
+    },
+    {
+      "benchmark": "ocrbench_v2",
+      "metadata": {
+        "_source_manifest_index": 1358,
+        "dataset_name": "RVL-CDIP",
+        "id": "3671",
+        "raw_id": "3671",
+        "row_index": 1171,
+        "type": "document classification en"
+      },
+      "population_id": "ocrbench_v2_data_test_10000",
+      "sample_id": "ocrbench_v2_data_test_10000/ocrbench_v2_snapshot_data_test_00001_of_00004_parquet/3671_001171",
+      "source_file": "ocrbench_v2/snapshot/data/test-00001-of-00004.parquet"
+    },
+    {
+      "benchmark": "ocrbench_v2",
+      "metadata": {
+        "_source_manifest_index": 1368,
+        "dataset_name": "SROIE",
+        "id": "1174",
+        "raw_id": "1174",
+        "row_index": 1174,
+        "type": "key information extraction en"
+      },
+      "population_id": "ocrbench_v2_data_test_10000",
+      "sample_id": "ocrbench_v2_data_test_10000/ocrbench_v2_snapshot_data_test_00000_of_00004_parquet/1174_001174",
+      "source_file": "ocrbench_v2/snapshot/data/test-00000-of-00004.parquet"
+    },
+    {
+      "benchmark": "ocrbench_v2",
+      "metadata": {
+        "_source_manifest_index": 1406,
+        "dataset_name": "HierText",
+        "id": "8234",
+        "raw_id": "8234",
+        "row_index": 734,
+        "type": "text counting en"
+      },
+      "population_id": "ocrbench_v2_data_test_10000",
+      "sample_id": "ocrbench_v2_data_test_10000/ocrbench_v2_snapshot_data_test_00003_of_00004_parquet/8234_000734",
+      "source_file": "ocrbench_v2/snapshot/data/test-00003-of-00004.parquet"
+    },
+    {
+      "benchmark": "mmmu_pro",
+      "metadata": {
+        "_source_manifest_index": 1412,
+        "answer": "A",
+        "id": "validation_Agriculture_21",
+        "raw_id": "validation_Agriculture_21",
+        "row_index": 365,
+        "subject": "Agriculture"
+      },
+      "population_id": "mmmu_pro_standard10_test_1730",
+      "sample_id": "mmmu_pro_standard10_test_1730/mmmu_pro_snapshot_standard__10_options__test_00000_of_00002_parquet/validation_Agriculture_21_000365",
+      "source_file": "mmmu_pro/snapshot/standard (10 options)/test-00000-of-00002.parquet"
+    },
+    {
+      "benchmark": "mmmu_pro",
+      "metadata": {
+        "_source_manifest_index": 1413,
+        "answer": "B",
+        "id": "test_Architecture_and_Engineering_533",
+        "raw_id": "test_Architecture_and_Engineering_533",
+        "row_index": 223,
+        "subject": "Architecture_and_Engineering"
+      },
+      "population_id": "mmmu_pro_standard10_test_1730",
+      "sample_id": "mmmu_pro_standard10_test_1730/mmmu_pro_snapshot_standard__10_options__test_00000_of_00002_parquet/test_Architecture_and_Engineering_533_000223",
+      "source_file": "mmmu_pro/snapshot/standard (10 options)/test-00000-of-00002.parquet"
+    },
+    {
+      "benchmark": "mmmu_pro",
+      "metadata": {
+        "_source_manifest_index": 1425,
+        "answer": "I",
+        "id": "validation_Energy_and_Power_26",
+        "raw_id": "validation_Energy_and_Power_26",
+        "row_index": 809,
+        "subject": "Energy_and_Power"
+      },
+      "population_id": "mmmu_pro_standard10_test_1730",
+      "sample_id": "mmmu_pro_standard10_test_1730/mmmu_pro_snapshot_standard__10_options__test_00001_of_00002_parquet/validation_Energy_and_Power_26_000809",
+      "source_file": "mmmu_pro/snapshot/standard (10 options)/test-00001-of-00002.parquet"
+    },
+    {
+      "benchmark": "mmmu_pro",
+      "metadata": {
+        "_source_manifest_index": 1427,
+        "answer": "C",
+        "id": "test_Geography_555",
+        "raw_id": "test_Geography_555",
+        "row_index": 286,
+        "subject": "Geography"
+      },
+      "population_id": "mmmu_pro_standard10_test_1730",
+      "sample_id": "mmmu_pro_standard10_test_1730/mmmu_pro_snapshot_standard__10_options__test_00001_of_00002_parquet/test_Geography_555_000286",
+      "source_file": "mmmu_pro/snapshot/standard (10 options)/test-00001-of-00002.parquet"
+    },
+    {
+      "benchmark": "mmmu_pro",
+      "metadata": {
+        "_source_manifest_index": 1433,
+        "answer": "F",
+        "id": "test_Math_122",
+        "raw_id": "test_Math_122",
+        "row_index": 291,
+        "subject": "Math"
+      },
+      "population_id": "mmmu_pro_standard10_test_1730",
+      "sample_id": "mmmu_pro_standard10_test_1730/mmmu_pro_snapshot_standard__10_options__test_00000_of_00002_parquet/test_Math_122_000291",
+      "source_file": "mmmu_pro/snapshot/standard (10 options)/test-00000-of-00002.parquet"
+    },
+    {
+      "benchmark": "mmmu_pro",
+      "metadata": {
+        "_source_manifest_index": 1441,
+        "answer": "F",
+        "id": "validation_Accounting_15",
+        "raw_id": "validation_Accounting_15",
+        "row_index": 751,
+        "subject": "Accounting"
+      },
+      "population_id": "mmmu_pro_standard10_test_1730",
+      "sample_id": "mmmu_pro_standard10_test_1730/mmmu_pro_snapshot_standard__10_options__test_00000_of_00002_parquet/validation_Accounting_15_000751",
+      "source_file": "mmmu_pro/snapshot/standard (10 options)/test-00000-of-00002.parquet"
+    },
+    {
+      "benchmark": "mmmu_pro",
+      "metadata": {
+        "_source_manifest_index": 1448,
+        "answer": "A",
+        "id": "test_Chemistry_560",
+        "raw_id": "test_Chemistry_560",
+        "row_index": 446,
+        "subject": "Chemistry"
+      },
+      "population_id": "mmmu_pro_standard10_test_1730",
+      "sample_id": "mmmu_pro_standard10_test_1730/mmmu_pro_snapshot_standard__10_options__test_00001_of_00002_parquet/test_Chemistry_560_000446",
+      "source_file": "mmmu_pro/snapshot/standard (10 options)/test-00001-of-00002.parquet"
+    },
+    {
+      "benchmark": "mmmu_pro",
+      "metadata": {
+        "_source_manifest_index": 1450,
+        "answer": "E",
+        "id": "test_Computer_Science_351",
+        "raw_id": "test_Computer_Science_351",
+        "row_index": 66,
+        "subject": "Computer_Science"
+      },
+      "population_id": "mmmu_pro_standard10_test_1730",
+      "sample_id": "mmmu_pro_standard10_test_1730/mmmu_pro_snapshot_standard__10_options__test_00000_of_00002_parquet/test_Computer_Science_351_000066",
+      "source_file": "mmmu_pro/snapshot/standard (10 options)/test-00000-of-00002.parquet"
+    },
+    {
+      "benchmark": "mmmu_pro",
+      "metadata": {
+        "_source_manifest_index": 1454,
+        "answer": "J",
+        "id": "validation_Electronics_20",
+        "raw_id": "validation_Electronics_20",
+        "row_index": 170,
+        "subject": "Electronics"
+      },
+      "population_id": "mmmu_pro_standard10_test_1730",
+      "sample_id": "mmmu_pro_standard10_test_1730/mmmu_pro_snapshot_standard__10_options__test_00000_of_00002_parquet/validation_Electronics_20_000170",
+      "source_file": "mmmu_pro/snapshot/standard (10 options)/test-00000-of-00002.parquet"
+    },
+    {
+      "benchmark": "mmmu_pro",
+      "metadata": {
+        "_source_manifest_index": 1459,
+        "answer": "H",
+        "id": "validation_Literature_26",
+        "raw_id": "validation_Literature_26",
+        "row_index": 674,
+        "subject": "Literature"
+      },
+      "population_id": "mmmu_pro_standard10_test_1730",
+      "sample_id": "mmmu_pro_standard10_test_1730/mmmu_pro_snapshot_standard__10_options__test_00000_of_00002_parquet/validation_Literature_26_000674",
+      "source_file": "mmmu_pro/snapshot/standard (10 options)/test-00000-of-00002.parquet"
+    },
+    {
+      "benchmark": "mmmu_pro",
+      "metadata": {
+        "_source_manifest_index": 1460,
+        "answer": "A",
+        "id": "test_Manage_80",
+        "raw_id": "test_Manage_80",
+        "row_index": 395,
+        "subject": "Manage"
+      },
+      "population_id": "mmmu_pro_standard10_test_1730",
+      "sample_id": "mmmu_pro_standard10_test_1730/mmmu_pro_snapshot_standard__10_options__test_00001_of_00002_parquet/test_Manage_80_000395",
+      "source_file": "mmmu_pro/snapshot/standard (10 options)/test-00001-of-00002.parquet"
+    },
+    {
+      "benchmark": "mmmu_pro",
+      "metadata": {
+        "_source_manifest_index": 1471,
+        "answer": "B",
+        "id": "test_Accounting_279",
+        "raw_id": "test_Accounting_279",
+        "row_index": 128,
+        "subject": "Accounting"
+      },
+      "population_id": "mmmu_pro_standard10_test_1730",
+      "sample_id": "mmmu_pro_standard10_test_1730/mmmu_pro_snapshot_standard__10_options__test_00000_of_00002_parquet/test_Accounting_279_000128",
+      "source_file": "mmmu_pro/snapshot/standard (10 options)/test-00000-of-00002.parquet"
+    },
+    {
+      "benchmark": "mmmu_pro",
+      "metadata": {
+        "_source_manifest_index": 1472,
+        "answer": "J",
+        "id": "test_Agriculture_195",
+        "raw_id": "test_Agriculture_195",
+        "row_index": 5,
+        "subject": "Agriculture"
+      },
+      "population_id": "mmmu_pro_standard10_test_1730",
+      "sample_id": "mmmu_pro_standard10_test_1730/mmmu_pro_snapshot_standard__10_options__test_00000_of_00002_parquet/test_Agriculture_195_000005",
+      "source_file": "mmmu_pro/snapshot/standard (10 options)/test-00000-of-00002.parquet"
+    },
+    {
+      "benchmark": "mmmu_pro",
+      "metadata": {
+        "_source_manifest_index": 1473,
+        "answer": "F",
+        "id": "test_Architecture_and_Engineering_492",
+        "raw_id": "test_Architecture_and_Engineering_492",
+        "row_index": 394,
+        "subject": "Architecture_and_Engineering"
+      },
+      "population_id": "mmmu_pro_standard10_test_1730",
+      "sample_id": "mmmu_pro_standard10_test_1730/mmmu_pro_snapshot_standard__10_options__test_00000_of_00002_parquet/test_Architecture_and_Engineering_492_000394",
+      "source_file": "mmmu_pro/snapshot/standard (10 options)/test-00000-of-00002.parquet"
+    },
+    {
+      "benchmark": "mmmu_pro",
+      "metadata": {
+        "_source_manifest_index": 1474,
+        "answer": "A",
+        "id": "validation_Art_18",
+        "raw_id": "validation_Art_18",
+        "row_index": 748,
+        "subject": "Art"
+      },
+      "population_id": "mmmu_pro_standard10_test_1730",
+      "sample_id": "mmmu_pro_standard10_test_1730/mmmu_pro_snapshot_standard__10_options__test_00001_of_00002_parquet/validation_Art_18_000748",
+      "source_file": "mmmu_pro/snapshot/standard (10 options)/test-00001-of-00002.parquet"
+    },
+    {
+      "benchmark": "mmmu_pro",
+      "metadata": {
+        "_source_manifest_index": 1476,
+        "answer": "I",
+        "id": "validation_Basic_Medical_Science_1",
+        "raw_id": "validation_Basic_Medical_Science_1",
+        "row_index": 74,
+        "subject": "Basic_Medical_Science"
+      },
+      "population_id": "mmmu_pro_standard10_test_1730",
+      "sample_id": "mmmu_pro_standard10_test_1730/mmmu_pro_snapshot_standard__10_options__test_00000_of_00002_parquet/validation_Basic_Medical_Science_1_000074",
+      "source_file": "mmmu_pro/snapshot/standard (10 options)/test-00000-of-00002.parquet"
+    },
+    {
+      "benchmark": "mmmu_pro",
+      "metadata": {
+        "_source_manifest_index": 1486,
+        "answer": "C",
+        "id": "test_Finance_27",
+        "raw_id": "test_Finance_27",
+        "row_index": 731,
+        "subject": "Finance"
+      },
+      "population_id": "mmmu_pro_standard10_test_1730",
+      "sample_id": "mmmu_pro_standard10_test_1730/mmmu_pro_snapshot_standard__10_options__test_00001_of_00002_parquet/test_Finance_27_000731",
+      "source_file": "mmmu_pro/snapshot/standard (10 options)/test-00001-of-00002.parquet"
+    },
+    {
+      "benchmark": "mmmu_pro",
+      "metadata": {
+        "_source_manifest_index": 1493,
+        "answer": "D",
+        "id": "validation_Math_26",
+        "raw_id": "validation_Math_26",
+        "row_index": 804,
+        "subject": "Math"
+      },
+      "population_id": "mmmu_pro_standard10_test_1730",
+      "sample_id": "mmmu_pro_standard10_test_1730/mmmu_pro_snapshot_standard__10_options__test_00001_of_00002_parquet/validation_Math_26_000804",
+      "source_file": "mmmu_pro/snapshot/standard (10 options)/test-00001-of-00002.parquet"
+    },
+    {
+      "benchmark": "mmmu_pro",
+      "metadata": {
+        "_source_manifest_index": 1507,
+        "answer": "G",
+        "id": "test_Biology_8",
+        "raw_id": "test_Biology_8",
+        "row_index": 675,
+        "subject": "Biology"
+      },
+      "population_id": "mmmu_pro_standard10_test_1730",
+      "sample_id": "mmmu_pro_standard10_test_1730/mmmu_pro_snapshot_standard__10_options__test_00000_of_00002_parquet/test_Biology_8_000675",
+      "source_file": "mmmu_pro/snapshot/standard (10 options)/test-00000-of-00002.parquet"
+    },
+    {
+      "benchmark": "mmmu_pro",
+      "metadata": {
+        "_source_manifest_index": 1510,
+        "answer": "E",
+        "id": "test_Computer_Science_367",
+        "raw_id": "test_Computer_Science_367",
+        "row_index": 567,
+        "subject": "Computer_Science"
+      },
+      "population_id": "mmmu_pro_standard10_test_1730",
+      "sample_id": "mmmu_pro_standard10_test_1730/mmmu_pro_snapshot_standard__10_options__test_00000_of_00002_parquet/test_Computer_Science_367_000567",
+      "source_file": "mmmu_pro/snapshot/standard (10 options)/test-00000-of-00002.parquet"
+    },
+    {
+      "benchmark": "mmmu_pro",
+      "metadata": {
+        "_source_manifest_index": 1521,
+        "answer": "F",
+        "id": "test_Marketing_61",
+        "raw_id": "test_Marketing_61",
+        "row_index": 393,
+        "subject": "Marketing"
+      },
+      "population_id": "mmmu_pro_standard10_test_1730",
+      "sample_id": "mmmu_pro_standard10_test_1730/mmmu_pro_snapshot_standard__10_options__test_00000_of_00002_parquet/test_Marketing_61_000393",
+      "source_file": "mmmu_pro/snapshot/standard (10 options)/test-00000-of-00002.parquet"
+    },
+    {
+      "benchmark": "mmmu_pro",
+      "metadata": {
+        "_source_manifest_index": 1526,
+        "answer": "D",
+        "id": "test_Pharmacy_426",
+        "raw_id": "test_Pharmacy_426",
+        "row_index": 621,
+        "subject": "Pharmacy"
+      },
+      "population_id": "mmmu_pro_standard10_test_1730",
+      "sample_id": "mmmu_pro_standard10_test_1730/mmmu_pro_snapshot_standard__10_options__test_00001_of_00002_parquet/test_Pharmacy_426_000621",
+      "source_file": "mmmu_pro/snapshot/standard (10 options)/test-00001-of-00002.parquet"
+    },
+    {
+      "benchmark": "mmmu_pro",
+      "metadata": {
+        "_source_manifest_index": 1538,
+        "answer": "C",
+        "id": "test_Chemistry_40",
+        "raw_id": "test_Chemistry_40",
+        "row_index": 504,
+        "subject": "Chemistry"
+      },
+      "population_id": "mmmu_pro_standard10_test_1730",
+      "sample_id": "mmmu_pro_standard10_test_1730/mmmu_pro_snapshot_standard__10_options__test_00001_of_00002_parquet/test_Chemistry_40_000504",
+      "source_file": "mmmu_pro/snapshot/standard (10 options)/test-00001-of-00002.parquet"
+    },
+    {
+      "benchmark": "mmmu_pro",
+      "metadata": {
+        "_source_manifest_index": 1542,
+        "answer": "E",
+        "id": "validation_Diagnostics_and_Laboratory_Medicine_8",
+        "raw_id": "validation_Diagnostics_and_Laboratory_Medicine_8",
+        "row_index": 221,
+        "subject": "Diagnostics_and_Laboratory_Medicine"
+      },
+      "population_id": "mmmu_pro_standard10_test_1730",
+      "sample_id": "mmmu_pro_standard10_test_1730/mmmu_pro_snapshot_standard__10_options__test_00000_of_00002_parquet/validation_Diagnostics_and_Laboratory_Medicine_8_000221",
+      "source_file": "mmmu_pro/snapshot/standard (10 options)/test-00000-of-00002.parquet"
+    },
+    {
+      "benchmark": "mmmu_pro",
+      "metadata": {
+        "_source_manifest_index": 1543,
+        "answer": "I",
+        "id": "validation_Economics_28",
+        "raw_id": "validation_Economics_28",
+        "row_index": 43,
+        "subject": "Economics"
+      },
+      "population_id": "mmmu_pro_standard10_test_1730",
+      "sample_id": "mmmu_pro_standard10_test_1730/mmmu_pro_snapshot_standard__10_options__test_00000_of_00002_parquet/validation_Economics_28_000043",
+      "source_file": "mmmu_pro/snapshot/standard (10 options)/test-00000-of-00002.parquet"
+    },
+    {
+      "benchmark": "mmmu_pro",
+      "metadata": {
+        "_source_manifest_index": 1557,
+        "answer": "D",
+        "id": "validation_Physics_14",
+        "raw_id": "validation_Physics_14",
+        "row_index": 48,
+        "subject": "Physics"
+      },
+      "population_id": "mmmu_pro_standard10_test_1730",
+      "sample_id": "mmmu_pro_standard10_test_1730/mmmu_pro_snapshot_standard__10_options__test_00000_of_00002_parquet/validation_Physics_14_000048",
+      "source_file": "mmmu_pro/snapshot/standard (10 options)/test-00000-of-00002.parquet"
+    },
+    {
+      "benchmark": "mmmu_pro",
+      "metadata": {
+        "_source_manifest_index": 1563,
+        "answer": "H",
+        "id": "validation_Architecture_and_Engineering_20",
+        "raw_id": "validation_Architecture_and_Engineering_20",
+        "row_index": 691,
+        "subject": "Architecture_and_Engineering"
+      },
+      "population_id": "mmmu_pro_standard10_test_1730",
+      "sample_id": "mmmu_pro_standard10_test_1730/mmmu_pro_snapshot_standard__10_options__test_00000_of_00002_parquet/validation_Architecture_and_Engineering_20_000691",
+      "source_file": "mmmu_pro/snapshot/standard (10 options)/test-00000-of-00002.parquet"
+    },
+    {
+      "benchmark": "mmmu_pro",
+      "metadata": {
+        "_source_manifest_index": 1566,
+        "answer": "A",
+        "id": "test_Basic_Medical_Science_313",
+        "raw_id": "test_Basic_Medical_Science_313",
+        "row_index": 68,
+        "subject": "Basic_Medical_Science"
+      },
+      "population_id": "mmmu_pro_standard10_test_1730",
+      "sample_id": "mmmu_pro_standard10_test_1730/mmmu_pro_snapshot_standard__10_options__test_00000_of_00002_parquet/test_Basic_Medical_Science_313_000068",
+      "source_file": "mmmu_pro/snapshot/standard (10 options)/test-00000-of-00002.parquet"
+    },
+    {
+      "benchmark": "mmmu_pro",
+      "metadata": {
+        "_source_manifest_index": 1584,
+        "answer": "D",
+        "id": "test_Mechanical_Engineering_396",
+        "raw_id": "test_Mechanical_Engineering_396",
+        "row_index": 93,
+        "subject": "Mechanical_Engineering"
+      },
+      "population_id": "mmmu_pro_standard10_test_1730",
+      "sample_id": "mmmu_pro_standard10_test_1730/mmmu_pro_snapshot_standard__10_options__test_00001_of_00002_parquet/test_Mechanical_Engineering_396_000093",
+      "source_file": "mmmu_pro/snapshot/standard (10 options)/test-00001-of-00002.parquet"
+    },
+    {
+      "benchmark": "mmmu_pro",
+      "metadata": {
+        "_source_manifest_index": 1586,
+        "answer": "F",
+        "id": "test_Pharmacy_19",
+        "raw_id": "test_Pharmacy_19",
+        "row_index": 837,
+        "subject": "Pharmacy"
+      },
+      "population_id": "mmmu_pro_standard10_test_1730",
+      "sample_id": "mmmu_pro_standard10_test_1730/mmmu_pro_snapshot_standard__10_options__test_00000_of_00002_parquet/test_Pharmacy_19_000837",
+      "source_file": "mmmu_pro/snapshot/standard (10 options)/test-00000-of-00002.parquet"
+    },
+    {
+      "benchmark": "mmmu_pro",
+      "metadata": {
+        "_source_manifest_index": 1601,
+        "answer": "H",
+        "id": "validation_Design_19",
+        "raw_id": "validation_Design_19",
+        "row_index": 2,
+        "subject": "Design"
+      },
+      "population_id": "mmmu_pro_standard10_test_1730",
+      "sample_id": "mmmu_pro_standard10_test_1730/mmmu_pro_snapshot_standard__10_options__test_00000_of_00002_parquet/validation_Design_19_000002",
+      "source_file": "mmmu_pro/snapshot/standard (10 options)/test-00000-of-00002.parquet"
+    },
+    {
+      "benchmark": "mmmu_pro",
+      "metadata": {
+        "_source_manifest_index": 1603,
+        "answer": "C",
+        "id": "test_Economics_102",
+        "raw_id": "test_Economics_102",
+        "row_index": 792,
+        "subject": "Economics"
+      },
+      "population_id": "mmmu_pro_standard10_test_1730",
+      "sample_id": "mmmu_pro_standard10_test_1730/mmmu_pro_snapshot_standard__10_options__test_00000_of_00002_parquet/test_Economics_102_000792",
+      "source_file": "mmmu_pro/snapshot/standard (10 options)/test-00000-of-00002.parquet"
+    },
+    {
+      "benchmark": "mmmu_pro",
+      "metadata": {
+        "_source_manifest_index": 1609,
+        "answer": "E",
+        "id": "test_Literature_46",
+        "raw_id": "test_Literature_46",
+        "row_index": 272,
+        "subject": "Literature"
+      },
+      "population_id": "mmmu_pro_standard10_test_1730",
+      "sample_id": "mmmu_pro_standard10_test_1730/mmmu_pro_snapshot_standard__10_options__test_00000_of_00002_parquet/test_Literature_46_000272",
+      "source_file": "mmmu_pro/snapshot/standard (10 options)/test-00000-of-00002.parquet"
+    },
+    {
+      "benchmark": "mmmu_pro",
+      "metadata": {
+        "_source_manifest_index": 1613,
+        "answer": "F",
+        "id": "test_Math_75",
+        "raw_id": "test_Math_75",
+        "row_index": 74,
+        "subject": "Math"
+      },
+      "population_id": "mmmu_pro_standard10_test_1730",
+      "sample_id": "mmmu_pro_standard10_test_1730/mmmu_pro_snapshot_standard__10_options__test_00001_of_00002_parquet/test_Math_75_000074",
+      "source_file": "mmmu_pro/snapshot/standard (10 options)/test-00001-of-00002.parquet"
+    },
+    {
+      "benchmark": "mmmu_pro",
+      "metadata": {
+        "_source_manifest_index": 1618,
+        "answer": "E",
+        "id": "test_Psychology_83",
+        "raw_id": "test_Psychology_83",
+        "row_index": 727,
+        "subject": "Psychology"
+      },
+      "population_id": "mmmu_pro_standard10_test_1730",
+      "sample_id": "mmmu_pro_standard10_test_1730/mmmu_pro_snapshot_standard__10_options__test_00000_of_00002_parquet/test_Psychology_83_000727",
+      "source_file": "mmmu_pro/snapshot/standard (10 options)/test-00000-of-00002.parquet"
+    },
+    {
+      "benchmark": "mmmu_pro",
+      "metadata": {
+        "_source_manifest_index": 1622,
+        "answer": "J",
+        "id": "validation_Agriculture_3",
+        "raw_id": "validation_Agriculture_3",
+        "row_index": 789,
+        "subject": "Agriculture"
+      },
+      "population_id": "mmmu_pro_standard10_test_1730",
+      "sample_id": "mmmu_pro_standard10_test_1730/mmmu_pro_snapshot_standard__10_options__test_00001_of_00002_parquet/validation_Agriculture_3_000789",
+      "source_file": "mmmu_pro/snapshot/standard (10 options)/test-00001-of-00002.parquet"
+    },
+    {
+      "benchmark": "mmmu_pro",
+      "metadata": {
+        "_source_manifest_index": 1648,
+        "answer": "D",
+        "id": "validation_Psychology_21",
+        "raw_id": "validation_Psychology_21",
+        "row_index": 238,
+        "subject": "Psychology"
+      },
+      "population_id": "mmmu_pro_standard10_test_1730",
+      "sample_id": "mmmu_pro_standard10_test_1730/mmmu_pro_snapshot_standard__10_options__test_00001_of_00002_parquet/validation_Psychology_21_000238",
+      "source_file": "mmmu_pro/snapshot/standard (10 options)/test-00001-of-00002.parquet"
+    },
+    {
+      "benchmark": "mmmu_pro",
+      "metadata": {
+        "_source_manifest_index": 1658,
+        "answer": "C",
+        "id": "validation_Chemistry_28",
+        "raw_id": "validation_Chemistry_28",
+        "row_index": 257,
+        "subject": "Chemistry"
+      },
+      "population_id": "mmmu_pro_standard10_test_1730",
+      "sample_id": "mmmu_pro_standard10_test_1730/mmmu_pro_snapshot_standard__10_options__test_00000_of_00002_parquet/validation_Chemistry_28_000257",
+      "source_file": "mmmu_pro/snapshot/standard (10 options)/test-00000-of-00002.parquet"
+    },
+    {
+      "benchmark": "mmmu_pro",
+      "metadata": {
+        "_source_manifest_index": 1667,
+        "answer": "D",
+        "id": "test_Geography_61",
+        "raw_id": "test_Geography_61",
+        "row_index": 848,
+        "subject": "Geography"
+      },
+      "population_id": "mmmu_pro_standard10_test_1730",
+      "sample_id": "mmmu_pro_standard10_test_1730/mmmu_pro_snapshot_standard__10_options__test_00001_of_00002_parquet/test_Geography_61_000848",
+      "source_file": "mmmu_pro/snapshot/standard (10 options)/test-00001-of-00002.parquet"
+    },
+    {
+      "benchmark": "mmmu_pro",
+      "metadata": {
+        "_source_manifest_index": 1669,
+        "answer": "I",
+        "id": "test_Literature_65",
+        "raw_id": "test_Literature_65",
+        "row_index": 4,
+        "subject": "Literature"
+      },
+      "population_id": "mmmu_pro_standard10_test_1730",
+      "sample_id": "mmmu_pro_standard10_test_1730/mmmu_pro_snapshot_standard__10_options__test_00000_of_00002_parquet/test_Literature_65_000004",
+      "source_file": "mmmu_pro/snapshot/standard (10 options)/test-00000-of-00002.parquet"
+    },
+    {
+      "benchmark": "mmmu_pro",
+      "metadata": {
+        "_source_manifest_index": 1672,
+        "answer": "B",
+        "id": "test_Materials_417",
+        "raw_id": "test_Materials_417",
+        "row_index": 420,
+        "subject": "Materials"
+      },
+      "population_id": "mmmu_pro_standard10_test_1730",
+      "sample_id": "mmmu_pro_standard10_test_1730/mmmu_pro_snapshot_standard__10_options__test_00001_of_00002_parquet/test_Materials_417_000420",
+      "source_file": "mmmu_pro/snapshot/standard (10 options)/test-00001-of-00002.parquet"
+    },
+    {
+      "benchmark": "mmmu_pro",
+      "metadata": {
+        "_source_manifest_index": 1679,
+        "answer": "C",
+        "id": "validation_Public_Health_10",
+        "raw_id": "validation_Public_Health_10",
+        "row_index": 784,
+        "subject": "Public_Health"
+      },
+      "population_id": "mmmu_pro_standard10_test_1730",
+      "sample_id": "mmmu_pro_standard10_test_1730/mmmu_pro_snapshot_standard__10_options__test_00000_of_00002_parquet/validation_Public_Health_10_000784",
+      "source_file": "mmmu_pro/snapshot/standard (10 options)/test-00000-of-00002.parquet"
+    },
+    {
+      "benchmark": "mmmu_pro",
+      "metadata": {
+        "_source_manifest_index": 1685,
+        "answer": "A",
+        "id": "test_Art_Theory_249",
+        "raw_id": "test_Art_Theory_249",
+        "row_index": 622,
+        "subject": "Art_Theory"
+      },
+      "population_id": "mmmu_pro_standard10_test_1730",
+      "sample_id": "mmmu_pro_standard10_test_1730/mmmu_pro_snapshot_standard__10_options__test_00001_of_00002_parquet/test_Art_Theory_249_000622",
+      "source_file": "mmmu_pro/snapshot/standard (10 options)/test-00001-of-00002.parquet"
+    },
+    {
+      "benchmark": "mmmu_pro",
+      "metadata": {
+        "_source_manifest_index": 1687,
+        "answer": "B",
+        "id": "test_Biology_79",
+        "raw_id": "test_Biology_79",
+        "row_index": 860,
+        "subject": "Biology"
+      },
+      "population_id": "mmmu_pro_standard10_test_1730",
+      "sample_id": "mmmu_pro_standard10_test_1730/mmmu_pro_snapshot_standard__10_options__test_00000_of_00002_parquet/test_Biology_79_000860",
+      "source_file": "mmmu_pro/snapshot/standard (10 options)/test-00000-of-00002.parquet"
+    },
+    {
+      "benchmark": "mmmu_pro",
+      "metadata": {
+        "_source_manifest_index": 1693,
+        "answer": "I",
+        "id": "validation_Economics_1",
+        "raw_id": "validation_Economics_1",
+        "row_index": 766,
+        "subject": "Economics"
+      },
+      "population_id": "mmmu_pro_standard10_test_1730",
+      "sample_id": "mmmu_pro_standard10_test_1730/mmmu_pro_snapshot_standard__10_options__test_00000_of_00002_parquet/validation_Economics_1_000766",
+      "source_file": "mmmu_pro/snapshot/standard (10 options)/test-00000-of-00002.parquet"
+    },
+    {
+      "benchmark": "mmmu_pro",
+      "metadata": {
+        "_source_manifest_index": 1699,
+        "answer": "J",
+        "id": "test_Literature_69",
+        "raw_id": "test_Literature_69",
+        "row_index": 374,
+        "subject": "Literature"
+      },
+      "population_id": "mmmu_pro_standard10_test_1730",
+      "sample_id": "mmmu_pro_standard10_test_1730/mmmu_pro_snapshot_standard__10_options__test_00000_of_00002_parquet/test_Literature_69_000374",
+      "source_file": "mmmu_pro/snapshot/standard (10 options)/test-00000-of-00002.parquet"
+    },
+    {
+      "benchmark": "mmmu_pro",
+      "metadata": {
+        "_source_manifest_index": 1704,
+        "answer": "C",
+        "id": "test_Mechanical_Engineering_62",
+        "raw_id": "test_Mechanical_Engineering_62",
+        "row_index": 87,
+        "subject": "Mechanical_Engineering"
+      },
+      "population_id": "mmmu_pro_standard10_test_1730",
+      "sample_id": "mmmu_pro_standard10_test_1730/mmmu_pro_snapshot_standard__10_options__test_00000_of_00002_parquet/test_Mechanical_Engineering_62_000087",
+      "source_file": "mmmu_pro/snapshot/standard (10 options)/test-00000-of-00002.parquet"
+    },
+    {
+      "benchmark": "mmmu_pro",
+      "metadata": {
+        "_source_manifest_index": 1706,
+        "answer": "B",
+        "id": "validation_Pharmacy_28",
+        "raw_id": "validation_Pharmacy_28",
+        "row_index": 181,
+        "subject": "Pharmacy"
+      },
+      "population_id": "mmmu_pro_standard10_test_1730",
+      "sample_id": "mmmu_pro_standard10_test_1730/mmmu_pro_snapshot_standard__10_options__test_00001_of_00002_parquet/validation_Pharmacy_28_000181",
+      "source_file": "mmmu_pro/snapshot/standard (10 options)/test-00001-of-00002.parquet"
+    },
+    {
+      "benchmark": "mmmu_pro",
+      "metadata": {
+        "_source_manifest_index": 1708,
+        "answer": "I",
+        "id": "test_Psychology_56",
+        "raw_id": "test_Psychology_56",
+        "row_index": 264,
+        "subject": "Psychology"
+      },
+      "population_id": "mmmu_pro_standard10_test_1730",
+      "sample_id": "mmmu_pro_standard10_test_1730/mmmu_pro_snapshot_standard__10_options__test_00000_of_00002_parquet/test_Psychology_56_000264",
+      "source_file": "mmmu_pro/snapshot/standard (10 options)/test-00000-of-00002.parquet"
+    },
+    {
+      "benchmark": "mmmu_pro",
+      "metadata": {
+        "_source_manifest_index": 1710,
+        "answer": "A",
+        "id": "validation_Sociology_22",
+        "raw_id": "validation_Sociology_22",
+        "row_index": 685,
+        "subject": "Sociology"
+      },
+      "population_id": "mmmu_pro_standard10_test_1730",
+      "sample_id": "mmmu_pro_standard10_test_1730/mmmu_pro_snapshot_standard__10_options__test_00001_of_00002_parquet/validation_Sociology_22_000685",
+      "source_file": "mmmu_pro/snapshot/standard (10 options)/test-00001-of-00002.parquet"
+    },
+    {
+      "benchmark": "mathvista",
+      "metadata": {
+        "_source_manifest_index": 1711,
+        "answer": "0.24",
+        "answer_type": "float",
+        "pid": "512",
+        "question_type": "free_form",
+        "raw_id": "512",
+        "row_index": 511
+      },
+      "population_id": "mathvista_testmini_1000",
+      "sample_id": "mathvista_testmini_1000/mathvista_snapshot_data_testmini_00000_of_00001_725687bf7a18d64b_parquet/512_000511",
+      "source_file": "mathvista/snapshot/data/testmini-00000-of-00001-725687bf7a18d64b.parquet"
+    },
+    {
+      "benchmark": "mathvista",
+      "metadata": {
+        "_source_manifest_index": 1713,
+        "answer": "[2014, 2016]",
+        "answer_type": "list",
+        "pid": "506",
+        "question_type": "free_form",
+        "raw_id": "506",
+        "row_index": 505
+      },
+      "population_id": "mathvista_testmini_1000",
+      "sample_id": "mathvista_testmini_1000/mathvista_snapshot_data_testmini_00000_of_00001_725687bf7a18d64b_parquet/506_000505",
+      "source_file": "mathvista/snapshot/data/testmini-00000-of-00001-725687bf7a18d64b.parquet"
+    },
+    {
+      "benchmark": "mathvista",
+      "metadata": {
+        "_source_manifest_index": 1715,
+        "answer": "31.3",
+        "answer_type": "float",
+        "pid": "650",
+        "question_type": "free_form",
+        "raw_id": "650",
+        "row_index": 649
+      },
+      "population_id": "mathvista_testmini_1000",
+      "sample_id": "mathvista_testmini_1000/mathvista_snapshot_data_testmini_00000_of_00001_725687bf7a18d64b_parquet/650_000649",
+      "source_file": "mathvista/snapshot/data/testmini-00000-of-00001-725687bf7a18d64b.parquet"
+    },
+    {
+      "benchmark": "mathvista",
+      "metadata": {
+        "_source_manifest_index": 1720,
+        "answer": "2",
+        "answer_type": "integer",
+        "pid": "258",
+        "question_type": "free_form",
+        "raw_id": "258",
+        "row_index": 257
+      },
+      "population_id": "mathvista_testmini_1000",
+      "sample_id": "mathvista_testmini_1000/mathvista_snapshot_data_testmini_00000_of_00001_725687bf7a18d64b_parquet/258_000257",
+      "source_file": "mathvista/snapshot/data/testmini-00000-of-00001-725687bf7a18d64b.parquet"
+    },
+    {
+      "benchmark": "mathvista",
+      "metadata": {
+        "_source_manifest_index": 1722,
+        "answer": "18.27",
+        "answer_type": "float",
+        "pid": "995",
+        "question_type": "free_form",
+        "raw_id": "995",
+        "row_index": 994
+      },
+      "population_id": "mathvista_testmini_1000",
+      "sample_id": "mathvista_testmini_1000/mathvista_snapshot_data_testmini_00000_of_00001_725687bf7a18d64b_parquet/995_000994",
+      "source_file": "mathvista/snapshot/data/testmini-00000-of-00001-725687bf7a18d64b.parquet"
+    },
+    {
+      "benchmark": "mathvista",
+      "metadata": {
+        "_source_manifest_index": 1731,
+        "answer": "47.6",
+        "answer_type": "float",
+        "pid": "74",
+        "question_type": "free_form",
+        "raw_id": "74",
+        "row_index": 73
+      },
+      "population_id": "mathvista_testmini_1000",
+      "sample_id": "mathvista_testmini_1000/mathvista_snapshot_data_testmini_00000_of_00001_725687bf7a18d64b_parquet/74_000073",
+      "source_file": "mathvista/snapshot/data/testmini-00000-of-00001-725687bf7a18d64b.parquet"
+    },
+    {
+      "benchmark": "mathvista",
+      "metadata": {
+        "_source_manifest_index": 1733,
+        "answer": "No",
+        "answer_type": "text",
+        "pid": "608",
+        "question_type": "multi_choice",
+        "raw_id": "608",
+        "row_index": 607
+      },
+      "population_id": "mathvista_testmini_1000",
+      "sample_id": "mathvista_testmini_1000/mathvista_snapshot_data_testmini_00000_of_00001_725687bf7a18d64b_parquet/608_000607",
+      "source_file": "mathvista/snapshot/data/testmini-00000-of-00001-725687bf7a18d64b.parquet"
+    },
+    {
+      "benchmark": "mathvista",
+      "metadata": {
+        "_source_manifest_index": 1740,
+        "answer": "1.06",
+        "answer_type": "float",
+        "pid": "791",
+        "question_type": "free_form",
+        "raw_id": "791",
+        "row_index": 790
+      },
+      "population_id": "mathvista_testmini_1000",
+      "sample_id": "mathvista_testmini_1000/mathvista_snapshot_data_testmini_00000_of_00001_725687bf7a18d64b_parquet/791_000790",
+      "source_file": "mathvista/snapshot/data/testmini-00000-of-00001-725687bf7a18d64b.parquet"
+    },
+    {
+      "benchmark": "mathvista",
+      "metadata": {
+        "_source_manifest_index": 1750,
+        "answer": "2",
+        "answer_type": "integer",
+        "pid": "85",
+        "question_type": "free_form",
+        "raw_id": "85",
+        "row_index": 84
+      },
+      "population_id": "mathvista_testmini_1000",
+      "sample_id": "mathvista_testmini_1000/mathvista_snapshot_data_testmini_00000_of_00001_725687bf7a18d64b_parquet/85_000084",
+      "source_file": "mathvista/snapshot/data/testmini-00000-of-00001-725687bf7a18d64b.parquet"
+    },
+    {
+      "benchmark": "mathvista",
+      "metadata": {
+        "_source_manifest_index": 1757,
+        "answer": "no",
+        "answer_type": "text",
+        "pid": "604",
+        "question_type": "multi_choice",
+        "raw_id": "604",
+        "row_index": 603
+      },
+      "population_id": "mathvista_testmini_1000",
+      "sample_id": "mathvista_testmini_1000/mathvista_snapshot_data_testmini_00000_of_00001_725687bf7a18d64b_parquet/604_000603",
+      "source_file": "mathvista/snapshot/data/testmini-00000-of-00001-725687bf7a18d64b.parquet"
+    },
+    {
+      "benchmark": "mathvista",
+      "metadata": {
+        "_source_manifest_index": 1758,
+        "answer": "2372.1",
+        "answer_type": "float",
+        "pid": "703",
+        "question_type": "free_form",
+        "raw_id": "703",
+        "row_index": 702
+      },
+      "population_id": "mathvista_testmini_1000",
+      "sample_id": "mathvista_testmini_1000/mathvista_snapshot_data_testmini_00000_of_00001_725687bf7a18d64b_parquet/703_000702",
+      "source_file": "mathvista/snapshot/data/testmini-00000-of-00001-725687bf7a18d64b.parquet"
+    },
+    {
+      "benchmark": "mathvista",
+      "metadata": {
+        "_source_manifest_index": 1768,
+        "answer": "3",
+        "answer_type": "integer",
+        "pid": "904",
+        "question_type": "free_form",
+        "raw_id": "904",
+        "row_index": 903
+      },
+      "population_id": "mathvista_testmini_1000",
+      "sample_id": "mathvista_testmini_1000/mathvista_snapshot_data_testmini_00000_of_00001_725687bf7a18d64b_parquet/904_000903",
+      "source_file": "mathvista/snapshot/data/testmini-00000-of-00001-725687bf7a18d64b.parquet"
+    },
+    {
+      "benchmark": "mathvista",
+      "metadata": {
+        "_source_manifest_index": 1771,
+        "answer": "3",
+        "answer_type": "integer",
+        "pid": "966",
+        "question_type": "free_form",
+        "raw_id": "966",
+        "row_index": 965
+      },
+      "population_id": "mathvista_testmini_1000",
+      "sample_id": "mathvista_testmini_1000/mathvista_snapshot_data_testmini_00000_of_00001_725687bf7a18d64b_parquet/966_000965",
+      "source_file": "mathvista/snapshot/data/testmini-00000-of-00001-725687bf7a18d64b.parquet"
+    },
+    {
+      "benchmark": "mathvista",
+      "metadata": {
+        "_source_manifest_index": 1774,
+        "answer": "86",
+        "answer_type": "integer",
+        "pid": "860",
+        "question_type": "free_form",
+        "raw_id": "860",
+        "row_index": 859
+      },
+      "population_id": "mathvista_testmini_1000",
+      "sample_id": "mathvista_testmini_1000/mathvista_snapshot_data_testmini_00000_of_00001_725687bf7a18d64b_parquet/860_000859",
+      "source_file": "mathvista/snapshot/data/testmini-00000-of-00001-725687bf7a18d64b.parquet"
+    },
+    {
+      "benchmark": "mathvista",
+      "metadata": {
+        "_source_manifest_index": 1779,
+        "answer": "130.9",
+        "answer_type": "float",
+        "pid": "84",
+        "question_type": "free_form",
+        "raw_id": "84",
+        "row_index": 83
+      },
+      "population_id": "mathvista_testmini_1000",
+      "sample_id": "mathvista_testmini_1000/mathvista_snapshot_data_testmini_00000_of_00001_725687bf7a18d64b_parquet/84_000083",
+      "source_file": "mathvista/snapshot/data/testmini-00000-of-00001-725687bf7a18d64b.parquet"
+    },
+    {
+      "benchmark": "mathvista",
+      "metadata": {
+        "_source_manifest_index": 1789,
+        "answer": "5",
+        "answer_type": "integer",
+        "pid": "985",
+        "question_type": "free_form",
+        "raw_id": "985",
+        "row_index": 984
+      },
+      "population_id": "mathvista_testmini_1000",
+      "sample_id": "mathvista_testmini_1000/mathvista_snapshot_data_testmini_00000_of_00001_725687bf7a18d64b_parquet/985_000984",
+      "source_file": "mathvista/snapshot/data/testmini-00000-of-00001-725687bf7a18d64b.parquet"
+    },
+    {
+      "benchmark": "mathvista",
+      "metadata": {
+        "_source_manifest_index": 1802,
+        "answer": "44\u00b0",
+        "answer_type": "text",
+        "pid": "152",
+        "question_type": "multi_choice",
+        "raw_id": "152",
+        "row_index": 151
+      },
+      "population_id": "mathvista_testmini_1000",
+      "sample_id": "mathvista_testmini_1000/mathvista_snapshot_data_testmini_00000_of_00001_725687bf7a18d64b_parquet/152_000151",
+      "source_file": "mathvista/snapshot/data/testmini-00000-of-00001-725687bf7a18d64b.parquet"
+    },
+    {
+      "benchmark": "mathvista",
+      "metadata": {
+        "_source_manifest_index": 1816,
+        "answer": "4",
+        "answer_type": "integer",
+        "pid": "191",
+        "question_type": "free_form",
+        "raw_id": "191",
+        "row_index": 190
+      },
+      "population_id": "mathvista_testmini_1000",
+      "sample_id": "mathvista_testmini_1000/mathvista_snapshot_data_testmini_00000_of_00001_725687bf7a18d64b_parquet/191_000190",
+      "source_file": "mathvista/snapshot/data/testmini-00000-of-00001-725687bf7a18d64b.parquet"
+    },
+    {
+      "benchmark": "mathvista",
+      "metadata": {
+        "_source_manifest_index": 1818,
+        "answer": "-4.3",
+        "answer_type": "float",
+        "pid": "833",
+        "question_type": "free_form",
+        "raw_id": "833",
+        "row_index": 832
+      },
+      "population_id": "mathvista_testmini_1000",
+      "sample_id": "mathvista_testmini_1000/mathvista_snapshot_data_testmini_00000_of_00001_725687bf7a18d64b_parquet/833_000832",
+      "source_file": "mathvista/snapshot/data/testmini-00000-of-00001-725687bf7a18d64b.parquet"
+    },
+    {
+      "benchmark": "mathvista",
+      "metadata": {
+        "_source_manifest_index": 1821,
+        "answer": "3.9",
+        "answer_type": "float",
+        "pid": "96",
+        "question_type": "free_form",
+        "raw_id": "96",
+        "row_index": 95
+      },
+      "population_id": "mathvista_testmini_1000",
+      "sample_id": "mathvista_testmini_1000/mathvista_snapshot_data_testmini_00000_of_00001_725687bf7a18d64b_parquet/96_000095",
+      "source_file": "mathvista/snapshot/data/testmini-00000-of-00001-725687bf7a18d64b.parquet"
+    },
+    {
+      "benchmark": "mathvista",
+      "metadata": {
+        "_source_manifest_index": 1824,
+        "answer": "63.4",
+        "answer_type": "float",
+        "pid": "733",
+        "question_type": "free_form",
+        "raw_id": "733",
+        "row_index": 732
+      },
+      "population_id": "mathvista_testmini_1000",
+      "sample_id": "mathvista_testmini_1000/mathvista_snapshot_data_testmini_00000_of_00001_725687bf7a18d64b_parquet/733_000732",
+      "source_file": "mathvista/snapshot/data/testmini-00000-of-00001-725687bf7a18d64b.parquet"
+    },
+    {
+      "benchmark": "mathvista",
+      "metadata": {
+        "_source_manifest_index": 1827,
+        "answer": "10.4",
+        "answer_type": "float",
+        "pid": "268",
+        "question_type": "free_form",
+        "raw_id": "268",
+        "row_index": 267
+      },
+      "population_id": "mathvista_testmini_1000",
+      "sample_id": "mathvista_testmini_1000/mathvista_snapshot_data_testmini_00000_of_00001_725687bf7a18d64b_parquet/268_000267",
+      "source_file": "mathvista/snapshot/data/testmini-00000-of-00001-725687bf7a18d64b.parquet"
+    },
+    {
+      "benchmark": "mathvista",
+      "metadata": {
+        "_source_manifest_index": 1832,
+        "answer": "42.2%-62.6%",
+        "answer_type": "text",
+        "pid": "513",
+        "question_type": "multi_choice",
+        "raw_id": "513",
+        "row_index": 512
+      },
+      "population_id": "mathvista_testmini_1000",
+      "sample_id": "mathvista_testmini_1000/mathvista_snapshot_data_testmini_00000_of_00001_725687bf7a18d64b_parquet/513_000512",
+      "source_file": "mathvista/snapshot/data/testmini-00000-of-00001-725687bf7a18d64b.parquet"
+    },
+    {
+      "benchmark": "mathvista",
+      "metadata": {
+        "_source_manifest_index": 1834,
+        "answer": "\\frac{4}{5}",
+        "answer_type": "text",
+        "pid": "443",
+        "question_type": "multi_choice",
+        "raw_id": "443",
+        "row_index": 442
+      },
+      "population_id": "mathvista_testmini_1000",
+      "sample_id": "mathvista_testmini_1000/mathvista_snapshot_data_testmini_00000_of_00001_725687bf7a18d64b_parquet/443_000442",
+      "source_file": "mathvista/snapshot/data/testmini-00000-of-00001-725687bf7a18d64b.parquet"
+    },
+    {
+      "benchmark": "mathvista",
+      "metadata": {
+        "_source_manifest_index": 1835,
+        "answer": "0",
+        "answer_type": "integer",
+        "pid": "210",
+        "question_type": "free_form",
+        "raw_id": "210",
+        "row_index": 209
+      },
+      "population_id": "mathvista_testmini_1000",
+      "sample_id": "mathvista_testmini_1000/mathvista_snapshot_data_testmini_00000_of_00001_725687bf7a18d64b_parquet/210_000209",
+      "source_file": "mathvista/snapshot/data/testmini-00000-of-00001-725687bf7a18d64b.parquet"
+    },
+    {
+      "benchmark": "mathvista",
+      "metadata": {
+        "_source_manifest_index": 1836,
+        "answer": "No",
+        "answer_type": "text",
+        "pid": "31",
+        "question_type": "multi_choice",
+        "raw_id": "31",
+        "row_index": 30
+      },
+      "population_id": "mathvista_testmini_1000",
+      "sample_id": "mathvista_testmini_1000/mathvista_snapshot_data_testmini_00000_of_00001_725687bf7a18d64b_parquet/31_000030",
+      "source_file": "mathvista/snapshot/data/testmini-00000-of-00001-725687bf7a18d64b.parquet"
+    },
+    {
+      "benchmark": "mathvista",
+      "metadata": {
+        "_source_manifest_index": 1839,
+        "answer": "8",
+        "answer_type": "integer",
+        "pid": "763",
+        "question_type": "free_form",
+        "raw_id": "763",
+        "row_index": 762
+      },
+      "population_id": "mathvista_testmini_1000",
+      "sample_id": "mathvista_testmini_1000/mathvista_snapshot_data_testmini_00000_of_00001_725687bf7a18d64b_parquet/763_000762",
+      "source_file": "mathvista/snapshot/data/testmini-00000-of-00001-725687bf7a18d64b.parquet"
+    },
+    {
+      "benchmark": "mathvista",
+      "metadata": {
+        "_source_manifest_index": 1860,
+        "answer": "40\u00b0",
+        "answer_type": "text",
+        "pid": "364",
+        "question_type": "multi_choice",
+        "raw_id": "364",
+        "row_index": 363
+      },
+      "population_id": "mathvista_testmini_1000",
+      "sample_id": "mathvista_testmini_1000/mathvista_snapshot_data_testmini_00000_of_00001_725687bf7a18d64b_parquet/364_000363",
+      "source_file": "mathvista/snapshot/data/testmini-00000-of-00001-725687bf7a18d64b.parquet"
+    },
+    {
+      "benchmark": "mathvista",
+      "metadata": {
+        "_source_manifest_index": 1862,
+        "answer": "Yes",
+        "answer_type": "text",
+        "pid": "260",
+        "question_type": "multi_choice",
+        "raw_id": "260",
+        "row_index": 259
+      },
+      "population_id": "mathvista_testmini_1000",
+      "sample_id": "mathvista_testmini_1000/mathvista_snapshot_data_testmini_00000_of_00001_725687bf7a18d64b_parquet/260_000259",
+      "source_file": "mathvista/snapshot/data/testmini-00000-of-00001-725687bf7a18d64b.parquet"
+    },
+    {
+      "benchmark": "mathvista",
+      "metadata": {
+        "_source_manifest_index": 1863,
+        "answer": "6",
+        "answer_type": "integer",
+        "pid": "964",
+        "question_type": "free_form",
+        "raw_id": "964",
+        "row_index": 963
+      },
+      "population_id": "mathvista_testmini_1000",
+      "sample_id": "mathvista_testmini_1000/mathvista_snapshot_data_testmini_00000_of_00001_725687bf7a18d64b_parquet/964_000963",
+      "source_file": "mathvista/snapshot/data/testmini-00000-of-00001-725687bf7a18d64b.parquet"
+    },
+    {
+      "benchmark": "mathvista",
+      "metadata": {
+        "_source_manifest_index": 1865,
+        "answer": "13",
+        "answer_type": "integer",
+        "pid": "719",
+        "question_type": "free_form",
+        "raw_id": "719",
+        "row_index": 718
+      },
+      "population_id": "mathvista_testmini_1000",
+      "sample_id": "mathvista_testmini_1000/mathvista_snapshot_data_testmini_00000_of_00001_725687bf7a18d64b_parquet/719_000718",
+      "source_file": "mathvista/snapshot/data/testmini-00000-of-00001-725687bf7a18d64b.parquet"
+    },
+    {
+      "benchmark": "mathvista",
+      "metadata": {
+        "_source_manifest_index": 1868,
+        "answer": "Solution A",
+        "answer_type": "text",
+        "pid": "769",
+        "question_type": "multi_choice",
+        "raw_id": "769",
+        "row_index": 768
+      },
+      "population_id": "mathvista_testmini_1000",
+      "sample_id": "mathvista_testmini_1000/mathvista_snapshot_data_testmini_00000_of_00001_725687bf7a18d64b_parquet/769_000768",
+      "source_file": "mathvista/snapshot/data/testmini-00000-of-00001-725687bf7a18d64b.parquet"
+    },
+    {
+      "benchmark": "mathvista",
+      "metadata": {
+        "_source_manifest_index": 1872,
+        "answer": "yes",
+        "answer_type": "text",
+        "pid": "695",
+        "question_type": "multi_choice",
+        "raw_id": "695",
+        "row_index": 694
+      },
+      "population_id": "mathvista_testmini_1000",
+      "sample_id": "mathvista_testmini_1000/mathvista_snapshot_data_testmini_00000_of_00001_725687bf7a18d64b_parquet/695_000694",
+      "source_file": "mathvista/snapshot/data/testmini-00000-of-00001-725687bf7a18d64b.parquet"
+    },
+    {
+      "benchmark": "mathvista",
+      "metadata": {
+        "_source_manifest_index": 1873,
+        "answer": "16",
+        "answer_type": "integer",
+        "pid": "619",
+        "question_type": "free_form",
+        "raw_id": "619",
+        "row_index": 618
+      },
+      "population_id": "mathvista_testmini_1000",
+      "sample_id": "mathvista_testmini_1000/mathvista_snapshot_data_testmini_00000_of_00001_725687bf7a18d64b_parquet/619_000618",
+      "source_file": "mathvista/snapshot/data/testmini-00000-of-00001-725687bf7a18d64b.parquet"
+    },
+    {
+      "benchmark": "mathvista",
+      "metadata": {
+        "_source_manifest_index": 1875,
+        "answer": "2",
+        "answer_type": "integer",
+        "pid": "103",
+        "question_type": "free_form",
+        "raw_id": "103",
+        "row_index": 102
+      },
+      "population_id": "mathvista_testmini_1000",
+      "sample_id": "mathvista_testmini_1000/mathvista_snapshot_data_testmini_00000_of_00001_725687bf7a18d64b_parquet/103_000102",
+      "source_file": "mathvista/snapshot/data/testmini-00000-of-00001-725687bf7a18d64b.parquet"
+    },
+    {
+      "benchmark": "mathvista",
+      "metadata": {
+        "_source_manifest_index": 1880,
+        "answer": "yes",
+        "answer_type": "text",
+        "pid": "924",
+        "question_type": "multi_choice",
+        "raw_id": "924",
+        "row_index": 923
+      },
+      "population_id": "mathvista_testmini_1000",
+      "sample_id": "mathvista_testmini_1000/mathvista_snapshot_data_testmini_00000_of_00001_725687bf7a18d64b_parquet/924_000923",
+      "source_file": "mathvista/snapshot/data/testmini-00000-of-00001-725687bf7a18d64b.parquet"
+    },
+    {
+      "benchmark": "mathvista",
+      "metadata": {
+        "_source_manifest_index": 1884,
+        "answer": "children's class",
+        "answer_type": "text",
+        "pid": "404",
+        "question_type": "multi_choice",
+        "raw_id": "404",
+        "row_index": 403
+      },
+      "population_id": "mathvista_testmini_1000",
+      "sample_id": "mathvista_testmini_1000/mathvista_snapshot_data_testmini_00000_of_00001_725687bf7a18d64b_parquet/404_000403",
+      "source_file": "mathvista/snapshot/data/testmini-00000-of-00001-725687bf7a18d64b.parquet"
+    },
+    {
+      "benchmark": "mathvista",
+      "metadata": {
+        "_source_manifest_index": 1888,
+        "answer": "6",
+        "answer_type": "text",
+        "pid": "234",
+        "question_type": "multi_choice",
+        "raw_id": "234",
+        "row_index": 233
+      },
+      "population_id": "mathvista_testmini_1000",
+      "sample_id": "mathvista_testmini_1000/mathvista_snapshot_data_testmini_00000_of_00001_725687bf7a18d64b_parquet/234_000233",
+      "source_file": "mathvista/snapshot/data/testmini-00000-of-00001-725687bf7a18d64b.parquet"
+    },
+    {
+      "benchmark": "mathvista",
+      "metadata": {
+        "_source_manifest_index": 1892,
+        "answer": "a polynomial",
+        "answer_type": "text",
+        "pid": "755",
+        "question_type": "multi_choice",
+        "raw_id": "755",
+        "row_index": 754
+      },
+      "population_id": "mathvista_testmini_1000",
+      "sample_id": "mathvista_testmini_1000/mathvista_snapshot_data_testmini_00000_of_00001_725687bf7a18d64b_parquet/755_000754",
+      "source_file": "mathvista/snapshot/data/testmini-00000-of-00001-725687bf7a18d64b.parquet"
+    },
+    {
+      "benchmark": "mathvista",
+      "metadata": {
+        "_source_manifest_index": 1899,
+        "answer": "7",
+        "answer_type": "integer",
+        "pid": "63",
+        "question_type": "free_form",
+        "raw_id": "63",
+        "row_index": 62
+      },
+      "population_id": "mathvista_testmini_1000",
+      "sample_id": "mathvista_testmini_1000/mathvista_snapshot_data_testmini_00000_of_00001_725687bf7a18d64b_parquet/63_000062",
+      "source_file": "mathvista/snapshot/data/testmini-00000-of-00001-725687bf7a18d64b.parquet"
+    },
+    {
+      "benchmark": "mathvista",
+      "metadata": {
+        "_source_manifest_index": 1906,
+        "answer": "20cm",
+        "answer_type": "text",
+        "pid": "179",
+        "question_type": "multi_choice",
+        "raw_id": "179",
+        "row_index": 178
+      },
+      "population_id": "mathvista_testmini_1000",
+      "sample_id": "mathvista_testmini_1000/mathvista_snapshot_data_testmini_00000_of_00001_725687bf7a18d64b_parquet/179_000178",
+      "source_file": "mathvista/snapshot/data/testmini-00000-of-00001-725687bf7a18d64b.parquet"
+    },
+    {
+      "benchmark": "mathvista",
+      "metadata": {
+        "_source_manifest_index": 1907,
+        "answer": "5",
+        "answer_type": "integer",
+        "pid": "570",
+        "question_type": "free_form",
+        "raw_id": "570",
+        "row_index": 569
+      },
+      "population_id": "mathvista_testmini_1000",
+      "sample_id": "mathvista_testmini_1000/mathvista_snapshot_data_testmini_00000_of_00001_725687bf7a18d64b_parquet/570_000569",
+      "source_file": "mathvista/snapshot/data/testmini-00000-of-00001-725687bf7a18d64b.parquet"
+    },
+    {
+      "benchmark": "mathvista",
+      "metadata": {
+        "_source_manifest_index": 1914,
+        "answer": "75\u00b0",
+        "answer_type": "text",
+        "pid": "290",
+        "question_type": "multi_choice",
+        "raw_id": "290",
+        "row_index": 289
+      },
+      "population_id": "mathvista_testmini_1000",
+      "sample_id": "mathvista_testmini_1000/mathvista_snapshot_data_testmini_00000_of_00001_725687bf7a18d64b_parquet/290_000289",
+      "source_file": "mathvista/snapshot/data/testmini-00000-of-00001-725687bf7a18d64b.parquet"
+    },
+    {
+      "benchmark": "mathvista",
+      "metadata": {
+        "_source_manifest_index": 1916,
+        "answer": "16 \\sqrt { 5 }",
+        "answer_type": "text",
+        "pid": "716",
+        "question_type": "multi_choice",
+        "raw_id": "716",
+        "row_index": 715
+      },
+      "population_id": "mathvista_testmini_1000",
+      "sample_id": "mathvista_testmini_1000/mathvista_snapshot_data_testmini_00000_of_00001_725687bf7a18d64b_parquet/716_000715",
+      "source_file": "mathvista/snapshot/data/testmini-00000-of-00001-725687bf7a18d64b.parquet"
+    },
+    {
+      "benchmark": "mathvista",
+      "metadata": {
+        "_source_manifest_index": 1922,
+        "answer": "130\u00b0",
+        "answer_type": "text",
+        "pid": "355",
+        "question_type": "multi_choice",
+        "raw_id": "355",
+        "row_index": 354
+      },
+      "population_id": "mathvista_testmini_1000",
+      "sample_id": "mathvista_testmini_1000/mathvista_snapshot_data_testmini_00000_of_00001_725687bf7a18d64b_parquet/355_000354",
+      "source_file": "mathvista/snapshot/data/testmini-00000-of-00001-725687bf7a18d64b.parquet"
+    },
+    {
+      "benchmark": "mathvista",
+      "metadata": {
+        "_source_manifest_index": 1933,
+        "answer": "3",
+        "answer_type": "integer",
+        "pid": "888",
+        "question_type": "free_form",
+        "raw_id": "888",
+        "row_index": 887
+      },
+      "population_id": "mathvista_testmini_1000",
+      "sample_id": "mathvista_testmini_1000/mathvista_snapshot_data_testmini_00000_of_00001_725687bf7a18d64b_parquet/888_000887",
+      "source_file": "mathvista/snapshot/data/testmini-00000-of-00001-725687bf7a18d64b.parquet"
+    },
+    {
+      "benchmark": "mathvista",
+      "metadata": {
+        "_source_manifest_index": 1954,
+        "answer": "yes",
+        "answer_type": "text",
+        "pid": "385",
+        "question_type": "multi_choice",
+        "raw_id": "385",
+        "row_index": 384
+      },
+      "population_id": "mathvista_testmini_1000",
+      "sample_id": "mathvista_testmini_1000/mathvista_snapshot_data_testmini_00000_of_00001_725687bf7a18d64b_parquet/385_000384",
+      "source_file": "mathvista/snapshot/data/testmini-00000-of-00001-725687bf7a18d64b.parquet"
+    },
+    {
+      "benchmark": "mathvista",
+      "metadata": {
+        "_source_manifest_index": 1955,
+        "answer": "9079",
+        "answer_type": "integer",
+        "pid": "979",
+        "question_type": "free_form",
+        "raw_id": "979",
+        "row_index": 978
+      },
+      "population_id": "mathvista_testmini_1000",
+      "sample_id": "mathvista_testmini_1000/mathvista_snapshot_data_testmini_00000_of_00001_725687bf7a18d64b_parquet/979_000978",
+      "source_file": "mathvista/snapshot/data/testmini-00000-of-00001-725687bf7a18d64b.parquet"
+    },
+    {
+      "benchmark": "mathvista",
+      "metadata": {
+        "_source_manifest_index": 1960,
+        "answer": "octopus",
+        "answer_type": "text",
+        "pid": "884",
+        "question_type": "multi_choice",
+        "raw_id": "884",
+        "row_index": 883
+      },
+      "population_id": "mathvista_testmini_1000",
+      "sample_id": "mathvista_testmini_1000/mathvista_snapshot_data_testmini_00000_of_00001_725687bf7a18d64b_parquet/884_000883",
+      "source_file": "mathvista/snapshot/data/testmini-00000-of-00001-725687bf7a18d64b.parquet"
+    },
+    {
+      "benchmark": "mathvista",
+      "metadata": {
+        "_source_manifest_index": 1998,
+        "answer": "Population will decrease",
+        "answer_type": "text",
+        "pid": "754",
+        "question_type": "multi_choice",
+        "raw_id": "754",
+        "row_index": 753
+      },
+      "population_id": "mathvista_testmini_1000",
+      "sample_id": "mathvista_testmini_1000/mathvista_snapshot_data_testmini_00000_of_00001_725687bf7a18d64b_parquet/754_000753",
+      "source_file": "mathvista/snapshot/data/testmini-00000-of-00001-725687bf7a18d64b.parquet"
+    },
+    {
+      "benchmark": "mathverse",
+      "metadata": {
+        "_source_manifest_index": 2018,
+        "answer": "C",
+        "problem_index": "17",
+        "problem_version": "Vision Intensive",
+        "question_type": "multi-choice",
+        "raw_id": "83",
+        "row_index": 82,
+        "sample_index": "83"
+      },
+      "population_id": "mathverse_testmini_3940",
+      "sample_id": "mathverse_testmini_3940/mathverse_snapshot_testmini_json/83_000082",
+      "source_file": "mathverse/snapshot/testmini.json"
+    },
+    {
+      "benchmark": "mathverse",
+      "metadata": {
+        "_source_manifest_index": 2023,
+        "answer": "319 ^\\circ T",
+        "problem_index": "338",
+        "problem_version": "Text Lite",
+        "question_type": "free-form",
+        "raw_id": "1687",
+        "row_index": 1686,
+        "sample_index": "1687"
+      },
+      "population_id": "mathverse_testmini_3940",
+      "sample_id": "mathverse_testmini_3940/mathverse_snapshot_testmini_json/1687_001686",
+      "source_file": "mathverse/snapshot/testmini.json"
+    },
+    {
+      "benchmark": "mathverse",
+      "metadata": {
+        "_source_manifest_index": 2027,
+        "answer": "7",
+        "problem_index": "520",
+        "problem_version": "Vision Intensive",
+        "question_type": "free-form",
+        "raw_id": "2598",
+        "row_index": 2597,
+        "sample_index": "2598"
+      },
+      "population_id": "mathverse_testmini_3940",
+      "sample_id": "mathverse_testmini_3940/mathverse_snapshot_testmini_json/2598_002597",
+      "source_file": "mathverse/snapshot/testmini.json"
+    },
+    {
+      "benchmark": "mathverse",
+      "metadata": {
+        "_source_manifest_index": 2043,
+        "answer": "4.4 m",
+        "problem_index": "351",
+        "problem_version": "Text Lite",
+        "question_type": "free-form",
+        "raw_id": "1752",
+        "row_index": 1751,
+        "sample_index": "1752"
+      },
+      "population_id": "mathverse_testmini_3940",
+      "sample_id": "mathverse_testmini_3940/mathverse_snapshot_testmini_json/1752_001751",
+      "source_file": "mathverse/snapshot/testmini.json"
+    },
+    {
+      "benchmark": "mathverse",
+      "metadata": {
+        "_source_manifest_index": 2046,
+        "answer": "A",
+        "problem_index": "498",
+        "problem_version": "Vision Dominant",
+        "question_type": "multi-choice",
+        "raw_id": "2489",
+        "row_index": 2488,
+        "sample_index": "2489"
+      },
+      "population_id": "mathverse_testmini_3940",
+      "sample_id": "mathverse_testmini_3940/mathverse_snapshot_testmini_json/2489_002488",
+      "source_file": "mathverse/snapshot/testmini.json"
+    },
+    {
+      "benchmark": "mathverse",
+      "metadata": {
+        "_source_manifest_index": 2059,
+        "answer": "Volume $=34159.095 \\mathrm{~cm}^{3}$",
+        "problem_index": "654",
+        "problem_version": "Vision Only",
+        "question_type": "free-form",
+        "raw_id": "3270",
+        "row_index": 3269,
+        "sample_index": "3270"
+      },
+      "population_id": "mathverse_testmini_3940",
+      "sample_id": "mathverse_testmini_3940/mathverse_snapshot_testmini_json/3270_003269",
+      "source_file": "mathverse/snapshot/testmini.json"
+    },
+    {
+      "benchmark": "mathverse",
+      "metadata": {
+        "_source_manifest_index": 2072,
+        "answer": "A",
+        "problem_index": "200",
+        "problem_version": "Text Dominant",
+        "question_type": "multi-choice",
+        "raw_id": "996",
+        "row_index": 995,
+        "sample_index": "996"
+      },
+      "population_id": "mathverse_testmini_3940",
+      "sample_id": "mathverse_testmini_3940/mathverse_snapshot_testmini_json/996_000995",
+      "source_file": "mathverse/snapshot/testmini.json"
+    },
+    {
+      "benchmark": "mathverse",
+      "metadata": {
+        "_source_manifest_index": 2074,
+        "answer": "B",
+        "problem_index": "781",
+        "problem_version": "Text Lite",
+        "question_type": "multi-choice",
+        "raw_id": "3902",
+        "row_index": 3901,
+        "sample_index": "3902"
+      },
+      "population_id": "mathverse_testmini_3940",
+      "sample_id": "mathverse_testmini_3940/mathverse_snapshot_testmini_json/3902_003901",
+      "source_file": "mathverse/snapshot/testmini.json"
+    },
+    {
+      "benchmark": "mathverse",
+      "metadata": {
+        "_source_manifest_index": 2078,
+        "answer": "C",
+        "problem_index": "26",
+        "problem_version": "Vision Intensive",
+        "question_type": "multi-choice",
+        "raw_id": "128",
+        "row_index": 127,
+        "sample_index": "128"
+      },
+      "population_id": "mathverse_testmini_3940",
+      "sample_id": "mathverse_testmini_3940/mathverse_snapshot_testmini_json/128_000127",
+      "source_file": "mathverse/snapshot/testmini.json"
+    },
+    {
+      "benchmark": "mathverse",
+      "metadata": {
+        "_source_manifest_index": 2080,
+        "answer": "A",
+        "problem_index": "279",
+        "problem_version": "Vision Only",
+        "question_type": "multi-choice",
+        "raw_id": "1395",
+        "row_index": 1394,
+        "sample_index": "1395"
+      },
+      "population_id": "mathverse_testmini_3940",
+      "sample_id": "mathverse_testmini_3940/mathverse_snapshot_testmini_json/1395_001394",
+      "source_file": "mathverse/snapshot/testmini.json"
+    },
+    {
+      "benchmark": "mathverse",
+      "metadata": {
+        "_source_manifest_index": 2086,
+        "answer": "A",
+        "problem_index": "126",
+        "problem_version": "Vision Dominant",
+        "question_type": "multi-choice",
+        "raw_id": "629",
+        "row_index": 628,
+        "sample_index": "629"
+      },
+      "population_id": "mathverse_testmini_3940",
+      "sample_id": "mathverse_testmini_3940/mathverse_snapshot_testmini_json/629_000628",
+      "source_file": "mathverse/snapshot/testmini.json"
+    },
+    {
+      "benchmark": "mathverse",
+      "metadata": {
+        "_source_manifest_index": 2091,
+        "answer": "10.74",
+        "problem_index": "680",
+        "problem_version": "Text Dominant",
+        "question_type": "free-form",
+        "raw_id": "3396",
+        "row_index": 3395,
+        "sample_index": "3396"
+      },
+      "population_id": "mathverse_testmini_3940",
+      "sample_id": "mathverse_testmini_3940/mathverse_snapshot_testmini_json/3396_003395",
+      "source_file": "mathverse/snapshot/testmini.json"
+    },
+    {
+      "benchmark": "mathverse",
+      "metadata": {
+        "_source_manifest_index": 2097,
+        "answer": "Volume $=874.93 \\mathrm{~cm}^{3}$",
+        "problem_index": "697",
+        "problem_version": "Vision Intensive",
+        "question_type": "free-form",
+        "raw_id": "3483",
+        "row_index": 3482,
+        "sample_index": "3483"
+      },
+      "population_id": "mathverse_testmini_3940",
+      "sample_id": "mathverse_testmini_3940/mathverse_snapshot_testmini_json/3483_003482",
+      "source_file": "mathverse/snapshot/testmini.json"
+    },
+    {
+      "benchmark": "mathverse",
+      "metadata": {
+        "_source_manifest_index": 2098,
+        "answer": "A",
+        "problem_index": "220",
+        "problem_version": "Vision Intensive",
+        "question_type": "multi-choice",
+        "raw_id": "1098",
+        "row_index": 1097,
+        "sample_index": "1098"
+      },
+      "population_id": "mathverse_testmini_3940",
+      "sample_id": "mathverse_testmini_3940/mathverse_snapshot_testmini_json/1098_001097",
+      "source_file": "mathverse/snapshot/testmini.json"
+    },
+    {
+      "benchmark": "mathverse",
+      "metadata": {
+        "_source_manifest_index": 2113,
+        "answer": "Surface Area $=39647.77 \\mathrm{~mm}^{2}$",
+        "problem_index": "666",
+        "problem_version": "Text Lite",
+        "question_type": "free-form",
+        "raw_id": "3327",
+        "row_index": 3326,
+        "sample_index": "3327"
+      },
+      "population_id": "mathverse_testmini_3940",
+      "sample_id": "mathverse_testmini_3940/mathverse_snapshot_testmini_json/3327_003326",
+      "source_file": "mathverse/snapshot/testmini.json"
+    },
+    {
+      "benchmark": "mathverse",
+      "metadata": {
+        "_source_manifest_index": 2123,
+        "answer": "4 \\pi",
+        "problem_index": "539",
+        "problem_version": "Text Lite",
+        "question_type": "free-form",
+        "raw_id": "2692",
+        "row_index": 2691,
+        "sample_index": "2692"
+      },
+      "population_id": "mathverse_testmini_3940",
+      "sample_id": "mathverse_testmini_3940/mathverse_snapshot_testmini_json/2692_002691",
+      "source_file": "mathverse/snapshot/testmini.json"
+    },
+    {
+      "benchmark": "mathverse",
+      "metadata": {
+        "_source_manifest_index": 2140,
+        "answer": "A",
+        "problem_index": "12",
+        "problem_version": "Vision Only",
+        "question_type": "multi-choice",
+        "raw_id": "60",
+        "row_index": 59,
+        "sample_index": "60"
+      },
+      "population_id": "mathverse_testmini_3940",
+      "sample_id": "mathverse_testmini_3940/mathverse_snapshot_testmini_json/60_000059",
+      "source_file": "mathverse/snapshot/testmini.json"
+    },
+    {
+      "benchmark": "mathverse",
+      "metadata": {
+        "_source_manifest_index": 2153,
+        "answer": "220.0 \\mathrm{~cm}^{3}",
+        "problem_index": "646",
+        "problem_version": "Text Lite",
+        "question_type": "free-form",
+        "raw_id": "3227",
+        "row_index": 3226,
+        "sample_index": "3227"
+      },
+      "population_id": "mathverse_testmini_3940",
+      "sample_id": "mathverse_testmini_3940/mathverse_snapshot_testmini_json/3227_003226",
+      "source_file": "mathverse/snapshot/testmini.json"
+    },
+    {
+      "benchmark": "mathverse",
+      "metadata": {
+        "_source_manifest_index": 2155,
+        "answer": "6.5",
+        "problem_index": "542",
+        "problem_version": "Vision Dominant",
+        "question_type": "free-form",
+        "raw_id": "2709",
+        "row_index": 2708,
+        "sample_index": "2709"
+      },
+      "population_id": "mathverse_testmini_3940",
+      "sample_id": "mathverse_testmini_3940/mathverse_snapshot_testmini_json/2709_002708",
+      "source_file": "mathverse/snapshot/testmini.json"
+    },
+    {
+      "benchmark": "mathverse",
+      "metadata": {
+        "_source_manifest_index": 2163,
+        "answer": "Volume $=10.45 \\mathrm{~cm}^{3}$",
+        "problem_index": "645",
+        "problem_version": "Text Lite",
+        "question_type": "free-form",
+        "raw_id": "3222",
+        "row_index": 3221,
+        "sample_index": "3222"
+      },
+      "population_id": "mathverse_testmini_3940",
+      "sample_id": "mathverse_testmini_3940/mathverse_snapshot_testmini_json/3222_003221",
+      "source_file": "mathverse/snapshot/testmini.json"
+    },
+    {
+      "benchmark": "mathverse",
+      "metadata": {
+        "_source_manifest_index": 2166,
+        "answer": "D",
+        "problem_index": "196",
+        "problem_version": "Vision Dominant",
+        "question_type": "multi-choice",
+        "raw_id": "979",
+        "row_index": 978,
+        "sample_index": "979"
+      },
+      "population_id": "mathverse_testmini_3940",
+      "sample_id": "mathverse_testmini_3940/mathverse_snapshot_testmini_json/979_000978",
+      "source_file": "mathverse/snapshot/testmini.json"
+    },
+    {
+      "benchmark": "mathverse",
+      "metadata": {
+        "_source_manifest_index": 2170,
+        "answer": "C",
+        "problem_index": "270",
+        "problem_version": "Vision Only",
+        "question_type": "multi-choice",
+        "raw_id": "1350",
+        "row_index": 1349,
+        "sample_index": "1350"
+      },
+      "population_id": "mathverse_testmini_3940",
+      "sample_id": "mathverse_testmini_3940/mathverse_snapshot_testmini_json/1350_001349",
+      "source_file": "mathverse/snapshot/testmini.json"
+    },
+    {
+      "benchmark": "mathverse",
+      "metadata": {
+        "_source_manifest_index": 2185,
+        "answer": "Perimeter $=257.73 \\mathrm{~m}$",
+        "problem_index": "411",
+        "problem_version": "Vision Dominant",
+        "question_type": "free-form",
+        "raw_id": "2054",
+        "row_index": 2053,
+        "sample_index": "2054"
+      },
+      "population_id": "mathverse_testmini_3940",
+      "sample_id": "mathverse_testmini_3940/mathverse_snapshot_testmini_json/2054_002053",
+      "source_file": "mathverse/snapshot/testmini.json"
+    },
+    {
+      "benchmark": "mathverse",
+      "metadata": {
+        "_source_manifest_index": 2196,
+        "answer": "B",
+        "problem_index": "151",
+        "problem_version": "Vision Dominant",
+        "question_type": "multi-choice",
+        "raw_id": "754",
+        "row_index": 753,
+        "sample_index": "754"
+      },
+      "population_id": "mathverse_testmini_3940",
+      "sample_id": "mathverse_testmini_3940/mathverse_snapshot_testmini_json/754_000753",
+      "source_file": "mathverse/snapshot/testmini.json"
+    },
+    {
+      "benchmark": "mathverse",
+      "metadata": {
+        "_source_manifest_index": 2201,
+        "answer": "-4.9\n-4.9",
+        "problem_index": "556",
+        "problem_version": "Text Dominant",
+        "question_type": "free-form",
+        "raw_id": "2776",
+        "row_index": 2775,
+        "sample_index": "2776"
+      },
+      "population_id": "mathverse_testmini_3940",
+      "sample_id": "mathverse_testmini_3940/mathverse_snapshot_testmini_json/2776_002775",
+      "source_file": "mathverse/snapshot/testmini.json"
+    },
+    {
+      "benchmark": "mathverse",
+      "metadata": {
+        "_source_manifest_index": 2207,
+        "answer": "Bugs Bunny",
+        "problem_index": "629",
+        "problem_version": "Vision Intensive",
+        "question_type": "free-form",
+        "raw_id": "3143",
+        "row_index": 3142,
+        "sample_index": "3143"
+      },
+      "population_id": "mathverse_testmini_3940",
+      "sample_id": "mathverse_testmini_3940/mathverse_snapshot_testmini_json/3143_003142",
+      "source_file": "mathverse/snapshot/testmini.json"
+    },
+    {
+      "benchmark": "mathverse",
+      "metadata": {
+        "_source_manifest_index": 2215,
+        "answer": "\\pi",
+        "problem_index": "537",
+        "problem_version": "Vision Dominant",
+        "question_type": "free-form",
+        "raw_id": "2684",
+        "row_index": 2683,
+        "sample_index": "2684"
+      },
+      "population_id": "mathverse_testmini_3940",
+      "sample_id": "mathverse_testmini_3940/mathverse_snapshot_testmini_json/2684_002683",
+      "source_file": "mathverse/snapshot/testmini.json"
+    },
+    {
+      "benchmark": "mathverse",
+      "metadata": {
+        "_source_manifest_index": 2227,
+        "answer": "(-1.8,10)",
+        "problem_index": "502",
+        "problem_version": "Vision Intensive",
+        "question_type": "free-form",
+        "raw_id": "2508",
+        "row_index": 2507,
+        "sample_index": "2508"
+      },
+      "population_id": "mathverse_testmini_3940",
+      "sample_id": "mathverse_testmini_3940/mathverse_snapshot_testmini_json/2508_002507",
+      "source_file": "mathverse/snapshot/testmini.json"
+    },
+    {
+      "benchmark": "mathverse",
+      "metadata": {
+        "_source_manifest_index": 2257,
+        "answer": "60^\\circ",
+        "problem_index": "382",
+        "problem_version": "Vision Intensive",
+        "question_type": "free-form",
+        "raw_id": "1908",
+        "row_index": 1907,
+        "sample_index": "1908"
+      },
+      "population_id": "mathverse_testmini_3940",
+      "sample_id": "mathverse_testmini_3940/mathverse_snapshot_testmini_json/1908_001907",
+      "source_file": "mathverse/snapshot/testmini.json"
+    },
+    {
+      "benchmark": "mathverse",
+      "metadata": {
+        "_source_manifest_index": 2275,
+        "answer": "g(x)=x^2-3",
+        "problem_index": "569",
+        "problem_version": "Vision Dominant",
+        "question_type": "free-form",
+        "raw_id": "2844",
+        "row_index": 2843,
+        "sample_index": "2844"
+      },
+      "population_id": "mathverse_testmini_3940",
+      "sample_id": "mathverse_testmini_3940/mathverse_snapshot_testmini_json/2844_002843",
+      "source_file": "mathverse/snapshot/testmini.json"
+    },
+    {
+      "benchmark": "mathverse",
+      "metadata": {
+        "_source_manifest_index": 2278,
+        "answer": "B",
+        "problem_index": "130",
+        "problem_version": "Vision Intensive",
+        "question_type": "multi-choice",
+        "raw_id": "648",
+        "row_index": 647,
+        "sample_index": "648"
+      },
+      "population_id": "mathverse_testmini_3940",
+      "sample_id": "mathverse_testmini_3940/mathverse_snapshot_testmini_json/648_000647",
+      "source_file": "mathverse/snapshot/testmini.json"
+    },
+    {
+      "benchmark": "mathverse",
+      "metadata": {
+        "_source_manifest_index": 2298,
+        "answer": "B",
+        "problem_index": "215",
+        "problem_version": "Vision Intensive",
+        "question_type": "multi-choice",
+        "raw_id": "1073",
+        "row_index": 1072,
+        "sample_index": "1073"
+      },
+      "population_id": "mathverse_testmini_3940",
+      "sample_id": "mathverse_testmini_3940/mathverse_snapshot_testmini_json/1073_001072",
+      "source_file": "mathverse/snapshot/testmini.json"
+    },
+    {
+      "benchmark": "mathverse",
+      "metadata": {
+        "_source_manifest_index": 2306,
+        "answer": "A",
+        "problem_index": "73",
+        "problem_version": "Vision Dominant",
+        "question_type": "multi-choice",
+        "raw_id": "364",
+        "row_index": 363,
+        "sample_index": "364"
+      },
+      "population_id": "mathverse_testmini_3940",
+      "sample_id": "mathverse_testmini_3940/mathverse_snapshot_testmini_json/364_000363",
+      "source_file": "mathverse/snapshot/testmini.json"
+    },
+    {
+      "benchmark": "mathverse",
+      "metadata": {
+        "_source_manifest_index": 2314,
+        "answer": "B",
+        "problem_index": "180",
+        "problem_version": "Text Lite",
+        "question_type": "multi-choice",
+        "raw_id": "897",
+        "row_index": 896,
+        "sample_index": "897"
+      },
+      "population_id": "mathverse_testmini_3940",
+      "sample_id": "mathverse_testmini_3940/mathverse_snapshot_testmini_json/897_000896",
+      "source_file": "mathverse/snapshot/testmini.json"
+    },
+    {
+      "benchmark": "mathverse",
+      "metadata": {
+        "_source_manifest_index": 2334,
+        "answer": "B",
+        "problem_index": "246",
+        "problem_version": "Text Lite",
+        "question_type": "multi-choice",
+        "raw_id": "1227",
+        "row_index": 1226,
+        "sample_index": "1227"
+      },
+      "population_id": "mathverse_testmini_3940",
+      "sample_id": "mathverse_testmini_3940/mathverse_snapshot_testmini_json/1227_001226",
+      "source_file": "mathverse/snapshot/testmini.json"
+    },
+    {
+      "benchmark": "mathverse",
+      "metadata": {
+        "_source_manifest_index": 2341,
+        "answer": "37.23",
+        "problem_index": "346",
+        "problem_version": "Text Dominant",
+        "question_type": "free-form",
+        "raw_id": "1726",
+        "row_index": 1725,
+        "sample_index": "1726"
+      },
+      "population_id": "mathverse_testmini_3940",
+      "sample_id": "mathverse_testmini_3940/mathverse_snapshot_testmini_json/1726_001725",
+      "source_file": "mathverse/snapshot/testmini.json"
+    },
+    {
+      "benchmark": "mathverse",
+      "metadata": {
+        "_source_manifest_index": 2343,
+        "answer": "74.85",
+        "problem_index": "364",
+        "problem_version": "Text Lite",
+        "question_type": "free-form",
+        "raw_id": "1817",
+        "row_index": 1816,
+        "sample_index": "1817"
+      },
+      "population_id": "mathverse_testmini_3940",
+      "sample_id": "mathverse_testmini_3940/mathverse_snapshot_testmini_json/1817_001816",
+      "source_file": "mathverse/snapshot/testmini.json"
+    },
+    {
+      "benchmark": "mathverse",
+      "metadata": {
+        "_source_manifest_index": 2364,
+        "answer": "A",
+        "problem_index": "11",
+        "problem_version": "Text Lite",
+        "question_type": "multi-choice",
+        "raw_id": "52",
+        "row_index": 51,
+        "sample_index": "52"
+      },
+      "population_id": "mathverse_testmini_3940",
+      "sample_id": "mathverse_testmini_3940/mathverse_snapshot_testmini_json/52_000051",
+      "source_file": "mathverse/snapshot/testmini.json"
+    },
+    {
+      "benchmark": "mathverse",
+      "metadata": {
+        "_source_manifest_index": 2386,
+        "answer": "B",
+        "problem_index": "117",
+        "problem_version": "Vision Dominant",
+        "question_type": "multi-choice",
+        "raw_id": "584",
+        "row_index": 583,
+        "sample_index": "584"
+      },
+      "population_id": "mathverse_testmini_3940",
+      "sample_id": "mathverse_testmini_3940/mathverse_snapshot_testmini_json/584_000583",
+      "source_file": "mathverse/snapshot/testmini.json"
+    },
+    {
+      "benchmark": "mathverse",
+      "metadata": {
+        "_source_manifest_index": 2393,
+        "answer": "$y-3=\\frac{2}{3}(x-8)$",
+        "problem_index": "452",
+        "problem_version": "Text Lite",
+        "question_type": "free-form",
+        "raw_id": "2257",
+        "row_index": 2256,
+        "sample_index": "2257"
+      },
+      "population_id": "mathverse_testmini_3940",
+      "sample_id": "mathverse_testmini_3940/mathverse_snapshot_testmini_json/2257_002256",
+      "source_file": "mathverse/snapshot/testmini.json"
+    },
+    {
+      "benchmark": "mathverse",
+      "metadata": {
+        "_source_manifest_index": 2434,
+        "answer": "B",
+        "problem_index": "75",
+        "problem_version": "Text Lite",
+        "question_type": "multi-choice",
+        "raw_id": "372",
+        "row_index": 371,
+        "sample_index": "372"
+      },
+      "population_id": "mathverse_testmini_3940",
+      "sample_id": "mathverse_testmini_3940/mathverse_snapshot_testmini_json/372_000371",
+      "source_file": "mathverse/snapshot/testmini.json"
+    },
+    {
+      "benchmark": "mathverse",
+      "metadata": {
+        "_source_manifest_index": 2436,
+        "answer": "B",
+        "problem_index": "786",
+        "problem_version": "Vision Dominant",
+        "question_type": "multi-choice",
+        "raw_id": "3929",
+        "row_index": 3928,
+        "sample_index": "3929"
+      },
+      "population_id": "mathverse_testmini_3940",
+      "sample_id": "mathverse_testmini_3940/mathverse_snapshot_testmini_json/3929_003928",
+      "source_file": "mathverse/snapshot/testmini.json"
+    },
+    {
+      "benchmark": "mathverse",
+      "metadata": {
+        "_source_manifest_index": 2453,
+        "answer": "2500",
+        "problem_index": "578",
+        "problem_version": "Text Lite",
+        "question_type": "free-form",
+        "raw_id": "2887",
+        "row_index": 2886,
+        "sample_index": "2887"
+      },
+      "population_id": "mathverse_testmini_3940",
+      "sample_id": "mathverse_testmini_3940/mathverse_snapshot_testmini_json/2887_002886",
+      "source_file": "mathverse/snapshot/testmini.json"
+    },
+    {
+      "benchmark": "mathverse",
+      "metadata": {
+        "_source_manifest_index": 2454,
+        "answer": "E",
+        "problem_index": "552",
+        "problem_version": "Text Lite",
+        "question_type": "multi-choice",
+        "raw_id": "2757",
+        "row_index": 2756,
+        "sample_index": "2757"
+      },
+      "population_id": "mathverse_testmini_3940",
+      "sample_id": "mathverse_testmini_3940/mathverse_snapshot_testmini_json/2757_002756",
+      "source_file": "mathverse/snapshot/testmini.json"
+    },
+    {
+      "benchmark": "mathverse",
+      "metadata": {
+        "_source_manifest_index": 2455,
+        "answer": "Volume $=577.3 \\mathrm{~cm}^{3}$",
+        "problem_index": "691",
+        "problem_version": "Vision Dominant",
+        "question_type": "free-form",
+        "raw_id": "3454",
+        "row_index": 3453,
+        "sample_index": "3454"
+      },
+      "population_id": "mathverse_testmini_3940",
+      "sample_id": "mathverse_testmini_3940/mathverse_snapshot_testmini_json/3454_003453",
+      "source_file": "mathverse/snapshot/testmini.json"
+    },
+    {
+      "benchmark": "mathverse",
+      "metadata": {
+        "_source_manifest_index": 2457,
+        "answer": "$-\\frac{3}{2}x+3$",
+        "problem_index": "497",
+        "problem_version": "Vision Intensive",
+        "question_type": "free-form",
+        "raw_id": "2483",
+        "row_index": 2482,
+        "sample_index": "2483"
+      },
+      "population_id": "mathverse_testmini_3940",
+      "sample_id": "mathverse_testmini_3940/mathverse_snapshot_testmini_json/2483_002482",
+      "source_file": "mathverse/snapshot/testmini.json"
+    },
+    {
+      "benchmark": "mathverse",
+      "metadata": {
+        "_source_manifest_index": 2462,
+        "answer": "D",
+        "problem_index": "49",
+        "problem_version": "Text Dominant",
+        "question_type": "multi-choice",
+        "raw_id": "241",
+        "row_index": 240,
+        "sample_index": "241"
+      },
+      "population_id": "mathverse_testmini_3940",
+      "sample_id": "mathverse_testmini_3940/mathverse_snapshot_testmini_json/241_000240",
+      "source_file": "mathverse/snapshot/testmini.json"
+    },
+    {
+      "benchmark": "mathverse",
+      "metadata": {
+        "_source_manifest_index": 2501,
+        "answer": "Bugs Bunny",
+        "problem_index": "629",
+        "problem_version": "Text Dominant",
+        "question_type": "free-form",
+        "raw_id": "3141",
+        "row_index": 3140,
+        "sample_index": "3141"
+      },
+      "population_id": "mathverse_testmini_3940",
+      "sample_id": "mathverse_testmini_3940/mathverse_snapshot_testmini_json/3141_003140",
+      "source_file": "mathverse/snapshot/testmini.json"
+    },
+    {
+      "benchmark": "mathverse",
+      "metadata": {
+        "_source_manifest_index": 2504,
+        "answer": "C",
+        "problem_index": "567",
+        "problem_version": "Text Lite",
+        "question_type": "multi-choice",
+        "raw_id": "2832",
+        "row_index": 2831,
+        "sample_index": "2832"
+      },
+      "population_id": "mathverse_testmini_3940",
+      "sample_id": "mathverse_testmini_3940/mathverse_snapshot_testmini_json/2832_002831",
+      "source_file": "mathverse/snapshot/testmini.json"
+    },
+    {
+      "benchmark": "mathverse",
+      "metadata": {
+        "_source_manifest_index": 2510,
+        "answer": "A",
+        "problem_index": "223",
+        "problem_version": "Vision Only",
+        "question_type": "multi-choice",
+        "raw_id": "1115",
+        "row_index": 1114,
+        "sample_index": "1115"
+      },
+      "population_id": "mathverse_testmini_3940",
+      "sample_id": "mathverse_testmini_3940/mathverse_snapshot_testmini_json/1115_001114",
+      "source_file": "mathverse/snapshot/testmini.json"
+    }
+  ],
+  "seed": 20260701,
+  "source_manifest_hash": "a461d9b482b7165b42b9bbb0fbf0ea6aff31fde0a838c13d953f070e770b0579",
+  "source_manifest_id": "core_balanced_dev_2511_seed20260625",
+  "source_population_ids": [
+    "vstar_test_questions_191",
+    "hr_bench_4k_800",
+    "blink_val_all_subtasks_1901",
+    "ocrbench_v2_data_test_10000",
+    "mmmu_pro_standard10_test_1730",
+    "mathvista_testmini_1000",
+    "mathverse_testmini_3940"
+  ],
+  "stratification": {
+    "allocations": [
+      {
+        "benchmark": "vstar_bench",
+        "sample_rule": "random.sample without replacement using seed 20260701, sorted by source manifest order within benchmark",
+        "selected_n": 50,
+        "source_count": 191
+      },
+      {
+        "benchmark": "hr_bench_4k",
+        "sample_rule": "random.sample without replacement using seed 20260701, sorted by source manifest order within benchmark",
+        "selected_n": 50,
+        "source_count": 200
+      },
+      {
+        "benchmark": "blink",
+        "sample_rule": "random.sample without replacement using seed 20260701, sorted by source manifest order within benchmark",
+        "selected_n": 50,
+        "source_count": 420
+      },
+      {
+        "benchmark": "ocrbench_v2",
+        "sample_rule": "random.sample without replacement using seed 20260701, sorted by source manifest order within benchmark",
+        "selected_n": 50,
+        "source_count": 600
+      },
+      {
+        "benchmark": "mmmu_pro",
+        "sample_rule": "random.sample without replacement using seed 20260701, sorted by source manifest order within benchmark",
+        "selected_n": 50,
+        "source_count": 300
+      },
+      {
+        "benchmark": "mathvista",
+        "sample_rule": "random.sample without replacement using seed 20260701, sorted by source manifest order within benchmark",
+        "selected_n": 50,
+        "source_count": 300
+      },
+      {
+        "benchmark": "mathverse",
+        "sample_rule": "random.sample without replacement using seed 20260701, sorted by source manifest order within benchmark",
+        "selected_n": 50,
+        "source_count": 500
+      }
+    ],
+    "diagnostic_manifest_id": "coredev2511_7bench_50each_seed20260701",
+    "seed": 20260701,
+    "selection": "DIAGNOSTIC SUBSAMPLE: 50 samples per benchmark from CoreDev-2511; not the full CoreDev-2511 set and not official full benchmark sets.",
+    "short_name": "CoreDev-350-7x50",
+    "source_manifest_hash": "a461d9b482b7165b42b9bbb0fbf0ea6aff31fde0a838c13d953f070e770b0579",
+    "source_manifest_id": "core_balanced_dev_2511_seed20260625",
+    "subset_id": "core_balanced_dev_2511_seed20260625"
+  }
+}

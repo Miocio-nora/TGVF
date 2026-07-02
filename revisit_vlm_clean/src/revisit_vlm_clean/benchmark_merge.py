@@ -36,6 +36,7 @@ SHARD_RUN_CONFIG_IDENTITY_FIELDS = (
     "manifest_path",
     "benchmark_root",
     "max_image_resolution",
+    "max_tokens",
     "max_action_tokens",
     "max_answer_tokens",
     "tgvf_protocol",

@@ -499,6 +499,12 @@ def _dedupe_media_refs(media: list[dict[str, Any]]) -> list[dict[str, Any]]:
             and Path(path_hint or path).name in existing_path_basenames
         ):
             continue
+        if (
+            item.get("kind") in {"image_struct", "embedded_image_struct"}
+            and item.get("source_key") == "decoded_image"
+            and Path(path_hint or path).name in existing_path_basenames
+        ):
+            continue
         key = (str(item.get("kind") or ""), path or path_hint or str(item.get("source_key") or ""))
         if key in seen:
             continue

@@ -13,6 +13,9 @@ from revisit_vlm.qwen3_vl_tgvf import (
     PROTOCOL_C_SPECIAL_TOKENS,
     PROTOCOL_C_THINKING_SPECIAL,
     PROTOCOL_C_TOOL_OBSERVATION,
+    Qwen3FocusCapture,
+    Qwen3SourceVisualGeometry,
+    _chunk_position_ids_native_source_grid,
     _chunk_position_ids_inherit_source_visual_positions,
     _text_positions_are_1d,
     _visual_position_ids_equal_source,
@@ -197,12 +200,80 @@ class FakeResizableModel(torch.nn.Module):
             self.emb.weight[: old.num_embeddings].copy_(old.weight)
 
 
+class FakePositionModel(torch.nn.Module):
+    def __init__(self) -> None:
+        super().__init__()
+        self.emb = torch.nn.Embedding(64, 4)
+        self.seen_image_grid_thw: torch.Tensor | None = None
+
+    def get_input_embeddings(self) -> torch.nn.Embedding:
+        return self.emb
+
+    def compute_3d_position_ids(self, **kwargs: object) -> torch.Tensor:
+        input_ids = kwargs["input_ids"]
+        assert isinstance(input_ids, torch.Tensor)
+        image_grid_thw = kwargs["image_grid_thw"]
+        assert isinstance(image_grid_thw, torch.Tensor)
+        self.seen_image_grid_thw = image_grid_thw.detach().cpu()
+        seq_len = int(input_ids.shape[-1])
+        return torch.arange(seq_len, dtype=torch.long).view(1, 1, seq_len).repeat(3, 1, 1)
+
+
 def _inputs() -> dict[str, torch.Tensor]:
     return {
         "input_ids": torch.tensor([[1, 2, 3, 4]]),
         "attention_mask": torch.ones((1, 4), dtype=torch.long),
         "image_grid_thw": torch.tensor([[1, 2, 2]]),
     }
+
+
+def test_native_source_grid_position_ids_accept_multiple_source_image_grids() -> None:
+    model = FakePositionModel()
+    capture = Qwen3FocusCapture(
+        target_text="target",
+        target_token_ids=[1],
+        target_hidden_states=torch.zeros((1, 4)),
+        generated_ids=[],
+        generated_text="",
+        generated_hidden_states=torch.zeros((0, 4)),
+        past_key_values=None,
+        attention_mask=torch.ones((1, 4), dtype=torch.long),
+        cache_position=None,
+        input_ids=torch.tensor([[1, 2, 3, 4]], dtype=torch.long),
+        last_logits=None,
+        model_kwargs={},
+        image_grid_thw=torch.tensor([[1, 1, 1]], dtype=torch.long),
+        source_visual_geometry=Qwen3SourceVisualGeometry(
+            image_grid_thw=torch.tensor([[1, 1, 2], [1, 1, 3]], dtype=torch.long),
+            video_grid_thw=None,
+            source_visual_position_ids=None,
+            source_visual_token_indices=torch.arange(5, dtype=torch.long),
+            source_visual_token_count=5,
+            image_token_id=1,
+            position_ids_shape=None,
+            mm_token_type_ids_present=True,
+            extraction_mode="unit",
+        ),
+    )
+    token_ids = torch.tensor([10, 11, 12, 13, 14, 15], dtype=torch.long)
+    attention_mask = torch.ones((1, 10), dtype=torch.long)
+    chunk_mm_token_type_ids = torch.zeros((1, 6), dtype=torch.long)
+
+    position_ids = _chunk_position_ids_native_source_grid(
+        model=model,
+        capture=capture,
+        token_ids=token_ids,
+        attention_mask=attention_mask,
+        chunk_mm_token_type_ids=chunk_mm_token_type_ids,
+        fvt_token_start=1,
+        fvt_token_end=6,
+        source_geometry=capture.source_visual_geometry,
+        device="cpu",
+    )
+
+    assert position_ids.tolist() == torch.arange(4, 10).view(1, 1, 6).repeat(3, 1, 1).tolist()
+    assert model.seen_image_grid_thw is not None
+    assert model.seen_image_grid_thw.tolist() == [[1, 1, 1], [1, 1, 2], [1, 1, 3]]
 
 
 def test_v3_parser_accepts_valid_focus_action() -> None:

@@ -32,6 +32,11 @@ def build_legacy_stage2_args(
     output_dir: str | Path,
 ) -> argparse.Namespace:
     runtime.validate()
+    if runtime.max_tokens is not None:
+        raise NotImplementedError(
+            "legacy Stage2 adapter does not support unified max_tokens; "
+            "use tgvf_stage2_qwen3_native for unified token-budget eval"
+        )
     return argparse.Namespace(
         stage2_checkpoint=runtime.stage2_checkpoint,
         eval_jsonl=runtime.eval_jsonl,

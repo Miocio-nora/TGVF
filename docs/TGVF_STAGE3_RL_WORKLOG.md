@@ -506,3 +506,32 @@ reward: answer/tool/focus/ground/protocol all active
 This is intentionally a pilot, not a 200-step formal lineage. The first thing to
 inspect after launch is whether legal TGVF focus actions recover under the
 current no-block DeepStack and frozen-reference setup.
+
+## 2026-07-01 FlashAttention-2 Default Preference
+
+Use FlashAttention-2 by default whenever the path is known to support it. The
+current evidence is:
+
+- Original Qwen3-VL generation on B200 is much faster with
+  `flash_attention_2` than with `sdpa`.
+- Clean Stage3 `native_single_focus` can run with `flash_attention_2` through a
+  real hard-focus path: one `forced_on_clean` rollout completed focus capture,
+  TGVF D construction, post-D continuation, replay, optimizer update, and
+  checkpoint save.
+- The direct offline Stage3 judge CLI already accepts
+  `--attn-implementation flash_attention_2` and passes it to Qwen-VL model
+  loading.
+
+Operational default:
+
+- Prefer `--attn-implementation flash_attention_2` for throughput-sensitive
+  original generation, clean Stage3 native rollouts/training, and direct offline
+  judge runs.
+- Keep `sdpa` for Stage1 and Stage2 paths that use custom weak-strict additive
+  4D masks until those masks are redesigned or separately proven compatible
+  with FlashAttention-2. The Stage1 one-step FlashAttention-2 smoke failed in
+  the first LM-loss forward inside `flash_attn_varlen_func`, which is consistent
+  with this mask limitation.
+- Formal stepwise Stage3 auto-judge currently hardcodes judge shards to `sdpa`.
+  Add a `--judge-attn-implementation` pass-through before claiming stepwise
+  auto-judge uses FlashAttention-2.

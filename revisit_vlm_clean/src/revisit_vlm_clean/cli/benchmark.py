@@ -82,6 +82,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--benchmark-root", default=DEFAULT_BENCHMARK_ROOT)
     parser.add_argument("--output-dir", default=None)
     parser.add_argument("--max-image-resolution", type=int, default=512)
+    parser.add_argument("--max-tokens", type=int, default=None)
     parser.add_argument("--max-action-tokens", type=int, default=64)
     parser.add_argument("--max-answer-tokens", type=int, default=128)
     parser.add_argument(
@@ -180,6 +181,7 @@ def main(argv: list[str] | None = None) -> int:
         manifest_hash=args.manifest_hash,
         benchmark_root=args.benchmark_root,
         max_image_resolution=args.max_image_resolution,
+        max_tokens=args.max_tokens,
         max_action_tokens=args.max_action_tokens,
         max_answer_tokens=args.max_answer_tokens,
         tgvf_protocol=args.tgvf_protocol,
@@ -447,6 +449,7 @@ def _stage2_runtime_config(args: argparse.Namespace, config: RunConfig) -> Stage
         d_condition=args.stage2_d_condition,
         force_prefix_mode=args.force_prefix_mode,
         append_forward_mode=config.post_tgvf_forward_mode,
+        max_tokens=config.max_tokens,
         max_action_tokens=config.max_action_tokens,
         max_answer_tokens=config.max_answer_tokens,
     )

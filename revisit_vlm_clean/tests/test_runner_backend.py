@@ -14,6 +14,7 @@ from revisit_vlm_clean.runner import (
     STAGE2_NATIVE_BACKEND,
     BackendConfig,
     ModelRunResult,
+    Qwen3OriginalBackend,
     TGVFStage2Qwen3Backend,
     TGVFStage2Qwen3NativeBackend,
     backend_role_identity,
@@ -152,6 +153,40 @@ def test_stage2_backend_role_identity_marks_legacy_as_diagnostic_bridge() -> Non
         "diagnostic_bridge": False,
         "requires_internal_diagnostic_family": False,
     }
+
+
+def test_stage2_native_unified_token_budget_tracks_remaining_answer_tokens(tmp_path) -> None:
+    runtime = _runtime(tmp_path)
+    runtime = Stage2RuntimeConfig(
+        stage2_checkpoint=runtime.stage2_checkpoint,
+        eval_jsonl=runtime.eval_jsonl,
+        append_forward_mode=runtime.append_forward_mode,
+        max_tokens=5,
+        max_action_tokens=64,
+        max_answer_tokens=512,
+    )
+    engine = NativeStage2Engine(stage2_config=runtime)
+    capture = SimpleNamespace(generated_ids=[1, 2, 3])
+    continuation = SimpleNamespace(generated_ids=[4, 5])
+
+    assert engine._action_token_budget() == 5
+    assert engine._answer_token_budget(capture) == 2
+    assert engine._token_budget_debug(capture, continuation) == {
+        "schema_version": "clean_stage2_unified_token_budget_v1",
+        "token_budget_policy": "unified_max_tokens",
+        "max_tokens": 5,
+        "legacy_split_limits": {
+            "active": False,
+            "max_action_tokens": 64,
+            "max_answer_tokens": 512,
+        },
+        "action_budget": 5,
+        "action_tokens": 3,
+        "answer_budget": 2,
+        "answer_tokens": 2,
+        "total_generated_tokens": 5,
+        "unified_budget_active": True,
+    }
     assert backend_role_identity(STAGE2_LEGACY_BACKEND) == {
         "final_clean_backend": False,
         "diagnostic_bridge": True,
@@ -164,6 +199,123 @@ def test_runner_does_not_top_level_import_legacy_stage2_adapter() -> None:
     top_level_import_block = "\n".join(source.splitlines()[:40])
 
     assert "legacy_stage2_adapter import" not in top_level_import_block
+
+
+def test_qwen3_original_backend_run_batch_splits_generated_outputs(monkeypatch, tmp_path) -> None:
+    import torch
+
+    image_path = tmp_path / "image.jpg"
+    image_path.write_bytes(b"not a real image; processor is mocked")
+    samples = [
+        BenchmarkSample(
+            sample_id=f"sample-{index}",
+            benchmark="vstar_bench",
+            population_id="vstar_test_questions_191",
+            source_file="vstar/test.jsonl",
+            question=f"Question {index}?",
+            media=({"kind": "path", "path": str(image_path), "exists": True},),
+            choices=("A", "B"),
+            gold_answer="A",
+        )
+        for index in range(2)
+    ]
+    config = _run_config(EvalMode.ORIGINAL)
+    rendered = [render_benchmark_input(sample, config) for sample in samples]
+
+    class FakeTokenizer:
+        pad_token_id = 0
+
+        def decode(self, ids, **kwargs):
+            del kwargs
+            return " ".join(str(item) for item in ids)
+
+    class FakeProcessor:
+        tokenizer = FakeTokenizer()
+
+    class FakeModel:
+        def generate(self, **kwargs):
+            assert int(kwargs["input_ids"].shape[0]) == 2
+            return torch.tensor(
+                [
+                    [1, 2, 3, 10, 11, 0],
+                    [4, 5, 0, 12, 0, 0],
+                ]
+            )
+
+    backend = Qwen3OriginalBackend(
+        model_id="fake",
+        processor_id=None,
+        backend_config=BackendConfig(backend="qwen3_original", device="cpu", device_map=None),
+        max_image_resolution=512,
+        max_answer_tokens=8,
+    )
+    monkeypatch.setattr(backend, "_load", lambda: (FakeModel(), FakeProcessor()))
+    monkeypatch.setattr(
+        backend,
+        "_build_batch_inputs",
+        lambda processor, messages: {
+            "input_ids": torch.tensor([[1, 2, 3], [4, 5, 0]]),
+            "attention_mask": torch.ones(2, 3, dtype=torch.long),
+        },
+    )
+
+    results = backend.run_batch(samples, rendered, config)
+
+    assert [result.raw_output for result in results] == ["10 11", "12"]
+    assert [result.output_tokens for result in results] == [2, 1]
+    assert [result.debug["batch_generation"]["batch_size"] for result in results] == [2, 2]
+
+
+def test_qwen3_original_batch_inputs_force_left_padding(monkeypatch) -> None:
+    import sys
+    import types
+
+    import torch
+
+    fake_qwen_vl_utils = types.ModuleType("qwen_vl_utils")
+
+    def fake_process_vision_info(*args, **kwargs):
+        del args, kwargs
+        return None, None, {}
+
+    fake_qwen_vl_utils.process_vision_info = fake_process_vision_info
+    monkeypatch.setitem(sys.modules, "qwen_vl_utils", fake_qwen_vl_utils)
+
+    class FakeTokenizer:
+        padding_side = "right"
+
+    class FakeProcessor:
+        tokenizer = FakeTokenizer()
+
+        def apply_chat_template(self, messages, **kwargs):
+            del kwargs
+            return messages[0]["content"][0]["text"]
+
+        def __call__(self, **kwargs):
+            assert self.tokenizer.padding_side == "left"
+            assert kwargs["padding"] is True
+            return {
+                "input_ids": torch.tensor([[1, 2], [0, 3]]),
+                "attention_mask": torch.ones(2, 2, dtype=torch.long),
+            }
+
+    backend = Qwen3OriginalBackend(
+        model_id="fake",
+        processor_id=None,
+        backend_config=BackendConfig(backend="qwen3_original", device="cpu", device_map=None),
+        max_image_resolution=512,
+        max_answer_tokens=8,
+    )
+
+    inputs = backend._build_batch_inputs(
+        FakeProcessor(),
+        [
+            [{"role": "user", "content": [{"type": "text", "text": "one"}]}],
+            [{"role": "user", "content": [{"type": "text", "text": "two"}]}],
+        ],
+    )
+
+    assert inputs["input_ids"].shape == (2, 2)
 
 
 def test_make_tgvf_stage2_legacy_backend_without_prepare_for_diagnostic(tmp_path) -> None:
@@ -698,6 +850,58 @@ def test_stage2_sample_from_clean_sample_materializes_multiple_image_structs(
     ]
 
 
+def test_stage2_sample_from_clean_sample_coalesces_decoded_image_duplicate(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("REVISIT_VLM_CLEAN_STAGE2_MEDIA_CACHE", str(tmp_path / "media_cache"))
+    image_bytes = base64.b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ"
+        "/pLvAAAAAElFTkSuQmCC"
+    )
+    image_path = tmp_path / "images" / "555.jpg"
+    image_path.parent.mkdir(parents=True)
+    image_path.write_bytes(image_bytes)
+    sample = BenchmarkSample(
+        sample_id="mathvista/sample/555",
+        benchmark="mathvista",
+        population_id="mathvista_testmini_1000",
+        source_file="mathvista/snapshot/data/testmini.parquet",
+        question="Is this nest larger than a fist?",
+        media=(
+            {
+                "kind": "path",
+                "source_key": "image",
+                "path": str(image_path),
+                "exists": True,
+                "path_hint": "images/555.jpg",
+            },
+            {
+                "kind": "image_struct",
+                "source_key": "decoded_image",
+                "path_hint": "555.jpg",
+                "payload_loaded": True,
+                "byte_length": len(image_bytes),
+                "bytes": image_bytes,
+            },
+        ),
+        choices=("Yes", "No"),
+        gold_answer="No",
+    )
+    config = _run_config(EvalMode.TGVF_FREE)
+    rendered = render_benchmark_input(sample, config)
+
+    converted = stage2_sample_from_clean_sample(sample, rendered)
+
+    assert converted.image == str(image_path)
+    assert converted.metadata["image_input_count"] == 1
+    assert converted.metadata["image_input_mode"] == "single_image"
+    assert [item["source_key"] for item in converted.metadata["image_materialization"]] == [
+        "image"
+    ]
+    assert not (tmp_path / "media_cache").exists()
+
+
 def test_stage2_native_engine_force_flow_with_fake_runtime(tmp_path) -> None:
     runtime = _runtime(tmp_path)
     config = _run_config(EvalMode.TGVF_FORCE)
@@ -1185,6 +1389,107 @@ def test_stage2_native_kv_deepstack_no_block_keeps_original_image_keys_visible(
     assert result.debug_metadata["deepstack_original_image_key_block"] is False
 
 
+def test_stage2_native_retries_full_sequence_for_multi_image_kv_position_failure(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    import torch
+
+    runtime = _runtime(tmp_path, append_forward_mode=ForwardMode.KV_CACHE)
+    engine = NativeStage2Engine(stage2_config=runtime)
+    sample = SimpleNamespace(
+        image="image-a.jpg",
+        image_id="sample",
+        source_dataset="blink",
+        source_profile="blink_val_all_subtasks_1901",
+        need_focus=True,
+        question="Question?",
+        prompt_question="Question?",
+        target="target",
+        evidence_description="",
+        answer="A",
+        answer_format="multiple_choice",
+        evidence_type="visual",
+        target_style="object",
+        target_cues=[],
+    )
+    capture = SimpleNamespace(
+        generated_text="<think>\n<|focus_start|>target<|focus_end|>",
+        generated_ids=[1, 2, 3],
+        generated_logprobs=[],
+        capture_found=True,
+        malformed=False,
+        target_text="target",
+        target_token_ids=[2],
+        target_hidden_states=torch.zeros((1, 4)),
+        source_visual_geometry=SimpleNamespace(
+            image_grid_thw=torch.tensor([[1, 1, 2], [1, 1, 3]], dtype=torch.long),
+            source_visual_token_count=5,
+        ),
+    )
+    parsed = SimpleNamespace(
+        evidence_state=None,
+        focus_target="target",
+        malformed=False,
+        answer="A",
+        answer_valid=True,
+    )
+    append_result = SimpleNamespace(
+        debug_metadata={
+            "fvt_shape": [5, 4],
+            "fvt_append_path": "clean_native_full_sequence_prefill",
+            "fvt_position_mode": "multi_image_inherit_source_visual_positions",
+            "uses_deepstack_for_fvt": True,
+            "deepstack_caution": None,
+            "second_full_forward_used": True,
+        },
+    )
+    calls = {"kv": 0, "full": 0}
+
+    def fake_kv_append(capture_arg, d_arg):
+        del capture_arg, d_arg
+        calls["kv"] += 1
+        raise RuntimeError(
+            "shape mismatch: value tensor of shape [3, 804] cannot be broadcast "
+            "to indexing result of shape [3, 1032]"
+        )
+
+    def fake_full_append(sample_arg, capture_arg, d_arg):
+        del sample_arg, capture_arg, d_arg
+        calls["full"] += 1
+        return append_result
+
+    monkeypatch.setattr(engine, "_append_visual_d", fake_kv_append)
+    monkeypatch.setattr(engine, "_append_visual_d_full_sequence", fake_full_append)
+    monkeypatch.setattr(
+        engine,
+        "_continue_generation",
+        lambda append_result_arg, *, capture: SimpleNamespace(
+            generated_text="A",
+            generated_ids=[4],
+            generated_logprobs=[],
+        ),
+    )
+    monkeypatch.setattr(engine, "_parse_action", lambda _text: parsed)
+
+    result = engine._run_post_tgvf_condition(
+        sample=sample,
+        capture=capture,
+        correct_d=torch.zeros((5, 4)),
+        block="unit",
+        focus_source="unit",
+    )
+
+    assert result.error is None
+    assert result.append_success is True
+    assert calls == {"kv": 1, "full": 1}
+    assert result.debug["second_full_forward_used"] is True
+    assert result.debug["mask_mode"] == "clean_native_full_sequence_prefill"
+    assert result.debug["kv_cache_append_retry_reason"] == (
+        "multi_image_native_source_grid_position_ids"
+    )
+
+
 def test_stage2_native_kv_deepstack_prefills_generate_cache_tail(
     monkeypatch,
     tmp_path,
@@ -1425,8 +1730,8 @@ class _FakeFlowEngine(NativeStage2Engine):
         self.calls.append("append_visual_d")
         return _FakeAppend()
 
-    def _continue_generation(self, append_result):
-        del append_result
+    def _continue_generation(self, append_result, *, capture=None):
+        del append_result, capture
         self.calls.append("continue")
         return _FakeContinuation()
 

@@ -17,6 +17,22 @@ def test_stage2_runtime_config_rejects_missing_files(tmp_path) -> None:
         config.validate()
 
 
+def test_stage2_runtime_config_rejects_nonpositive_max_tokens(tmp_path) -> None:
+    ckpt = tmp_path / "ckpt.pt"
+    jsonl = tmp_path / "eval.jsonl"
+    ckpt.write_bytes(b"placeholder")
+    jsonl.write_text('{"image": "a.jpg", "need_focus": true}\n')
+    config = Stage2RuntimeConfig(
+        stage2_checkpoint=str(ckpt),
+        eval_jsonl=str(jsonl),
+        append_forward_mode=ForwardMode.KV_CACHE,
+        max_tokens=0,
+    )
+
+    with pytest.raises(ValueError, match="max_tokens"):
+        config.validate()
+
+
 def test_eval_jsonl_identity_counts_focus_and_no_focus(tmp_path) -> None:
     path = tmp_path / "stage2.jsonl"
     path.write_text(

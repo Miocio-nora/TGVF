@@ -117,6 +117,7 @@ class RunConfig:
     manifest_hash: str | None = None
     benchmark_root: str = DEFAULT_BENCHMARK_ROOT
     max_image_resolution: int = DEFAULT_MAX_IMAGE_RESOLUTION
+    max_tokens: int | None = None
     max_action_tokens: int = 64
     max_answer_tokens: int = 128
     tgvf_protocol: str = DEFAULT_PROTOCOL
@@ -145,6 +146,8 @@ class RunConfig:
             raise ValueError("shard_index must be in [0, num_shards)")
         if self.post_tgvf_continuation != ContinuationMode.NATURAL_CONTINUE:
             raise ValueError("clean benchmark continuation must be natural_continue")
+        if self.max_tokens is not None and int(self.max_tokens) <= 0:
+            raise ValueError("max_tokens must be positive when provided")
         if self.mode in {EvalMode.ORIGINAL, EvalMode.TGVF_FREE} and (
             self.prompt_suffix or self.softforce_prompt_text
         ):
