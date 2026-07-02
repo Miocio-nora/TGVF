@@ -130,6 +130,27 @@ Before Stage1/Stage2 training:
 
 ## Evaluation Rules
 
+Default clean external benchmark setting after the 2026-07-02 CoreDev-2511
+retest:
+
+- Unless the user explicitly requests an ablation, use the same evaluation
+  identity as the completed 2026-07-02 retest.
+- For CoreDev reports, use the complete
+  `core_balanced_dev_2511_seed20260625` / CoreDev-2511 manifest with internal
+  manifest hash
+  `a461d9b482b7165b42b9bbb0fbf0ea6aff31fde0a838c13d953f070e770b0579`.
+- Use `revisit_vlm_clean.cli.dynamic_benchmark` with dynamic queue scheduling
+  on GPUs `0,1,2,3,4,5,6,7` when those GPUs are available.
+- Use native clean backend `tgvf_stage2_qwen3_native`.
+- Use FlashAttention-2 via `--attn-implementation flash_attention_2`.
+- Use unified generation budget `--max-tokens 512`; do not use separate
+  `max_action_tokens` / `max_answer_tokens` as the main comparable setting.
+- Use DeepStack enabled with original-image scope `no_block`, post-D
+  continuation mode `kv_cache`, scoring backend `auto`, max image resolution
+  `512`, and softforce prompt `Use focus tool.`.
+- Treat deviations from this setting as named ablations and record the changed
+  variables in `docs/EXPERIMENT_LEDGER.md` before launch.
+
 Post-D evaluation identity:
 
 - Record the forward mode, but do not explain a result as "KV vs no-KV" unless
