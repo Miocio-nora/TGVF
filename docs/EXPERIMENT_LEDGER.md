@@ -11932,6 +11932,37 @@ entry, update this file immediately.
     `target_steps=200`.
   - W&B:
     `https://wandb.ai/mio_nora/tgvf-stage3/runs/0l3cvpjg`.
+- Outcome:
+  - Completed all `200/200` steps with no failed steps.
+  - Finished state update: `2026-07-01T08:24:36Z`
+    (`2026-07-01 17:24:36 JST`).
+  - Final checkpoint:
+    `outputs/stage3_grpo/final_datasetprop_optionalreward_no_block_frozenref_rewardgate_softprompt4_4gpu_g8_pb2_res512_200step_20260630_112809/step_000200/checkpoint_step_1.pt`,
+    sha256 `a10aec26787a1a0215f6bb7c128995b85707ebf2b945f7d34b44e1262183b79d`,
+    size `3219600219` bytes.
+  - Retained checkpoints: steps `25,50,75,100,125,150,175,199,200`.
+  - Training rollouts: `12800`; average trigger rate `36.16%`.
+    - Free rollout trigger: `16.35%`.
+    - Soft-prompt rollout trigger: `63.18%`.
+    - Tool labels: `tool_needed=7848`, `tool_optional=2984`,
+      `tool_unnecessary=1968`.
+    - Answer correctness over training reward rows: `57.48%`.
+    - Mean reward: `1.1422`.
+    - Required-tool trigger: `43.87%`; optional-tool trigger: `33.45%`;
+      no-tool trigger: `9.55%`.
+  - Training stability:
+    - `distributed_kl_mean=0.0` throughout.
+    - `recorded_old_logprob_mismatches=0`.
+    - `distributed_loss_mean` average `-0.2256`.
+    - `grad_norm=0.0` remains the known logging artifact when
+      `max_grad_norm=0.0`.
+  - Judge load: `9258` total pending judge rows, mean `46.29` per step.
+  - CoreDev-2511 evaluation was completed later with the same clean default
+    benchmark identity. Step200 best row is `tgvf_free`: overall `36.40%`,
+    macro `40.57%`, trigger `30.78%`, parse `99.60%`, append `100%`.
+    It improves over Stage2 free (`35.53%`) by `+0.87` points overall and
+    over the original baseline (`30.86%`) by `+5.54` points.
+    Step200 softforce is slightly lower overall: `36.06%`.
 
 ## 2026-07-01 - Stage2 MathVista CoreDev-300 Media-Dedupe Rerun
 
