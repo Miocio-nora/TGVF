@@ -118,6 +118,7 @@ class _DiagnosticItem:
     pre_merge_visual_tokens: Any
     merged_visual_tokens: Any
     foveated_visual_tokens: Any
+    d_deepstack_visual_embeds: Any | None
     capture: Any
     shapes: dict[str, list[int]]
     readout_metadata: dict[str, Any]
@@ -464,6 +465,8 @@ def _load_runtime(config: StageDiagnosticConfig, *, example_sample: Any) -> _Run
         encoder_reencode_deepstack_compatible=tgvf_cfg[
             "encoder_reencode_deepstack_compatible"
         ],
+        d_deepstack_enabled=tgvf_cfg["d_deepstack_enabled"],
+        d_deepstack_branch_layers=tgvf_cfg["d_deepstack_branch_layers"],
     ).to(device=device, dtype=next(model.parameters()).dtype)
     if "tgvf_module" not in checkpoint:
         raise KeyError("checkpoint is missing tgvf_module")
@@ -642,6 +645,10 @@ def _resolved_tgvf_module_config(
         "encoder_reencode_deepstack_compatible": bool(
             tgvf_cfg.get("encoder_reencode_deepstack_compatible", False)
         ),
+        "d_deepstack_enabled": bool(tgvf_cfg.get("d_deepstack_enabled", False)),
+        "d_deepstack_branch_layers": tuple(
+            int(value) for value in (tgvf_cfg.get("d_deepstack_branch_layers") or (8, 16, 24))
+        ),
     }
 
 
@@ -652,7 +659,10 @@ def _build_diagnostic_items(
 ) -> list[_DiagnosticItem]:
     import torch
 
-    from revisit_vlm.qwen3_vl_tgvf import NEED_LOCAL_EVIDENCE, tap_qwen3_vision_features
+    from revisit_vlm.qwen3_vl_tgvf import (
+        NEED_LOCAL_EVIDENCE,
+        tap_qwen3_vision_features_with_deepstack_premerge,
+    )
     from revisit_vlm.tgvf_foveal import finalize_tgvf_output_with_frozen_qwen_merger
     from revisit_vlm.tgvf_v3_stage1 import (
         capture_v3_stage1_focus_teacher_forced,
@@ -660,7 +670,7 @@ def _build_diagnostic_items(
     )
 
     items: list[_DiagnosticItem] = []
-    vision_cache: dict[str, tuple[Any, Any, Any]] = {}
+    vision_cache: dict[str, tuple[Any, Any, Any, list[Any], list[Any]]] = {}
     with torch.no_grad():
         for index, sample in enumerate(samples):
             image_input = _image_input(sample.image, max_image_resolution=config.max_image_resolution)
@@ -679,14 +689,14 @@ def _build_diagnostic_items(
                 raise RuntimeError(f"forced focus span was not captured for sample {index}")
             cache_key = f"{sample.image}|{config.max_image_resolution}"
             if cache_key not in vision_cache:
-                vision_cache[cache_key] = tap_qwen3_vision_features(
+                vision_cache[cache_key] = tap_qwen3_vision_features_with_deepstack_premerge(
                     runtime.utility_model,
                     runtime.processor,
                     image=image_input,
                     question=sample.prompt_question,
                     device=runtime.device,
                 )
-            tap, v_pre, v_merge = vision_cache[cache_key]
+            tap, v_pre, v_merge, deepstack_pre, _deepstack_features = vision_cache[cache_key]
             if v_pre is None:
                 raise RuntimeError(f"Qwen vision V_pre tap failed: {tap.errors}")
             if v_merge is None:
@@ -703,10 +713,14 @@ def _build_diagnostic_items(
                     "image": image_input,
                     "question": sample.prompt_question,
                     "device": runtime.device,
+                    "deepstack_pre_merge_visual_tokens": [
+                        item.to(runtime.device) for item in deepstack_pre
+                    ],
                 },
             )
             output = finalize_tgvf_output_with_frozen_qwen_merger(runtime.utility_model, output)
             d = output.foveated_visual_tokens.detach()
+            d_deepstack = output.deepstack_visual_embeds
             readout_inputs = prepare_v3_stage1_readout_inputs(
                 model=runtime.model,
                 tokenizer_or_processor=runtime.processor,
@@ -714,6 +728,7 @@ def _build_diagnostic_items(
                 evidence_description=sample.evidence_description,
                 foveated_visual_tokens=d,
                 merged_visual_tokens=v_merge.to(runtime.device),
+                d_deepstack_visual_embeds=d_deepstack,
                 device=runtime.device,
                 mask_original_image_after_tgvf=True,
                 position_mode=config.fvt_position_mode,
@@ -728,12 +743,18 @@ def _build_diagnostic_items(
                     pre_merge_visual_tokens=v_pre.detach().cpu(),
                     merged_visual_tokens=v_merge.detach().cpu(),
                     foveated_visual_tokens=d.detach().cpu(),
+                    d_deepstack_visual_embeds=None
+                    if not d_deepstack
+                    else [item.detach().cpu() for item in d_deepstack],
                     capture=_cpu_capture(capture),
                     shapes={
                         "H_q": list(capture.target_hidden_states.shape),
                         "V_pre": list(v_pre.shape),
                         "V_merge": list(v_merge.shape),
                         "D": list(d.shape),
+                        "D_deepstack": []
+                        if not d_deepstack
+                        else [list(item.shape) for item in d_deepstack],
                     },
                     readout_metadata={
                         "mask_mode": readout_inputs.get("mask_mode"),
@@ -757,6 +778,10 @@ def _build_diagnostic_items(
                         "qwen_lora_loaded": bool(
                             runtime.model_info.get("qwen_lora", {}).get("loaded")
                         ),
+                        "d_deepstack_visual_embeds_used": bool(d_deepstack),
+                        "d_deepstack_visual_embed_shapes": []
+                        if not d_deepstack
+                        else [list(item.shape) for item in d_deepstack],
                     },
                 )
             )
@@ -788,6 +813,7 @@ def _run_readout(
                 runtime=runtime,
                 item=item,
                 foveated_visual_tokens=d,
+                d_deepstack_visual_embeds=item.d_deepstack_visual_embeds,
             )
             nll_target_only = _compute_readout_nll(
                 config=config,
@@ -800,6 +826,7 @@ def _run_readout(
                 runtime=runtime,
                 item=item,
                 foveated_visual_tokens=random_d,
+                d_deepstack_visual_embeds=None,
             )
             nll_wrong_same = None
             if same_index is not None and _can_score_fvt_for_item(
@@ -811,6 +838,9 @@ def _run_readout(
                     runtime=runtime,
                     item=item,
                     foveated_visual_tokens=scored_items[same_index].foveated_visual_tokens,
+                    d_deepstack_visual_embeds=scored_items[
+                        same_index
+                    ].d_deepstack_visual_embeds,
                 )
             nll_wrong_diff = None
             if diff_index is not None and _can_score_fvt_for_item(
@@ -822,6 +852,9 @@ def _run_readout(
                     runtime=runtime,
                     item=item,
                     foveated_visual_tokens=scored_items[diff_index].foveated_visual_tokens,
+                    d_deepstack_visual_embeds=scored_items[
+                        diff_index
+                    ].d_deepstack_visual_embeds,
                 )
             nlls = {
                 "correct_D_plus_target": nll_correct["avg_nll"],
@@ -981,6 +1014,7 @@ def _run_query(
                         runtime=runtime,
                         item=row_item,
                         foveated_visual_tokens=col_item.foveated_visual_tokens,
+                        d_deepstack_visual_embeds=col_item.d_deepstack_visual_embeds,
                     )
                     row.append(float(nll["avg_nll"]))
                 nll_matrix.append(row)
@@ -1205,6 +1239,7 @@ def _compute_readout_nll(
     runtime: _Runtime,
     item: _DiagnosticItem,
     foveated_visual_tokens: Any | None,
+    d_deepstack_visual_embeds: Any | None = None,
 ) -> dict[str, Any]:
     from revisit_vlm.tgvf_v3_stage1 import compute_v3_stage1_lm_loss, prepare_v3_stage1_readout_inputs
 
@@ -1227,6 +1262,9 @@ def _compute_readout_nll(
             evidence_description=item.sample.evidence_description,
             foveated_visual_tokens=foveated_visual_tokens.to(runtime.device),
             merged_visual_tokens=item.merged_visual_tokens.to(runtime.device),
+            d_deepstack_visual_embeds=None
+            if d_deepstack_visual_embeds is None
+            else [feature.to(runtime.device) for feature in d_deepstack_visual_embeds],
             device=runtime.device,
             mask_original_image_after_tgvf=True,
             position_mode=config.fvt_position_mode,

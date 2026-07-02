@@ -41,6 +41,7 @@ from revisit_vlm.qwen3_vl_tgvf import (
     render_stage1_readout_text,
     render_tgvf_prefix_suffix,
     tap_qwen3_vision_features,
+    tap_qwen3_vision_features_with_deepstack_premerge,
 )
 from revisit_vlm.tgvf_foveal import finalize_tgvf_output_with_frozen_qwen_merger
 from revisit_vlm.tgvf_training import (
@@ -96,6 +97,8 @@ class TGVFv3Stage1Features:
     merged_visual_tokens: torch.Tensor
     image_grid_thw: torch.Tensor | None
     vision_tap: Any
+    deepstack_pre_merge_visual_tokens: list[torch.Tensor] = field(default_factory=list)
+    deepstack_visual_embeds: list[torch.Tensor] = field(default_factory=list)
 
 
 class TGVFv3Stage1Dataset(Dataset[TGVFv3Stage1Sample]):
@@ -262,7 +265,7 @@ def collect_v3_stage1_features(
     hidden_state_index: int = -1,
     max_image_resolution: int | None = 512,
     capture_mode: Literal["teacher_forced", "decode_loop"] = "teacher_forced",
-    vision_cache: dict[str, tuple[Any, torch.Tensor, torch.Tensor]] | None = None,
+    vision_cache: dict[str, tuple[Any, torch.Tensor, torch.Tensor, list[torch.Tensor], list[torch.Tensor]]] | None = None,
     protocol: TGVFProtocol = "legacy_v3_tags",
     focus_action_im_end: bool = False,
 ) -> TGVFv3Stage1Features:
@@ -298,9 +301,15 @@ def collect_v3_stage1_features(
         raise RuntimeError(f"Forced v3 focus span was not captured: {capture.generated_text!r}")
     cache_key = f"{sample.image}|{max_image_resolution}"
     if vision_cache is not None and cache_key in vision_cache:
-        tap, v_pre, v_merge = vision_cache[cache_key]
+        tap, v_pre, v_merge, deepstack_pre, deepstack_features = vision_cache[cache_key]
     else:
-        tap, v_pre, v_merge = tap_qwen3_vision_features(
+        (
+            tap,
+            v_pre,
+            v_merge,
+            deepstack_pre,
+            deepstack_features,
+        ) = tap_qwen3_vision_features_with_deepstack_premerge(
             model,
             processor,
             image=image_input,
@@ -308,7 +317,7 @@ def collect_v3_stage1_features(
             device=device,
         )
         if vision_cache is not None and v_pre is not None and v_merge is not None:
-            vision_cache[cache_key] = (tap, v_pre, v_merge)
+            vision_cache[cache_key] = (tap, v_pre, v_merge, deepstack_pre, deepstack_features)
     if v_pre is None:
         raise RuntimeError(f"Qwen3 V_pre tap failed: {tap.errors}")
     if v_merge is None:
@@ -322,6 +331,8 @@ def collect_v3_stage1_features(
             None if capture.image_grid_thw is None else capture.image_grid_thw.detach().cpu()
         ),
         vision_tap=tap,
+        deepstack_pre_merge_visual_tokens=[item.detach().cpu() for item in deepstack_pre],
+        deepstack_visual_embeds=[item.detach().cpu() for item in deepstack_features],
     )
 
 
@@ -442,6 +453,7 @@ def prepare_v3_stage1_readout_inputs(
     evidence_description: str,
     foveated_visual_tokens: torch.Tensor,
     merged_visual_tokens: torch.Tensor | None = None,
+    d_deepstack_visual_embeds: list[torch.Tensor] | None = None,
     device: torch.device | str | None = None,
     mask_original_image_after_tgvf: bool = True,
     position_mode: PositionMode = "native_source_grid",
@@ -527,6 +539,20 @@ def prepare_v3_stage1_readout_inputs(
             dtype=embeds.dtype,
         ).unsqueeze(0)
     embeds[:, fvt_token_start:fvt_token_end, :] = d.to(dtype=embeds.dtype).unsqueeze(0)
+    d_deepstack_features = _prepare_d_deepstack_features_for_readout(
+        d_deepstack_visual_embeds,
+        token_count=int(d.shape[0]),
+        device=device,
+        dtype=embeds.dtype,
+    )
+    visual_pos_masks = None
+    if d_deepstack_features is not None:
+        visual_pos_masks = torch.zeros(
+            (1, int(input_ids.shape[-1])),
+            dtype=torch.bool,
+            device=device,
+        )
+        visual_pos_masks[0, fvt_token_start:fvt_token_end] = True
 
     labels = torch.full_like(input_ids, IGNORE_INDEX)
     labels[:, evidence_start:] = input_ids[:, evidence_start:]
@@ -593,6 +619,8 @@ def prepare_v3_stage1_readout_inputs(
         "attention_mask": attention_mask,
         "attention_mask_2d": attention_mask_2d,
         "position_ids": position_ids,
+        "visual_pos_masks": visual_pos_masks,
+        "deepstack_visual_embeds": d_deepstack_features,
         "image_grid_thw": image_grid_thw,
         "mm_token_type_ids": mm_token_type_ids,
         "fvt_token_start": fvt_token_start,
@@ -614,6 +642,10 @@ def prepare_v3_stage1_readout_inputs(
         ],
         "mask_summary": mask_summary,
         "tgvf_protocol": protocol,
+        "d_deepstack_features_enabled": bool(d_deepstack_features is not None),
+        "d_deepstack_feature_shapes": (
+            None if d_deepstack_features is None else [list(item.shape) for item in d_deepstack_features]
+        ),
     }
 
 
@@ -699,13 +731,15 @@ def compute_v3_stage1_lm_losses_batched(
     if not readout_inputs_list:
         raise ValueError("readout_inputs_list must not be empty")
     batched = batch_v3_stage1_readout_inputs(readout_inputs_list)
-    outputs = model(
+    outputs = _forward_stage1_readout_with_optional_deepstack(
+        model,
         inputs_embeds=batched["inputs_embeds"],
         attention_mask=batched["attention_mask"],
         position_ids=batched["position_ids"],
         image_grid_thw=batched["image_grid_thw"],
         mm_token_type_ids=batched["mm_token_type_ids"],
-        return_dict=True,
+        visual_pos_masks=batched.get("visual_pos_masks"),
+        deepstack_visual_embeds=batched.get("deepstack_visual_embeds"),
     )
     logits = outputs.logits
     labels = batched["labels"]
@@ -733,6 +767,8 @@ def batch_v3_stage1_readout_inputs(readout_inputs_list: list[dict[str, Any]]) ->
     position_list = []
     attention_4d_list = []
     image_grids = []
+    deepstack_masks = []
+    deepstack_per_layer: list[list[torch.Tensor]] | None = None
     dtype = readout_inputs_list[0]["inputs_embeds"].dtype
     device = readout_inputs_list[0]["inputs_embeds"].device
     min_value = torch.finfo(dtype).min
@@ -818,7 +854,35 @@ def batch_v3_stage1_readout_inputs(readout_inputs_list: list[dict[str, Any]]) ->
         attention_4d_list.append(padded_attention)
         image_grids.append(item["image_grid_thw"])
 
-    return {
+        item_deepstack = item.get("deepstack_visual_embeds")
+        item_mask = item.get("visual_pos_masks")
+        if item_deepstack is not None or item_mask is not None:
+            if item_deepstack is None or item_mask is None:
+                raise ValueError("DeepStack readout requires both mask and feature tensors")
+            if deepstack_per_layer is None:
+                deepstack_per_layer = [[] for _ in item_deepstack]
+            elif len(item_deepstack) != len(deepstack_per_layer):
+                raise ValueError("DeepStack readout layer count mismatch")
+            mask = item_mask
+            if pad_len:
+                mask = torch.cat(
+                    [
+                        mask,
+                        torch.zeros((1, pad_len), dtype=torch.bool, device=mask.device),
+                    ],
+                    dim=1,
+                )
+            deepstack_masks.append(mask)
+            token_count = int(item_mask.sum().detach().cpu().item())
+            for layer_index, feature in enumerate(item_deepstack):
+                if int(feature.shape[0]) != token_count:
+                    raise ValueError(
+                        "DeepStack readout feature token count mismatch: "
+                        f"feature={int(feature.shape[0])} mask={token_count}"
+                    )
+                deepstack_per_layer[layer_index].append(feature)
+
+    result = {
         "input_ids": torch.cat(input_ids_list, dim=0),
         "inputs_embeds": torch.cat(embeds_list, dim=0),
         "labels": torch.cat(labels_list, dim=0),
@@ -828,6 +892,56 @@ def batch_v3_stage1_readout_inputs(readout_inputs_list: list[dict[str, Any]]) ->
         "image_grid_thw": torch.cat(image_grids, dim=0),
         "mm_token_type_ids": torch.cat(token_type_list, dim=0),
     }
+    if deepstack_per_layer is not None:
+        if len(deepstack_masks) != len(readout_inputs_list):
+            raise ValueError("DeepStack readout batches cannot mix enabled and disabled items")
+        result["visual_pos_masks"] = torch.cat(deepstack_masks, dim=0)
+        result["deepstack_visual_embeds"] = [
+            torch.cat(layer_features, dim=0)
+            for layer_features in deepstack_per_layer
+        ]
+    return result
+
+
+def _forward_stage1_readout_with_optional_deepstack(
+    model: Any,
+    *,
+    inputs_embeds: torch.Tensor,
+    attention_mask: torch.Tensor,
+    position_ids: torch.Tensor,
+    image_grid_thw: torch.Tensor,
+    mm_token_type_ids: torch.Tensor,
+    visual_pos_masks: torch.Tensor | None = None,
+    deepstack_visual_embeds: list[torch.Tensor] | None = None,
+) -> Any:
+    if visual_pos_masks is None or deepstack_visual_embeds is None:
+        return model(
+            inputs_embeds=inputs_embeds,
+            attention_mask=attention_mask,
+            position_ids=position_ids,
+            image_grid_thw=image_grid_thw,
+            mm_token_type_ids=mm_token_type_ids,
+            return_dict=True,
+        )
+    causal_lm = _unwrap_qwen3_causal_lm_for_stage1(model)
+    vl_model = getattr(causal_lm, "model", None)
+    language_model = getattr(vl_model, "language_model", None)
+    lm_head = getattr(causal_lm, "lm_head", None)
+    if language_model is None or lm_head is None:
+        raise RuntimeError("Qwen3 Stage1 D DeepStack readout requires model.language_model and lm_head")
+    outputs = language_model(
+        input_ids=None,
+        inputs_embeds=inputs_embeds,
+        attention_mask=attention_mask,
+        position_ids=position_ids,
+        past_key_values=None,
+        use_cache=False,
+        output_hidden_states=False,
+        return_dict=True,
+        visual_pos_masks=visual_pos_masks,
+        deepstack_visual_embeds=deepstack_visual_embeds,
+    )
+    return type("Stage1DeepStackReadoutOutput", (), {"logits": lm_head(outputs.last_hidden_state)})()
 
 
 def compute_v3_stage1_lm_losses_chunked(
@@ -872,7 +986,10 @@ def v3_stage1_training_step(
     focus_action_im_end: bool = False,
 ) -> TGVFTrainStepOutput:
     protocol = normalize_tgvf_protocol(protocol)
-    vision_cache: dict[str, tuple[Any, torch.Tensor, torch.Tensor]] = {}
+    vision_cache: dict[
+        str,
+        tuple[Any, torch.Tensor, torch.Tensor, list[torch.Tensor], list[torch.Tensor]],
+    ] = {}
     features = [
         collect_v3_stage1_features(
             model=qwen_model,
@@ -889,6 +1006,7 @@ def v3_stage1_training_step(
         for sample in samples
     ]
     fvt_outputs: list[torch.Tensor] = []
+    fvt_deepstack_outputs: list[list[torch.Tensor] | None] = []
     loss_man_values: list[torch.Tensor] = []
     loss_norm_values: list[torch.Tensor] = []
     attention_debug_values: list[dict[str, Any]] = []
@@ -911,11 +1029,15 @@ def v3_stage1_training_step(
                 "device": device,
                 "original_qwen_model_used_for_readout": reencode_qwen_model is None,
                 "separate_reencode_qwen_model": reencode_qwen_model is not None,
+                "deepstack_pre_merge_visual_tokens": [
+                    item.to(device) for item in feature.deepstack_pre_merge_visual_tokens
+                ],
             },
         )
         output = finalize_tgvf_output_with_frozen_qwen_merger(qwen_model, output)
         d = output.foveated_visual_tokens
         fvt_outputs.append(d)
+        fvt_deepstack_outputs.append(output.deepstack_visual_embeds)
         readout_inputs = prepare_v3_stage1_readout_inputs(
             model=qwen_model,
             tokenizer_or_processor=processor,
@@ -923,6 +1045,7 @@ def v3_stage1_training_step(
             evidence_description=sample.evidence_description,
             foveated_visual_tokens=d,
             merged_visual_tokens=feature.merged_visual_tokens.to(device),
+            d_deepstack_visual_embeds=output.deepstack_visual_embeds,
             device=device,
             mask_original_image_after_tgvf=mask_original_image_after_tgvf,
             position_mode=position_mode,
@@ -933,9 +1056,7 @@ def v3_stage1_training_step(
         loss_man_values.append(
             _safe_visual_token_manifold_loss(d, feature.merged_visual_tokens.to(device))
         )
-        loss_norm_values.append(
-            _safe_visual_token_norm_loss(d, feature.merged_visual_tokens.to(device))
-        )
+        loss_norm_values.append(_stage1_combined_norm_loss(output, feature, device=device))
         attention_debug_values.append(attention_diagnostics(output.attention_debug))
         norm_debug_values.append(
             fvt_norm_diagnostics(
@@ -967,6 +1088,7 @@ def v3_stage1_training_step(
                     capture=features[pos_index].capture,
                     evidence_description=samples[pos_index].evidence_description,
                     foveated_visual_tokens=fvt_outputs[neg_index],
+                    d_deepstack_visual_embeds=fvt_deepstack_outputs[neg_index],
                     merged_visual_tokens=features[pos_index].merged_visual_tokens.to(device),
                     device=device,
                     mask_original_image_after_tgvf=mask_original_image_after_tgvf,
@@ -1007,6 +1129,7 @@ def v3_stage1_training_step(
                             capture=features[pos_index].capture,
                             evidence_description=samples[pos_index].evidence_description,
                             foveated_visual_tokens=fvt_outputs[fvt_index],
+                            d_deepstack_visual_embeds=fvt_deepstack_outputs[fvt_index],
                             merged_visual_tokens=features[pos_index].merged_visual_tokens.to(device),
                             device=device,
                             mask_original_image_after_tgvf=mask_original_image_after_tgvf,
@@ -1092,6 +1215,13 @@ def v3_stage1_training_step(
             "visual_token_norm_active": bool(
                 first_d.shape[-1] == first_feature.merged_visual_tokens.shape[-1]
             ),
+            "d_deepstack_features_enabled": bool(fvt_deepstack_outputs[0]),
+            "d_deepstack_branch_feature_shapes": (
+                None
+                if not fvt_deepstack_outputs[0]
+                else [list(item.shape) for item in fvt_deepstack_outputs[0] or []]
+            ),
+            "d_deepstack_norm_active": bool(fvt_deepstack_outputs[0]),
             "qwen_frozen": not any(parameter.requires_grad for parameter in qwen_model.parameters()),
             "separate_reencode_qwen_model": reencode_qwen_model is not None,
             "reencode_qwen_trainable": False if reencode_qwen_model is None else any(parameter.requires_grad for parameter in reencode_qwen_model.parameters()),
@@ -1121,6 +1251,44 @@ def v3_stage1_training_step(
 def _unwrap_module(module: nn.Module) -> nn.Module:
     return getattr(module, "module", module)
 
+
+def _unwrap_qwen3_causal_lm_for_stage1(model: Any) -> Any:
+    if hasattr(model, "get_base_model"):
+        try:
+            return model.get_base_model()
+        except Exception:
+            pass
+    base_model = getattr(model, "base_model", None)
+    nested = getattr(base_model, "model", None)
+    if nested is not None:
+        return nested
+    return model
+
+
+def _prepare_d_deepstack_features_for_readout(
+    features: list[torch.Tensor] | None,
+    *,
+    token_count: int,
+    device: torch.device | str,
+    dtype: torch.dtype,
+) -> list[torch.Tensor] | None:
+    if not features:
+        return None
+    prepared = []
+    for feature in features:
+        if not isinstance(feature, torch.Tensor):
+            raise TypeError("D DeepStack readout feature must be a torch.Tensor")
+        if feature.ndim != 2:
+            raise ValueError(f"D DeepStack readout feature must have shape [N, D], got {list(feature.shape)}")
+        if int(feature.shape[0]) != int(token_count):
+            raise ValueError(
+                "D DeepStack readout feature token count mismatch: "
+                f"feature={int(feature.shape[0])} d_tokens={int(token_count)}"
+            )
+        prepared.append(feature.to(device=device, dtype=dtype))
+    return prepared
+
+
 def _readout_debug(readout_inputs: dict[str, Any]) -> dict[str, Any]:
     keys = (
         "mask_mode",
@@ -1134,6 +1302,8 @@ def _readout_debug(readout_inputs: dict[str, Any]) -> dict[str, Any]:
         "answer_token_count",
         "mask_summary",
         "tgvf_protocol",
+        "d_deepstack_features_enabled",
+        "d_deepstack_feature_shapes",
     )
     return {key: readout_inputs.get(key) for key in keys}
 
@@ -1162,6 +1332,56 @@ def _safe_visual_token_norm_loss(
     if foveated_visual_tokens.shape[-1] != merged_visual_tokens.shape[-1]:
         return foveated_visual_tokens.sum() * 0.0
     return visual_token_norm_loss(foveated_visual_tokens, merged_visual_tokens)
+
+
+def _stage1_combined_norm_loss(
+    output: Any,
+    feature: TGVFv3Stage1Features,
+    *,
+    device: torch.device | str,
+) -> torch.Tensor:
+    d = output.foveated_visual_tokens
+    losses = [
+        _safe_visual_token_norm_loss(d, feature.merged_visual_tokens.to(device))
+    ]
+    branch_loss = _safe_deepstack_visual_token_norm_loss(
+        output.deepstack_visual_embeds,
+        feature.deepstack_visual_embeds,
+        device=device,
+        fallback=d,
+    )
+    if branch_loss is not None:
+        losses.append(branch_loss)
+    return torch.stack(losses).mean()
+
+
+def _safe_deepstack_visual_token_norm_loss(
+    d_deepstack_features: list[torch.Tensor] | None,
+    original_deepstack_features: list[torch.Tensor],
+    *,
+    device: torch.device | str,
+    fallback: torch.Tensor,
+) -> torch.Tensor | None:
+    if not d_deepstack_features:
+        return None
+    if len(d_deepstack_features) != len(original_deepstack_features):
+        raise ValueError(
+            "D DeepStack norm loss branch count mismatch: "
+            f"d={len(d_deepstack_features)} original={len(original_deepstack_features)}"
+        )
+    losses = []
+    for d_feature, original_feature in zip(
+        d_deepstack_features,
+        original_deepstack_features,
+        strict=True,
+    ):
+        if d_feature.shape[-1] != original_feature.shape[-1]:
+            losses.append(fallback.sum() * 0.0)
+            continue
+        losses.append(visual_token_norm_loss(d_feature, original_feature.to(device)))
+    if not losses:
+        return None
+    return torch.stack(losses).mean()
 
 
 def _full_mm_token_type_ids(

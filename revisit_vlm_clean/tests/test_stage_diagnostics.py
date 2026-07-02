@@ -166,6 +166,32 @@ def test_stage_diagnostics_execute_invokes_clean_native_executor(
     assert status["reports"]["readout"]["exists"] is True
 
 
+def test_stage_diagnostics_resolves_d_deepstack_from_checkpoint_config() -> None:
+    config = stage_diagnostics.StageDiagnosticConfig(
+        run_id="stage1_ddeep_diag",
+        stage="stage1",
+        checkpoint="checkpoint.pt",
+        eval_jsonl="eval.jsonl",
+        output_dir="out",
+    )
+    resolved = stage_diagnostics._resolved_tgvf_module_config(
+        checkpoint={
+            "config": {
+                "tgvf": {
+                    "variant": "tgvf_v2_bidirectional",
+                    "spatial_merge_size": 2,
+                    "d_deepstack_enabled": True,
+                    "d_deepstack_branch_layers": [8, 16, 24],
+                }
+            }
+        },
+        config=config,
+        dims={"spatial_merge_size": 2},
+    )
+    assert resolved["d_deepstack_enabled"] is True
+    assert resolved["d_deepstack_branch_layers"] == (8, 16, 24)
+
+
 def test_stage_diagnostics_json_safe_serializes_sets_stably() -> None:
     payload = stage_diagnostics._json_safe({"tokens": {"b", "a"}, "ids": frozenset({2, 1})})
     assert payload == {"tokens": ["a", "b"], "ids": [1, 2]}

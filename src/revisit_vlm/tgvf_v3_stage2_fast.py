@@ -99,6 +99,8 @@ class _FocusPrepared:
     final_attention_mask: torch.Tensor
     final_position_ids: torch.Tensor
     final_mm_token_type_ids: torch.Tensor
+    d_token_indices: torch.Tensor | None
+    d_deepstack_visual_embeds: list[torch.Tensor] | None
     masked_image_key_count: int
     image_key_mask_active: bool
     mask_mode: str
@@ -195,6 +197,7 @@ def v3_stage2_batched_training_step(
                     "image": _image_input(item.sample.image, max_image_resolution=max_image_resolution),
                     "question": item.sample.prompt_question,
                     "device": device,
+                    "deepstack_pre_merge_visual_tokens": _item_deepstack_pre_merge_features(item),
                 },
             )
             output = finalize_tgvf_output_with_frozen_qwen_merger(qwen_model, output)
@@ -211,6 +214,7 @@ def v3_stage2_batched_training_step(
                     pre_merge_visual_tokens=pre,
                     merged_visual_tokens=merged,
                     foveated_visual_tokens=d,
+                    d_deepstack_visual_embeds=output.deepstack_visual_embeds,
                     loss_weights=loss_weights,
                     device=device,
                     mask_original_image_after_tgvf=mask_original_image_after_tgvf,
@@ -461,12 +465,21 @@ def _attach_batched_vision_features(
         raise RuntimeError("Qwen3 model does not expose get_image_features")
     pixel_values = torch.cat([item.model_inputs["pixel_values"].to(device) for item in base_items], dim=0)
     image_grid_thw = torch.cat([item.image_grid_thw.to(device) for item in base_items], dim=0)
-    image_output = qwen_model.get_image_features(
-        pixel_values,
-        image_grid_thw=image_grid_thw,
-        output_hidden_states=True,
-        return_dict=True,
+    deepstack_pre_merge_features: list[torch.Tensor] = []
+    handles = _register_deepstack_premerge_hooks(
+        qwen_model,
+        deepstack_pre_merge_features,
     )
+    try:
+        image_output = qwen_model.get_image_features(
+            pixel_values,
+            image_grid_thw=image_grid_thw,
+            output_hidden_states=True,
+            return_dict=True,
+        )
+    finally:
+        for handle in handles:
+            handle.remove()
     v_pre, _v_merge = _extract_vision_tensors(image_output)
     if v_pre is None:
         raise RuntimeError("Qwen3 get_image_features did not return V_pre tensors")
@@ -476,6 +489,10 @@ def _attach_batched_vision_features(
     deepstack_splits_by_layer = [
         _split_visual_tensor(feature, [item.visual_merge_count for item in base_items])
         for feature in deepstack_features
+    ]
+    deepstack_pre_splits_by_layer = [
+        _split_visual_tensor(feature, [item.visual_pre_count for item in base_items])
+        for feature in deepstack_pre_merge_features
     ]
     for item, pre, merge in zip(base_items, pre_splits, merge_splits, strict=True):
         if int(merge.shape[0]) != item.visual_merge_count:
@@ -490,6 +507,33 @@ def _attach_batched_vision_features(
             layer_splits[item_index].detach()
             for layer_splits in deepstack_splits_by_layer
         ]
+        item.model_inputs["_deepstack_pre_merge_visual_embeds"] = [
+            layer_splits[item_index].detach()
+            for layer_splits in deepstack_pre_splits_by_layer
+        ]
+
+
+def _register_deepstack_premerge_hooks(
+    qwen_model: Any,
+    target: list[torch.Tensor],
+) -> list[Any]:
+    visual = None
+    if hasattr(qwen_model, "visual"):
+        visual = qwen_model.visual
+    elif hasattr(qwen_model, "model") and hasattr(qwen_model.model, "visual"):
+        visual = qwen_model.model.visual
+    branch_mergers = getattr(visual, "deepstack_merger_list", None)
+    if branch_mergers is None:
+        return []
+
+    def make_hook() -> Any:
+        def hook(_module: torch.nn.Module, inputs: tuple[Any, ...]) -> None:
+            if inputs and isinstance(inputs[0], torch.Tensor):
+                target.append(inputs[0].detach())
+
+        return hook
+
+    return [merger.register_forward_pre_hook(make_hook()) for merger in branch_mergers]
 
 
 def _merge_pre_tokens_with_frozen_qwen(model: Any, pre_tokens: torch.Tensor) -> torch.Tensor:
@@ -642,6 +686,7 @@ def _prepare_focus_final(
     pre_merge_visual_tokens: torch.Tensor,
     merged_visual_tokens: torch.Tensor,
     foveated_visual_tokens: torch.Tensor,
+    d_deepstack_visual_embeds: list[torch.Tensor] | None,
     loss_weights: Stage2LossWeights,
     device: torch.device | str,
     mask_original_image_after_tgvf: bool,
@@ -778,6 +823,12 @@ def _prepare_focus_final(
     else:
         attention_mask = _causal_mask_b1(attention_mask_2d=attention_mask_2d, dtype=embeds.dtype)
         mask_mode = "standard_4d_causal"
+    prepared_d_deepstack = _prepare_d_deepstack_for_stage2(
+        d_deepstack_visual_embeds,
+        token_count=int(d.shape[0]),
+        device=device,
+        dtype=embeds.dtype,
+    )
     return _FocusPrepared(
         sample=item.sample,
         item=item,
@@ -798,6 +849,8 @@ def _prepare_focus_final(
         final_attention_mask=attention_mask,
         final_position_ids=position_ids,
         final_mm_token_type_ids=mm_token_type_ids,
+        d_token_indices=fvt_positions.to(device) if prepared_d_deepstack is not None else None,
+        d_deepstack_visual_embeds=prepared_d_deepstack,
         masked_image_key_count=int(item.image_token_indices.numel()) if mask_active else 0,
         image_key_mask_active=bool(mask_active),
         mask_mode=mask_mode,
@@ -847,6 +900,7 @@ def _prepare_multi_focus_final(
     tgvf_ids_list: list[torch.Tensor] = []
     d_list: list[torch.Tensor] = []
     target_hidden_list: list[torch.Tensor] = []
+    d_deepstack_list: list[list[torch.Tensor] | None] = []
     value_span_matched = False
 
     prefix_ids = item.input_ids
@@ -894,11 +948,14 @@ def _prepare_multi_focus_final(
             "image": _image_input(item.sample.image, max_image_resolution=max_image_resolution),
             "question": item.sample.prompt_question,
             "device": device,
+            "deepstack_pre_merge_visual_tokens": _item_deepstack_pre_merge_features(item),
         },
     )
     out1 = finalize_tgvf_output_with_frozen_qwen_merger(qwen_model, out1)
     d1 = out1.foveated_visual_tokens
+    d1_deepstack = out1.deepstack_visual_embeds
     d_list.append(d1)
+    d_deepstack_list.append(d1_deepstack)
     target_hidden_list.append(h1)
     action_ids_list.append(action1_ids)
     action_weights_list.append(action1_weights)
@@ -964,11 +1021,14 @@ def _prepare_multi_focus_final(
             "image": _image_input(item.sample.image, max_image_resolution=max_image_resolution),
             "question": item.sample.prompt_question,
             "device": device,
+            "deepstack_pre_merge_visual_tokens": _item_deepstack_pre_merge_features(item),
         },
     )
     out2 = finalize_tgvf_output_with_frozen_qwen_merger(qwen_model, out2)
     d2 = out2.foveated_visual_tokens
+    d2_deepstack = out2.deepstack_visual_embeds
     d_list.append(d2)
+    d_deepstack_list.append(d2_deepstack)
     target_hidden_list.append(h2)
     action_ids_list.append(action2_ids)
     action_weights_list.append(action2_weights)
@@ -1024,6 +1084,15 @@ def _prepare_multi_focus_final(
         original_image_positions=item.image_token_indices.to(device),
         visual_groups=[item.model_inputs["_v_merge"].to(device), d1.to(device), d2.to(device)],
         device=device,
+    )
+    image_token_id = int(getattr(qwen_model.config, "image_token_id"))
+    all_image_positions = torch.nonzero(input_ids[0] == image_token_id, as_tuple=False).view(-1)
+    d_token_indices = all_image_positions[int(item.image_token_indices.numel()) :].to(device)
+    d_deepstack_visual_embeds = _combine_d_deepstack_groups_for_stage2(
+        d_deepstack_list,
+        token_counts=[int(d.shape[0]) for d in d_list],
+        device=device,
+        dtype=embeds.dtype,
     )
     attention_mask_2d = torch.ones_like(input_ids)
     mm_token_type_ids = _image_token_type_ids(qwen_model, input_ids, device=device)
@@ -1088,6 +1157,8 @@ def _prepare_multi_focus_final(
         final_attention_mask=attention_mask,
         final_position_ids=position_ids,
         final_mm_token_type_ids=mm_token_type_ids,
+        d_token_indices=d_token_indices if d_deepstack_visual_embeds is not None else None,
+        d_deepstack_visual_embeds=d_deepstack_visual_embeds,
         masked_image_key_count=int(item.image_token_indices.numel()) if mask_active else 0,
         image_key_mask_active=bool(mask_active),
         mask_mode=mask_mode,
@@ -1536,13 +1607,135 @@ def _batched_deepstack_inputs(
     }
 
 
+def _batched_focus_deepstack_inputs(
+    *,
+    items: list[_FocusPrepared],
+    max_len: int,
+    device: torch.device | str,
+    dtype: torch.dtype,
+) -> dict[str, Any]:
+    if not items:
+        raise ValueError("DeepStack focus batch requires at least one item")
+    first_features = _item_deepstack_features(items[0].item)
+    if not first_features:
+        raise RuntimeError("Qwen3 image feature output did not include DeepStack features")
+    visual_pos_masks = []
+    per_layer: list[list[torch.Tensor]] = [[] for _ in first_features]
+    for prepared in items:
+        original_features = _item_deepstack_features(prepared.item)
+        if len(original_features) != len(first_features):
+            raise RuntimeError("DeepStack feature layer count mismatch across focus batch")
+        original_indices = prepared.item.image_token_indices.to(device=device, dtype=torch.long).view(-1)
+        d_indices = (
+            prepared.d_token_indices.to(device=device, dtype=torch.long).view(-1)
+            if prepared.d_token_indices is not None
+            else torch.empty(0, dtype=torch.long, device=device)
+        )
+        indices = torch.cat([original_indices, d_indices], dim=0)
+        if int(indices.numel()) == 0:
+            raise RuntimeError("DeepStack focus final requires at least one visual token index")
+        if int(indices.max().detach().cpu().item()) >= int(max_len):
+            raise RuntimeError("DeepStack focus token index exceeds padded sequence")
+        sorted_indices, sort_order = torch.sort(indices)
+        mask = torch.zeros((1, int(max_len)), dtype=torch.bool, device=device)
+        mask[0, sorted_indices] = True
+        visual_pos_masks.append(mask)
+        for layer_index, original_feature in enumerate(original_features):
+            if int(original_feature.shape[0]) != int(original_indices.numel()):
+                raise RuntimeError(
+                    "DeepStack original feature token count mismatch: "
+                    f"feature={int(original_feature.shape[0])} original={int(original_indices.numel())}"
+                )
+            layer_parts = [original_feature.to(device=device, dtype=dtype)]
+            if int(d_indices.numel()) > 0:
+                if not prepared.d_deepstack_visual_embeds:
+                    raise RuntimeError("D token positions require D DeepStack features")
+                d_feature = prepared.d_deepstack_visual_embeds[layer_index]
+                if int(d_feature.shape[0]) != int(d_indices.numel()):
+                    raise RuntimeError(
+                        "D DeepStack feature token count mismatch: "
+                        f"feature={int(d_feature.shape[0])} d={int(d_indices.numel())}"
+                    )
+                layer_parts.append(d_feature.to(device=device, dtype=dtype))
+            per_layer[layer_index].append(torch.cat(layer_parts, dim=0).index_select(0, sort_order))
+    return {
+        "visual_pos_masks": torch.cat(visual_pos_masks, dim=0),
+        "deepstack_visual_embeds": [
+            torch.cat(layer_features, dim=0)
+            for layer_features in per_layer
+        ],
+    }
+
+
 def _item_deepstack_features(item: _BaseItem) -> list[torch.Tensor]:
     features = item.model_inputs.get("_deepstack_visual_embeds") or []
     return [feature for feature in features if isinstance(feature, torch.Tensor)]
 
 
+def _item_deepstack_pre_merge_features(item: _BaseItem) -> list[torch.Tensor]:
+    features = item.model_inputs.get("_deepstack_pre_merge_visual_embeds") or []
+    return [feature for feature in features if isinstance(feature, torch.Tensor)]
+
+
 def _deepstack_feature_shapes(item: _BaseItem) -> list[list[int]]:
     return [list(feature.shape) for feature in _item_deepstack_features(item)]
+
+
+def _prepare_d_deepstack_for_stage2(
+    features: list[torch.Tensor] | None,
+    *,
+    token_count: int,
+    device: torch.device | str,
+    dtype: torch.dtype,
+) -> list[torch.Tensor] | None:
+    if not features:
+        return None
+    prepared = []
+    for feature in features:
+        if not isinstance(feature, torch.Tensor):
+            raise TypeError("D DeepStack feature must be a torch.Tensor")
+        if feature.ndim != 2:
+            raise ValueError(f"D DeepStack feature must have shape [N, D], got {list(feature.shape)}")
+        if int(feature.shape[0]) != int(token_count):
+            raise ValueError(
+                "D DeepStack feature token count mismatch: "
+                f"feature={int(feature.shape[0])} d_tokens={int(token_count)}"
+            )
+        prepared.append(feature.to(device=device, dtype=dtype))
+    return prepared
+
+
+def _combine_d_deepstack_groups_for_stage2(
+    groups: list[list[torch.Tensor] | None],
+    *,
+    token_counts: list[int],
+    device: torch.device | str,
+    dtype: torch.dtype,
+) -> list[torch.Tensor] | None:
+    active = [group for group in groups if group]
+    if not active:
+        return None
+    if len(active) != len(groups):
+        raise RuntimeError("multi-focus D DeepStack groups cannot mix enabled and disabled branches")
+    layer_count = len(active[0])
+    combined = []
+    for group_index, group in enumerate(groups):
+        if group is None or len(group) != layer_count:
+            raise RuntimeError("multi-focus D DeepStack layer count mismatch")
+        _prepare_d_deepstack_for_stage2(
+            group,
+            token_count=int(token_counts[group_index]),
+            device=device,
+            dtype=dtype,
+        )
+    for layer_index in range(layer_count):
+        combined.append(
+            torch.cat(
+                [group[layer_index].to(device=device, dtype=dtype) for group in groups if group],
+                dim=0,
+            )
+        )
+    return combined
 
 
 def _repeat_image_grid(
@@ -1574,8 +1767,8 @@ def _pad_focus_batch(
     }
     if deepstack_enabled:
         batch.update(
-            _batched_deepstack_inputs(
-                items=[item.item for item in items],
+            _batched_focus_deepstack_inputs(
+                items=items,
                 max_len=max_len,
                 device=device,
                 dtype=batch["inputs_embeds"].dtype,

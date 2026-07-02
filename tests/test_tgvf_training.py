@@ -160,7 +160,7 @@ def test_teacher_guide_dataset_loads_jsonl_and_warns_on_leakage(tmp_path: Path) 
 def test_default_loss_weights_are_conservative() -> None:
     weights = LossWeights()
     assert weights.gen == 1.0
-    assert weights.visual_token_manifold == pytest.approx(0.01)
+    assert weights.visual_token_manifold == pytest.approx(0.1)
     assert weights.same_image_negative == 0.0
     assert weights.contrastive_alignment == 0.0
 
@@ -545,5 +545,7 @@ def test_build_tgvf_module_supports_v2_dynamic_token_variants() -> None:
         )
 
         assert isinstance(module, expected_type)
-        assert output.foveated_visual_tokens.shape == (5, 8)
+        assert output.foveated_visual_tokens.shape == (20, 5)
+        assert output.debug_metadata["final_fvt_requires_qwen_visual_merger"] is True
+        assert output.debug_metadata["conditioned_visual_tokens_shape"] == [20, 5]
         assert output.debug_metadata["tgvf_version"] == "v2"

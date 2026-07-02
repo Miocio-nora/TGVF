@@ -12,6 +12,9 @@ from revisit_vlm_clean.defaults import (
     DEFAULT_PROTOCOL,
     DEFAULT_STAGE1_GLOBAL_BATCH,
     DEFAULT_STAGE1_MAX_STEPS,
+    DEFAULT_STAGE1_SAVE_EVERY,
+    DEFAULT_STAGE1_VISUAL_TOKEN_MANIFOLD_LOSS,
+    DEFAULT_STAGE1_VISUAL_TOKEN_NORM_LOSS,
 )
 from revisit_vlm_clean.tgvf_protocol import SUPPORTED_PROTOCOLS
 from revisit_vlm_clean.training_plan import (
@@ -33,11 +36,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--protocol", choices=SUPPORTED_PROTOCOLS, default=DEFAULT_PROTOCOL)
     parser.add_argument("--max-image-resolution", type=int, default=DEFAULT_MAX_IMAGE_RESOLUTION)
     parser.add_argument("--max-steps", type=int, default=DEFAULT_STAGE1_MAX_STEPS)
-    parser.add_argument("--save-every", type=int, default=DEFAULT_STAGE1_MAX_STEPS)
+    parser.add_argument("--save-every", type=int, default=DEFAULT_STAGE1_SAVE_EVERY)
     parser.add_argument("--seed", type=int, default=20260525)
     parser.add_argument("--dtype", default="bfloat16")
     parser.add_argument("--attn-implementation", default="sdpa")
     parser.add_argument("--variant", default="tgvf_v2_bidirectional")
+    parser.add_argument("--d-deepstack-enabled", action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument("--d-deepstack-branch-layers", default="8,16,24")
     parser.add_argument("--token-row-mode", choices=("row_only",), default="row_only")
     parser.add_argument("--capture-mode", choices=("teacher_forced",), default="teacher_forced")
     parser.add_argument(
@@ -65,8 +70,16 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--min-lr-ratio", type=float, default=0.1)
     parser.add_argument("--max-grad-norm", type=float, default=1.0)
     parser.add_argument("--loss-gen", type=float, default=1.0)
-    parser.add_argument("--loss-visual-token-manifold", type=float, default=0.1)
-    parser.add_argument("--loss-visual-token-norm", type=float, default=0.0)
+    parser.add_argument(
+        "--loss-visual-token-manifold",
+        type=float,
+        default=DEFAULT_STAGE1_VISUAL_TOKEN_MANIFOLD_LOSS,
+    )
+    parser.add_argument(
+        "--loss-visual-token-norm",
+        type=float,
+        default=DEFAULT_STAGE1_VISUAL_TOKEN_NORM_LOSS,
+    )
     parser.add_argument("--loss-same-image-negative", type=float, default=1.0)
     parser.add_argument("--same-image-negative-margin", type=float, default=1.0)
     parser.add_argument(
@@ -129,6 +142,8 @@ def _defaults() -> dict[str, object]:
             "encoder_adapter_share_weights": False,
             "encoder_adapter_layer_index_base": 0,
             "encoder_reencode_deepstack_compatible": False,
+            "d_deepstack_enabled": False,
+            "d_deepstack_branch_layers": [8, 16, 24],
             "encoder_reencode": False,
             "preserve_llm_kv_cache": True,
             "second_full_llm_forward": False,
@@ -140,12 +155,13 @@ def _defaults() -> dict[str, object]:
         "max_image_resolution": DEFAULT_MAX_IMAGE_RESOLUTION,
         "batch": batch.to_dict(),
         "max_steps": DEFAULT_STAGE1_MAX_STEPS,
+        "save_every": DEFAULT_STAGE1_SAVE_EVERY,
         "focus_action_im_end": True,
         "same_image_negative": "matrix_ce",
         "same_image_negative_margin": 1.0,
         "readout_batch_size": 4,
-        "visual_token_manifold_loss": 0.1,
-        "visual_token_norm_loss": 0.0,
+        "visual_token_manifold_loss": DEFAULT_STAGE1_VISUAL_TOKEN_MANIFOLD_LOSS,
+        "visual_token_norm_loss": DEFAULT_STAGE1_VISUAL_TOKEN_NORM_LOSS,
         "lr_scheduler": "cosine",
         "warmup_steps": 100,
         "min_lr_ratio": 0.1,
@@ -181,6 +197,8 @@ def _config_from_args(args: argparse.Namespace) -> Stage1LaunchConfig:
         dtype=args.dtype,
         attn_implementation=args.attn_implementation,
         variant=args.variant,
+        d_deepstack_enabled=bool(args.d_deepstack_enabled),
+        d_deepstack_branch_layers=_parse_int_tuple(args.d_deepstack_branch_layers),
         token_row_mode=args.token_row_mode,
         capture_mode=args.capture_mode,
         fvt_position_mode=args.fvt_position_mode,
@@ -220,6 +238,13 @@ def _git_identity() -> tuple[str | None, bool | None]:
     except Exception:
         return None, None
     return commit or None, bool(status.strip())
+
+
+def _parse_int_tuple(value: str) -> tuple[int, ...]:
+    parsed = tuple(int(item.strip()) for item in str(value).split(",") if item.strip())
+    if not parsed:
+        raise ValueError("expected a non-empty comma-separated integer list")
+    return parsed
 
 
 if __name__ == "__main__":

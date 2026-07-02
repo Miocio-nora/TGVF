@@ -788,6 +788,148 @@ class TGVFv2Bidirectional(nn.Module):
         )
 
 
+class TGVFv2BidirectionalDDeepStack(TGVFv2Bidirectional):
+    """TGVF-v2 bidirectional D tokens plus target-conditioned DeepStack branches."""
+
+    variant_name = "tgvf_v2_bidirectional_d_deepstack"
+
+    def __init__(
+        self,
+        *,
+        d_lm: int,
+        d_v: int,
+        spatial_merge_size: int = 2,
+        attn_dim: int | None = None,
+        branch_layers: tuple[int, ...] | list[int] = (8, 16, 24),
+    ) -> None:
+        super().__init__(
+            d_lm=d_lm,
+            d_v=d_v,
+            spatial_merge_size=spatial_merge_size,
+            attn_dim=attn_dim,
+        )
+        self.d_deepstack_branch_layers = tuple(int(layer) for layer in branch_layers)
+        if not self.d_deepstack_branch_layers:
+            raise ValueError("branch_layers must be non-empty when D DeepStack is enabled")
+        self.d_deepstack_branch_adapters = nn.ModuleDict(
+            {
+                str(layer): TGVFv2Bidirectional(
+                    d_lm=d_lm,
+                    d_v=d_v,
+                    spatial_merge_size=spatial_merge_size,
+                    attn_dim=attn_dim,
+                )
+                for layer in self.d_deepstack_branch_layers
+            }
+        )
+
+    def forward(
+        self,
+        *,
+        target_hidden_states: torch.Tensor,
+        pre_merge_visual_tokens: torch.Tensor,
+        metadata: dict[str, Any] | None = None,
+    ) -> FovealCrossAttentionOutput:
+        metadata = dict(metadata or {})
+        output = super().forward(
+            target_hidden_states=target_hidden_states,
+            pre_merge_visual_tokens=pre_merge_visual_tokens,
+            metadata=metadata,
+        )
+        branch_hidden_states = metadata.get("d_deepstack_pre_merge_visual_tokens")
+        if branch_hidden_states is None:
+            branch_hidden_states = metadata.get("deepstack_pre_merge_visual_tokens")
+        if branch_hidden_states is None:
+            raise ValueError(
+                "D DeepStack is enabled but metadata is missing "
+                "deepstack_pre_merge_visual_tokens"
+            )
+        branch_hidden_states = list(branch_hidden_states)
+        if len(branch_hidden_states) != len(self.d_deepstack_branch_layers):
+            raise ValueError(
+                "D DeepStack branch count mismatch: "
+                f"features={len(branch_hidden_states)} layers={len(self.d_deepstack_branch_layers)}"
+            )
+        model = metadata.get("qwen_model")
+        if model is None:
+            raise ValueError("D DeepStack requires metadata['qwen_model'] for branch mergers")
+        visual = _visual_module(model)
+        branch_mergers = getattr(visual, "deepstack_merger_list", None)
+        if branch_mergers is None:
+            raise AttributeError("Qwen3 visual module does not expose deepstack_merger_list")
+        if len(branch_mergers) < len(self.d_deepstack_branch_layers):
+            raise ValueError(
+                "Qwen3 deepstack_merger_list is shorter than requested D branches: "
+                f"{len(branch_mergers)} < {len(self.d_deepstack_branch_layers)}"
+            )
+
+        d_deepstack_visual_embeds: list[torch.Tensor] = []
+        branch_debug: list[dict[str, Any]] = []
+        for branch_index, (layer, branch_hidden) in enumerate(
+            zip(self.d_deepstack_branch_layers, branch_hidden_states, strict=True)
+        ):
+            if not isinstance(branch_hidden, torch.Tensor):
+                raise TypeError("D DeepStack branch hidden state must be a torch.Tensor")
+            adapter = self.d_deepstack_branch_adapters[str(layer)]
+            branch_output = adapter(
+                target_hidden_states=target_hidden_states,
+                pre_merge_visual_tokens=branch_hidden.to(
+                    device=pre_merge_visual_tokens.device,
+                    dtype=pre_merge_visual_tokens.dtype,
+                ),
+                metadata={
+                    "target": metadata.get("target"),
+                    "stage": metadata.get("stage"),
+                    "d_deepstack_branch_layer": int(layer),
+                    "d_deepstack_branch_index": int(branch_index),
+                },
+            )
+            conditioned = (
+                branch_output.conditioned_pre_merge_visual_tokens
+                if branch_output.conditioned_pre_merge_visual_tokens is not None
+                else branch_output.foveated_visual_tokens
+            )
+            merged = _merge_with_frozen_qwen_merger_module(
+                branch_mergers[branch_index],
+                conditioned,
+                spatial_merge_size=self.spatial_merge_size,
+                error_prefix=f"D DeepStack branch {layer}",
+            )
+            d_deepstack_visual_embeds.append(merged)
+            branch_debug.append(
+                {
+                    "layer": int(layer),
+                    "pre_merge_shape": list(branch_hidden.shape),
+                    "conditioned_pre_merge_shape": list(conditioned.shape),
+                    "merged_shape": list(merged.shape),
+                    "adapter_variant": branch_output.debug_metadata.get("variant_name"),
+                }
+            )
+
+        debug_metadata = dict(output.debug_metadata)
+        debug_metadata.update(
+            {
+                "variant_name": self.variant_name,
+                "d_deepstack_features_enabled": True,
+                "d_deepstack_branch_layers": list(self.d_deepstack_branch_layers),
+                "d_deepstack_adapter_type": "tgvf_v2_bidirectional",
+                "d_deepstack_independent_branch_adapters": True,
+                "d_deepstack_branch_feature_shapes": [
+                    list(item.shape) for item in d_deepstack_visual_embeds
+                ],
+                "d_deepstack_branch_debug": branch_debug,
+                "d_deepstack_vision_tower_rerun": False,
+            }
+        )
+        return FovealCrossAttentionOutput(
+            foveated_visual_tokens=output.foveated_visual_tokens,
+            attention_debug=output.attention_debug,
+            debug_metadata=debug_metadata,
+            conditioned_pre_merge_visual_tokens=output.conditioned_pre_merge_visual_tokens,
+            deepstack_visual_embeds=d_deepstack_visual_embeds,
+        )
+
+
 
 @dataclass
 class EncoderReencodeOutput:
@@ -1382,6 +1524,29 @@ def _encoder_reencode_attention_debug(
     eye = torch.eye(token_count, ref_count, device=device, dtype=fvt.dtype)
     return eye
 
+
+def _merge_with_frozen_qwen_merger_module(
+    merger: nn.Module,
+    conditioned: torch.Tensor,
+    *,
+    spatial_merge_size: int,
+    error_prefix: str,
+) -> torch.Tensor:
+    if conditioned.ndim != 2:
+        raise ValueError(f"{error_prefix} conditioned tokens must have shape [N, d_v]")
+    spatial_merge_unit = int(spatial_merge_size) ** 2
+    if int(conditioned.shape[0]) % spatial_merge_unit != 0:
+        raise AssertionError(
+            f"{error_prefix} token count must be divisible by spatial_merge_size**2: "
+            f"{int(conditioned.shape[0])} vs {spatial_merge_unit}"
+        )
+    for parameter in merger.parameters():
+        parameter.requires_grad_(False)
+    merger_parameter = next(merger.parameters(), None)
+    merger_dtype = merger_parameter.dtype if merger_parameter is not None else conditioned.dtype
+    return merger(conditioned.to(dtype=merger_dtype))
+
+
 def finalize_tgvf_output_with_frozen_qwen_merger(
     model: Any,
     output: FovealCrossAttentionOutput,
@@ -1436,6 +1601,7 @@ def finalize_tgvf_output_with_frozen_qwen_merger(
         attention_debug=output.attention_debug,
         debug_metadata=debug_metadata,
         conditioned_pre_merge_visual_tokens=conditioned_for_merger,
+        deepstack_visual_embeds=output.deepstack_visual_embeds,
     )
 
 

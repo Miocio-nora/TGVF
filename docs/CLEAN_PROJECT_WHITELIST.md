@@ -400,18 +400,24 @@ Use the legacy weighted-span defaults unless the user explicitly changes them:
 
 ### Stage2 Mask Scope
 
-Clean mainline:
+Current authoritative mainline:
 
 - `mask_original_image_after_tgvf=true`
-- `mask_original_image_after_tgvf_prob=1.0`
+- `mask_original_image_after_tgvf_prob=0.75`
 - `mask_original_image_after_tgvf_scope=through_answer`
+- `deepstack_enabled=true`
+- `deepstack_original_image_scope=through_answer`
 
 Meaning:
 
 - after D is appended, post-TGVF query tokens are blocked from attending to
-  original image visual keys through the answer;
-- this is the deterministic expansion of the old behavior used by important
-  early baselines such as the 20260619 open-answer row-only run.
+  original image visual keys through the answer when the mask is active;
+- Stage2 training also carries original-image DeepStack features and applies the
+  same through-answer scope to those features;
+- important early baselines such as the 20260619 open-answer row-only run used
+  behavior equivalent to `through_answer` with effective probability `1.0`, so
+  those results remain historical/reference settings rather than the current
+  default.
 
 Retain `evidence_only` only as an explicitly named ablation/reference setting:
 
@@ -566,11 +572,11 @@ compatibility material and should not enter the clean main benchmark runner.
 
 ### Stage2 Mask Probability
 
-- Do not expose stochastic partial masking as a clean-project option.
-- If the existing implementation still has `mask_original_image_after_tgvf_prob`,
-  the clean mainline fixes it to `1.0`.
-- Values other than `1.0` are archive/ablation-only and must be named in the run
-  identity.
+- Keep `mask_original_image_after_tgvf_prob` exposed and recorded as part of the
+  training identity.
+- The current authoritative clean mainline sets it to `0.75`.
+- Values other than `0.75`, including deterministic `1.0`, are allowed only as
+  named ablations or historical/reference settings.
 
 ### Benchmarks / Sample Sets
 
@@ -972,14 +978,18 @@ Resolved for clean Qwen3 mainline:
 - keep the legacy focus/no-focus weighted-span losses listed above;
 - do not enable Stage2 visual manifold, matrix CE, same-image negative, or
   contrastive losses by default;
-- use deterministic original-image-key masking through answer:
+- use probabilistic original-image-key masking through answer:
   `mask_original_image_after_tgvf=true`,
-  `mask_original_image_after_tgvf_prob=1.0`,
-  `mask_original_image_after_tgvf_scope=through_answer`.
+- `mask_original_image_after_tgvf_prob=0.75`,
+  `mask_original_image_after_tgvf_scope=through_answer`;
+- enable Stage2 training DeepStack with
+  `deepstack_original_image_scope=through_answer` and no D DeepStack-like
+  features.
 
 Archive / ablation only:
 
-- stochastic mask probability values other than `1.0`;
+- mask probability values other than `0.75`;
+- Stage2 training DeepStack off;
 - `evidence_only` as the Stage2 default;
 - no-mask Stage2 as the mainline;
 - slow Stage2 as the benchmark-training path;

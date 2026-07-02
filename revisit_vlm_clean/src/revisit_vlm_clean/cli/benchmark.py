@@ -121,6 +121,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Validate and print Stage2 checkpoint/eval_jsonl identity without running inference.",
     )
     parser.add_argument("--deepstack-enabled", action="store_true")
+    parser.add_argument("--d-deepstack-enabled", action="store_true")
     parser.add_argument(
         "--deepstack-original-image-scope",
         choices=[item.value for item in DeepStackScope],
@@ -161,6 +162,8 @@ def main(argv: list[str] | None = None) -> int:
         get_population(args.population_id)
     if args.subset_id:
         get_subset(args.subset_id)
+    if args.d_deepstack_enabled and not args.deepstack_enabled:
+        raise ValueError("--d-deepstack-enabled requires --deepstack-enabled")
     git_commit, dirty_worktree = _git_identity()
     deepstack_scope = DeepStackScope(args.deepstack_original_image_scope)
     if args.deepstack_enabled and deepstack_scope == DeepStackScope.OFF:
@@ -190,6 +193,7 @@ def main(argv: list[str] | None = None) -> int:
         deepstack=DeepStackState(
             enabled=bool(args.deepstack_enabled),
             original_image_scope=deepstack_scope,
+            d_features_enabled=bool(args.d_deepstack_enabled),
         ),
         parser_scorer=ParserScorerIdentity(
             scoring_backend=ScoringBackend(args.scoring_backend),

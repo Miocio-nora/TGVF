@@ -25,9 +25,15 @@ from .defaults import (
     DEFAULT_MAX_IMAGE_RESOLUTION,
     DEFAULT_MODEL_ID,
     DEFAULT_PROTOCOL,
+    DEFAULT_STAGE1_SAVE_EVERY,
+    DEFAULT_STAGE1_VISUAL_TOKEN_MANIFOLD_LOSS,
+    DEFAULT_STAGE1_VISUAL_TOKEN_NORM_LOSS,
+    DEFAULT_STAGE2_DEEPSTACK_ENABLED,
+    DEFAULT_STAGE2_DEEPSTACK_ORIGINAL_IMAGE_SCOPE,
     DEFAULT_STAGE1_GLOBAL_BATCH,
     DEFAULT_STAGE1_MAX_STEPS,
     DEFAULT_STAGE2_GLOBAL_BATCH,
+    DEFAULT_STAGE2_MASK_ORIGINAL_IMAGE_AFTER_TGVF_PROB,
     DEFAULT_STAGE2_MAX_STEPS,
 )
 from .schema import DeepStackScope, DeepStackState, StrEnum, _to_jsonable
@@ -107,7 +113,7 @@ class Stage1LaunchConfig:
     protocol: str = DEFAULT_PROTOCOL
     max_image_resolution: int = DEFAULT_MAX_IMAGE_RESOLUTION
     max_steps: int = DEFAULT_STAGE1_MAX_STEPS
-    save_every: int = DEFAULT_STAGE1_MAX_STEPS
+    save_every: int = DEFAULT_STAGE1_SAVE_EVERY
     seed: int = 20260525
     dtype: str = "bfloat16"
     attn_implementation: str = "sdpa"
@@ -121,6 +127,8 @@ class Stage1LaunchConfig:
     encoder_adapter_share_weights: bool = False
     encoder_adapter_layer_index_base: int = 0
     encoder_reencode_deepstack_compatible: bool = False
+    d_deepstack_enabled: bool = False
+    d_deepstack_branch_layers: tuple[int, ...] = (8, 16, 24)
     token_row_mode: str = "row_only"
     capture_mode: str = "teacher_forced"
     fvt_position_mode: str = "native_source_grid"
@@ -132,8 +140,8 @@ class Stage1LaunchConfig:
     min_lr_ratio: float = 0.1
     max_grad_norm: float = 1.0
     loss_gen: float = 1.0
-    loss_visual_token_manifold: float = 0.1
-    loss_visual_token_norm: float = 0.0
+    loss_visual_token_manifold: float = DEFAULT_STAGE1_VISUAL_TOKEN_MANIFOLD_LOSS
+    loss_visual_token_norm: float = DEFAULT_STAGE1_VISUAL_TOKEN_NORM_LOSS
     loss_same_image_negative: float = 1.0
     same_image_negative_margin: float = 1.0
     same_image_negative_mode: str = "matrix_ce"
@@ -169,6 +177,10 @@ class Stage1LaunchConfig:
             raise ValueError("encoder_adapter_layers must be non-empty")
         if self.encoder_adapter_type not in {"bidirectional", "bidirectional_film_aggressive"}:
             raise ValueError("unsupported encoder_adapter_type")
+        if self.d_deepstack_enabled and self.variant != "tgvf_v2_bidirectional":
+            raise ValueError("d_deepstack_enabled currently requires variant='tgvf_v2_bidirectional'")
+        if self.d_deepstack_enabled and not self.d_deepstack_branch_layers:
+            raise ValueError("d_deepstack_branch_layers must be non-empty")
         if int(self.encoder_adapter_layer_index_base) not in {0, 1}:
             raise ValueError("encoder_adapter_layer_index_base must be 0 or 1")
         if self.token_row_mode != "row_only":
@@ -230,11 +242,20 @@ class Stage2LaunchConfig:
     fvt_position_mode: str = "native_source_grid"
     target_focus_ratio: float | None = 0.8
     mask_original_image_after_tgvf: bool = True
-    mask_original_image_after_tgvf_prob: float = 1.0
+    mask_original_image_after_tgvf_prob: float = (
+        DEFAULT_STAGE2_MASK_ORIGINAL_IMAGE_AFTER_TGVF_PROB
+    )
     mask_original_image_after_tgvf_scope: OriginalImageMaskScope = (
         OriginalImageMaskScope.THROUGH_ANSWER
     )
-    deepstack: DeepStackState = field(default_factory=DeepStackState)
+    deepstack: DeepStackState = field(
+        default_factory=lambda: DeepStackState(
+            enabled=DEFAULT_STAGE2_DEEPSTACK_ENABLED,
+            original_image_scope=DeepStackScope(
+                DEFAULT_STAGE2_DEEPSTACK_ORIGINAL_IMAGE_SCOPE
+            ),
+        )
+    )
     lora_rank: int = 64
     lora_alpha: int = 256
     lora_dropout: float = 0.05
@@ -519,6 +540,7 @@ def build_stage2_launch_plan(
             "fvt_position_mode": config.fvt_position_mode,
             "target_focus_ratio": config.target_focus_ratio,
         },
+        "tgvf": _stage2_tgvf_config(config),
         "module_policy": _stage2_module_policy(),
         "mask_policy": {
             "mask_original_image_after_tgvf": config.mask_original_image_after_tgvf,
@@ -827,6 +849,17 @@ def _deepstack_training_plan(config: Stage2LaunchConfig) -> dict[str, Any]:
         "current_training_path": {
             "uses_manual_inputs_embeds": True,
             "qwen3_deepstack_features_injected": enabled,
+            "d_deepstack_features_injected": bool(enabled and state.d_features_enabled),
+            "d_deepstack_feature_source": (
+                "tgvf_conditioned_cached_branch_pre_merge_hidden_states"
+                if state.d_features_enabled
+                else None
+            ),
+            "matrix_ce_candidate_swap_contract": (
+                "swap_D_merge_and_D_deepstack_together"
+                if state.d_features_enabled
+                else None
+            ),
             "post_d_deepstack_scope_mask_applied": bool(
                 enabled and policy["block_after_tgvf_append"]
             ),
@@ -875,7 +908,44 @@ def _stage1_tgvf_config(config: Stage1LaunchConfig) -> dict[str, Any]:
         "encoder_reencode_deepstack_compatible": (
             config.encoder_reencode_deepstack_compatible
         ),
+        "d_deepstack_enabled": bool(config.d_deepstack_enabled),
+        "d_deepstack_branch_layers": [
+            int(layer) for layer in config.d_deepstack_branch_layers
+        ],
+        "d_deepstack_adapter_type": (
+            "tgvf_v2_bidirectional" if config.d_deepstack_enabled else None
+        ),
+        "d_deepstack_independent_branch_adapters": bool(config.d_deepstack_enabled),
+        "d_deepstack_vision_tower_rerun": False,
         "encoder_reencode": config.variant == "tgvf_encoder_bidir_8_16_24",
+        "preserve_llm_kv_cache": True,
+        "second_full_llm_forward": False,
+    }
+
+
+def _stage2_tgvf_config(config: Stage2LaunchConfig) -> dict[str, Any]:
+    d_deepstack_enabled = bool(config.deepstack.enabled and config.deepstack.d_features_enabled)
+    return {
+        "source": "stage1_checkpoint",
+        "use_stage1_tgvf_config": bool(config.use_stage1_tgvf_config),
+        "variant": config.variant,
+        "num_foveated_tokens": None,
+        "spatial_merge_size": "from_stage1_checkpoint",
+        "attn_dim": "from_stage1_checkpoint",
+        "encoder_adapter_layers": "from_stage1_checkpoint",
+        "encoder_adapter_type": "from_stage1_checkpoint",
+        "encoder_adapter_gate_init": "from_stage1_checkpoint",
+        "encoder_adapter_share_weights": "from_stage1_checkpoint",
+        "encoder_adapter_layer_index_base": "from_stage1_checkpoint",
+        "encoder_reencode_deepstack_compatible": "from_stage1_checkpoint",
+        "d_deepstack_enabled": d_deepstack_enabled,
+        "d_deepstack_branch_layers": [8, 16, 24],
+        "d_deepstack_adapter_type": (
+            "tgvf_v2_bidirectional" if d_deepstack_enabled else None
+        ),
+        "d_deepstack_independent_branch_adapters": d_deepstack_enabled,
+        "d_deepstack_vision_tower_rerun": False,
+        "encoder_reencode": "from_stage1_checkpoint",
         "preserve_llm_kv_cache": True,
         "second_full_llm_forward": False,
     }
@@ -889,6 +959,12 @@ def _stage1_readout_context(config: Stage1LaunchConfig) -> dict[str, Any]:
         "fvt_position_mode": config.fvt_position_mode,
         "d_token_count": "dynamic_source_image_visual_token_count",
         "visual_merger_path": "frozen_finalize_path",
+        "d_deepstack": {
+            "enabled": bool(config.d_deepstack_enabled),
+            "branch_layers": [int(layer) for layer in config.d_deepstack_branch_layers],
+            "applies_to": "d_token_positions_only",
+            "uses_cached_branch_pre_merge_hidden_states": bool(config.d_deepstack_enabled),
+        },
         "attention_mask": {
             "mask_original_image_after_tgvf": config.mask_original_image_after_tgvf,
             "blocking": "weak_strict_original_image_key_blocking_after_tgvf_append",
@@ -1000,6 +1076,16 @@ def _stage1_legacy_command(config: Stage1LaunchConfig) -> list[str]:
         if config.mask_original_image_after_tgvf
         else "--no-mask-original-image-after-tgvf"
     )
+    command.append(
+        "--d-deepstack-enabled" if config.d_deepstack_enabled else "--no-d-deepstack-enabled"
+    )
+    if config.d_deepstack_enabled:
+        command.extend(
+            [
+                "--d-deepstack-branch-layers",
+                ",".join(str(int(layer)) for layer in config.d_deepstack_branch_layers),
+            ]
+        )
     return command
 
 

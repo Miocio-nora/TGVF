@@ -879,8 +879,11 @@ def v3_stage2_training_step(
     mask_original_image_after_tgvf_prob: float = 1.0,
     mask_original_image_after_tgvf_scope: str = ORIGINAL_IMAGE_MASK_SCOPE_EVIDENCE_ONLY,
     protocol: TGVFProtocol = "legacy_v3_tags",
+    deepstack_enabled: bool = False,
 ) -> TGVFv3Stage2StepOutput:
     protocol = normalize_tgvf_protocol(protocol)
+    if deepstack_enabled:
+        raise ValueError("DeepStack Stage2 training requires the fast batched Stage2 path")
     focus_losses: list[torch.Tensor] = []
     no_focus_losses: list[torch.Tensor] = []
     manifold_losses: list[torch.Tensor] = []

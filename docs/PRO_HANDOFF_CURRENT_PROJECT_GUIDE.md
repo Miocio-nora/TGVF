@@ -1,10 +1,14 @@
 # Pro Handoff: 当前 TGVF / Clean Project 讲解文档
 
-更新时间：2026-06-26
+更新时间：2026-07-02
 
 本文档用于给已经落后当前工程状态的 Pro / 协作者快速对齐上下文。目标不是替代代码，而是把项目宗旨、当前 clean project 状态、最新 protocol、训练/评测入口、benchmark 体系、mask/DeepStack 语义，以及不能再犯的比较错误讲清楚。
 
 当前权威实现入口在 `revisit_vlm_clean/`。历史 root project 仍可作为 reference，少数路径也可能通过明确标注的 diagnostic bridge 复用历史实现；但是**清理旧 project 不属于当前 clean project 的完成目标**。
+
+当前权威 Stage1 -> Stage2 训练配置记录在
+`docs/AUTHORITATIVE_STAGE1_STAGE2_CONFIG.md`。没有明确命名 ablation 时，
+Stage1/Stage2 training launcher 默认值应与该文档保持一致。
 
 ## 1. 项目一句话宗旨
 
@@ -245,6 +249,7 @@ protocol: protocol_c_tool_observation
 variant: tgvf_v2_bidirectional
 max_image_resolution: 512
 max_steps: 2000
+save_every: 500
 global_batch_size: 32
 world_size: 1
 micro_batch_size: 1
@@ -254,7 +259,8 @@ capture_mode: teacher_forced
 fvt_position_mode: native_source_grid
 focus_action_im_end: true
 same_image_negative: matrix_ce
-visual_token_manifold_loss: 0.1
+visual_token_manifold_loss: 0.0
+visual_token_norm_loss: 0.1
 lr_scheduler: cosine
 warmup_steps: 100
 min_lr_ratio: 0.1
@@ -293,9 +299,11 @@ micro_batch_size: 1
 gradient_accumulation_steps: 128
 target_focus_ratio: 0.8
 mask_original_image_after_tgvf: true
-mask_original_image_after_tgvf_prob: 1.0
+mask_original_image_after_tgvf_prob: 0.75
 mask_original_image_after_tgvf_scope: through_answer
-deepstack_enabled: false
+deepstack_enabled: true
+deepstack_original_image_scope: through_answer
+deepstack_d_features_enabled: false
 deepstack_supported: true
 lora_rank: 64
 lora_alpha: 256
@@ -345,7 +353,8 @@ Stage2 重要边界：
 - clean benchmark runner 当前只支持 `d_condition=correct_D`。
 - clean benchmark runner 当前只支持 `force_prefix_mode=target_hint`。
 - `mask_original_image_after_tgvf_prob` 和 mask scope 必须按实验显式记录；
-  当前强 Stage2 checkpoint 来自 mask prob `0.75` 的训练线。
+  当前权威 Stage2 训练默认是 mask prob `0.75`。
+- Stage2 training 默认启用 DeepStack，scope 是 `through_answer`。
 - 当前 benchmark/inference 主线默认是 `DeepStack enabled +
   original_image_scope=no_block + post_tgvf_forward_mode=kv_cache`。
 - 旧 `through_answer + no_kv_full_sequence` CoreDev 结果降为
@@ -355,7 +364,13 @@ Stage2 重要边界：
 
 ## 11. DeepStack 和 Mask 语义
 
-DeepStack 默认关闭。
+DeepStack 的默认值按 surface 区分：
+
+- Stage2 training 默认开启，`original_image_scope=through_answer`，与当前权威
+  Stage2 训练线一致。
+- benchmark/inference 默认开启，`original_image_scope=no_block`，与
+  2026-07-02 CoreDev-2511 retest 一致。
+- 其它 surface 必须显式记录 DeepStack state，不要靠口头默认。
 
 启用 DeepStack 时：
 

@@ -17,7 +17,7 @@ DEEPSTACK_FVT_VISUAL_TOKEN_PATH = "v_merge_level_visual_tokens"
 
 @dataclass(frozen=True)
 class Qwen3OriginalImageDeepStackPayload:
-    """Payload passed directly to Qwen3VLTextModel for original-image DeepStack."""
+    """Payload passed directly to Qwen3VLTextModel for Qwen3 DeepStack."""
 
     visual_pos_masks: Any
     deepstack_visual_embeds: list[Any]
@@ -25,12 +25,22 @@ class Qwen3OriginalImageDeepStackPayload:
     sequence_length: int
     feature_shapes: list[list[int]] = field(default_factory=list)
     debug: dict[str, Any] = field(default_factory=dict)
+    d_token_indices: Any | None = None
+    combined_token_indices: Any | None = None
 
     def to_debug_dict(self) -> dict[str, Any]:
+        d_count = 0
+        if self.d_token_indices is not None:
+            d_count = len(self.d_token_indices.view(-1))
+        combined_count = None
+        if self.combined_token_indices is not None:
+            combined_count = len(self.combined_token_indices.view(-1))
         return {
             "schema_version": QWEN3_DEEPSTACK_PAYLOAD_SCHEMA_VERSION,
             "sequence_length": self.sequence_length,
             "original_image_token_count": len(self.original_image_token_indices.view(-1)),
+            "d_token_count": d_count,
+            "combined_token_count": combined_count,
             "visual_pos_masks_shape": list(self.visual_pos_masks.shape),
             "deepstack_feature_count": len(self.deepstack_visual_embeds),
             "deepstack_feature_shapes": self.feature_shapes,
@@ -286,49 +296,119 @@ def build_qwen3_original_image_deepstack_payload(
 ) -> Qwen3OriginalImageDeepStackPayload:
     """Build the text-model DeepStack payload for original image tokens only."""
 
+    return build_qwen3_deepstack_payload(
+        sequence_length=sequence_length,
+        original_image_token_indices=original_image_token_indices,
+        original_deepstack_features=deepstack_features,
+        d_token_indices=None,
+        d_deepstack_features=None,
+        device=device,
+        dtype=dtype,
+        visual_pos_mask_policy="original_image_tokens_only",
+    )
+
+
+def build_qwen3_deepstack_payload(
+    *,
+    sequence_length: int,
+    original_image_token_indices: Any | None = None,
+    original_deepstack_features: list[Any] | tuple[Any, ...] | None = None,
+    d_token_indices: Any | None = None,
+    d_deepstack_features: list[Any] | tuple[Any, ...] | None = None,
+    device: Any,
+    dtype: Any,
+    visual_pos_mask_policy: str = "original_and_d_tokens",
+) -> Qwen3OriginalImageDeepStackPayload:
+    """Build a Qwen3 DeepStack payload for original-image and/or D token positions."""
+
     import torch
 
     seq_len = int(sequence_length)
     if seq_len <= 0:
         raise ValueError("sequence_length must be positive")
-    indices = original_image_token_indices.to(device=device, dtype=torch.long).view(-1)
-    if int(indices.numel()) == 0:
-        raise ValueError("original image token indices are required for DeepStack payload")
-    min_index = int(indices.min().detach().cpu().item())
-    max_index = int(indices.max().detach().cpu().item())
-    if min_index < 0 or max_index >= seq_len:
-        raise ValueError("original image token indices are outside the sequence")
-    if not deepstack_features:
-        raise ValueError("deepstack_features are required for DeepStack payload")
 
-    feature_count = int(indices.numel())
+    sources: list[tuple[str, Any, list[Any] | tuple[Any, ...]]] = []
+    original_indices = None
+    d_indices = None
+    if original_image_token_indices is not None:
+        original_indices = original_image_token_indices.to(device=device, dtype=torch.long).view(-1)
+        if int(original_indices.numel()) > 0:
+            sources.append(("original", original_indices, original_deepstack_features or []))
+    if d_token_indices is not None:
+        d_indices = d_token_indices.to(device=device, dtype=torch.long).view(-1)
+        if int(d_indices.numel()) > 0:
+            sources.append(("d", d_indices, d_deepstack_features or []))
+    if not sources:
+        raise ValueError("at least one DeepStack token index set is required")
+
+    for _name, indices, _features in sources:
+        min_index = int(indices.min().detach().cpu().item())
+        max_index = int(indices.max().detach().cpu().item())
+        if min_index < 0 or max_index >= seq_len:
+            raise ValueError("DeepStack token indices are outside the sequence")
+
+    layer_count = None
+    for name, indices, features in sources:
+        if not features:
+            raise ValueError(f"{name} deepstack_features are required for DeepStack payload")
+        if layer_count is None:
+            layer_count = len(features)
+        elif len(features) != layer_count:
+            raise ValueError("DeepStack feature layer count mismatch between sources")
+        expected_count = int(indices.numel())
+        for feature in features:
+            if not isinstance(feature, torch.Tensor):
+                raise TypeError("deepstack feature must be a torch.Tensor")
+            if feature.ndim != 2:
+                raise ValueError(
+                    f"deepstack feature must have shape [N, D], got {list(feature.shape)}"
+                )
+            if int(feature.shape[0]) != expected_count:
+                raise ValueError(
+                    "deepstack feature token count mismatch: "
+                    f"feature={int(feature.shape[0])} {name}={expected_count}"
+                )
+
+    combined_indices = torch.cat([indices for _name, indices, _features in sources], dim=0)
+    sorted_indices, sort_order = torch.sort(combined_indices)
     visual_pos_masks = torch.zeros((1, seq_len), dtype=torch.bool, device=device)
-    visual_pos_masks[0, indices] = True
+    visual_pos_masks[0, sorted_indices] = True
+
     prepared = []
     feature_shapes = []
-    for feature in deepstack_features:
-        if not isinstance(feature, torch.Tensor):
-            raise TypeError("deepstack feature must be a torch.Tensor")
-        if feature.ndim != 2:
-            raise ValueError(f"deepstack feature must have shape [N, D], got {list(feature.shape)}")
-        if int(feature.shape[0]) != feature_count:
-            raise ValueError(
-                "deepstack feature token count mismatch: "
-                f"feature={int(feature.shape[0])} original={feature_count}"
-            )
-        feature_shapes.append([int(item) for item in feature.shape])
-        prepared.append(feature.to(device=device, dtype=dtype))
+    for layer_index in range(int(layer_count or 0)):
+        layer_features = torch.cat(
+            [
+                features[layer_index].to(device=device, dtype=dtype)
+                for _name, _indices, features in sources
+            ],
+            dim=0,
+        )
+        layer_features = layer_features.index_select(0, sort_order)
+        feature_shapes.append([int(item) for item in layer_features.shape])
+        prepared.append(layer_features)
+
+    if original_indices is None:
+        original_indices = torch.empty(0, dtype=torch.long, device=device)
 
     return Qwen3OriginalImageDeepStackPayload(
         visual_pos_masks=visual_pos_masks,
         deepstack_visual_embeds=prepared,
-        original_image_token_indices=indices,
+        original_image_token_indices=original_indices,
+        d_token_indices=d_indices,
+        combined_token_indices=sorted_indices,
         sequence_length=seq_len,
         feature_shapes=feature_shapes,
         debug={
-            "injection_source": DEEPSTACK_INJECTION_SOURCE,
-            "d_deepstack_features_enabled": False,
-            "visual_pos_mask_policy": "original_image_tokens_only",
+            "injection_source": (
+                DEEPSTACK_INJECTION_SOURCE
+                if d_indices is None or int(d_indices.numel()) == 0
+                else "native_qwen3_original_image_plus_tgvf_d_deepstack_features"
+            ),
+            "d_deepstack_features_enabled": bool(
+                d_indices is not None and int(d_indices.numel()) > 0
+            ),
+            "visual_pos_mask_policy": visual_pos_mask_policy,
         },
     )
 

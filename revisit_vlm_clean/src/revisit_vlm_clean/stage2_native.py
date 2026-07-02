@@ -23,7 +23,7 @@ from .data_generation import file_identity
 from .deepstack import (
     build_cached_chunk_original_image_key_block_attention_mask,
     build_original_image_key_block_attention_mask,
-    build_qwen3_original_image_deepstack_payload,
+    build_qwen3_deepstack_payload,
     build_single_query_original_image_key_block_attention_mask,
     capture_qwen3_original_image_deepstack_features,
 )
@@ -120,7 +120,7 @@ class NativeStage2Engine:
         self.processor: Any | None = None
         self.foveal_module: Any | None = None
         self.device: Any | None = None
-        self.vision_cache: dict[str, tuple[Any, Any, Any]] = {}
+        self.vision_cache: dict[str, tuple[Any, Any, Any, list[Any], list[Any]]] = {}
         self.deepstack_cache: dict[str, list[Any]] = {}
 
     def prepare(self, config: RunConfig) -> None:
@@ -550,6 +550,7 @@ class NativeStage2Engine:
             "spatial_merge_size": int(tap.spatial_merge_size or tap.merge_size or 2),
         }
         tgvf_cfg = checkpoint_config.get("tgvf") or {}
+        _validate_d_deepstack_checkpoint_support(config, checkpoint_config)
         foveal_module = build_tgvf_module(
             variant=str(tgvf_cfg.get("variant") or "tgvf_v2_bidirectional"),
             d_lm=dims["d_lm"],
@@ -569,6 +570,10 @@ class NativeStage2Engine:
             ),
             encoder_reencode_deepstack_compatible=bool(
                 tgvf_cfg.get("encoder_reencode_deepstack_compatible", False)
+            ),
+            d_deepstack_enabled=bool(tgvf_cfg.get("d_deepstack_enabled", False)),
+            d_deepstack_branch_layers=tuple(
+                tgvf_cfg.get("d_deepstack_branch_layers") or (8, 16, 24)
             ),
         ).to(device=self.device, dtype=next(model.parameters()).dtype)
         foveal_module.load_state_dict(checkpoint["tgvf_module"], strict=True)
@@ -653,7 +658,7 @@ class NativeStage2Engine:
 
         if self.foveal_module is None or self.utility_model is None or self.processor is None:
             raise RuntimeError("native Stage2 foveal runtime is not loaded")
-        tap, v_pre, _v_merge = self._vision_features(sample)
+        tap, v_pre, _v_merge, deepstack_pre, _deepstack_features = self._vision_features(sample)
         if v_pre is None:
             raise RuntimeError(f"Qwen3 V_pre tap failed: {tap.errors}")
         output = self.foveal_module(
@@ -668,14 +673,26 @@ class NativeStage2Engine:
                 "image": self._image(sample),
                 "question": sample.prompt_question,
                 "device": self.device,
+                "deepstack_pre_merge_visual_tokens": [
+                    item.to(self.device) for item in deepstack_pre
+                ],
             },
         )
         output = finalize_tgvf_output_with_frozen_qwen_merger(self.utility_model, output)
         tokens = output.foveated_visual_tokens
-        return tokens.detach() if self.backend_options.get("detach_d", True) else tokens
+        if self.backend_options.get("detach_d", True):
+            tokens = tokens.detach()
+            deepstack = (
+                None
+                if not output.deepstack_visual_embeds
+                else [item.detach() for item in output.deepstack_visual_embeds]
+            )
+        else:
+            deepstack = output.deepstack_visual_embeds
+        return SimpleNamespace(tokens=tokens, deepstack_visual_embeds=deepstack)
 
-    def _vision_features(self, sample: NativeStage2Sample) -> tuple[Any, Any, Any]:
-        from revisit_vlm.qwen3_vl_tgvf import tap_qwen3_vision_features
+    def _vision_features(self, sample: NativeStage2Sample) -> tuple[Any, Any, Any, list[Any], list[Any]]:
+        from revisit_vlm.qwen3_vl_tgvf import tap_qwen3_vision_features_with_deepstack_premerge
 
         if self.utility_model is None or self.processor is None:
             raise RuntimeError("native Stage2 utility model is not loaded")
@@ -684,7 +701,7 @@ class NativeStage2Engine:
             raise RuntimeError("NativeStage2Engine.prepare must be called before vision tap")
         key = f"{_image_identity_text(sample.image)}|{config.max_image_resolution}"
         if key not in self.vision_cache:
-            self.vision_cache[key] = tap_qwen3_vision_features(
+            self.vision_cache[key] = tap_qwen3_vision_features_with_deepstack_premerge(
                 self.utility_model,
                 self.processor,
                 image=self._image(sample),
@@ -718,6 +735,12 @@ class NativeStage2Engine:
         if self.model is None or self.processor is None or self.utility_model is None:
             raise RuntimeError("native Stage2 model is not loaded")
         tokenizer = self.processor.tokenizer
+        d_deepstack_visual_embeds = (
+            getattr(d, "deepstack_visual_embeds", None)
+            if self._d_deepstack_enabled()
+            else None
+        )
+        d = getattr(d, "tokens", d)
         if not capture.capture_found:
             raise ValueError("capture must contain a valid focus span before FVT append")
         if d.ndim != 2:
@@ -891,15 +914,40 @@ class NativeStage2Engine:
                 dtype=model_embeds.dtype,
             )
             block_original_image_keys = True
-        outputs = self.model(
-            inputs_embeds=model_embeds,
-            past_key_values=past_key_values,
-            attention_mask=append_attention,
-            position_ids=position_ids,
-            mm_token_type_ids=model_mm_token_type_ids,
-            use_cache=True,
-            return_dict=True,
-        )
+        d_deepstack_payload = None
+        if d_deepstack_visual_embeds:
+            d_visual_pos_masks = torch.zeros(
+                (1, int(model_token_ids.shape[-1])),
+                dtype=torch.bool,
+                device=self.device,
+            )
+            d_visual_pos_masks[0, tail_len + fvt_token_start : tail_len + fvt_token_end] = True
+            d_deepstack_payload = {
+                "visual_pos_masks": d_visual_pos_masks,
+                "deepstack_visual_embeds": [
+                    item.to(device=self.device, dtype=model_embeds.dtype)
+                    for item in d_deepstack_visual_embeds
+                ],
+            }
+            outputs = self._forward_qwen3_language_with_deepstack(
+                inputs_embeds=model_embeds,
+                attention_mask=append_attention,
+                position_ids=position_ids,
+                past_key_values=past_key_values,
+                visual_pos_masks=d_deepstack_payload["visual_pos_masks"],
+                deepstack_visual_embeds=d_deepstack_payload["deepstack_visual_embeds"],
+                use_cache=True,
+            )
+        else:
+            outputs = self.model(
+                inputs_embeds=model_embeds,
+                past_key_values=past_key_values,
+                attention_mask=append_attention,
+                position_ids=position_ids,
+                mm_token_type_ids=model_mm_token_type_ids,
+                use_cache=True,
+                return_dict=True,
+            )
         model_kwargs = dict(getattr(capture, "model_kwargs", {}) or {})
         next_position_ids = _next_position_ids_after_prefill(position_ids)
         if next_position_ids is not None:
@@ -952,6 +1000,12 @@ class NativeStage2Engine:
                     "features."
                 ),
                 "uses_deepstack_for_fvt": bool(self._deepstack_enabled()),
+                "uses_d_deepstack_for_fvt": bool(d_deepstack_payload is not None),
+                "d_deepstack_feature_shapes": (
+                    None
+                    if d_deepstack_payload is None
+                    else [list(item.shape) for item in d_deepstack_payload["deepstack_visual_embeds"]]
+                ),
                 "deepstack_cached_prefix_used": bool(self._deepstack_enabled()),
                 "deepstack_scope": (
                     None if not self._deepstack_enabled() else self._deepstack_scope().value
@@ -1086,6 +1140,12 @@ class NativeStage2Engine:
 
         if self.model is None or self.utility_model is None or self.processor is None:
             raise RuntimeError("native Stage2 model is not loaded")
+        d_deepstack_visual_embeds = (
+            getattr(d, "deepstack_visual_embeds", None)
+            if self._d_deepstack_enabled()
+            else None
+        )
+        d = getattr(d, "tokens", d)
         if capture.input_ids is None:
             raise ValueError("capture.input_ids is required for full-sequence prefill")
         source_geometry = capture.source_visual_geometry
@@ -1129,7 +1189,7 @@ class NativeStage2Engine:
         full_input_ids = torch.cat([capture_input_ids, token_ids.to(self.device)], dim=-1)
         full_attention = torch.ones_like(full_input_ids)
         embeds = embed(full_input_ids).detach().clone()
-        _tap, _v_pre, v_merge = self._vision_features(sample)
+        _tap, _v_pre, v_merge, _deepstack_pre, _deepstack_features = self._vision_features(sample)
         if v_merge is None:
             raise RuntimeError("source merged visual features are unavailable")
         original_positions = source_geometry.source_visual_token_indices.to(self.device)
@@ -1237,12 +1297,25 @@ class NativeStage2Engine:
         if self._deepstack_enabled():
             scope = self._deepstack_scope()
             deepstack_features = self._original_image_deepstack_features(sample)
-            deepstack_payload = build_qwen3_original_image_deepstack_payload(
+            d_token_indices = torch.arange(
+                full_fvt_start,
+                full_fvt_end,
+                dtype=torch.long,
+                device=self.device,
+            )
+            deepstack_payload = build_qwen3_deepstack_payload(
                 sequence_length=int(full_input_ids.shape[-1]),
                 original_image_token_indices=original_positions,
-                deepstack_features=deepstack_features,
+                original_deepstack_features=deepstack_features,
+                d_token_indices=d_token_indices if d_deepstack_visual_embeds else None,
+                d_deepstack_features=d_deepstack_visual_embeds,
                 device=self.device,
                 dtype=embeds.dtype,
+                visual_pos_mask_policy=(
+                    "original_and_d_tokens"
+                    if d_deepstack_visual_embeds
+                    else "original_image_tokens_only"
+                ),
             )
             if self._deepstack_blocks_original_image_keys():
                 prefill_attention = build_original_image_key_block_attention_mask(
@@ -1297,6 +1370,9 @@ class NativeStage2Engine:
                 "fvt_append_path": "clean_native_full_sequence_prefill",
                 "tgvf_protocol": self.stage2_config.protocol,
                 "uses_deepstack_for_fvt": bool(deepstack_payload is not None),
+                "uses_d_deepstack_for_fvt": bool(
+                    deepstack_payload is not None and d_deepstack_visual_embeds
+                ),
                 "fvt_shape": list(d.shape),
                 "num_fvt_tokens": int(d.shape[0]),
                 "source_visual_token_count": int(source_geometry.source_visual_token_count),
@@ -1686,6 +1762,10 @@ class NativeStage2Engine:
         config = self._run_config
         return bool(config is not None and config.deepstack.enabled)
 
+    def _d_deepstack_enabled(self) -> bool:
+        config = self._run_config
+        return bool(config is not None and config.deepstack.d_features_enabled)
+
     def _deepstack_scope(self) -> DeepStackScope:
         config = self._run_config
         if config is None:
@@ -1889,6 +1969,21 @@ def _validate_run_alignment(stage2_config: Stage2RuntimeConfig, config: RunConfi
             f"{stage2_config.append_forward_mode.value!r} != "
             f"{config.post_tgvf_forward_mode.value!r}"
         )
+
+
+def _validate_d_deepstack_checkpoint_support(
+    config: RunConfig,
+    checkpoint_config: dict[str, Any],
+) -> None:
+    if not config.deepstack.d_features_enabled:
+        return
+    tgvf_cfg = checkpoint_config.get("tgvf") or {}
+    if bool(tgvf_cfg.get("d_deepstack_enabled", False)):
+        return
+    raise ValueError(
+        "RunConfig requests D DeepStack features, but the Stage2 checkpoint "
+        "was not trained with d_deepstack_enabled=true"
+    )
 
 
 def _loadable_image_paths(sample: BenchmarkSample) -> tuple[list[str], list[dict[str, Any]]]:

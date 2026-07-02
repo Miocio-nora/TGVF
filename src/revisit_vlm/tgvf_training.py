@@ -21,6 +21,7 @@ from revisit_vlm.tgvf_foveal import (
     Qwen2VLPreMergeVisualHook,
     TargetSlotFovealCrossMerger,
     TGVFEncoderBidirReencode,
+    TGVFv2BidirectionalDDeepStack,
     TGVFv2Bidirectional,
     TGVFv2CrossAttention,
     TGVFv2VPTGating,
@@ -94,6 +95,8 @@ class TGVFModuleConfig:
     encoder_adapter_share_weights: bool = False
     encoder_adapter_layer_index_base: int = 0
     encoder_reencode_deepstack_compatible: bool = False
+    d_deepstack_enabled: bool = False
+    d_deepstack_branch_layers: tuple[int, ...] = (8, 16, 24)
     encoder_reencode: bool = False
     preserve_llm_kv_cache: bool = True
     second_full_llm_forward: bool = False
@@ -245,10 +248,14 @@ def build_tgvf_module(
     encoder_adapter_share_weights: bool = False,
     encoder_adapter_layer_index_base: int = 0,
     encoder_reencode_deepstack_compatible: bool = False,
+    d_deepstack_enabled: bool = False,
+    d_deepstack_branch_layers: tuple[int, ...] | list[int] = (8, 16, 24),
 ) -> nn.Module:
     if variant not in TGVF_DYNAMIC_NUM_FVT_VARIANTS and num_foveated_tokens is None:
         supported = ", ".join(TGVF_DYNAMIC_NUM_FVT_VARIANTS)
         raise ValueError(f"num_foveated_tokens=None is supported only for: {supported}")
+    if d_deepstack_enabled and variant != "tgvf_v2_bidirectional":
+        raise ValueError("D DeepStack is currently supported only for tgvf_v2_bidirectional")
     if variant == "token_direct":
         return TokenFovealCrossAttention(
             d_lm=d_lm,
@@ -270,6 +277,14 @@ def build_tgvf_module(
             attn_dim=attn_dim,
         )
     if variant == "tgvf_v2_bidirectional":
+        if d_deepstack_enabled:
+            return TGVFv2BidirectionalDDeepStack(
+                d_lm=d_lm,
+                d_v=d_v,
+                spatial_merge_size=spatial_merge_size,
+                attn_dim=attn_dim,
+                branch_layers=tuple(int(layer) for layer in d_deepstack_branch_layers),
+            )
         return TGVFv2Bidirectional(
             d_lm=d_lm,
             d_v=d_v,

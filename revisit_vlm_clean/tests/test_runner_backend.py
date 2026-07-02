@@ -33,6 +33,7 @@ from revisit_vlm_clean.schema import (
 from revisit_vlm_clean.stage2_native import (
     NativeStage2Engine,
     NativeStage2RunResult,
+    _validate_d_deepstack_checkpoint_support,
     stage2_sample_from_clean_sample,
 )
 from revisit_vlm_clean.stage2_runtime import Stage2RuntimeConfig
@@ -69,6 +70,21 @@ def _deepstack_run_config() -> RunConfig:
         deepstack=DeepStackState(
             enabled=True,
             original_image_scope=DeepStackScope.THROUGH_ANSWER,
+        ),
+    )
+
+
+def _d_deepstack_run_config() -> RunConfig:
+    return RunConfig(
+        run_id="stage2_d_deepstack",
+        checkpoint_path="outputs/checkpoint.pt",
+        mode=EvalMode.TGVF_FORCE,
+        post_tgvf_forward_mode=ForwardMode.KV_CACHE,
+        subset_id="core_smoke_256_seed20260625",
+        deepstack=DeepStackState(
+            enabled=True,
+            original_image_scope=DeepStackScope.THROUGH_ANSWER,
+            d_features_enabled=True,
         ),
     )
 
@@ -543,6 +559,22 @@ def test_stage2_native_backend_accepts_supported_full_sequence_evidence_only_dee
     )
 
     backend.prepare(config)
+
+
+def test_d_deepstack_runtime_request_requires_matching_checkpoint_config() -> None:
+    _validate_d_deepstack_checkpoint_support(
+        _deepstack_run_config(),
+        {"tgvf": {"d_deepstack_enabled": False}},
+    )
+    _validate_d_deepstack_checkpoint_support(
+        _d_deepstack_run_config(),
+        {"tgvf": {"d_deepstack_enabled": True}},
+    )
+    with pytest.raises(ValueError, match="d_deepstack_enabled=true"):
+        _validate_d_deepstack_checkpoint_support(
+            _d_deepstack_run_config(),
+            {"tgvf": {"d_deepstack_enabled": False}},
+        )
 
 
 def test_deepstack_execution_plan_records_scope_semantics() -> None:

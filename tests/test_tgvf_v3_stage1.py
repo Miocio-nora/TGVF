@@ -105,6 +105,31 @@ class TinyQwen3(nn.Module):
         return SimpleNamespace(logits=self.head(hidden))
 
 
+class TinyDeepStackLanguageModel(nn.Module):
+    def forward(
+        self,
+        *,
+        inputs_embeds: torch.Tensor,
+        visual_pos_masks: torch.Tensor,
+        deepstack_visual_embeds: list[torch.Tensor],
+        **_kwargs: object,
+    ) -> SimpleNamespace:
+        hidden = inputs_embeds.clone()
+        for feature in deepstack_visual_embeds:
+            hidden[visual_pos_masks, :] = hidden[visual_pos_masks, :] + feature
+        return SimpleNamespace(last_hidden_state=torch.cumsum(hidden, dim=1))
+
+
+class TinyQwen3WithDeepStack(TinyQwen3):
+    def __init__(self, vocab_size: int = 512, hidden_size: int = 8) -> None:
+        super().__init__(vocab_size=vocab_size, hidden_size=hidden_size)
+        self.model = SimpleNamespace(
+            compute_3d_position_ids=self.compute_3d_position_ids,
+            language_model=TinyDeepStackLanguageModel(),
+        )
+        self.lm_head = self.head
+
+
 class TinyPeftLikeWrapper(nn.Module):
     def __init__(self, base_model: TinyQwen3) -> None:
         super().__init__()
@@ -219,6 +244,33 @@ def test_v3_stage1_readout_loss_backprops_to_d_not_frozen_qwen() -> None:
     assert any(d.grad.abs().flatten() > 0)
     assert all(parameter.grad is None for parameter in model.parameters())
     assert all(not parameter.requires_grad for parameter in model.parameters())
+
+
+def test_v3_stage1_readout_can_inject_d_deepstack_features() -> None:
+    tokenizer = TinyQwen3Tokenizer()
+    model = TinyQwen3WithDeepStack()
+    freeze_qwen_backbone(model)
+    d = torch.randn(2, 8, requires_grad=True)
+    d_deepstack = [torch.randn(2, 8, requires_grad=True) for _ in range(2)]
+
+    inputs = prepare_v3_stage1_readout_inputs(
+        model=model,
+        tokenizer_or_processor=tokenizer,
+        capture=_capture(),
+        evidence_description="It reads EXP.",
+        foveated_visual_tokens=d,
+        merged_visual_tokens=torch.randn(2, 8),
+        d_deepstack_visual_embeds=d_deepstack,
+        mask_original_image_after_tgvf=True,
+    )
+    loss, _ = compute_v3_stage1_lm_loss(model=model, readout_inputs=inputs)
+    loss.backward()
+
+    assert inputs["d_deepstack_features_enabled"] is True
+    assert inputs["visual_pos_masks"].sum().item() == 2
+    assert [list(item.shape) for item in inputs["deepstack_visual_embeds"]] == [[2, 8], [2, 8]]
+    assert all(feature.grad is not None for feature in d_deepstack)
+    assert all(torch.isfinite(feature.grad).all() for feature in d_deepstack)
 
 
 def test_qwen3_position_ids_unwraps_peft_like_model_but_uses_wrapper_embeddings() -> None:

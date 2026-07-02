@@ -112,6 +112,542 @@ If a mistake is found:
 
 ## Experiment Entries
 
+### EXP-20260703-005210-stage2-d-deepstack-8gpu
+
+- Status: RUNNING_FULL_STAGE2_AFTER_SMOKE.
+- Question:
+  - Train the Stage2 branch from the new Stage1 D DeepStack checkpoint, using the authoritative Stage2 recipe with D DeepStack features enabled and 8 GPUs while preserving global batch.
+- Baseline anchor:
+  - Authoritative Stage2 recipe: `clean_qwen3_stage2_norm01_stage1_mask075_deepstack_4gpu_20260627_163250`.
+  - Baseline Stage2 plan: `outputs/clean_training/qwen3_stage2_norm01_stage1_mask075_deepstack_4gpu_20260627_163250/stage2_micro4/training_plan.json`.
+  - Baseline Stage1 checkpoint:
+    `outputs/clean_training/qwen3_stage1_norm01_manifold0_4gpu_20260627_133252/stage1_micro4/clean_training_execution/checkpoint_step_2000.pt`.
+  - Baseline Stage1 checkpoint sha256:
+    `ab6bd554cfb405208f13270c298f7fd0ab01305c83ca07bf8eca667cbe1632a1`.
+- Intended diff:
+  - Replace the Stage1 checkpoint with the Stage1 D DeepStack checkpoint.
+  - Enable Stage2 D DeepStack features with `--d-deepstack-enabled`.
+  - Use 8 GPUs at fixed global batch: `128 = world_size 8 * micro_batch 4 * gradient_accumulation_steps 4`.
+- Allowed changed variables:
+  - Stage1 checkpoint and its saved TGVF module.
+  - D DeepStack branch features injected for D token positions during Stage2 fast batched training.
+  - GPU/world-size identity, with global batch held fixed.
+- Not allowed to change:
+  - Stage2 train/validation data, protocol, model/processor, max image resolution, max sequence length, max steps, save/eval cadence, fast batched path, mask probability, mask scope, original-image DeepStack scope, target focus ratio, LoRA config, optimizer/LR schedule, weighted span losses, visual token manifold loss, FVT position mode, attention implementation, and global batch.
+- Code commit / worktree:
+  - Branch: `clean/tgvf-clean-project-20260625`.
+  - HEAD: `62538395ab7adfd764421f55675ecc3bf5c91427`.
+  - Dirty worktree: yes; includes D DeepStack implementation, clean Stage2 fast-batched D DeepStack support, and the diagnostics compatibility fix.
+- Stage1 checkpoint:
+  - `outputs/clean_training/qwen3_stage1_ddeepstack_norm01_wandb_4gpu_20260702_180906/stage1_micro4/clean_training_execution/checkpoint_step_2000.pt`.
+  - sha256: `b119379fc13a3eee1d19fb347bda729262592599218ea1ff88733ba142cb0c0b`.
+  - Internal diagnostics:
+    - Query Top-1 `0.77`, Top-2 `0.915`, MRR `0.8691666666666669`.
+    - Readout correct-D beats wrong-same `0.905`; collapse warning `false`.
+- Stage1 processor:
+  - `/nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking`.
+- Stage2 checkpoint/output:
+  - Full training target:
+    `outputs/clean_training/qwen3_stage2_ddeepstack_norm01_from_stage1_ddeepstack_8gpu_20260703_005210/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt`.
+  - Smoke target:
+    `outputs/clean_training/qwen3_stage2_ddeepstack_norm01_from_stage1_ddeepstack_8gpu_20260703_005210_smoke/stage2_micro4/clean_training_execution/checkpoint_step_1.pt`.
+- Train data:
+  - `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend_open_answer/splits/tgvf_v4_teacher_stage2_protocol_c.train.jsonl`.
+  - Rows: `46883`.
+  - sha256: `b5027e72dda7601073ddb8bc9cf1853ec564fa415a3e9cb7d1e684cc7c0d733b`.
+- Validation data:
+  - `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend_open_answer/splits/tgvf_v4_teacher_stage2_protocol_c.test.jsonl`.
+  - Rows: `1002`.
+  - sha256: `3b719e1bd03a09741cc05dac3ed85e423a9b2c29209b07546792a6795cdbbfc5`.
+- Training identity:
+  - Stage2 path: `fast_batched`.
+  - Protocol: `protocol_c_tool_observation`.
+  - Model / processor: `/nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking`.
+  - dtype / attention: `bfloat16` / `sdpa`.
+  - max image resolution / max sequence length: `512` / `2048`.
+  - max steps: `1200`.
+  - save/eval every: `300`.
+  - mask original image after TGVF: `true`.
+  - mask probability / scope: `0.75` / `through_answer`.
+  - DeepStack original-image features: `enabled`, scope `through_answer`.
+  - D DeepStack features: `enabled`, branch layers inherited from Stage1 checkpoint `[8,16,24]`.
+  - D DeepStack training path:
+    - `d_deepstack_features_injected=true`.
+    - source: `tgvf_conditioned_cached_branch_pre_merge_hidden_states`.
+    - matrix-CE contract: `swap_D_merge_and_D_deepstack_together`.
+  - LoRA rank/alpha/dropout/bias:
+    `64 / 256 / 0.05 / none`.
+  - LoRA targets:
+    `q_proj,k_proj,v_proj,o_proj,gate_proj,up_proj,down_proj`.
+  - LRs:
+    - `lr_lora=2e-5`.
+    - `lr_tgvf=5e-6`.
+    - `lr_calibration=1e-5`.
+  - LR schedule:
+    - `cosine`, warmup steps `100`, warmup ratio `0.03`, min LR ratio `0.1`.
+  - Adam:
+    - betas `[0.9,0.95]`, eps `1e-8`, weight decay `0.01`.
+  - max grad norm: `1.0`.
+  - visual token manifold loss: `0.0`.
+  - weighted span loss:
+    - evidence_state `0.2`.
+    - focus_target `1.5`.
+    - evidence `1.0`.
+    - value_span `1.0`.
+    - answer `1.0`.
+    - no_focus_evidence_state `0.2`.
+    - no_focus_answer `1.0`.
+- Script / command:
+  - Plan command:
+    `PYTHONPATH=revisit_vlm_clean/src:src python -m revisit_vlm_clean.cli.train_stage2 --run-id clean_qwen3_stage2_ddeepstack_norm01_from_stage1_ddeepstack_8gpu_20260703_005210 --train-file data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend_open_answer/splits/tgvf_v4_teacher_stage2_protocol_c.train.jsonl --val-file data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend_open_answer/splits/tgvf_v4_teacher_stage2_protocol_c.test.jsonl --stage1-checkpoint outputs/clean_training/qwen3_stage1_ddeepstack_norm01_wandb_4gpu_20260702_180906/stage1_micro4/clean_training_execution/checkpoint_step_2000.pt --output-dir outputs/clean_training/qwen3_stage2_ddeepstack_norm01_from_stage1_ddeepstack_8gpu_20260703_005210/stage2_micro4 --model-id /nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking --processor-id /nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking --protocol protocol_c_tool_observation --max-image-resolution 512 --max-seq-len 2048 --max-steps 1200 --save-every 300 --eval-every 300 --seed 20260525 --dtype bfloat16 --attn-implementation sdpa --variant tgvf_v2_bidirectional --use-stage1-tgvf-config --fast-batched-stage2 --fvt-position-mode native_source_grid --target-focus-ratio 0.8 --mask-original-image-after-tgvf --mask-original-image-after-tgvf-prob 0.75 --mask-original-image-after-tgvf-scope through_answer --deepstack-enabled --deepstack-original-image-scope through_answer --d-deepstack-enabled --lora-rank 64 --lora-alpha 256 --lora-dropout 0.05 --lora-bias none --lora-target-modules q_proj,k_proj,v_proj,o_proj,gate_proj,up_proj,down_proj --lr-lora 2e-5 --lr-tgvf 5e-6 --lr-calibration 1e-5 --lr-scheduler cosine --warmup-ratio 0.03 --warmup-steps 100 --min-lr-ratio 0.1 --adam-beta1 0.9 --adam-beta2 0.95 --adam-eps 1e-8 --weight-decay 0.01 --max-grad-norm 1.0 --loss-visual-token-manifold 0.0 --global-batch 128 --world-size 8 --micro-batch-size 4 --gradient-accumulation-steps 4 --wandb-project tgvf-clean-qwen3-deepstack --wandb-mode online --write-plan`.
+  - Full training launch:
+    `CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 MASTER_PORT=<TBD> PYTHONPATH=revisit_vlm_clean/src:src torchrun --nproc-per-node 8 -m revisit_vlm_clean.training.stage2_executor --plan outputs/clean_training/qwen3_stage2_ddeepstack_norm01_from_stage1_ddeepstack_8gpu_20260703_005210/stage2_micro4/training_plan.json --launch-training`.
+  - Smoke launch:
+    `CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 MASTER_PORT=<TBD> PYTHONPATH=revisit_vlm_clean/src:src torchrun --nproc-per-node 8 -m revisit_vlm_clean.training.stage2_executor --plan outputs/clean_training/qwen3_stage2_ddeepstack_norm01_from_stage1_ddeepstack_8gpu_20260703_005210_smoke/stage2_micro4/training_plan.json --launch-training`.
+- GPUs:
+  - Planned: `0,1,2,3,4,5,6,7`.
+  - Batch identity: `128 = 8 * 4 * 4`.
+- tmux:
+  - Smoke: `stage2_ddeepstack_smoke_20260703_005210`.
+  - Smoke retry: `stage2_ddeepstack_smoke_r1_20260703_005210`.
+  - Full training: planned `stage2_ddeepstack_8gpu_20260703_005210`.
+- Started:
+  - Smoke: `2026-07-03T00:52:30+09:00`.
+  - Smoke retry: `2026-07-03T00:56:50+09:00`.
+  - Full training: `2026-07-03T01:01:27+09:00`.
+    - tmux: `stage2_ddeepstack_8gpu_20260703_005210`.
+    - `MASTER_PORT=29841`.
+    - log:
+      `outputs/clean_training/qwen3_stage2_ddeepstack_norm01_from_stage1_ddeepstack_8gpu_20260703_005210/stage2_micro4/logs/train.log`.
+    - W&B: enabled, project `tgvf-clean-qwen3-deepstack`, mode `online`.
+    - The first launch was stopped during model loading because the log
+      directory did not exist and `tee` could not write `train.log`; no
+      training step completed.
+  - Full training relaunch: `2026-07-03T01:02:30+09:00`.
+    - tmux: `stage2_ddeepstack_8gpu_20260703_005210`.
+    - `MASTER_PORT=29841`.
+    - Same plan and command after creating the log directory.
+    - W&B online confirmed:
+      `https://wandb.ai/mio_nora/tgvf-clean-qwen3-deepstack/runs/6g9zgtmg`.
+      The local W&B cache fell back to `/tmp/wandb/run-20260703_010331-6g9zgtmg`
+      because the planned run-local W&B directory was not writable, but online
+      sync is active.
+    - Progress start record confirmed `wandb_enabled=true`,
+      `wandb_mode=online`, `world_size=8`, `gradient_accumulation_steps=4`,
+      and `max_steps=1200`.
+    - First optimizer step confirmed:
+      - `global_step=1/1200`, `micro_steps_completed=4`,
+        `effective_global_batch_size=128`.
+      - `loss_total=4.25`, `loss_focus=4.234375`,
+        `loss_no_focus=3.46484375`, `loss_visual_token_manifold=0.0`.
+      - grad norm `11.727109909057617`, clipped grad norm
+        `11.727109909057617`, peak memory `69.71869564056396` GB.
+      - debug confirmed `fast_batched_stage2=true`,
+        `deepstack_training_enabled=true`,
+        `deepstack_original_image_scope=through_answer`,
+        `qwen3_deepstack_features_injected=true`,
+        `mask_original_image_after_tgvf_prob=0.75`,
+        `mask_original_image_after_tgvf_scope=through_answer`.
+    - Second optimizer step confirmed:
+      - `global_step=2/1200`, elapsed `168.5839946269989` seconds from the
+        progress start record, `effective_global_batch_size=128`.
+      - `loss_total=4.13671875`, `loss_focus=4.1171875`,
+        `loss_no_focus=3.64453125`, grad norm `12.009724617004395`,
+        peak memory `75.23955631256104` GB.
+      - debug again confirmed fast batched Stage2, DeepStack training, original
+        image scope `through_answer`, D/DeepStack feature injection, and mask
+        probability/scope `0.75` / `through_answer`.
+- Finished:
+  - TBD.
+- Verification before launch:
+  - Dry-run plan resolved with:
+    - `deepstack.enabled=true`.
+    - `deepstack.d_features_enabled=true`.
+    - `d_deepstack_features_injected=true`.
+    - `matrix_ce_candidate_swap_contract=swap_D_merge_and_D_deepstack_together`.
+    - no DeepStack blockers.
+  - `PYTHONPATH=revisit_vlm_clean/src:src pytest -q tests/test_tgvf_v3_stage2_fast.py revisit_vlm_clean/tests/test_deepstack.py` passed: `8 passed`.
+  - `PYTHONPATH=revisit_vlm_clean/src:src pytest -q revisit_vlm_clean/tests/test_cli.py::test_stage2_deepstack_plan_disables_legacy_command revisit_vlm_clean/tests/test_cli.py::test_stage2_deepstack_prepare_writes_training_plan` passed: `2 passed`.
+  - `python -m compileall -q revisit_vlm_clean/src/revisit_vlm_clean/cli/train_stage2.py revisit_vlm_clean/src/revisit_vlm_clean/training_plan.py revisit_vlm_clean/src/revisit_vlm_clean/training/executor.py src/revisit_vlm/tgvf_v3_stage2_fast.py src/revisit_vlm/tgvf_foveal.py` passed.
+- Smoke:
+  - Attempt 1 failed before model loading during execution-bundle validation:
+    `ValueError: execution bundle must preserve the planned tgvf config`.
+  - Fix applied before retry:
+    - Stage2 training plans now record a top-level `tgvf` identity block.
+    - The block records Stage1-checkpoint-sourced TGVF config and D DeepStack
+      identity fields, including `d_deepstack_enabled=true` when Stage2 D
+      features are enabled.
+  - Additional verification after fix:
+    - `PYTHONPATH=revisit_vlm_clean/src:src pytest -q revisit_vlm_clean/tests/test_cli.py::test_stage2_training_write_plan_cli revisit_vlm_clean/tests/test_cli.py::test_stage2_deepstack_plan_disables_legacy_command revisit_vlm_clean/tests/test_cli.py::test_stage2_deepstack_prepare_writes_training_plan` passed: `3 passed`.
+    - `PYTHONPATH=revisit_vlm_clean/src:src pytest -q tests/test_tgvf_v3_stage2_fast.py revisit_vlm_clean/tests/test_deepstack.py` passed: `8 passed`.
+    - `python -m compileall -q revisit_vlm_clean/src/revisit_vlm_clean/training_plan.py revisit_vlm_clean/tests/test_cli.py` passed.
+  - Attempt 2 completed successfully:
+    `outputs/clean_training/qwen3_stage2_ddeepstack_norm01_from_stage1_ddeepstack_8gpu_20260703_005210_smoke_r1/stage2_micro4`.
+    - checkpoint:
+      `outputs/clean_training/qwen3_stage2_ddeepstack_norm01_from_stage1_ddeepstack_8gpu_20260703_005210_smoke_r1/stage2_micro4/clean_training_execution/checkpoint_step_1.pt`.
+    - checkpoint sha256:
+      `4a09b6b225eee493a55d410e400225b00fcea7e67bb313abc581381731d0650b`.
+    - one optimizer step completed with `4` micro steps and effective global
+      batch `128`.
+    - train loss `4.234375`, validation loss `4.25`, clipped grad norm
+      `11.672630310058594`, peak memory `69.73493957519531` GB.
+    - debug confirmed `fast_batched_stage2=true`,
+      `deepstack_training_enabled=true`,
+      `deepstack_original_image_scope=through_answer`,
+      `qwen3_deepstack_features_injected=true`,
+      `mask_original_image_after_tgvf_prob=0.75`, and scope
+      `through_answer`.
+    - W&B was intentionally disabled only for smoke.
+- Metrics:
+  - TBD.
+- Analysis:
+  - This is a named D DeepStack ablation on top of the authoritative Stage2 recipe.
+  - The 8-GPU change is an execution choice; global batch remains fixed at `128`.
+- Conclusion:
+  - TBD.
+- Comparable to baseline:
+  - Training dynamics are comparable at recipe level except for the named D DeepStack ablation and fixed-global-batch 8-GPU execution.
+
+### DIAG-20260702-235026-stage1-d-deepstack-internal-diagnostics
+
+- Status: DONE.
+- Question:
+  - Does the new Stage1 D DeepStack checkpoint pass the clean-native internal readout/query/distribution diagnostics before any Stage2 branch is trained from it?
+- Parent training entry:
+  - `EXP-20260702-180906-stage1-d-deepstack-wandb-relaunch`.
+- Checkpoint:
+  - `outputs/clean_training/qwen3_stage1_ddeepstack_norm01_wandb_4gpu_20260702_180906/stage1_micro4/clean_training_execution/checkpoint_step_2000.pt`.
+  - sha256: `b119379fc13a3eee1d19fb347bda729262592599218ea1ff88733ba142cb0c0b`.
+- Eval data:
+  - `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend/splits/tgvf_v4_teacher_stage1_protocol_c_focus.test.jsonl`.
+  - Rows: `867`.
+  - sha256: `de61c731eb961825a77df587cd76c00eabfea75b5c6003096f3cc7f1a51dd82d`.
+- Code / worktree:
+  - Branch: `clean/tgvf-clean-project-20260625`.
+  - HEAD: `62538395ab7adfd764421f55675ecc3bf5c91427`.
+  - Dirty worktree: yes; includes the D DeepStack implementation and a stage-diagnostics compatibility fix to rebuild D DeepStack modules from checkpoint config.
+- Diagnostic entrypoint:
+  - `python -m revisit_vlm_clean.cli.stage_diagnostics`.
+  - Backend: `clean_native_stage_diagnostics`.
+  - Eval family: `internal_diagnostic`.
+  - Legacy bridge: `False`.
+- Settings:
+  - Stage: `stage1`.
+  - Protocol: `protocol_c_tool_observation`.
+  - Model: `Qwen/Qwen3-VL-8B-Thinking`.
+  - Processor: checkpoint config / base processor when missing.
+  - Max image resolution: `512`.
+  - Position mode: `native_source_grid`.
+  - Focus action im_end: `True`.
+  - Tasks: `readout,query,distribution`.
+  - D conditions:
+    `correct_D`, `no_D`, `random_D`, `wrong_same_image_D`, `wrong_diff_image_D`.
+  - Readout max samples: `200`.
+  - Query max groups: `50`.
+  - Query min targets per image: `3`.
+  - Distribution max samples: `200`.
+  - Device: `cuda:0`.
+  - D DeepStack from checkpoint config:
+    - `d_deepstack_enabled=true`.
+    - `d_deepstack_branch_layers=[8,16,24]`.
+- Output:
+  - `outputs/clean_training/qwen3_stage1_ddeepstack_norm01_wandb_4gpu_20260702_180906/stage1_micro4/internal_diagnostics_step2000_20260702_235026`.
+- Command:
+  - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=revisit_vlm_clean/src:src python -m revisit_vlm_clean.cli.stage_diagnostics --run-id clean_qwen3_stage1_ddeepstack_internal_diag_20260702_235026 --stage stage1 --checkpoint outputs/clean_training/qwen3_stage1_ddeepstack_norm01_wandb_4gpu_20260702_180906/stage1_micro4/clean_training_execution/checkpoint_step_2000.pt --eval-jsonl data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend/splits/tgvf_v4_teacher_stage1_protocol_c_focus.test.jsonl --output-dir outputs/clean_training/qwen3_stage1_ddeepstack_norm01_wandb_4gpu_20260702_180906/stage1_micro4/internal_diagnostics_step2000_20260702_235026 --model-id Qwen/Qwen3-VL-8B-Thinking --protocol protocol_c_tool_observation --focus-action-im-end --variant tgvf_v2_bidirectional --encoder-adapter-type bidirectional --max-image-resolution 512 --fvt-position-mode native_source_grid --dtype bfloat16 --attn-implementation sdpa --device cuda:0 --device-map cuda:0 --tasks all --readout-max-samples 200 --distribution-max-samples 200 --query-max-groups 50 --query-require-groups 0 --seed 20260525 --execute`.
+- Verification before launch:
+  - `PYTHONPATH=revisit_vlm_clean/src:src pytest -q revisit_vlm_clean/tests/test_stage_diagnostics.py` passed: `7 passed`.
+  - `python -m compileall -q revisit_vlm_clean/src/revisit_vlm_clean/stage_diagnostics.py revisit_vlm_clean/tests/test_stage_diagnostics.py` passed.
+- Runtime:
+  - tmux: `clean_stage1_ddeepstack_internal_diag_20260702_235026`.
+  - Started: `2026-07-02T23:53:58+09:00`.
+  - Attempt 1 failed before scoring with `ValueError: D DeepStack is enabled but metadata is missing deepstack_pre_merge_visual_tokens`.
+  - Fix applied before retry:
+    - `stage_diagnostics.py` now taps `tap_qwen3_vision_features_with_deepstack_premerge`.
+    - D generation metadata now includes `deepstack_pre_merge_visual_tokens`.
+    - readout/query scoring now carries matching `d_deepstack_visual_embeds` for correct and wrong D conditions.
+  - Retry tmux: `clean_stage1_ddeepstack_internal_diag_20260702_235026_r1`.
+  - Retry started: `2026-07-02T23:57:04+09:00`.
+  - Completed: `2026-07-03T00:28:03+09:00`.
+  - Retry elapsed wall time: ~31 minutes under high system CPU load.
+- Reports:
+  - Readout: `outputs/clean_training/qwen3_stage1_ddeepstack_norm01_wandb_4gpu_20260702_180906/stage1_micro4/internal_diagnostics_step2000_20260702_235026/readout/readout_eval_report.json`.
+  - Query sensitivity: `outputs/clean_training/qwen3_stage1_ddeepstack_norm01_wandb_4gpu_20260702_180906/stage1_micro4/internal_diagnostics_step2000_20260702_235026/query_sensitivity/query_sensitivity_report.json`.
+  - FVT distribution: `outputs/clean_training/qwen3_stage1_ddeepstack_norm01_wandb_4gpu_20260702_180906/stage1_micro4/internal_diagnostics_step2000_20260702_235026/fvt_distribution/fvt_distribution_report.json`.
+  - Status: `outputs/clean_training/qwen3_stage1_ddeepstack_norm01_wandb_4gpu_20260702_180906/stage1_micro4/internal_diagnostics_step2000_20260702_235026/clean_stage_diagnostic_status.json`.
+- Metrics:
+  - Items:
+    - `num_samples_loaded=200`.
+    - `num_items_built=200`.
+    - Readout rows: `200`.
+    - Query groups/items: `46` / `200`.
+    - Distribution rows: `200`.
+  - Readout:
+    - `mean_nll_correct_D=1.333408203125`.
+    - `mean_nll_target_only=2.02021484375`.
+    - `mean_nll_random_D=2.33296875`.
+    - `mean_delta_correct_vs_target_only=0.686806640625`.
+    - `mean_delta_correct_vs_random=0.999560546875`.
+    - `mean_delta_correct_vs_wrong_same=0.471123046875`.
+    - `mean_delta_correct_vs_wrong_diff=0.3961181640625`.
+    - `pct_correct_D_beats_target_only=0.995`.
+    - `pct_correct_D_beats_random=1.0`.
+    - `pct_correct_D_beats_wrong_same=0.905`.
+    - `pct_correct_D_beats_wrong_diff=0.9375`.
+  - Query sensitivity:
+    - `retrieval_top1=0.77`.
+    - `retrieval_top2=0.915`.
+    - `mrr=0.8691666666666669`.
+    - `mean_diagonal_gap=0.195625`.
+    - `median_diagonal_gap=0.15234375`.
+  - Distribution:
+    - `avg_manifold_loss=0.40240025222301484`.
+    - `avg_norm_D=40.178913555145265`.
+    - `avg_norm_V_merge=20.683768496513366`.
+    - `norm_ratio_D_to_Vmerge=2.0134760268787857`.
+    - `finite_rate=1.0`.
+    - `collapse_near_identical_rate=0.0`.
+    - `collapse_warning=false`.
+- Analysis:
+  - This is the same internal diagnostic gate used for previous clean Stage1 checkpoints, with the loader updated to instantiate D DeepStack branch modules when the checkpoint config requires them.
+  - Runtime completed with `d_deepstack_enabled=true` and branch layers `[8,16,24]`.
+  - The first attempt exposed a diagnostics-only compatibility gap: the clean internal diagnostic path did not pass DeepStack pre-merge branch features to the D-DeepStack foveal module.
+  - After the fix, readout/query scoring carries matching D DeepStack visual embeds for correct/wrong D conditions.
+  - The run was slow because the internal diagnostic path performs many serial small LM forwards and the host was under high CPU load from the root-owned job noted separately.
+- Conclusion:
+  - New Stage1 D DeepStack checkpoint passes the clean internal readout/query/distribution diagnostics.
+  - Readout separation is strong: correct D beats target-only on `99.5%`, random D on `100%`, wrong-same D on `90.5%`, and wrong-diff D on `93.75%` of evaluated rows.
+  - Query retrieval is healthy but not perfect: top1 `77.0%`, top2 `91.5%`, MRR `0.869`.
+  - Distribution is finite with no collapse warning.
+
+### EXP-20260702-180906-stage1-d-deepstack-wandb-relaunch
+
+- Status: DONE.
+- Question:
+  - Rerun the Stage1 D DeepStack ablation with W&B online logging enabled after stopping the no-W&B launch.
+- Baseline anchor:
+  - Authoritative clean Stage1: `clean_qwen3_stage1_norm01_manifold0_4gpu_20260627_133252`.
+  - Baseline plan: `outputs/clean_training/qwen3_stage1_norm01_manifold0_4gpu_20260627_133252/stage1_micro4/training_plan.json`.
+  - Baseline checkpoint: `outputs/clean_training/qwen3_stage1_norm01_manifold0_4gpu_20260627_133252/stage1_micro4/clean_training_execution/checkpoint_step_2000.pt`.
+  - Baseline checkpoint sha256: `ab6bd554cfb405208f13270c298f7fd0ab01305c83ca07bf8eca667cbe1632a1`.
+- Intended diff:
+  - Enable Stage1 `d_deepstack_enabled=true`.
+  - Use D DeepStack branch layers `8,16,24`.
+  - Each D DeepStack branch uses an independent `tgvf_v2_bidirectional` adapter.
+  - Use cached DeepStack branch pre-merge hidden states from the same vision forward; no vision tower rerun.
+  - Enable W&B upload with `wandb.project=tgvf-clean-qwen3-deepstack`, `wandb.mode=online`.
+- Allowed changed variables:
+  - D DeepStack branch feature path and its trainable branch adapters.
+  - Resulting D norm loss includes the D DeepStack branch norm term.
+  - W&B online logging enabled for this rerun.
+- Not allowed to change:
+  - Stage1 train data, protocol, model, dtype, attention implementation, max image resolution, max steps, save cadence, token-row mode, capture mode, FVT position mode, original-image masking, same-image negative mode, readout batch size, optimizer, LR schedule, loss weights, global batch, micro batch, gradient accumulation, and world size.
+- Code commit / worktree:
+  - Branch: `clean/tgvf-clean-project-20260625`.
+  - HEAD: `8a3c093698583cdae46321793efd1fced4b610d2`.
+  - Dirty worktree: yes; includes D DeepStack implementation and executor bundle fix.
+- Stage1 checkpoint:
+  - Output target: `outputs/clean_training/qwen3_stage1_ddeepstack_norm01_wandb_4gpu_20260702_180906/stage1_micro4/clean_training_execution/checkpoint_step_2000.pt`.
+- Stage1 processor:
+  - Model id: `Qwen/Qwen3-VL-8B-Thinking`.
+  - Processor id: default/null.
+- Stage2 checkpoint/output:
+  - N/A for this Stage1-only training launch.
+- Train data:
+  - `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend/splits/tgvf_v4_teacher_stage1_protocol_c_focus.train.jsonl`.
+  - Rows: `39998`.
+  - sha256: `c94a38b824b6603e555eed5ef3584c19cc903b76995d49c67ace36b18268443c`.
+- Validation data:
+  - N/A.
+- Benchmark output:
+  - N/A.
+- Script / command:
+  - Plan: `outputs/clean_training/qwen3_stage1_ddeepstack_norm01_wandb_4gpu_20260702_180906/stage1_micro4/training_plan.json`.
+  - Plan command: `PYTHONPATH=revisit_vlm_clean/src:src python -m revisit_vlm_clean.cli.train_stage1 --run-id clean_qwen3_stage1_ddeepstack_norm01_wandb_4gpu_20260702_180906 --train-file data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend/splits/tgvf_v4_teacher_stage1_protocol_c_focus.train.jsonl --output-dir outputs/clean_training/qwen3_stage1_ddeepstack_norm01_wandb_4gpu_20260702_180906/stage1_micro4 --model-id Qwen/Qwen3-VL-8B-Thinking --protocol protocol_c_tool_observation --max-image-resolution 512 --max-steps 2000 --save-every 500 --seed 20260525 --dtype bfloat16 --attn-implementation sdpa --variant tgvf_v2_bidirectional --d-deepstack-enabled --d-deepstack-branch-layers 8,16,24 --token-row-mode row_only --capture-mode teacher_forced --fvt-position-mode native_source_grid --focus-action-im-end --mask-original-image-after-tgvf --learning-rate 1e-4 --lr-scheduler cosine --warmup-steps 100 --min-lr-ratio 0.1 --max-grad-norm 1.0 --loss-gen 1.0 --loss-visual-token-manifold 0.0 --loss-visual-token-norm 0.1 --loss-same-image-negative 1.0 --same-image-negative-margin 1.0 --same-image-negative-mode matrix_ce --readout-batch-size 4 --world-size 4 --micro-batch-size 4 --gradient-accumulation-steps 2 --global-batch 32 --wandb-project tgvf-clean-qwen3-deepstack --wandb-mode online --write-plan`.
+  - Clean command: `CUDA_VISIBLE_DEVICES=0,1,2,3 MASTER_PORT=29786 PYTHONPATH=revisit_vlm_clean/src:src torchrun --nproc-per-node 4 -m revisit_vlm_clean.training.stage1_executor --plan outputs/clean_training/qwen3_stage1_ddeepstack_norm01_wandb_4gpu_20260702_180906/stage1_micro4/training_plan.json --launch-training`.
+- GPUs:
+  - `0,1,2,3`.
+  - Batch identity: `32 = world_size 4 * micro_batch 4 * gradient_accumulation_steps 2`.
+- tmux:
+  - `stage1_ddeepstack_wandb_20260702_180906`.
+- Started:
+  - `2026-07-02T18:10:25+09:00`.
+- Finished:
+  - `2026-07-02T22:44:01+09:00` (computed from start time plus logged elapsed seconds).
+- Metrics:
+  - W&B:
+    - Project: `tgvf-clean-qwen3-deepstack`.
+    - URL: `https://wandb.ai/mio_nora/tgvf-clean-qwen3-deepstack/runs/ge8c8x3t`.
+    - Run id: `ge8c8x3t`.
+  - First optimizer step verified:
+    - `global_step=1`.
+    - `loss_total=3.7166954278945923`.
+    - `d_deepstack_features_enabled=true`.
+    - `d_deepstack_norm_active=true`.
+    - `d_deepstack_branch_feature_shapes=[[192,4096],[192,4096],[192,4096]]`.
+  - Training completed:
+    - `optimizer_steps_completed=2000`.
+    - `micro_steps_completed=4000`.
+    - `elapsed_seconds=16416.18372440338`.
+    - Final checkpoint sha256: `b119379fc13a3eee1d19fb347bda729262592599218ea1ff88733ba142cb0c0b`.
+  - Final step:
+    - `loss_total=1.4036133289337158`.
+    - `loss_gen=1.3671875`.
+    - `loss_same_image_negative=0.0024459362030029297`.
+    - `loss_visual_token_norm=0.33979932963848114`.
+    - `d_deepstack_features_enabled=true`.
+    - `d_deepstack_norm_active=true`.
+    - `d_deepstack_branch_feature_shapes=[[234,4096],[234,4096],[234,4096]]`.
+    - `norm_ratio_mean=1.8146898746490479`.
+    - `d_norm_mean=39.60386657714844`.
+    - `v_merge_norm_mean=21.82404136657715`.
+- Analysis:
+  - This is the W&B-enabled replacement for `EXP-20260702-175427-stage1-d-deepstack-relaunch`, which was stopped at step 14 because W&B logging was not enabled.
+  - Start event confirmed `wandb_enabled=true`, `wandb_mode=online`, and `wandb_project=tgvf-clean-qwen3-deepstack`.
+  - W&B warned that the output-local `wandb/` path was not writable and used `/tmp/wandb/run-20260702_181144-ge8c8x3t`; online sync is active.
+  - First optimizer-step debug confirmed D DeepStack features and D DeepStack norm supervision are active.
+- Conclusion:
+  - Stage1 D DeepStack training completed successfully; run internal diagnostics before launching a Stage2 branch from this checkpoint.
+- Comparable to baseline:
+  - Intended to be a valid Stage1 ablation against the authoritative clean Stage1, with D DeepStack enabled and W&B logging as an observational/logging-only change.
+- Follow-up:
+  - Verify `wandb_enabled=true` in the start event and first optimizer-step debug before treating this rerun as the active training run.
+
+### EXP-20260702-175427-stage1-d-deepstack-relaunch
+
+- Status: STOPPED_NO_WANDB_RELAUNCH.
+- Question:
+  - Relaunch the Stage1 D DeepStack ablation after fixing clean executor bundle propagation for `tgvf`.
+- Baseline anchor:
+  - Authoritative clean Stage1: `clean_qwen3_stage1_norm01_manifold0_4gpu_20260627_133252`.
+  - Baseline plan: `outputs/clean_training/qwen3_stage1_norm01_manifold0_4gpu_20260627_133252/stage1_micro4/training_plan.json`.
+  - Baseline checkpoint: `outputs/clean_training/qwen3_stage1_norm01_manifold0_4gpu_20260627_133252/stage1_micro4/clean_training_execution/checkpoint_step_2000.pt`.
+  - Baseline checkpoint sha256: `ab6bd554cfb405208f13270c298f7fd0ab01305c83ca07bf8eca667cbe1632a1`.
+- Intended diff:
+  - Enable Stage1 `d_deepstack_enabled=true`.
+  - Use D DeepStack branch layers `8,16,24`.
+  - Each D DeepStack branch uses an independent `tgvf_v2_bidirectional` adapter.
+  - Use cached DeepStack branch pre-merge hidden states from the same vision forward; no vision tower rerun.
+- Allowed changed variables:
+  - D DeepStack branch feature path and its trainable branch adapters.
+  - Resulting D norm loss includes the D DeepStack branch norm term.
+  - Clean executor plumbing fix: preserve `plan["tgvf"]` in `clean_training_execution_bundle.json`.
+- Not allowed to change:
+  - Stage1 train data, protocol, model, dtype, attention implementation, max image resolution, max steps, save cadence, token-row mode, capture mode, FVT position mode, original-image masking, same-image negative mode, readout batch size, optimizer, LR schedule, loss weights, global batch, micro batch, gradient accumulation, and world size.
+- Code commit / worktree:
+  - Branch: `clean/tgvf-clean-project-20260625`.
+  - HEAD: `8a3c093698583cdae46321793efd1fced4b610d2`.
+  - Dirty worktree: yes; includes D DeepStack implementation and executor bundle fix.
+- Stage1 checkpoint:
+  - Output target: `outputs/clean_training/qwen3_stage1_ddeepstack_norm01_manifold0_4gpu_20260702_175427/stage1_micro4/clean_training_execution/checkpoint_step_2000.pt`.
+- Stage1 processor:
+  - Model id: `Qwen/Qwen3-VL-8B-Thinking`.
+  - Processor id: default/null.
+- Stage2 checkpoint/output:
+  - N/A for this Stage1-only training launch.
+- Train data:
+  - `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend/splits/tgvf_v4_teacher_stage1_protocol_c_focus.train.jsonl`.
+  - Rows: `39998`.
+  - sha256: `c94a38b824b6603e555eed5ef3584c19cc903b76995d49c67ace36b18268443c`.
+- Validation data:
+  - N/A.
+- Benchmark output:
+  - N/A.
+- Script / command:
+  - Plan: `outputs/clean_training/qwen3_stage1_ddeepstack_norm01_manifold0_4gpu_20260702_175427/stage1_micro4/training_plan.json`.
+  - Clean command: `CUDA_VISIBLE_DEVICES=0,1,2,3 MASTER_PORT=29754 PYTHONPATH=revisit_vlm_clean/src:src torchrun --nproc-per-node 4 -m revisit_vlm_clean.training.stage1_executor --plan outputs/clean_training/qwen3_stage1_ddeepstack_norm01_manifold0_4gpu_20260702_175427/stage1_micro4/training_plan.json --launch-training`.
+- GPUs:
+  - `0,1,2,3`.
+  - Batch identity: `32 = world_size 4 * micro_batch 4 * gradient_accumulation_steps 2`.
+- tmux:
+  - `stage1_ddeepstack_20260702_175427`.
+- Started:
+  - `2026-07-02T17:55:14+09:00`.
+- Finished:
+  - `2026-07-02T18:08:39+09:00`.
+- Metrics:
+  - First optimizer step verified:
+    - `global_step=1`.
+    - `loss_total=3.614967942237854`.
+    - `d_deepstack_features_enabled=true`.
+    - `d_deepstack_norm_active=true`.
+    - `d_deepstack_branch_feature_shapes=[[192,4096],[192,4096],[192,4096]]`.
+  - Stopped at `global_step=14`, `loss_total=4.013899207115173`.
+  - Local progress log only; `wandb_enabled=false`.
+- Analysis:
+  - Runtime bundle preserved `tgvf.d_deepstack_enabled=true`.
+  - First optimizer-step debug confirmed D DeepStack features and D DeepStack norm supervision are active.
+  - User requested stop and relaunch because this run did not upload W&B metrics.
+- Conclusion:
+  - Stopped intentionally and replaced by `EXP-20260702-180906-stage1-d-deepstack-wandb-relaunch`.
+- Comparable to baseline:
+  - Intended to be a valid Stage1 ablation against the authoritative clean Stage1, with only D DeepStack changed.
+- Follow-up:
+  - After completion, decide whether to train matching Stage2 from this checkpoint.
+
+### EXP-20260702-174731-stage1-d-deepstack
+
+- Status: INVALID_FIRST_LAUNCH_STOPPED.
+- Question:
+  - Does enabling target-conditioned D DeepStack branches in Stage1 improve the downstream TGVF path when every other authoritative Stage1 variable is held fixed?
+- Baseline anchor:
+  - Authoritative clean Stage1: `clean_qwen3_stage1_norm01_manifold0_4gpu_20260627_133252`.
+  - Baseline plan: `outputs/clean_training/qwen3_stage1_norm01_manifold0_4gpu_20260627_133252/stage1_micro4/training_plan.json`.
+  - Baseline checkpoint: `outputs/clean_training/qwen3_stage1_norm01_manifold0_4gpu_20260627_133252/stage1_micro4/clean_training_execution/checkpoint_step_2000.pt`.
+  - Baseline checkpoint sha256: `ab6bd554cfb405208f13270c298f7fd0ab01305c83ca07bf8eca667cbe1632a1`.
+- Intended diff:
+  - Enable Stage1 `d_deepstack_enabled=true`.
+  - Use D DeepStack branch layers `8,16,24`.
+  - Each D DeepStack branch uses an independent `tgvf_v2_bidirectional` adapter.
+  - Use cached DeepStack branch pre-merge hidden states from the same vision forward; no vision tower rerun.
+- Allowed changed variables:
+  - D DeepStack branch feature path and its trainable branch adapters.
+  - Resulting D norm loss includes the D DeepStack branch norm term.
+- Not allowed to change:
+  - Stage1 train data, protocol, model, dtype, attention implementation, max image resolution, max steps, save cadence, token-row mode, capture mode, FVT position mode, original-image masking, same-image negative mode, readout batch size, optimizer, LR schedule, loss weights, global batch, micro batch, gradient accumulation, and world size.
+- Code commit / worktree:
+  - Branch: `clean/tgvf-clean-project-20260625`.
+  - HEAD: `8a3c093698583cdae46321793efd1fced4b610d2`.
+  - Dirty worktree: yes; includes the D DeepStack implementation, clean config/CLI plumbing, docs, and focused tests.
+- Stage1 checkpoint:
+  - Output target: `outputs/clean_training/qwen3_stage1_ddeepstack_norm01_manifold0_4gpu_20260702_174731/stage1_micro4/clean_training_execution/checkpoint_step_2000.pt`.
+- Stage1 processor:
+  - Model id: `Qwen/Qwen3-VL-8B-Thinking`.
+  - Processor id: default/null.
+- Stage2 checkpoint/output:
+  - N/A for this Stage1-only training launch.
+- Train data:
+  - `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend/splits/tgvf_v4_teacher_stage1_protocol_c_focus.train.jsonl`.
+  - Rows: `39998`.
+  - sha256: `c94a38b824b6603e555eed5ef3584c19cc903b76995d49c67ace36b18268443c`.
+- Validation data:
+  - N/A; Stage1 training uses the clean Stage1 training data and internal saved runtime diagnostics.
+- Benchmark output:
+  - N/A for this Stage1-only training launch.
+- Script / command:
+  - Plan: `outputs/clean_training/qwen3_stage1_ddeepstack_norm01_manifold0_4gpu_20260702_174731/stage1_micro4/training_plan.json`.
+  - Clean command: `CUDA_VISIBLE_DEVICES=0,1,2,3 MASTER_PORT=29731 PYTHONPATH=revisit_vlm_clean/src:src torchrun --nproc-per-node 4 -m revisit_vlm_clean.training.stage1_executor --plan outputs/clean_training/qwen3_stage1_ddeepstack_norm01_manifold0_4gpu_20260702_174731/stage1_micro4/training_plan.json --launch-training`.
+- GPUs:
+  - `0,1,2,3`.
+  - Batch identity: `32 = world_size 4 * micro_batch 4 * gradient_accumulation_steps 2`.
+- tmux:
+  - `stage1_ddeepstack_20260702_174731`.
+- Started:
+  - `2026-07-02T17:48:52+09:00`.
+- Finished:
+  - First launch stopped at `2026-07-02T17:52:xx+09:00`.
+- Metrics:
+  - Invalid first launch wrote one optimizer step.
+  - `training_progress.jsonl` showed `d_deepstack_features_enabled=false`, `d_deepstack_norm_active=false`, and `d_deepstack_branch_feature_shapes=null`.
+- Analysis:
+  - The planned config had `d_deepstack_enabled=true`, but the actual executor-built foveal module did not enable D DeepStack.
+  - This first launch is not a valid D DeepStack ablation and must not be compared to the authoritative baseline.
+- Conclusion:
+  - Stop and fix the clean executor config plumbing before relaunch.
+- Comparable to baseline:
+  - No; invalid first launch because D DeepStack was not active in runtime debug.
+- Follow-up:
+  - After Stage1 completes, train/evaluate matching Stage2 only if this checkpoint is selected for the next ablation step.
+
 ### EXP-20260622-021650-maskprob50-evidence-only
 
 - Status: DONE.
@@ -9285,11 +9821,15 @@ entry, update this file immediately.
 
 ### DIAG-20260629-111358-clean-kv-deepstack-implementation-smoke
 
-- Status: RUNNING_AFTER_TAIL_PLUS_D_CHUNK_FIX.
+- Status: STALE_NO_ACTIVE_PROCESS_AFTER_TAIL_PLUS_D_CHUNK_FIX.
 - Question:
   - Implement and validate clean Stage2 benchmark support for
     `kv_cache + DeepStack` so cached post-D continuation can be compared to
     `no_kv_full_sequence` under the same DeepStack scope.
+- Stale-status audit:
+  - Checked on `2026-07-03T00:49:48+09:00`; no matching tmux, GPU process, or
+    active benchmark process was present. Status was changed from the
+    nonstandard running marker to unblock new training launch-gate checks.
 - Macro plan:
   - Repository/worktree strategy: implement on the current clean branch and
     keep legacy code unchanged.

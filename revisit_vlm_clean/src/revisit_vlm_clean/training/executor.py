@@ -968,6 +968,7 @@ def _build_execution_bundle(
         "protocol": plan.get("protocol"),
         "dataset": plan.get("dataset"),
         "batch": plan.get("batch"),
+        "tgvf": plan.get("tgvf"),
         "training": plan.get("training"),
         "module_policy": plan.get("module_policy"),
         "loss": plan.get("loss"),
@@ -1565,6 +1566,8 @@ def _validate_execution_bundle(bundle: dict[str, Any], *, expected_stage: Traini
         raise ValueError("execution bundle safety must keep will_launch_training=false")
     if safety.get("legacy_reference_allowed") is not False:
         raise ValueError("execution bundle must not allow legacy reference execution")
+    if not isinstance(bundle.get("tgvf"), dict) or not bundle.get("tgvf"):
+        raise ValueError("execution bundle must preserve the planned tgvf config")
 
 
 def _load_runtime_artifacts(
@@ -4849,6 +4852,10 @@ def _load_stage1_parameter_audit_modules(bundle: dict[str, Any]) -> dict[str, An
         encoder_reencode_deepstack_compatible=bool(
             tgvf_cfg.get("encoder_reencode_deepstack_compatible", False)
         ),
+        d_deepstack_enabled=bool(tgvf_cfg.get("d_deepstack_enabled", False)),
+        d_deepstack_branch_layers=tuple(
+            tgvf_cfg.get("d_deepstack_branch_layers") or (8, 16, 24)
+        ),
     ).to(device=device, dtype=next(model.parameters()).dtype)
     return {
         "modules": {"qwen": model, "tgvf": tgvf},
@@ -4902,6 +4909,14 @@ def _resolved_stage1_tgvf_config(
         ),
         "encoder_reencode_deepstack_compatible": bool(
             planned.get("encoder_reencode_deepstack_compatible", False)
+        ),
+        "d_deepstack_enabled": bool(planned.get("d_deepstack_enabled", False)),
+        "d_deepstack_branch_layers": [
+            int(layer) for layer in (planned.get("d_deepstack_branch_layers") or (8, 16, 24))
+        ],
+        "d_deepstack_adapter_type": planned.get("d_deepstack_adapter_type"),
+        "d_deepstack_independent_branch_adapters": bool(
+            planned.get("d_deepstack_independent_branch_adapters", False)
         ),
         "encoder_reencode": bool(
             planned.get("encoder_reencode")
@@ -5029,6 +5044,10 @@ def _load_stage2_parameter_audit_modules(bundle: dict[str, Any]) -> dict[str, An
         encoder_reencode_deepstack_compatible=bool(
             tgvf_cfg.get("encoder_reencode_deepstack_compatible", False)
         ),
+        d_deepstack_enabled=bool(tgvf_cfg.get("d_deepstack_enabled", False)),
+        d_deepstack_branch_layers=tuple(
+            tgvf_cfg.get("d_deepstack_branch_layers") or (8, 16, 24)
+        ),
     ).to(device=device, dtype=next(model.parameters()).dtype)
     tgvf.load_state_dict(stage1_checkpoint["tgvf_module"], strict=True)
     return {
@@ -5077,6 +5096,14 @@ def _resolved_tgvf_config_from_checkpoint(
         ),
         "encoder_reencode_deepstack_compatible": bool(
             raw.get("encoder_reencode_deepstack_compatible", False)
+        ),
+        "d_deepstack_enabled": bool(raw.get("d_deepstack_enabled", False)),
+        "d_deepstack_branch_layers": [
+            int(layer) for layer in (raw.get("d_deepstack_branch_layers") or (8, 16, 24))
+        ],
+        "d_deepstack_adapter_type": raw.get("d_deepstack_adapter_type"),
+        "d_deepstack_independent_branch_adapters": bool(
+            raw.get("d_deepstack_independent_branch_adapters", False)
         ),
         "encoder_reencode": bool(
             raw.get("encoder_reencode")

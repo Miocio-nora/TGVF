@@ -119,6 +119,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--stage2-d-condition", default="correct_D")
     parser.add_argument("--force-prefix-mode", default="target_hint")
     parser.add_argument("--deepstack-enabled", action="store_true")
+    parser.add_argument("--d-deepstack-enabled", action="store_true")
     parser.add_argument(
         "--deepstack-original-image-scope",
         choices=[item.value for item in DeepStackScope],
@@ -161,6 +162,8 @@ def main(argv: list[str] | None = None) -> int:
     gpus = _parse_gpus(args.gpus)
     if not gpus:
         raise ValueError("--gpus must specify at least one GPU id")
+    if args.d_deepstack_enabled and not args.deepstack_enabled:
+        raise ValueError("--d-deepstack-enabled requires --deepstack-enabled")
 
     git_commit, dirty_worktree = _git_identity()
     deepstack_scope = DeepStackScope(args.deepstack_original_image_scope)
@@ -191,6 +194,7 @@ def main(argv: list[str] | None = None) -> int:
         deepstack=DeepStackState(
             enabled=bool(args.deepstack_enabled),
             original_image_scope=deepstack_scope,
+            d_features_enabled=bool(args.d_deepstack_enabled),
         ),
         parser_scorer=ParserScorerIdentity(
             scoring_backend=ScoringBackend(args.scoring_backend),

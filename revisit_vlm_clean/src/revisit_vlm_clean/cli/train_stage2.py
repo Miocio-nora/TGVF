@@ -10,7 +10,10 @@ from revisit_vlm_clean.defaults import (
     DEFAULT_MAX_IMAGE_RESOLUTION,
     DEFAULT_MODEL_ID,
     DEFAULT_PROTOCOL,
+    DEFAULT_STAGE2_DEEPSTACK_ENABLED,
+    DEFAULT_STAGE2_DEEPSTACK_ORIGINAL_IMAGE_SCOPE,
     DEFAULT_STAGE2_GLOBAL_BATCH,
+    DEFAULT_STAGE2_MASK_ORIGINAL_IMAGE_AFTER_TGVF_PROB,
     DEFAULT_STAGE2_MAX_STEPS,
 )
 from revisit_vlm_clean.schema import DeepStackScope, DeepStackState
@@ -67,19 +70,28 @@ def build_parser() -> argparse.ArgumentParser:
         action=argparse.BooleanOptionalAction,
         default=True,
     )
-    parser.add_argument("--mask-original-image-after-tgvf-prob", type=float, default=1.0)
+    parser.add_argument(
+        "--mask-original-image-after-tgvf-prob",
+        type=float,
+        default=DEFAULT_STAGE2_MASK_ORIGINAL_IMAGE_AFTER_TGVF_PROB,
+    )
     parser.add_argument(
         "--mask-original-image-after-tgvf-scope",
         choices=[item.value for item in OriginalImageMaskScope],
         default=OriginalImageMaskScope.THROUGH_ANSWER.value,
     )
-    parser.add_argument("--deepstack-enabled", action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument(
+        "--deepstack-enabled",
+        action=argparse.BooleanOptionalAction,
+        default=DEFAULT_STAGE2_DEEPSTACK_ENABLED,
+    )
     parser.add_argument(
         "--deepstack-original-image-scope",
         choices=[DeepStackScope.THROUGH_ANSWER.value, DeepStackScope.EVIDENCE_ONLY.value],
         default=None,
         help="Defaults to the mask scope when --deepstack-enabled is set.",
     )
+    parser.add_argument("--d-deepstack-enabled", action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument("--lora-rank", type=int, default=64)
     parser.add_argument("--lora-alpha", type=int, default=256)
     parser.add_argument("--lora-dropout", type=float, default=0.05)
@@ -185,9 +197,14 @@ def _defaults() -> dict[str, object]:
         "batch": batch.to_dict(),
         "max_steps": DEFAULT_STAGE2_MAX_STEPS,
         "mask_original_image_after_tgvf": True,
-        "mask_original_image_after_tgvf_prob": 1.0,
+        "mask_original_image_after_tgvf_prob": (
+            DEFAULT_STAGE2_MASK_ORIGINAL_IMAGE_AFTER_TGVF_PROB
+        ),
         "mask_original_image_after_tgvf_scope": "through_answer",
-        "deepstack_enabled": False,
+        "deepstack_enabled": DEFAULT_STAGE2_DEEPSTACK_ENABLED,
+        "deepstack_original_image_scope": DEFAULT_STAGE2_DEEPSTACK_ORIGINAL_IMAGE_SCOPE,
+        "deepstack_d_features_enabled": False,
+        "d_deepstack_enabled": False,
         "deepstack_supported": True,
         "lora": {
             "rank": 64,
@@ -224,8 +241,14 @@ def _config_from_args(args: argparse.Namespace) -> Stage2LaunchConfig:
         if args.deepstack_original_image_scope
         else DeepStackScope(str(mask_scope))
     )
+    if args.d_deepstack_enabled and not args.deepstack_enabled:
+        raise ValueError("--d-deepstack-enabled requires --deepstack-enabled")
     deepstack = (
-        DeepStackState(enabled=True, original_image_scope=deepstack_scope)
+        DeepStackState(
+            enabled=True,
+            original_image_scope=deepstack_scope,
+            d_features_enabled=bool(args.d_deepstack_enabled),
+        )
         if args.deepstack_enabled
         else DeepStackState()
     )

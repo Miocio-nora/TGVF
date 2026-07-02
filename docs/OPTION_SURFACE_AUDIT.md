@@ -116,15 +116,17 @@ Observed knobs:
 Proposed classification:
 
 - **Active mainline candidate**:
-  - old mask behavior / through-answer semantics, if confirmed;
-  - `mask_original_image_after_tgvf_prob=1.0`;
+  - through-answer mask semantics;
+  - `mask_original_image_after_tgvf_prob=0.75`;
+  - Stage2 training DeepStack enabled with `original_image_scope=through_answer`;
   - `fast_batched_stage2=true`;
   - existing weighted span loss defaults;
   - use Stage1 config;
   - LoRA q/k/v/o/gate/up/down with current rank/alpha unless user chooses otherwise.
 - **Ablation/unknown**:
   - `evidence_only`
-  - probabilistic mask ratios such as 0.5/0.75
+  - mask ratios other than 0.75, including historical deterministic 1.0
+  - Stage2 training DeepStack off
   - Stage2 manifold loss weight
   - alternative fvt position mode
 
@@ -257,4 +259,3 @@ Questions for user:
 1. Should old launchers remain in `archive_scripts/` in the clean project, or only in the archive branch?
 2. Do you want shell launchers or config-driven Python launchers as the clean default?
 3. Should wandb be mandatory in clean training scripts?
-

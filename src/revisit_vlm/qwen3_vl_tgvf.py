@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import torch
+from torch import nn
 from qwen_vl_utils import process_vision_info
 from transformers import (
     AutoConfig,
@@ -599,6 +600,8 @@ class Qwen3VisionTap:
     temporal_patch_size: int | None
     output_type: str
     errors: list[str] = field(default_factory=list)
+    deepstack_pre_merge_feature_count: int = 0
+    deepstack_pre_merge_feature_shapes: list[list[int]] = field(default_factory=list)
 
 
 @dataclass
@@ -1665,6 +1668,130 @@ def tap_qwen3_vision_features(
     return tap, v_pre.detach().cpu() if isinstance(v_pre, torch.Tensor) else None, (
         v_merge.detach().cpu() if isinstance(v_merge, torch.Tensor) else None
     )
+
+
+@torch.no_grad()
+def tap_qwen3_vision_features_with_deepstack_premerge(
+    model: Any,
+    processor: Any,
+    *,
+    image: Any,
+    question: str = "Describe the image.",
+    device: torch.device | str | None = None,
+) -> tuple[
+    Qwen3VisionTap,
+    torch.Tensor | None,
+    torch.Tensor | None,
+    list[torch.Tensor],
+    list[torch.Tensor],
+]:
+    """Tap Qwen3 vision outputs plus inputs to each DeepStack branch merger."""
+
+    messages = build_direct_messages(image, question)
+    inputs = build_qwen3_inputs(processor, messages)
+    model_inputs = _move_tensors(dict(inputs), device or _infer_model_device(model))
+    config = getattr(model, "config", None)
+    vision_config = getattr(config, "vision_config", None)
+    llm_hidden_dim_value = (
+        getattr(config, "hidden_size", None)
+        or getattr(getattr(config, "text_config", None), "hidden_size", None)
+    )
+    resolved_llm_hidden_dim = (
+        int(llm_hidden_dim_value) if llm_hidden_dim_value is not None else None
+    )
+    if resolved_llm_hidden_dim is None:
+        try:
+            resolved_llm_hidden_dim = int(model.get_input_embeddings().weight.shape[-1])
+        except Exception:
+            resolved_llm_hidden_dim = None
+
+    errors: list[str] = []
+    image_output = None
+    v_pre = None
+    v_merge = None
+    deepstack_pre_merge: list[torch.Tensor] = []
+    handles = []
+    visual = _qwen3_visual_module(model)
+    branch_mergers = getattr(visual, "deepstack_merger_list", None)
+    if branch_mergers is None:
+        errors.append("missing_deepstack_merger_list")
+    else:
+        for merger in branch_mergers:
+            handles.append(
+                merger.register_forward_pre_hook(
+                    _capture_qwen3_deepstack_premerge_hook(deepstack_pre_merge)
+                )
+            )
+    try:
+        if model_inputs.get("pixel_values") is None:
+            errors.append("missing_pixel_values")
+        elif not hasattr(model, "get_image_features"):
+            errors.append("missing_get_image_features")
+        else:
+            try:
+                image_output = model.get_image_features(
+                    model_inputs["pixel_values"],
+                    image_grid_thw=model_inputs.get("image_grid_thw"),
+                    output_hidden_states=True,
+                    return_dict=True,
+                )
+                v_pre, v_merge = _extract_vision_tensors(image_output)
+            except Exception as exc:
+                errors.append(f"get_image_features_failed:{type(exc).__name__}:{exc}")
+    finally:
+        for handle in handles:
+            handle.remove()
+
+    deepstack = _deepstack_features(image_output)
+    tap = Qwen3VisionTap(
+        image_grid_thw=_tensor_to_nested_ints(model_inputs.get("image_grid_thw")),
+        video_grid_thw=_tensor_to_nested_ints(model_inputs.get("video_grid_thw")),
+        v_pre_shape=list(v_pre.shape) if isinstance(v_pre, torch.Tensor) else None,
+        v_merge_shape=list(v_merge.shape) if isinstance(v_merge, torch.Tensor) else None,
+        deepstack_feature_count=len(deepstack),
+        deepstack_feature_shapes=[list(t.shape) for t in deepstack],
+        vision_dim=int(v_pre.shape[-1]) if isinstance(v_pre, torch.Tensor) and v_pre.ndim > 0 else None,
+        llm_hidden_dim=resolved_llm_hidden_dim,
+        image_token_id=_config_int(config, "image_token_id"),
+        video_token_id=_config_int(config, "video_token_id"),
+        vision_start_token_id=_config_int(config, "vision_start_token_id"),
+        vision_end_token_id=_config_int(config, "vision_end_token_id"),
+        spatial_merge_size=_config_int(vision_config, "spatial_merge_size"),
+        merge_size=_config_int(vision_config, "merge_size"),
+        patch_size=_config_int(vision_config, "patch_size"),
+        temporal_patch_size=_config_int(vision_config, "temporal_patch_size"),
+        output_type=type(image_output).__name__ if image_output is not None else "none",
+        errors=errors,
+        deepstack_pre_merge_feature_count=len(deepstack_pre_merge),
+        deepstack_pre_merge_feature_shapes=[list(t.shape) for t in deepstack_pre_merge],
+    )
+    return (
+        tap,
+        v_pre.detach().cpu() if isinstance(v_pre, torch.Tensor) else None,
+        v_merge.detach().cpu() if isinstance(v_merge, torch.Tensor) else None,
+        [item.detach().cpu() for item in deepstack_pre_merge],
+        [item.detach().cpu() for item in deepstack],
+    )
+
+
+def _capture_qwen3_deepstack_premerge_hook(target: list[torch.Tensor]) -> Any:
+    def hook(_module: nn.Module, inputs: tuple[Any, ...]) -> None:
+        if inputs and isinstance(inputs[0], torch.Tensor):
+            target.append(inputs[0].detach())
+
+    return hook
+
+
+def _qwen3_visual_module(model: Any) -> Any | None:
+    if hasattr(model, "visual"):
+        return model.visual
+    if hasattr(model, "model") and hasattr(model.model, "visual"):
+        return model.model.visual
+    base_model = getattr(model, "base_model", None)
+    nested = getattr(base_model, "model", None)
+    if nested is not None and hasattr(nested, "visual"):
+        return nested.visual
+    return None
 
 
 @torch.no_grad()

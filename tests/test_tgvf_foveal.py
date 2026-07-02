@@ -11,6 +11,7 @@ from revisit_vlm.tgvf_foveal import (
     PooledFovealCrossAttention,
     Qwen2VLPreMergeVisualHook,
     TargetSlotFovealCrossMerger,
+    TGVFv2BidirectionalDDeepStack,
     TGVFv2Bidirectional,
     TGVFv2CrossAttention,
     TGVFv2VPTGating,
@@ -22,6 +23,7 @@ from revisit_vlm.tgvf_foveal import (
     build_fvt_answer_instruction,
     build_text_answer_instruction,
     continue_generation_from_state,
+    finalize_tgvf_output_with_frozen_qwen_merger,
     make_fake_image_grid,
     _fvt_grid_thw,
 )
@@ -109,6 +111,30 @@ class FakeAppendModel(nn.Module):
         )
 
 
+class FakeMerger(nn.Module):
+    def __init__(self, d_v: int, d_lm: int, spatial_merge_size: int = 2) -> None:
+        super().__init__()
+        self.spatial_merge_size = spatial_merge_size
+        self.proj = nn.Linear(d_v * spatial_merge_size * spatial_merge_size, d_lm)
+
+    def forward(self, hidden: torch.Tensor) -> torch.Tensor:
+        unit = self.spatial_merge_size * self.spatial_merge_size
+        return self.proj(hidden.reshape(hidden.shape[0] // unit, hidden.shape[-1] * unit))
+
+
+class FakeQwenWithDeepStack(nn.Module):
+    def __init__(self, d_v: int = 5, d_lm: int = 8) -> None:
+        super().__init__()
+        self.model = SimpleNamespace(
+            visual=SimpleNamespace(
+                merger=FakeMerger(d_v, d_lm),
+                deepstack_merger_list=nn.ModuleList(
+                    [FakeMerger(d_v, d_lm) for _ in range(3)]
+                ),
+            )
+        )
+
+
 def test_token_foveal_cross_attention_shapes_and_attention() -> None:
     target = torch.randn(3, 8)
     visual = torch.randn(11, 5)
@@ -166,14 +192,15 @@ def test_tgvf_v2_vpt_gating_conditions_visual_tokens_in_grid_order() -> None:
 
     output = module(target_hidden_states=target, pre_merge_visual_tokens=visual)
 
-    assert output.foveated_visual_tokens.shape == (5, 8)
+    assert output.foveated_visual_tokens.shape == (20, 5)
     assert torch.isfinite(output.foveated_visual_tokens).all()
     assert output.attention_debug["attention_weights"].shape == (1, 20)
     assert output.attention_debug["condition_scores"].shape == (20,)
     assert output.debug_metadata["variant_name"] == "tgvf_v2_vpt_gating"
     assert output.debug_metadata["tgvf_version"] == "v2"
     assert output.debug_metadata["visual_residual"] is True
-    assert output.debug_metadata["padding_visual_tokens"] == 0
+    assert output.debug_metadata["final_fvt_requires_qwen_visual_merger"] is True
+    assert output.conditioned_pre_merge_visual_tokens.shape == (20, 5)
 
 
 def test_tgvf_v2_cross_attention_conditions_each_visual_token() -> None:
@@ -183,13 +210,15 @@ def test_tgvf_v2_cross_attention_conditions_each_visual_token() -> None:
 
     output = module(target_hidden_states=target, pre_merge_visual_tokens=visual)
 
-    assert output.foveated_visual_tokens.shape == (5, 8)
+    assert output.foveated_visual_tokens.shape == (20, 5)
     assert torch.isfinite(output.foveated_visual_tokens).all()
     assert output.attention_debug["attention_weights"].shape == (1, 20)
     assert output.attention_debug["visual_to_target_attention"].shape == (20, 4)
     assert output.debug_metadata["variant_name"] == "tgvf_v2_cross_attention"
     assert output.debug_metadata["tgvf_version"] == "v2"
     assert output.debug_metadata["visual_residual"] is True
+    assert output.debug_metadata["final_fvt_requires_qwen_visual_merger"] is True
+    assert output.conditioned_pre_merge_visual_tokens.shape == (20, 5)
 
 
 def test_tgvf_v2_bidirectional_conditions_visual_tokens_after_target_read() -> None:
@@ -199,7 +228,7 @@ def test_tgvf_v2_bidirectional_conditions_visual_tokens_after_target_read() -> N
 
     output = module(target_hidden_states=target, pre_merge_visual_tokens=visual)
 
-    assert output.foveated_visual_tokens.shape == (5, 8)
+    assert output.foveated_visual_tokens.shape == (20, 5)
     assert torch.isfinite(output.foveated_visual_tokens).all()
     assert output.attention_debug["attention_weights"].shape == (1, 20)
     assert output.attention_debug["target_to_visual_attention"].shape == (4, 20)
@@ -207,6 +236,38 @@ def test_tgvf_v2_bidirectional_conditions_visual_tokens_after_target_read() -> N
     assert output.debug_metadata["variant_name"] == "tgvf_v2_bidirectional"
     assert output.debug_metadata["tgvf_version"] == "v2"
     assert output.debug_metadata["visual_residual"] is True
+    assert output.debug_metadata["final_fvt_requires_qwen_visual_merger"] is True
+    assert output.conditioned_pre_merge_visual_tokens.shape == (20, 5)
+
+
+def test_tgvf_v2_bidirectional_d_deepstack_builds_branch_features_and_finalizer_preserves_them() -> None:
+    target = torch.randn(4, 8)
+    visual = torch.randn(20, 5)
+    branch_hidden = [torch.randn(20, 5) for _ in range(3)]
+    qwen = FakeQwenWithDeepStack(d_v=5, d_lm=8)
+    module = TGVFv2BidirectionalDDeepStack(
+        d_lm=8,
+        d_v=5,
+        spatial_merge_size=2,
+        attn_dim=7,
+        branch_layers=(8, 16, 24),
+    )
+
+    output = module(
+        target_hidden_states=target,
+        pre_merge_visual_tokens=visual,
+        metadata={
+            "qwen_model": qwen,
+            "deepstack_pre_merge_visual_tokens": branch_hidden,
+        },
+    )
+    finalized = finalize_tgvf_output_with_frozen_qwen_merger(qwen, output)
+
+    assert finalized.foveated_visual_tokens.shape == (5, 8)
+    assert finalized.deepstack_visual_embeds is not None
+    assert [list(item.shape) for item in finalized.deepstack_visual_embeds] == [[5, 8]] * 3
+    assert finalized.debug_metadata["d_deepstack_features_enabled"] is True
+    assert finalized.debug_metadata["d_deepstack_vision_tower_rerun"] is False
 
 
 def test_tgvf_v2_group_merger_pads_to_spatial_merge_group() -> None:
@@ -216,8 +277,8 @@ def test_tgvf_v2_group_merger_pads_to_spatial_merge_group() -> None:
 
     output = module(target_hidden_states=target, pre_merge_visual_tokens=visual)
 
-    assert output.foveated_visual_tokens.shape == (5, 8)
-    assert output.debug_metadata["padding_visual_tokens"] == 2
+    assert output.foveated_visual_tokens.shape == (18, 5)
+    assert output.debug_metadata["final_fvt_requires_qwen_visual_merger"] is True
 
 
 def test_tgvf_v2_gradients_flow_to_conditioner_and_inputs() -> None:

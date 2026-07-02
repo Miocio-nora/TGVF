@@ -123,6 +123,8 @@ def main() -> None:
 
     stage1_checkpoint = torch.load(args.stage1_checkpoint, map_location="cpu")
     stage1_tgvf_config_resolution = _apply_stage1_tgvf_config(args, stage1_checkpoint)
+    if args.d_deepstack_enabled and not args.deepstack_enabled:
+        raise ValueError("Stage2 D DeepStack checkpoint config requires --deepstack-enabled")
 
     dims = infer_qwen3_stage1_dims(
         model=utility_model,
@@ -147,6 +149,8 @@ def main() -> None:
         encoder_adapter_share_weights=args.encoder_adapter_share_weights,
         encoder_adapter_layer_index_base=args.encoder_adapter_layer_index_base,
         encoder_reencode_deepstack_compatible=args.encoder_reencode_deepstack_compatible,
+        d_deepstack_enabled=args.d_deepstack_enabled,
+        d_deepstack_branch_layers=tuple(args.d_deepstack_branch_layers),
         encoder_reencode=args.variant == "tgvf_encoder_bidir_8_16_24",
         preserve_llm_kv_cache=True,
         second_full_llm_forward=False,
@@ -165,6 +169,8 @@ def main() -> None:
         encoder_adapter_share_weights=args.encoder_adapter_share_weights,
         encoder_adapter_layer_index_base=args.encoder_adapter_layer_index_base,
         encoder_reencode_deepstack_compatible=args.encoder_reencode_deepstack_compatible,
+        d_deepstack_enabled=args.d_deepstack_enabled,
+        d_deepstack_branch_layers=tuple(args.d_deepstack_branch_layers),
     ).to(device=device, dtype=train_dtype)
     stage1_token_row_info = {}
     if args.tgvf_protocol in {
@@ -270,6 +276,13 @@ def main() -> None:
         "mask_original_image_after_tgvf": args.mask_original_image_after_tgvf,
         "mask_original_image_after_tgvf_prob": args.mask_original_image_after_tgvf_prob,
         "mask_original_image_after_tgvf_scope": args.mask_original_image_after_tgvf_scope,
+        "deepstack": {
+            "enabled": bool(args.deepstack_enabled),
+            "original_image_scope": (
+                args.mask_original_image_after_tgvf_scope if args.deepstack_enabled else "off"
+            ),
+            "d_features_enabled": bool(args.d_deepstack_enabled),
+        },
         "fvt_position_mode": args.fvt_position_mode,
         "capture_mode": "teacher_forced",
         "train_long_cot": False,
@@ -395,6 +408,7 @@ def main() -> None:
             mask_original_image_after_tgvf_prob=args.mask_original_image_after_tgvf_prob,
             mask_original_image_after_tgvf_scope=args.mask_original_image_after_tgvf_scope,
             protocol=args.tgvf_protocol,
+            deepstack_enabled=bool(args.deepstack_enabled),
         )
         if not torch.isfinite(output.loss_total):
             raise RuntimeError(f"Non-finite Stage2 loss at micro step {micro_step}: {output.loss_total}")
@@ -528,6 +542,7 @@ def validate_stage2(
                 mask_original_image_after_tgvf_prob=args.mask_original_image_after_tgvf_prob,
                 mask_original_image_after_tgvf_scope=args.mask_original_image_after_tgvf_scope,
                 protocol=args.tgvf_protocol,
+                deepstack_enabled=bool(args.deepstack_enabled),
             )
             losses.append(float(output.loss_total.detach().cpu()))
             focus += output.debug["focus_count"]
@@ -843,6 +858,8 @@ def _apply_stage1_tgvf_config(args: argparse.Namespace, stage1_checkpoint: dict)
         "encoder_adapter_share_weights",
         "encoder_adapter_layer_index_base",
         "encoder_reencode_deepstack_compatible",
+        "d_deepstack_enabled",
+        "d_deepstack_branch_layers",
     )
     applied: dict[str, dict[str, object]] = {}
     for field in fields:
@@ -883,6 +900,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--encoder-adapter-share-weights", action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument("--encoder-adapter-layer-index-base", type=int, choices=(0, 1), default=0)
     parser.add_argument("--encoder-reencode-deepstack-compatible", action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument("--d-deepstack-enabled", action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument("--d-deepstack-branch-layers", type=_parse_int_list, default=(8, 16, 24))
     parser.add_argument("--lora-rank", type=int, default=64)
     parser.add_argument("--lora-alpha", type=int, default=256)
     parser.add_argument("--lora-dropout", type=float, default=0.05)
@@ -915,6 +934,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--mask-original-image-after-tgvf", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--mask-original-image-after-tgvf-prob", type=float, default=1.0)
     parser.add_argument("--mask-original-image-after-tgvf-scope", choices=ORIGINAL_IMAGE_MASK_SCOPE_CHOICES, default="evidence_only")
+    parser.add_argument("--deepstack-enabled", action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument("--fast-batched-stage2", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--min-confidence", type=float, default=None)
     parser.add_argument("--loss-evidence-state", type=float, default=0.2)
@@ -942,6 +962,12 @@ def parse_args() -> argparse.Namespace:
         parser.error("--num-foveated-tokens none is supported only for dynamic variants")
     if args.target_focus_ratio is not None and not (0.0 < args.target_focus_ratio < 1.0):
         parser.error("--target-focus-ratio must be between 0 and 1")
+    if args.d_deepstack_enabled and not args.deepstack_enabled:
+        parser.error("--d-deepstack-enabled requires --deepstack-enabled")
+    if args.deepstack_enabled and not args.fast_batched_stage2:
+        parser.error("--deepstack-enabled requires --fast-batched-stage2")
+    if args.d_deepstack_enabled and args.variant != "tgvf_v2_bidirectional":
+        parser.error("--d-deepstack-enabled currently requires --variant tgvf_v2_bidirectional")
     return args
 
 

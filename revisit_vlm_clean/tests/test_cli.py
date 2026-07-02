@@ -839,10 +839,14 @@ def test_training_default_clis(capsys) -> None:
     assert '"lr_scheduler": "cosine"' in stage1_defaults
     assert '"warmup_steps": 100' in stage1_defaults
     assert '"max_grad_norm": 1.0' in stage1_defaults
-    assert '"visual_token_norm_loss": 0.0' in stage1_defaults
+    assert '"save_every": 500' in stage1_defaults
+    assert '"visual_token_manifold_loss": 0.0' in stage1_defaults
+    assert '"visual_token_norm_loss": 0.1' in stage1_defaults
     assert stage2_main(["--print-defaults"]) == 0
     stage2_defaults = capsys.readouterr().out
     assert "through_answer" in stage2_defaults
+    assert '"mask_original_image_after_tgvf_prob": 0.75' in stage2_defaults
+    assert '"deepstack_enabled": true' in stage2_defaults
     assert '"target_modules": [' in stage2_defaults
     assert '"q_proj"' in stage2_defaults
     assert '"warmup_steps": 100' in stage2_defaults
@@ -925,6 +929,11 @@ def test_stage1_training_write_plan_cli(tmp_path) -> None:
         "encoder_adapter_share_weights": False,
         "encoder_adapter_layer_index_base": 0,
         "encoder_reencode_deepstack_compatible": False,
+        "d_deepstack_enabled": False,
+        "d_deepstack_branch_layers": [8, 16, 24],
+        "d_deepstack_adapter_type": None,
+        "d_deepstack_independent_branch_adapters": False,
+        "d_deepstack_vision_tower_rerun": False,
         "encoder_reencode": False,
         "preserve_llm_kv_cache": True,
         "second_full_llm_forward": False,
@@ -947,6 +956,12 @@ def test_stage1_training_write_plan_cli(tmp_path) -> None:
         "original_image_placeholder_embeddings": "replace_with_qwen_v_merge",
         "position_ids": "real_qwen3_mrope_full_trajectory",
         "visual_merger_path": "frozen_finalize_path",
+        "d_deepstack": {
+            "enabled": False,
+            "branch_layers": [8, 16, 24],
+            "applies_to": "d_token_positions_only",
+            "uses_cached_branch_pre_merge_hidden_states": False,
+        },
     }
     assert plan["module_policy"]["trainable"] == [
         "tgvf_module",
@@ -1147,6 +1162,7 @@ def test_stage1_training_executor_prepare_execution_cli(tmp_path, capsys) -> Non
     assert bundle["clean_executor"]["owns_execution_bundle"] is True
     assert bundle["safety"]["legacy_reference_allowed"] is False
     assert bundle["safety"]["requires_explicit_launch_training_flag"] is True
+    assert bundle["tgvf"] == json.loads((output_dir / "training_plan.json").read_text())["tgvf"]
     assert bundle["readout_context"]["position_ids"] == "real_qwen3_mrope_full_trajectory"
     contract = bundle["trainer_runtime_contract"]
     assert contract["contract_schema_version"] == "clean_trainer_runtime_contract_v1"
@@ -1577,7 +1593,35 @@ def test_stage2_training_write_plan_cli(tmp_path) -> None:
     assert plan["dataset"]["val_file"]["line_count"] == 1
     assert plan["dataset"]["stage1_checkpoint"]["exists"] is True
     assert plan["batch"]["gradient_accumulation_steps"] == 8
+    assert plan["tgvf"] == {
+        "source": "stage1_checkpoint",
+        "use_stage1_tgvf_config": True,
+        "variant": "tgvf_v2_bidirectional",
+        "num_foveated_tokens": None,
+        "spatial_merge_size": "from_stage1_checkpoint",
+        "attn_dim": "from_stage1_checkpoint",
+        "encoder_adapter_layers": "from_stage1_checkpoint",
+        "encoder_adapter_type": "from_stage1_checkpoint",
+        "encoder_adapter_gate_init": "from_stage1_checkpoint",
+        "encoder_adapter_share_weights": "from_stage1_checkpoint",
+        "encoder_adapter_layer_index_base": "from_stage1_checkpoint",
+        "encoder_reencode_deepstack_compatible": "from_stage1_checkpoint",
+        "d_deepstack_enabled": False,
+        "d_deepstack_branch_layers": [8, 16, 24],
+        "d_deepstack_adapter_type": None,
+        "d_deepstack_independent_branch_adapters": False,
+        "d_deepstack_vision_tower_rerun": False,
+        "encoder_reencode": "from_stage1_checkpoint",
+        "preserve_llm_kv_cache": True,
+        "second_full_llm_forward": False,
+    }
     assert plan["mask_policy"]["mask_original_image_after_tgvf_scope"] == "through_answer"
+    assert plan["mask_policy"]["mask_original_image_after_tgvf_prob"] == 0.75
+    assert plan["deepstack"] == {
+        "d_features_enabled": False,
+        "enabled": True,
+        "original_image_scope": "through_answer",
+    }
     assert plan["loss"]["weighted_span_loss"]["focus_target"] == 1.5
     assert plan["lora"] == {
         "alpha": 256,
@@ -1632,7 +1676,10 @@ def test_stage2_training_write_plan_cli(tmp_path) -> None:
     )
     assert plan["legacy_reference_command"]["final_clean_native"] is False
     assert plan["legacy_reference_command"]["executable"] is False
-    assert "audit reference only" in plan["legacy_reference_command"]["unavailable_reason"]
+    assert (
+        plan["legacy_reference_command"]["unavailable_reason"]
+        == "historical Stage2 script has no DeepStack training controls"
+    )
     assert (output_dir / "clean_native_training_status.json").exists()
     prepare_command_path = output_dir / "clean_prepare_execution_command.sh"
     assert prepare_command_path.stat().st_mode & 0o111
@@ -1646,23 +1693,7 @@ def test_stage2_training_write_plan_cli(tmp_path) -> None:
     assert "revisit_vlm_clean.training.stage2_executor" in clean_command
     assert "--launch-training" in clean_command
     command = (output_dir / "legacy_reference_command.sh").read_text()
-    assert command.startswith("# not executable:")
-    assert "--mask-original-image-after-tgvf-scope through_answer" in command
-    assert "--lora-rank 64" in command
-    assert "--lora-alpha 256" in command
-    assert "--lora-dropout 0.05" in command
-    assert "--lora-bias none" in command
-    assert (
-        "--lora-target-modules q_proj,k_proj,v_proj,o_proj,gate_proj,up_proj,down_proj"
-        in command
-    )
-    assert "--warmup-steps 100" in command
-    assert "--adam-beta1 0.9" in command
-    assert "--adam-beta2 0.95" in command
-    assert "--adam-eps 1e-08" in command
-    assert "--weight-decay 0.01" in command
-    assert "--max-grad-norm 1.0" in command
-    assert "--loss-focus-target 1.5" in command
+    assert command == "# unavailable\n"
 
 
 def test_stage2_training_executor_preflight_cli(tmp_path, capsys) -> None:
@@ -1774,7 +1805,8 @@ def test_stage2_training_executor_prepare_execution_cli(tmp_path, capsys) -> Non
     bundle = json.loads((execution_dir / "clean_training_execution_bundle.json").read_text())
     assert bundle["stage"] == "stage2"
     assert bundle["mask_policy"]["mask_original_image_after_tgvf_scope"] == "through_answer"
-    assert bundle["deepstack"]["enabled"] is False
+    assert bundle["deepstack"]["enabled"] is True
+    assert bundle["deepstack"]["original_image_scope"] == "through_answer"
     assert bundle["lora"]["rank"] == 64
     assert bundle["lora"]["target_modules"][:2] == ["q_proj", "k_proj"]
     contract = bundle["trainer_runtime_contract"]
@@ -2078,7 +2110,7 @@ def test_stage2_training_executor_runtime_audit_can_write_optimizer_step_probe(
                 "no_focus_count": 0,
                 "focus_loss_token_weight": 3.5,
                 "no_focus_loss_token_weight": 0.0,
-                "mask_original_image_after_tgvf_prob": 1.0,
+                "mask_original_image_after_tgvf_prob": 0.75,
                 "mask_original_image_after_tgvf_scope": "through_answer",
                 "focus_sample_mask_active_rate": 1.0,
                 "no_focus_mask_active_rate": 0.0,
@@ -2207,7 +2239,7 @@ def test_stage2_training_executor_runtime_audit_can_write_trainer_loop_probe(
                 "no_focus_count": 0,
                 "focus_loss_token_weight": 3.5,
                 "no_focus_loss_token_weight": 0.0,
-                "mask_original_image_after_tgvf_prob": 1.0,
+                "mask_original_image_after_tgvf_prob": 0.75,
                 "mask_original_image_after_tgvf_scope": "through_answer",
                 "focus_sample_mask_active_rate": 1.0,
                 "no_focus_mask_active_rate": 0.0,
@@ -2334,7 +2366,7 @@ def test_stage2_training_executor_runtime_audit_can_publish_post_loop_checkpoint
                 "no_focus_count": 0,
                 "focus_loss_token_weight": 3.5,
                 "no_focus_loss_token_weight": 0.0,
-                "mask_original_image_after_tgvf_prob": 1.0,
+                "mask_original_image_after_tgvf_prob": 0.75,
                 "mask_original_image_after_tgvf_scope": "through_answer",
                 "focus_sample_mask_active_rate": 1.0,
                 "no_focus_mask_active_rate": 0.0,
@@ -2478,7 +2510,7 @@ def test_stage2_training_executor_runtime_audit_can_resume_published_checkpoint(
                 "no_focus_count": 0,
                 "focus_loss_token_weight": 3.5,
                 "no_focus_loss_token_weight": 0.0,
-                "mask_original_image_after_tgvf_prob": 1.0,
+                "mask_original_image_after_tgvf_prob": 0.75,
                 "mask_original_image_after_tgvf_scope": "through_answer",
                 "focus_sample_mask_active_rate": 1.0,
                 "no_focus_mask_active_rate": 0.0,
@@ -2580,7 +2612,7 @@ def test_stage2_training_executor_runtime_audit_can_resume_published_checkpoint(
     assert launch_readiness["unknown_gates"] == []
     assert launch_readiness["unexpected_blockers"] == []
     assert launch_readiness["remaining_blockers"] == []
-    assert launch_readiness["deepstack"]["enabled"] is False
+    assert launch_readiness["deepstack"]["enabled"] is True
     assert launch_readiness["deepstack"]["training_scope_gate_status"] == (
         "identity_validated"
     )
@@ -2692,7 +2724,7 @@ def test_stage2_training_executor_can_launch_single_process_training_loop(
                 "no_focus_count": 0,
                 "focus_loss_token_weight": 3.5,
                 "no_focus_loss_token_weight": 0.0,
-                "mask_original_image_after_tgvf_prob": 1.0,
+                "mask_original_image_after_tgvf_prob": 0.75,
                 "mask_original_image_after_tgvf_scope": "through_answer",
                 "focus_sample_mask_active_rate": 1.0,
                 "no_focus_mask_active_rate": 0.0,
@@ -3098,7 +3130,7 @@ def test_stage2_training_executor_runtime_audit_can_write_training_step_probe(
                 "no_focus_count": 0,
                 "focus_loss_token_weight": 3.5,
                 "no_focus_loss_token_weight": 0.0,
-                "mask_original_image_after_tgvf_prob": 1.0,
+                "mask_original_image_after_tgvf_prob": 0.75,
                 "mask_original_image_after_tgvf_scope": "through_answer",
                 "focus_sample_mask_active_rate": 1.0,
                 "no_focus_mask_active_rate": 0.0,
@@ -3203,8 +3235,8 @@ def test_stage1_training_executor_runtime_audit_can_write_training_step_probe(
                 "stage": "tgvf_v3_stage1",
                 "loss_weights": {
                     "gen": 1.0,
-                    "visual_token_manifold": 0.1,
-                    "visual_token_norm": 0.0,
+                    "visual_token_manifold": 0.0,
+                    "visual_token_norm": 0.1,
                     "same_image_negative": 1.0,
                     "contrastive_alignment": 0.0,
                 },
@@ -3320,8 +3352,8 @@ def test_stage1_training_executor_runtime_audit_can_write_optimizer_step_probe(
                 "stage": "tgvf_v3_stage1",
                 "loss_weights": {
                     "gen": 1.0,
-                    "visual_token_manifold": 0.1,
-                    "visual_token_norm": 0.0,
+                    "visual_token_manifold": 0.0,
+                    "visual_token_norm": 0.1,
                     "same_image_negative": 1.0,
                     "contrastive_alignment": 0.0,
                 },
@@ -3486,6 +3518,7 @@ def test_stage2_deepstack_plan_disables_legacy_command(tmp_path, capsys) -> None
                 "--mask-original-image-after-tgvf-scope",
                 "evidence_only",
                 "--deepstack-enabled",
+                "--d-deepstack-enabled",
                 "--dry-run",
             ]
         )
@@ -3500,8 +3533,12 @@ def test_stage2_deepstack_plan_disables_legacy_command(tmp_path, capsys) -> None
     assert deepstack_plan["runtime_hooks"]["all_required_hooks_implemented"] is True
     assert deepstack_plan["original_image_deepstack"]["restore_for_answer"] is True
     assert deepstack_plan["current_training_path"]["qwen3_deepstack_features_injected"] is True
+    assert deepstack_plan["current_training_path"]["d_deepstack_features_injected"] is True
     assert deepstack_plan["current_training_path"]["post_d_deepstack_scope_mask_applied"] is True
     assert deepstack_plan["current_training_path"]["answer_stage_restore_supported"] is True
+    assert payload["deepstack"]["d_features_enabled"] is True
+    assert payload["tgvf"]["d_deepstack_enabled"] is True
+    assert payload["tgvf"]["d_deepstack_adapter_type"] == "tgvf_v2_bidirectional"
     assert payload["clean_native_training"]["executable"] is True
     assert payload["clean_native_training"]["launch_training_supported"] is True
     assert payload["legacy_reference_command"]["executable"] is False

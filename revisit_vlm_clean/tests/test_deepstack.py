@@ -3,6 +3,7 @@ import torch
 from revisit_vlm_clean.deepstack import (
     build_cached_chunk_original_image_key_block_attention_mask,
     build_original_image_key_block_attention_mask,
+    build_qwen3_deepstack_payload,
     build_qwen3_original_image_deepstack_payload,
     build_single_query_original_image_key_block_attention_mask,
 )
@@ -33,6 +34,28 @@ def test_qwen3_original_image_deepstack_payload_rejects_shape_mismatch() -> None
             device=torch.device("cpu"),
             dtype=torch.float32,
         )
+
+
+def test_qwen3_deepstack_payload_combines_original_and_d_in_position_order() -> None:
+    original = [torch.tensor([[10.0], [30.0]])]
+    d_features = [torch.tensor([[20.0], [50.0]])]
+
+    payload = build_qwen3_deepstack_payload(
+        sequence_length=7,
+        original_image_token_indices=torch.tensor([1, 3]),
+        original_deepstack_features=original,
+        d_token_indices=torch.tensor([2, 5]),
+        d_deepstack_features=d_features,
+        device=torch.device("cpu"),
+        dtype=torch.float32,
+    )
+
+    assert payload.visual_pos_masks.tolist() == [[False, True, True, True, False, True, False]]
+    assert payload.deepstack_visual_embeds[0].view(-1).tolist() == [10.0, 20.0, 30.0, 50.0]
+    debug = payload.to_debug_dict()
+    assert debug["d_deepstack_features_enabled"] is True
+    assert debug["d_token_count"] == 2
+    assert debug["combined_token_count"] == 4
 
 
 def test_original_image_key_block_attention_mask_blocks_query_span() -> None:

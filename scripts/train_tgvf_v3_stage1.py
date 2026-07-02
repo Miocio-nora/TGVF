@@ -143,6 +143,8 @@ def main() -> None:
         encoder_adapter_share_weights=args.encoder_adapter_share_weights,
         encoder_adapter_layer_index_base=args.encoder_adapter_layer_index_base,
         encoder_reencode_deepstack_compatible=args.encoder_reencode_deepstack_compatible,
+        d_deepstack_enabled=args.d_deepstack_enabled,
+        d_deepstack_branch_layers=tuple(args.d_deepstack_branch_layers),
         encoder_reencode=args.variant == "tgvf_encoder_bidir_8_16_24",
         preserve_llm_kv_cache=True,
         second_full_llm_forward=False,
@@ -244,6 +246,8 @@ def main() -> None:
         encoder_adapter_share_weights=args.encoder_adapter_share_weights,
         encoder_adapter_layer_index_base=args.encoder_adapter_layer_index_base,
         encoder_reencode_deepstack_compatible=args.encoder_reencode_deepstack_compatible,
+        d_deepstack_enabled=args.d_deepstack_enabled,
+        d_deepstack_branch_layers=tuple(args.d_deepstack_branch_layers),
     ).to(device=device, dtype=train_dtype)
     checkpoint = None
     if args.resume_from_checkpoint:
@@ -534,6 +538,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--encoder-adapter-share-weights", action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument("--encoder-adapter-layer-index-base", type=int, choices=(0, 1), default=0)
     parser.add_argument("--encoder-reencode-deepstack-compatible", action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument("--d-deepstack-enabled", action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument("--d-deepstack-branch-layers", type=_parse_int_list, default=(8, 16, 24))
     parser.add_argument("--train-reencode-vision-branch", action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument("--reencode-vision-learning-rate", type=float, default=1e-6)
     parser.add_argument("--learning-rate", type=float, default=1e-4)
@@ -602,6 +608,8 @@ def parse_args() -> argparse.Namespace:
         parser.error("--readout-batch-size must be >= 1")
     if args.variant == "tgvf_encoder_bidir_8_16_24" and args.encoder_adapter_type not in {"bidirectional", "bidirectional_film_aggressive"}:
         parser.error("tgvf_encoder_bidir_8_16_24 requires a supported encoder adapter type")
+    if args.d_deepstack_enabled and args.variant != "tgvf_v2_bidirectional":
+        parser.error("--d-deepstack-enabled currently requires --variant tgvf_v2_bidirectional")
     if args.train_reencode_vision_branch and args.variant != "tgvf_encoder_bidir_8_16_24":
         parser.error("--train-reencode-vision-branch is currently supported only for tgvf_encoder_bidir_8_16_24")
     if args.num_workers < 0:

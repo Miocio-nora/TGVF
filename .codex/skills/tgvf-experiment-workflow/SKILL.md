@@ -115,8 +115,11 @@ Before Stage1/Stage2 training:
 - keep global batch constant when changing GPU count unless the user approves;
 - record mask behavior, mask probability, mask scope, token-row mode, manifold loss weight, D norm statistics, and visual merger training state;
 - record DeepStack support/state separately from attention masks:
-  - clean Qwen3 must support DeepStack training semantics, but the default is
-    DeepStack off unless the run explicitly enables it;
+  - clean Qwen3 must support DeepStack training semantics;
+  - current authoritative Stage2 training default is DeepStack enabled with
+    `original_image_scope=through_answer`;
+  - deviations such as DeepStack off, `no_block`, or `evidence_only` for
+    Stage2 training must be named as ablations;
   - DeepStack scope is separate from original-image visual-key masking;
   - `no_block` means original-image DeepStack remains enabled and original-image
     visual keys remain visible after D;

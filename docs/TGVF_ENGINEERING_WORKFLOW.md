@@ -103,7 +103,10 @@ Training runs must record:
 - Mask mode, probability, and scope.
 - DeepStack support/state:
   - clean Qwen3 must support DeepStack training semantics;
-  - default training setting is DeepStack off unless explicitly enabled;
+  - current authoritative Stage2 training default is DeepStack enabled with
+    `original_image_scope=through_answer`;
+  - deviations such as DeepStack off, `no_block`, or `evidence_only` for
+    Stage2 training must be named as ablations;
   - `no_block` enables original-image DeepStack without blocking original-image
     visual keys after D;
   - `through_answer` blocks original-image DeepStack from D/evidence through

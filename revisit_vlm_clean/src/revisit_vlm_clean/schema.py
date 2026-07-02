@@ -69,8 +69,8 @@ class DeepStackState:
     d_features_enabled: bool = False
 
     def validate(self) -> None:
-        if self.d_features_enabled:
-            raise ValueError("D DeepStack-like features are not a clean default")
+        if self.d_features_enabled and not self.enabled:
+            raise ValueError("D DeepStack features require enabled DeepStack")
         if self.enabled and self.original_image_scope == DeepStackScope.OFF:
             raise ValueError("enabled DeepStack requires a non-off original_image_scope")
         if not self.enabled and self.original_image_scope != DeepStackScope.OFF:
