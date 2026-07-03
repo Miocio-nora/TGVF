@@ -2,6 +2,8 @@
 
 Date: 2026-07-02
 
+D-DeepStack addendum: 2026-07-03
+
 Scope: complete `core_balanced_dev_2511_seed20260625` / CoreDev-2511 manifest, 2,511 samples.
 
 Methods shown:
@@ -11,6 +13,9 @@ Methods shown:
 - `Stage2 Soft`: Stage2 checkpoint, `tgvf_softforce`.
 - `Stage3 Last Free`: Stage3 last checkpoint, step200, `tgvf_free`.
 - `Stage3 Last Soft`: Stage3 last checkpoint, step200, `tgvf_softforce`.
+- `D-DeepStack Stage2 Free`: Stage2 D-DeepStack checkpoint, `tgvf_free`.
+- `D-DeepStack Stage2 Soft`: Stage2 D-DeepStack checkpoint,
+  `tgvf_softforce`.
 
 All TGVF rows use the clean native backend, FlashAttention-2, DeepStack
 `no_block`, post-D `kv_cache`, scoring backend `auto`, max image resolution
@@ -26,9 +31,37 @@ All TGVF rows use the clean native backend, FlashAttention-2, DeepStack
 | Stage2 Soft | 35.98% | +5.12 | 39.90% | +3.77 | 45.24% | 99.64% | 100.00% |
 | Stage3 Last Free | 36.40% | +5.54 | 40.57% | +4.44 | 30.78% | 99.60% | 100.00% |
 | Stage3 Last Soft | 36.06% | +5.20 | 40.26% | +4.12 | 45.92% | 99.52% | 100.00% |
+| D-DeepStack Stage2 Free | 37.04% | +6.19 | 41.16% | +5.02 | 29.79% | 99.84% | 100.00% |
+| D-DeepStack Stage2 Soft | 37.92% | +7.07 | 42.33% | +6.19 | 40.98% | 99.48% | 100.00% |
 
-Best overall and macro result in this table is `Stage3 Last Free`: 36.40%
-overall and 40.57% macro average.
+Best overall and macro result in this table is `D-DeepStack Stage2 Soft`:
+37.92% overall and 42.33% macro average.
+
+## D-DeepStack Stage2 Update
+
+The D-DeepStack Stage2 checkpoint was trained as a named ablation on top of the
+authoritative Stage2 recipe. The CoreDev-2511 evaluation below uses the same
+manifest, scoring backend, FlashAttention-2, DeepStack `no_block`, post-D
+`kv_cache`, max image resolution 512, and unified `max_tokens=512` setting as
+the current clean benchmark default. Deltas are percentage points versus
+`Original`. Trigger is the focus-valid trigger rate for TGVF modes.
+
+| Benchmark | n | Original Acc | D-Deep Free Acc | D-Deep Free Delta | D-Deep Free Trigger | D-Deep Soft Acc | D-Deep Soft Delta | D-Deep Soft Trigger |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| Overall | 2511 | 30.86% | 37.04% | +6.19 | 29.79% | 37.92% | +7.07 | 40.98% |
+| VStar | 191 | 53.93% | 52.36% | -1.57 | 11.52% | 50.79% | -3.14 | 58.64% |
+| HR | 200 | 52.00% | 52.50% | +0.50 | 40.00% | 59.50% | +7.50 | 72.50% |
+| BLINK | 420 | 46.43% | 56.90% | +10.48 | 7.86% | 55.48% | +9.05 | 23.33% |
+| OCRBench-v2 | 600 | 20.46% | 25.02% | +4.56 | 22.83% | 24.54% | +4.08 | 36.17% |
+| MMMU-Pro | 300 | 34.33% | 35.67% | +1.33 | 29.67% | 38.00% | +3.67 | 33.00% |
+| MathVista | 300 | 41.00% | 49.67% | +8.67 | 20.33% | 49.00% | +8.00 | 23.67% |
+| MathVerse | 500 | 4.80% | 16.00% | +11.20 | 65.20% | 19.00% | +14.20 | 57.40% |
+
+Compared with the current original baseline, D-DeepStack Stage2 improves
+CoreDev-2511 overall accuracy by `+6.19` points in free mode and `+7.07`
+points in softforce mode. Excluding VStar, the weighted overall is `35.78%`
+for D-DeepStack free and `36.86%` for D-DeepStack softforce over the remaining
+2,320 rows.
 
 ## Per-Benchmark Results
 
@@ -78,4 +111,5 @@ validation-set score over 1,901 samples.
 | Stage2 Soft | `outputs/clean_benchmarks/qwen3_stage2_norm01_coredev2511_dynamic_maxtok512_flash2_multigridfix_gpu0_7_20260702_011343/tgvf_softforce/summary.json` |
 | Stage3 Last Free | `outputs/clean_benchmarks/qwen3_stage3_step200_coredev2511_dynamic_maxtok512_flash2_gpu0_7_20260702_023637/tgvf_free/summary.json` |
 | Stage3 Last Soft | `outputs/clean_benchmarks/qwen3_stage3_step200_coredev2511_dynamic_maxtok512_flash2_gpu0_7_20260702_023637/tgvf_softforce/summary.json` |
-
+| D-DeepStack Stage2 Free | `outputs/clean_benchmarks/qwen3_stage2_ddeepstack_coredev2511_dynamic_maxtok512_flash2_ddeepstack_gpu1_7_20260703_084300/tgvf_free/summary.json` |
+| D-DeepStack Stage2 Soft | `outputs/clean_benchmarks/qwen3_stage2_ddeepstack_coredev2511_dynamic_maxtok512_flash2_ddeepstack_gpu0_7_20260703_084300/tgvf_softforce/summary.json` |
