@@ -114,7 +114,7 @@ If a mistake is found:
 
 ### EXP-20260703-005210-stage2-d-deepstack-8gpu
 
-- Status: RUNNING_FULL_STAGE2_AFTER_SMOKE.
+- Status: DONE.
 - Question:
   - Train the Stage2 branch from the new Stage1 D DeepStack checkpoint, using the authoritative Stage2 recipe with D DeepStack features enabled and 8 GPUs while preserving global batch.
 - Baseline anchor:
@@ -136,8 +136,8 @@ If a mistake is found:
   - Stage2 train/validation data, protocol, model/processor, max image resolution, max sequence length, max steps, save/eval cadence, fast batched path, mask probability, mask scope, original-image DeepStack scope, target focus ratio, LoRA config, optimizer/LR schedule, weighted span losses, visual token manifold loss, FVT position mode, attention implementation, and global batch.
 - Code commit / worktree:
   - Branch: `clean/tgvf-clean-project-20260625`.
-  - HEAD: `62538395ab7adfd764421f55675ecc3bf5c91427`.
-  - Dirty worktree: yes; includes D DeepStack implementation, clean Stage2 fast-batched D DeepStack support, and the diagnostics compatibility fix.
+  - HEAD: `b80ff99`.
+  - Dirty worktree at finish audit: no.
 - Stage1 checkpoint:
   - `outputs/clean_training/qwen3_stage1_ddeepstack_norm01_wandb_4gpu_20260702_180906/stage1_micro4/clean_training_execution/checkpoint_step_2000.pt`.
   - sha256: `b119379fc13a3eee1d19fb347bda729262592599218ea1ff88733ba142cb0c0b`.
@@ -258,7 +258,12 @@ If a mistake is found:
         image scope `through_answer`, D/DeepStack feature injection, and mask
         probability/scope `0.75` / `through_answer`.
 - Finished:
-  - TBD.
+  - `2026-07-03T04:25:34+09:00`.
+  - Final checkpoint:
+    `outputs/clean_training/qwen3_stage2_ddeepstack_norm01_from_stage1_ddeepstack_8gpu_20260703_005210/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt`.
+  - Final checkpoint sha256:
+    `b8d9f3fbd06c6731ef30a22344dc60f7d1ddffe8f71c6c8e37c055a059de55ae`.
+  - Training elapsed: `12112.682292222977` seconds.
 - Verification before launch:
   - Dry-run plan resolved with:
     - `deepstack.enabled=true`.
@@ -299,14 +304,277 @@ If a mistake is found:
       `through_answer`.
     - W&B was intentionally disabled only for smoke.
 - Metrics:
-  - TBD.
+  - Finished `1200` optimizer steps and `4800` micro steps.
+  - Final train step:
+    - `loss_total=0.802734375`.
+    - `loss_focus=0.80859375`.
+    - `loss_no_focus=0.5029296875`.
+    - `grad_norm=2.174236297607422`.
+    - peak memory `34.82560968399048` GB on rank 0 at the final step.
+  - Final validation probe:
+    - `loss_total=0.90625`.
+    - `loss_focus=0.92578125`.
+    - `loss_no_focus=0.3828125`.
+    - `sample_count=4`.
+  - Final debug confirmed `fast_batched_stage2=true`,
+    `deepstack_training_enabled=true`,
+    `deepstack_original_image_scope=through_answer`,
+    `qwen3_deepstack_features_injected=true`, and mask scope/probability
+    `through_answer` / `0.75`.
 - Analysis:
   - This is a named D DeepStack ablation on top of the authoritative Stage2 recipe.
   - The 8-GPU change is an execution choice; global batch remains fixed at `128`.
 - Conclusion:
-  - TBD.
+  - Stage2 D DeepStack training completed successfully and produced a valid
+    clean Stage2 checkpoint at step `1200`.
 - Comparable to baseline:
   - Training dynamics are comparable at recipe level except for the named D DeepStack ablation and fixed-global-batch 8-GPU execution.
+
+### DIAG-20260703-083919-stage2-d-deepstack-internal-diagnostics
+
+- Status: DONE.
+- Question:
+  - Does the completed Stage2 D DeepStack checkpoint preserve/improve the
+    Stage1-style D/readout, same-image retrieval, and FVT distribution
+    diagnostics?
+- Parent training entry:
+  - `EXP-20260703-005210-stage2-d-deepstack-8gpu`.
+- Baseline anchor:
+  - Main comparable Stage2 internal diagnostic:
+    `outputs/clean_training/qwen3_stage2_norm01_stage1_mask075_deepstack_4gpu_20260627_163250/stage2_micro4/internal_diagnostics_step1200_20260627_223829`.
+  - Baseline metrics:
+    readout `wrong_same=0.330`, query `top1=0.220`, `top2=0.455`,
+    `MRR=0.48408`, distribution `norm_ratio_D_to_Vmerge=2.14251`.
+- Checkpoint:
+  - `outputs/clean_training/qwen3_stage2_ddeepstack_norm01_from_stage1_ddeepstack_8gpu_20260703_005210/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt`.
+  - sha256:
+    `b8d9f3fbd06c6731ef30a22344dc60f7d1ddffe8f71c6c8e37c055a059de55ae`.
+- Eval data:
+  - `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend/splits/tgvf_v4_teacher_stage1_protocol_c_focus.test.jsonl`.
+  - Rows: `867`.
+  - sha256: `de61c731eb961825a77df587cd76c00eabfea75b5c6003096f3cc7f1a51dd82d`.
+- Code / worktree:
+  - Branch: `clean/tgvf-clean-project-20260625`.
+  - HEAD: `b80ff99`.
+  - Dirty worktree: yes, ledger updated for the just-finished Stage2 training.
+- Output:
+  - `outputs/clean_training/qwen3_stage2_ddeepstack_norm01_from_stage1_ddeepstack_8gpu_20260703_005210/stage2_micro4/internal_diagnostics_step1200_20260703_083919`.
+- Script / command:
+  - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=revisit_vlm_clean/src:src python -m revisit_vlm_clean.cli.stage_diagnostics --run-id clean_qwen3_stage2_ddeepstack_internal_diag_20260703_083919 --stage stage2 --checkpoint outputs/clean_training/qwen3_stage2_ddeepstack_norm01_from_stage1_ddeepstack_8gpu_20260703_005210/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt --eval-jsonl data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend/splits/tgvf_v4_teacher_stage1_protocol_c_focus.test.jsonl --output-dir outputs/clean_training/qwen3_stage2_ddeepstack_norm01_from_stage1_ddeepstack_8gpu_20260703_005210/stage2_micro4/internal_diagnostics_step1200_20260703_083919 --model-id /nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking --processor-id /nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking --protocol protocol_c_tool_observation --focus-action-im-end --variant tgvf_v2_bidirectional --encoder-adapter-type bidirectional --max-image-resolution 512 --fvt-position-mode native_source_grid --dtype bfloat16 --attn-implementation sdpa --device cuda:0 --device-map cuda:0 --tasks all --readout-max-samples 200 --distribution-max-samples 200 --query-max-groups 50 --query-require-groups 0 --seed 20260525 --no-wandb-log-eval --wandb-mode disabled --execute`.
+- GPUs:
+  - Planned: `CUDA_VISIBLE_DEVICES=0`.
+- tmux:
+  - `stage2_ddeepstack_internal_diag_20260703_083919`.
+- Started:
+  - `2026-07-03T08:40:57+09:00`.
+- Finished:
+  - `2026-07-03T08:50:43+09:00`.
+- Metrics:
+  - Readout, n=200:
+    - `target_only=0.715`.
+    - `random=0.520`.
+    - `wrong_same=0.405`.
+    - `wrong_diff=0.40625`.
+    - `mean_nll_correct_D=1.63734375`.
+  - Query sensitivity, groups=46 / items=200:
+    - `retrieval_top1=0.235`.
+    - `retrieval_top2=0.490`.
+    - `MRR=0.5004166666666666`.
+    - `mean_diagonal_gap=-0.023359375`.
+  - FVT distribution, n=200:
+    - `avg_manifold_loss=0.43023175358772275`.
+    - `avg_norm_D=42.33842092514038`.
+    - `avg_norm_V_merge=20.683768496513366`.
+    - `norm_ratio_D_to_Vmerge=2.1197979855733124`.
+    - `finite_rate=1.0`.
+    - `collapse_warning=false`.
+  - Reports:
+    - `outputs/clean_training/qwen3_stage2_ddeepstack_norm01_from_stage1_ddeepstack_8gpu_20260703_005210/stage2_micro4/internal_diagnostics_step1200_20260703_083919/readout/readout_eval_report.json`.
+    - `outputs/clean_training/qwen3_stage2_ddeepstack_norm01_from_stage1_ddeepstack_8gpu_20260703_005210/stage2_micro4/internal_diagnostics_step1200_20260703_083919/query_sensitivity/query_sensitivity_report.json`.
+    - `outputs/clean_training/qwen3_stage2_ddeepstack_norm01_from_stage1_ddeepstack_8gpu_20260703_005210/stage2_micro4/internal_diagnostics_step1200_20260703_083919/fvt_distribution/fvt_distribution_report.json`.
+- Conclusion:
+  - Compared with the main authoritative Stage2 internal diagnostic, D
+    DeepStack improves query sensitivity slightly (`top1` 0.220 -> 0.235,
+    `top2` 0.455 -> 0.490, `MRR` 0.48408 -> 0.50042) and improves readout
+    wrong-same discrimination (`0.330` -> `0.405`), while preserving FVT scale
+    (`norm_ratio_D_to_Vmerge` 2.14251 -> 2.11980). It is still far below the
+    source Stage1 D DeepStack internal diagnostic (`top1=0.77`, `top2=0.915`).
+
+### BENCH-20260703-084300-stage2-d-deepstack-coredev2511
+
+- Status: DONE.
+- Question:
+  - What are the external CoreDev-2511 benchmark results for the completed
+    Stage2 D DeepStack checkpoint under the current default clean benchmark
+    settings?
+- Checkpoint:
+  - `outputs/clean_training/qwen3_stage2_ddeepstack_norm01_from_stage1_ddeepstack_8gpu_20260703_005210/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt`.
+  - sha256:
+    `b8d9f3fbd06c6731ef30a22344dc60f7d1ddffe8f71c6c8e37c055a059de55ae`.
+- Baseline anchor:
+  - Stage2 authoritative repaired CoreDev-2511 dynamic retest:
+    - `tgvf_free`:
+      `outputs/clean_benchmarks/qwen3_stage2_norm01_coredev2511_dynamic_maxtok512_flash2_multigridfix_gpu0_7_20260701_235228/tgvf_free`.
+    - `tgvf_softforce`:
+      `outputs/clean_benchmarks/qwen3_stage2_norm01_coredev2511_dynamic_maxtok512_flash2_multigridfix_gpu0_7_20260702_011343/tgvf_softforce`.
+- Intended diff:
+  - Change checkpoint to the Stage2 D DeepStack checkpoint.
+  - Enable D DeepStack during benchmark with `--d-deepstack-enabled`.
+  - Keep the CoreDev-2511 sample set and all other current default evaluation
+    variables fixed.
+- Benchmark identity:
+  - Manifest:
+    `revisit_vlm_clean/benchmark_manifests/core_balanced_dev_2511_seed20260625.json`.
+  - Rows: `2511`.
+  - Manifest hash:
+    `a461d9b482b7165b42b9bbb0fbf0ea6aff31fde0a838c13d953f070e770b0579`.
+  - Manifest file sha256:
+    `3a013b2bcc64316054d28239a3cea3f44211cadbfe19787be3b7f285620fa5c1`.
+  - Benchmark root:
+    `/home/dredvpn009/Flash_Storage/datasets/benchmarks`.
+- Evaluation identity:
+  - Backend: `tgvf_stage2_qwen3_native`.
+  - Modes planned: `tgvf_free`, `tgvf_softforce`.
+  - DeepStack: `--deepstack-enabled`,
+    `--deepstack-original-image-scope no_block`, `--d-deepstack-enabled`.
+  - Attention: `flash_attention_2`.
+  - Post-D continuation: `kv_cache`.
+  - Max image resolution: `512`.
+  - Token budget: unified `--max-tokens 512`.
+  - Scoring backend: `auto`.
+  - Softforce prompt: `Use focus tool.`.
+- Code / worktree:
+  - Branch: `clean/tgvf-clean-project-20260625`.
+  - HEAD: `b80ff99`.
+  - Dirty worktree: yes, ledger contains current training/diagnostic run
+    updates.
+- Smoke:
+  - Planned first on GPU `1`, `--max-samples 4`, mode `tgvf_free`.
+  - Attempt 1 and 2 failed before model loading during CLI validation:
+    - missing explicit `--stage2-checkpoint`;
+    - missing explicit `--stage2-eval-jsonl`.
+  - Attempt 3 completed successfully:
+    - output:
+      `outputs/clean_benchmarks/qwen3_stage2_ddeepstack_coredev2511_dynamic_smoke_free_maxtok512_flash2_ddeepstack_gpu1_20260703_084300`.
+    - rows `4/4`, accuracy `0.75`, parse rate `1.0`,
+      append-success rate `1.0`, malformed rate `0.0`.
+    - run config confirmed `deepstack.enabled=true`,
+      `deepstack.d_features_enabled=true`, `original_image_scope=no_block`,
+      `runner_backend=tgvf_stage2_qwen3_native`, `attn=flash_attention_2`,
+      and unified `max_tokens=512`.
+    - DeepStack execution summary reported all FVT append rows used DeepStack.
+- Full run GPUs:
+  - Planned available GPUs after smoke/internal state check: `1,2,3,4,5,6,7`
+    if internal diagnostics is still occupying GPU0, otherwise `0,1,2,3,4,5,6,7`.
+- Outputs:
+  - Smoke free:
+    `outputs/clean_benchmarks/qwen3_stage2_ddeepstack_coredev2511_dynamic_smoke_free_maxtok512_flash2_ddeepstack_gpu1_20260703_084300`.
+  - Complete free:
+    `outputs/clean_benchmarks/qwen3_stage2_ddeepstack_coredev2511_dynamic_maxtok512_flash2_ddeepstack_gpu1_7_20260703_084300/tgvf_free`.
+  - Complete softforce:
+    `outputs/clean_benchmarks/qwen3_stage2_ddeepstack_coredev2511_dynamic_maxtok512_flash2_ddeepstack_gpu0_7_20260703_084300/tgvf_softforce`.
+- Started:
+  - `tgvf_free`: `2026-07-03T08:50:05+09:00`.
+    - tmux: `stage2_ddeepstack_coredev2511_free_20260703_084300`.
+    - GPUs: `1,2,3,4,5,6,7`.
+    - log:
+      `outputs/clean_benchmarks/qwen3_stage2_ddeepstack_coredev2511_dynamic_maxtok512_flash2_ddeepstack_gpu1_7_20260703_084300/tgvf_free/logs/benchmark.log`.
+    - Explicit runtime validation args include `--stage2-checkpoint` and
+      `--stage2-eval-jsonl`.
+  - `tgvf_softforce`: `2026-07-03T09:20:57+09:00`.
+    - tmux: `stage2_ddeepstack_coredev2511_softforce_20260703_084300`.
+    - GPUs: `0,1,2,3,4,5,6,7`.
+    - log:
+      `outputs/clean_benchmarks/qwen3_stage2_ddeepstack_coredev2511_dynamic_maxtok512_flash2_ddeepstack_gpu0_7_20260703_084300/tgvf_softforce/logs/benchmark.log`.
+    - Command differs from `tgvf_free` only in mode/prompt/GPU set/output:
+      `--mode tgvf_softforce --softforce-prompt-text "Use focus tool."`
+      and `--gpus 0,1,2,3,4,5,6,7`.
+- Finished:
+  - `tgvf_free`: `2026-07-03T09:17:26+09:00`.
+    - elapsed: `1628.372606438119` seconds.
+  - `tgvf_softforce`: `2026-07-03T09:44:22+09:00`.
+    - elapsed: `1405.2891273391433` seconds.
+- Metrics:
+  - `tgvf_free`, CoreDev-2511 complete set:
+    - rows/scored: `2511 / 2511`.
+    - overall accuracy: `0.37042692295475926`.
+    - answer parse rate: `0.9984070091596974`.
+    - trigger/focus-valid rate: `0.29788928713659896`.
+    - append success rate on triggered rows: `1.0`.
+    - malformed rate: `0.0`.
+    - output tokens: p50 `42`, p90 `141`, p95 `250.5`, max `512`.
+    - manifest verification: sample count/order match, no missing or extra
+      sample ids, manifest hash
+      `a461d9b482b7165b42b9bbb0fbf0ea6aff31fde0a838c13d953f070e770b0579`.
+    - DeepStack execution: requested rows `2511`, FVT append rows `748`,
+      all reported FVT appends used DeepStack, unsupported requested rows `0`.
+  - `tgvf_free` by benchmark:
+    - `blink`: acc `0.569047619047619`, trigger `0.07857142857142857`,
+      n `420`.
+    - `hr_bench_4k`: acc `0.525`, trigger `0.4`, n `200`.
+    - `mathverse`: acc `0.16`, trigger `0.652`, n `500`.
+    - `mathvista`: acc `0.49666666666666665`, trigger
+      `0.20333333333333334`, n `300`.
+    - `mmmu_pro`: acc `0.3566666666666667`, trigger
+      `0.2966666666666667`, n `300`.
+    - `ocrbench_v2`: acc `0.25023667256566723`, trigger
+      `0.22833333333333333`, n `600`.
+    - `vstar_bench`: acc `0.5235602094240838`, trigger
+      `0.11518324607329843`, n `191`.
+  - `tgvf_softforce`, CoreDev-2511 complete set:
+    - rows/scored: `2511 / 2511`.
+    - overall accuracy: `0.3792370062628434`.
+    - answer parse rate: `0.9948227797690163`.
+    - trigger/focus-valid rate: `0.40979689366786143`.
+    - append success rate on triggered rows: `1.0`.
+    - malformed rate: `0.0`.
+    - output tokens: p50 `40`, p90 `131`, p95 `233.5`, max `512`.
+    - manifest verification: sample count/order match, no missing or extra
+      sample ids, manifest hash
+      `a461d9b482b7165b42b9bbb0fbf0ea6aff31fde0a838c13d953f070e770b0579`.
+    - DeepStack execution: requested rows `2511`, FVT append rows `1029`,
+      all reported FVT appends used DeepStack, unsupported requested rows `0`.
+  - `tgvf_softforce` by benchmark:
+    - `blink`: acc `0.5547619047619048`, trigger
+      `0.23333333333333334`, n `420`.
+    - `hr_bench_4k`: acc `0.595`, trigger `0.725`, n `200`.
+    - `mathverse`: acc `0.19`, trigger `0.574`, n `500`.
+    - `mathvista`: acc `0.49`, trigger `0.23666666666666666`, n `300`.
+    - `mmmu_pro`: acc `0.38`, trigger `0.33`, n `300`.
+    - `ocrbench_v2`: acc `0.24544020454333282`, trigger
+      `0.3616666666666667`, n `600`.
+    - `vstar_bench`: acc `0.5078534031413613`, trigger
+      `0.5863874345549738`, n `191`.
+  - Comparison to authoritative Stage2 repaired CoreDev-2511 dynamic retest:
+    - `tgvf_free`: accuracy `0.35534480714304295 -> 0.37042692295475926`
+      (`+0.015082115811716312`), trigger
+      `0.312226204699323 -> 0.29788928713659896`
+      (`-0.014336917562724039`).
+    - `tgvf_softforce`: accuracy `0.35979481051185386 -> 0.3792370062628434`
+      (`+0.019442195750989544`), trigger
+      `0.4524093986459578 -> 0.40979689366786143`
+      (`-0.04261250497809638`).
+    - Per-benchmark accuracy deltas, `tgvf_free`:
+      `blink +0.01904761904761898`, `hr_bench_4k -0.015000000000000013`,
+      `mathverse +0.014000000000000012`, `mathvista +0.033333333333333326`,
+      `mmmu_pro +0.010000000000000009`,
+      `ocrbench_v2 +0.011451988005365565`,
+      `vstar_bench +0.031413612565445004`.
+    - Per-benchmark accuracy deltas, `tgvf_softforce`:
+      `blink -0.0071428571428571175`, `hr_bench_4k +0.07999999999999996`,
+      `mathverse +0.04000000000000001`, `mathvista -0.010000000000000009`,
+      `mmmu_pro +0.04999999999999999`,
+      `ocrbench_v2 +0.0013655892178907336`,
+      `vstar_bench +0.01570680628272253`.
+- Conclusion:
+  - `tgvf_free` is a valid comparable CoreDev-2511 run for the Stage2 D
+    DeepStack checkpoint under the current default clean benchmark setting.
+  - `tgvf_softforce` is also valid and complete under the same setting.
+  - Stage2 D DeepStack improves the complete CoreDev-2511 accuracy over the
+    current authoritative Stage2 checkpoint in both modes: `+1.51` points for
+    free and `+1.94` points for softforce. The improvement is not simply caused
+    by higher trigger rate, because trigger rate is slightly lower than the
+    old Stage2 baseline in both modes.
 
 ### DIAG-20260702-235026-stage1-d-deepstack-internal-diagnostics
 
