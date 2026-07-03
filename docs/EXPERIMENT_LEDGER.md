@@ -112,6 +112,198 @@ If a mistake is found:
 
 ## Experiment Entries
 
+### EXP-20260703-105444-stage1-d-deepstack-size5-8gpu
+
+- Status: RUNNING.
+- Question:
+  - Rerun Stage1 D DeepStack with the new same-image matrix-CE size-5 sampler behavior, using GPUs `0-7`.
+- Baseline anchor:
+  - `EXP-20260702-180906-stage1-d-deepstack-wandb-relaunch`.
+  - Baseline plan:
+    `outputs/clean_training/qwen3_stage1_ddeepstack_norm01_wandb_4gpu_20260702_180906/stage1_micro4/training_plan.json`.
+  - Baseline checkpoint:
+    `outputs/clean_training/qwen3_stage1_ddeepstack_norm01_wandb_4gpu_20260702_180906/stage1_micro4/clean_training_execution/checkpoint_step_2000.pt`.
+  - Baseline checkpoint sha256:
+    `b119379fc13a3eee1d19fb347bda729262592599218ea1ff88733ba142cb0c0b`.
+- Intended diff:
+  - Use current Stage1 same-image sampler code with `micro_batch_size=5`.
+  - For Stage1 same-image matrix-CE only, `micro_batch_size=5` means
+    `min_batch_size=4`, `max_batch_size=5`; size 4 and 5 groups are retained,
+    larger groups are split into 4/5 chunks while dropping tails smaller than 4.
+  - Use 8 GPUs: `0,1,2,3,4,5,6,7`.
+  - Batch identity changes to nominal
+    `40 = world_size 8 * micro_batch_size 5 * gradient_accumulation_steps 1`.
+- Allowed changed variables:
+  - Stage1 sampler runtime behavior for `micro_batch_size=5`.
+  - GPU/world-size identity.
+  - Micro-batch, accumulation, and nominal global batch implied by the requested
+    8-GPU size-5 run.
+- Not allowed to change:
+  - Stage1 train data, protocol, model, max image resolution, max steps,
+    save cadence, seed, dtype, attention implementation, D DeepStack state,
+    token-row mode, capture mode, FVT position mode, original-image mask
+    behavior, optimizer/LR schedule, loss weights, readout batch size, and W&B
+    project/mode for the main run.
+- Code commit / worktree:
+  - Branch: `clean/tgvf-clean-project-20260625`.
+  - HEAD: `0720584c879babe065e335cf53d80620ea1b5f50`.
+  - Dirty worktree expected for this run.
+  - Training-impacting dirty files:
+    `revisit_vlm_clean/src/revisit_vlm_clean/training/executor.py`,
+    `revisit_vlm_clean/tests/test_cli.py`.
+  - Pre-ledger dirty diff sha256:
+    `e5018a541dbd9b068e492b007fa88529035199edab68ccdf74bc025aa8ad000d`.
+  - Local verification before launch:
+    `PYTHONPATH=revisit_vlm_clean/src:src pytest -q revisit_vlm_clean/tests/test_cli.py`
+    -> `58 passed`.
+- Stage1 checkpoint:
+  - Input checkpoint: none; Stage1 initializes from the base Qwen3-VL model and
+    clean TGVF module per the existing Stage1 launcher.
+  - Main output target:
+    `outputs/clean_training/qwen3_stage1_ddeepstack_size5_8gpu_20260703_105444/stage1_micro5/clean_training_execution/checkpoint_step_2000.pt`.
+  - Smoke output target:
+    `outputs/clean_training/qwen3_stage1_ddeepstack_size5_8gpu_20260703_105444_smoke/stage1_micro5/clean_training_execution/checkpoint_step_1.pt`.
+- Stage1 processor:
+  - Baseline plan `processor_id`: `null`.
+  - Model id: `Qwen/Qwen3-VL-8B-Thinking`.
+  - Local model cache also present:
+    `/nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking`.
+- Stage2 checkpoint/output:
+  - Not applicable.
+- Train data:
+  - `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend/splits/tgvf_v4_teacher_stage1_protocol_c_focus.train.jsonl`.
+  - Rows: `39998`.
+  - sha256: `c94a38b824b6603e555eed5ef3584c19cc903b76995d49c67ace36b18268443c`.
+- Validation data:
+  - None for this Stage1 training launch.
+- Dataset/sampler identity:
+  - Group size counts:
+    `{1: 11, 2: 138, 3: 1198, 4: 4972, 5: 3193, 6: 44}`.
+  - With the size-5 `min=4,max=5` window:
+    usable samples per sampler epoch `36073`, dropped `3925`, emitted batches
+    `8209`.
+  - Same-image group owner under DDP:
+    `sha1(image_key)%world_size`.
+- Training identity:
+  - Stage: `stage1`.
+  - Protocol: `protocol_c_tool_observation`.
+  - D DeepStack: enabled.
+  - D DeepStack branch layers: `[8,16,24]`.
+  - D DeepStack branch adapters: independent, no vision-tower rerun.
+  - Token-row mode: `row_only`.
+  - Capture mode: `teacher_forced`.
+  - FVT position mode: `native_source_grid`.
+  - Focus action im-end: `true`.
+  - Mask original image after TGVF: `true`.
+  - dtype / attention: `bfloat16` / `sdpa`.
+  - max image resolution: `512`.
+  - max steps / save every: `2000` / `500`.
+  - seed: `20260525`.
+  - loss weights:
+    - gen `1.0`.
+    - visual token manifold `0.0`.
+    - visual token norm `0.1`.
+    - same-image negative `1.0`.
+  - same-image negative mode / margin: `matrix_ce` / `1.0`.
+  - readout batch size: `4`.
+  - optimizer:
+    - AdamW, learning rate `1e-4`.
+    - cosine schedule, warmup steps `100`, min LR ratio `0.1`.
+    - max grad norm `1.0`.
+  - W&B main run:
+    - project `tgvf-clean-qwen3-deepstack`.
+    - mode `online`.
+- Script / command:
+  - Smoke plan command:
+    `PYTHONPATH=revisit_vlm_clean/src:src python -m revisit_vlm_clean.cli.train_stage1 --run-id clean_qwen3_stage1_ddeepstack_size5_8gpu_smoke_20260703_105444 --train-file data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend/splits/tgvf_v4_teacher_stage1_protocol_c_focus.train.jsonl --output-dir outputs/clean_training/qwen3_stage1_ddeepstack_size5_8gpu_20260703_105444_smoke/stage1_micro5 --model-id Qwen/Qwen3-VL-8B-Thinking --protocol protocol_c_tool_observation --max-image-resolution 512 --max-steps 1 --save-every 1 --seed 20260525 --dtype bfloat16 --attn-implementation sdpa --variant tgvf_v2_bidirectional --d-deepstack-enabled --d-deepstack-branch-layers 8,16,24 --token-row-mode row_only --capture-mode teacher_forced --fvt-position-mode native_source_grid --focus-action-im-end --mask-original-image-after-tgvf --learning-rate 1e-4 --lr-scheduler cosine --warmup-steps 100 --min-lr-ratio 0.1 --max-grad-norm 1.0 --loss-gen 1.0 --loss-visual-token-manifold 0.0 --loss-visual-token-norm 0.1 --loss-same-image-negative 1.0 --same-image-negative-margin 1.0 --same-image-negative-mode matrix_ce --readout-batch-size 4 --world-size 8 --micro-batch-size 5 --gradient-accumulation-steps 1 --global-batch 40 --wandb-mode disabled --write-plan`.
+  - Smoke launch:
+    `CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 MASTER_PORT=<TBD> PYTHONPATH=revisit_vlm_clean/src:src torchrun --nproc-per-node 8 -m revisit_vlm_clean.training.stage1_executor --plan outputs/clean_training/qwen3_stage1_ddeepstack_size5_8gpu_20260703_105444_smoke/stage1_micro5/training_plan.json --launch-training`.
+  - Main plan command:
+    `PYTHONPATH=revisit_vlm_clean/src:src python -m revisit_vlm_clean.cli.train_stage1 --run-id clean_qwen3_stage1_ddeepstack_size5_8gpu_20260703_105444 --train-file data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend/splits/tgvf_v4_teacher_stage1_protocol_c_focus.train.jsonl --output-dir outputs/clean_training/qwen3_stage1_ddeepstack_size5_8gpu_20260703_105444/stage1_micro5 --model-id Qwen/Qwen3-VL-8B-Thinking --protocol protocol_c_tool_observation --max-image-resolution 512 --max-steps 2000 --save-every 500 --seed 20260525 --dtype bfloat16 --attn-implementation sdpa --variant tgvf_v2_bidirectional --d-deepstack-enabled --d-deepstack-branch-layers 8,16,24 --token-row-mode row_only --capture-mode teacher_forced --fvt-position-mode native_source_grid --focus-action-im-end --mask-original-image-after-tgvf --learning-rate 1e-4 --lr-scheduler cosine --warmup-steps 100 --min-lr-ratio 0.1 --max-grad-norm 1.0 --loss-gen 1.0 --loss-visual-token-manifold 0.0 --loss-visual-token-norm 0.1 --loss-same-image-negative 1.0 --same-image-negative-margin 1.0 --same-image-negative-mode matrix_ce --readout-batch-size 4 --world-size 8 --micro-batch-size 5 --gradient-accumulation-steps 1 --global-batch 40 --wandb-project tgvf-clean-qwen3-deepstack --wandb-mode online --write-plan`.
+  - Main launch:
+    `CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 MASTER_PORT=<TBD> PYTHONPATH=revisit_vlm_clean/src:src torchrun --nproc-per-node 8 -m revisit_vlm_clean.training.stage1_executor --plan outputs/clean_training/qwen3_stage1_ddeepstack_size5_8gpu_20260703_105444/stage1_micro5/training_plan.json --launch-training`.
+- GPUs:
+  - Planned: `0,1,2,3,4,5,6,7`.
+  - Preflight availability: all 8 GPUs are NVIDIA B200 with `0 MiB` used.
+- tmux:
+  - Smoke: planned `stage1_ddeepstack_size5_smoke_20260703_105444`.
+  - Main: planned `stage1_ddeepstack_size5_8gpu_20260703_105444`.
+- Started:
+  - Smoke: `2026-07-03T10:57:18+09:00`.
+    - tmux: `stage1_ddeepstack_size5_smoke_20260703_105444`.
+    - `MASTER_PORT=44843`.
+    - log:
+      `outputs/clean_training/qwen3_stage1_ddeepstack_size5_8gpu_20260703_105444_smoke/stage1_micro5/logs/train.log`.
+    - Completed successfully before the main launch.
+    - Rank0 final checkpoint:
+      `outputs/clean_training/qwen3_stage1_ddeepstack_size5_8gpu_20260703_105444_smoke/stage1_micro5/clean_training_execution/checkpoint_step_1.pt`.
+    - Checkpoint sha256:
+      `63bc33813e8a261c533b2942fbf325f8df6b43c54025eb245c68bc57e990c057`.
+    - First-batch identity confirmed variable local batch sizes:
+      materialized global sample count `37`; rank local counts
+      `{0:4,1:5,2:5,3:5,4:5,5:4,6:5,7:4}`.
+    - Rank0 optimizer-step progress confirmed:
+      - `sample_count=4`, `nominal_micro_batch_size=5`,
+        `loss_sample_weight=0.8`.
+      - `effective_global_batch_size=40`.
+      - `d_deepstack_features_enabled=true`,
+        `d_deepstack_branch_feature_shapes=[[234,4096],[234,4096],[234,4096]]`.
+      - `same_image_negative_mode=matrix_ce`.
+      - `loss_total=3.078341007232666`, grad norm `4.78125`,
+        peak memory `75.63297510147095` GB.
+  - Main training: `2026-07-03T11:01:07+09:00`.
+    - tmux: `stage1_ddeepstack_size5_8gpu_20260703_105444`.
+    - `MASTER_PORT=51447`.
+    - log:
+      `outputs/clean_training/qwen3_stage1_ddeepstack_size5_8gpu_20260703_105444/stage1_micro5/logs/train.log`.
+    - W&B online confirmed:
+      `https://wandb.ai/mio_nora/tgvf-clean-qwen3-deepstack/runs/kwrbvztw`.
+      The run-local W&B directory was not writable, so W&B is using
+      `/tmp/wandb/run-20260703_110205-kwrbvztw`; online sync is active.
+    - Progress start record confirmed `wandb_enabled=true`,
+      `wandb_mode=online`, `world_size=8`,
+      `gradient_accumulation_steps=1`, and `max_steps=2000`.
+    - First-batch identity confirmed variable local batch sizes:
+      materialized global sample count `37`; rank local counts
+      `{0:4,1:5,2:5,3:5,4:5,5:4,6:5,7:4}`.
+    - Step 1 confirmed:
+      - `global_step=1/2000`, `micro_steps_completed=1`,
+        `effective_global_batch_size=40`.
+      - `sample_count=4`, `nominal_micro_batch_size=5`,
+        `loss_sample_weight=0.8`.
+      - `loss_total=3.1953084468841553`, `loss_gen=1.671875`,
+        `loss_same_image_negative=1.4140625`,
+        `loss_visual_token_norm=1.0937092304229736`.
+      - grad norm `4.59375`, peak memory `75.6335244178772` GB.
+      - Debug confirmed `d_deepstack_features_enabled=true`,
+        `d_deepstack_norm_active=true`,
+        `d_deepstack_branch_feature_shapes=[[234,4096],[234,4096],[234,4096]]`,
+        and `same_image_negative_mode=matrix_ce`.
+    - Step 2/3 also completed:
+      - Step 2: `sample_count=5`, `loss_sample_weight=1.0`,
+        `loss_total=3.9213831424713135`, peak memory
+        `94.04231834411621` GB.
+      - Step 3: `sample_count=5`, `loss_sample_weight=1.0`,
+        `loss_total=4.240140914916992`, peak memory
+        `93.9205846786499` GB.
+    - Last checked while still running:
+      - `2026-07-03T11:03+09:00`, tmux still alive.
+      - `global_step=6/2000`, `loss_total=4.407573699951172`,
+        `sample_count=4`, `loss_sample_weight=0.8`, peak memory
+        `73.9738826751709` GB on rank0 progress.
+      - `nvidia-smi` showed all GPUs active with roughly `118-143` GB used.
+- Finished:
+- Metrics:
+- Analysis:
+- Conclusion:
+- Comparable to baseline:
+  - Comparable as a named Stage1 sampler/batch ablation only. It is not a
+    strict fixed-global-batch rerun of the baseline because the requested
+    8-GPU size-5 identity implies nominal global batch 40 instead of 32.
+- Follow-up:
+  - If the main run finishes, run Stage1 internal diagnostics and decide
+    whether to train a Stage2 branch from this checkpoint.
+
 ### EXP-20260703-005210-stage2-d-deepstack-8gpu
 
 - Status: DONE.

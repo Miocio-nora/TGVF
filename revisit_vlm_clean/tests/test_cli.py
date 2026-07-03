@@ -234,6 +234,8 @@ def test_stage1_same_image_cursor_drops_incomplete_groups_without_duplicate_fill
     batch = cursor.next_batch()
     trace = batch["sample_trace"]
     assert cursor.summary()["same_image_group_count"] == 1
+    assert cursor.summary()["same_image_min_batch_size"] == 4
+    assert cursor.summary()["same_image_max_batch_size"] == 4
     assert [item["image_id"] for item in trace] == ["large"] * 4
     assert len({item["sample_index"] for item in trace}) == 4
 
@@ -256,8 +258,69 @@ def test_stage1_same_image_cursor_uses_legacy_shuffle_not_ordered_tail_drop() ->
 
     trace = cursor.next_batch()["sample_trace"]
     assert cursor.summary()["mode"] == "same_image_legacy_shuffle"
+    assert cursor.summary()["same_image_min_batch_size"] == 4
+    assert cursor.summary()["same_image_max_batch_size"] == 4
     assert len({item["sample_index"] for item in trace}) == 4
     assert 4 in {item["sample_index"] for item in trace}
+
+
+def test_stage1_same_image_cursor_micro_batch5_uses_four_to_five_window() -> None:
+    from collections import Counter
+    from types import SimpleNamespace
+
+    samples = []
+    for image_id, count in {
+        "small": 3,
+        "four": 4,
+        "five": 5,
+        "six": 6,
+        "eight": 8,
+        "nine": 9,
+    }.items():
+        samples.extend(
+            SimpleNamespace(image_id=image_id, image=f"/tmp/{image_id}.jpg")
+            for _ in range(count)
+        )
+    cursor = training_executor._SingleProcessSampleCursor(
+        samples=samples,
+        batch_size=5,
+        stage=training_executor.TrainingStage.STAGE1,
+        dataset_role="train",
+        dataset_path="unit.jsonl",
+        seed=0,
+    )
+
+    first_batch = cursor.next_batch()
+    batches = [first_batch]
+    while len(batches) < len(cursor.same_image_epoch_batches):
+        batches.append(cursor.next_batch())
+    batch_lengths = sorted(len(batch["sample_trace"]) for batch in batches)
+    used_by_image = Counter(
+        item["image_id"] for batch in batches for item in batch["sample_trace"]
+    )
+
+    assert cursor.summary()["same_image_group_count"] == 5
+    assert cursor.summary()["same_image_min_batch_size"] == 4
+    assert cursor.summary()["same_image_max_batch_size"] == 5
+    assert batch_lengths == [4, 4, 4, 4, 5, 5, 5]
+    assert dict(used_by_image) == {
+        "four": 4,
+        "five": 5,
+        "six": 5,
+        "eight": 8,
+        "nine": 9,
+    }
+
+
+def test_micro_batch_sample_weight_uses_actual_sample_count() -> None:
+    assert training_executor._micro_batch_sample_weight(
+        sample_count=4,
+        nominal_micro_batch_size=5,
+    ) == pytest.approx(0.8)
+    assert training_executor._micro_batch_sample_weight(
+        sample_count=5,
+        nominal_micro_batch_size=5,
+    ) == pytest.approx(1.0)
 
 
 def test_stage1_same_image_cursor_assigns_whole_image_groups_to_rank() -> None:

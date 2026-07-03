@@ -1287,6 +1287,19 @@ def _mean(values: list[float]) -> float | None:
     return sum(finite) / len(finite) if finite else None
 
 
+def _micro_batch_sample_weight(
+    *,
+    sample_count: Any,
+    nominal_micro_batch_size: int,
+) -> float:
+    nominal = max(1, int(nominal_micro_batch_size or 1))
+    if isinstance(sample_count, (int, float)):
+        actual = max(1, int(sample_count))
+    else:
+        actual = nominal
+    return float(actual) / float(nominal)
+
+
 def _loss_scalar_fields(result: dict[str, Any]) -> dict[str, float]:
     losses: dict[str, float] = {}
     for key, value in result.items():
@@ -2175,6 +2188,7 @@ def _write_actual_trainer_loop_runtime_audit(
 
     batch = bundle.get("batch") or {}
     accumulation_steps = max(1, int(batch.get("gradient_accumulation_steps") or 1))
+    nominal_micro_batch_size = max(1, int(batch.get("micro_batch_size") or 1))
     optimizer.zero_grad(set_to_none=True)
     micro_losses = []
     backward_micro_steps = 0
@@ -2195,7 +2209,11 @@ def _write_actual_trainer_loop_runtime_audit(
         loss_value = _scalar_float(loss_tensor)
         if loss_value is None or not math.isfinite(loss_value):
             raise ValueError("trainer-loop audit requires finite micro losses")
-        scaled_loss = loss_tensor / float(accumulation_steps)
+        sample_weight = _micro_batch_sample_weight(
+            sample_count=result.get("sample_count"),
+            nominal_micro_batch_size=nominal_micro_batch_size,
+        )
+        scaled_loss = loss_tensor * sample_weight / float(accumulation_steps)
         scaled_loss.backward()
         backward_micro_steps += 1
         micro_losses.append(
@@ -2204,6 +2222,8 @@ def _write_actual_trainer_loop_runtime_audit(
                 "loss_total": loss_value,
                 "scaled_loss_total": _scalar_float(scaled_loss),
                 "sample_count": result.get("sample_count"),
+                "nominal_micro_batch_size": nominal_micro_batch_size,
+                "loss_sample_weight": sample_weight,
             }
         )
 
@@ -2854,6 +2874,7 @@ def _write_single_process_training_runtime(
     if max_steps < 1:
         raise ValueError("single-process training requires training.max_steps >= 1")
     accumulation_steps = max(1, int(batch.get("gradient_accumulation_steps") or 1))
+    nominal_micro_batch_size = max(1, int(batch.get("micro_batch_size") or 1))
     checkpoint_steps = {
         int(step) for step in (cadence_runtime["payload"].get("checkpoint_save_steps") or [])
     }
@@ -2950,7 +2971,11 @@ def _write_single_process_training_runtime(
                     debug_payload = dict(result.get("debug") or {})
                     if debug_payload:
                         micro_debug_logs.append(debug_payload)
-                    scaled_loss = loss_tensor / float(accumulation_steps)
+                    sample_weight = _micro_batch_sample_weight(
+                        sample_count=result.get("sample_count"),
+                        nominal_micro_batch_size=nominal_micro_batch_size,
+                    )
+                    scaled_loss = loss_tensor * sample_weight / float(accumulation_steps)
                     scaled_loss.backward()
                 total_micro_steps += 1
                 micro_losses.append(
@@ -2960,6 +2985,8 @@ def _write_single_process_training_runtime(
                         **loss_scalars,
                         "scaled_loss_total": _scalar_float(scaled_loss),
                         "sample_count": result.get("sample_count"),
+                        "nominal_micro_batch_size": nominal_micro_batch_size,
+                        "loss_sample_weight": sample_weight,
                         "debug_summary": _compact_debug_payload(debug_payload)
                         if debug_payload
                         else None,
@@ -3365,6 +3392,12 @@ class _SingleProcessSampleCursor:
             "mode": self.mode,
             "same_image_group_count": len(self.same_image_groups),
             "same_image_drop_incomplete": self.stage == TrainingStage.STAGE1,
+            "same_image_min_batch_size": self._same_image_min_batch_size()
+            if self.stage == TrainingStage.STAGE1
+            else None,
+            "same_image_max_batch_size": self.batch_size
+            if self.stage == TrainingStage.STAGE1
+            else None,
             "same_image_group_owner": "sha1(image_key)%world_size"
             if self.stage == TrainingStage.STAGE1
             else None,
@@ -3383,6 +3416,31 @@ class _SingleProcessSampleCursor:
     def _indexed_sample(self, index: int) -> tuple[int, Any]:
         return self.indexed_samples[index]
 
+    def _same_image_min_batch_size(self) -> int:
+        if self.stage == TrainingStage.STAGE1 and self.batch_size == 5:
+            return 4
+        return self.batch_size if self.batch_size > 1 else 1
+
+    def _same_image_batch_sizes_for_group(self, group_size: int) -> list[int]:
+        min_size = self._same_image_min_batch_size()
+        max_size = self.batch_size
+        exact_sizes: list[list[int] | None] = [None] * (max(0, group_size) + 1)
+        exact_sizes[0] = []
+        for used in range(1, group_size + 1):
+            for size in range(max_size, min_size - 1, -1):
+                if used < size:
+                    continue
+                prefix = exact_sizes[used - size]
+                if prefix is None:
+                    continue
+                exact_sizes[used] = [*prefix, size]
+                break
+        for used in range(group_size, min_size - 1, -1):
+            sizes = exact_sizes[used]
+            if sizes is not None:
+                return sizes
+        return []
+
     def _same_image_groups(self) -> list[list[tuple[int, Any]]]:
         groups_by_key: dict[str, list[tuple[int, Any]]] = {}
         order: list[str] = []
@@ -3396,7 +3454,7 @@ class _SingleProcessSampleCursor:
                 order.append(key)
                 groups_by_key[key] = []
             groups_by_key[key].append((index, sample))
-        min_size = self.batch_size if self.batch_size > 1 else 1
+        min_size = self._same_image_min_batch_size()
         return [groups_by_key[key] for key in order if len(groups_by_key[key]) >= min_size]
 
     def _refresh_same_image_epoch_batches(self) -> None:
@@ -3406,11 +3464,11 @@ class _SingleProcessSampleCursor:
         batches: list[list[tuple[int, Any]]] = []
         for group in groups:
             rng.shuffle(group)
-            for start in range(0, len(group), self.batch_size):
-                batch = group[start : start + self.batch_size]
-                if len(batch) != self.batch_size:
-                    continue
+            start = 0
+            for take in self._same_image_batch_sizes_for_group(len(group)):
+                batch = group[start : start + take]
                 batches.append(batch)
+                start += take
         if not batches:
             raise RuntimeError("same-image Stage1 cursor produced no complete batches")
         self.same_image_epoch += 1
