@@ -274,3 +274,72 @@ reporting bug after artifact writeout, not a failed diagnostic run.
 | `resolution214` | Stage1 internal query | `outputs/clean_training/qwen3_stage1_ddeepstack_resolution214_4gpu_20260704_141526/stage1_micro4/internal_diagnostics_step2000_20260704_141526/query_sensitivity/query_sensitivity_report.json` |
 | `resolution214` | Stage2 internal readout | `outputs/clean_training/qwen3_stage2_ddeepstack_norm01_from_stage1_ddeepstack_resolution214_8gpu_20260704_141526/stage2_micro4/internal_diagnostics_step1200_20260704_141526/readout/readout_eval_report.json` |
 | `resolution214` | Stage2 internal query | `outputs/clean_training/qwen3_stage2_ddeepstack_norm01_from_stage1_ddeepstack_resolution214_8gpu_20260704_141526/stage2_micro4/internal_diagnostics_step1200_20260704_141526/query_sensitivity/query_sensitivity_report.json` |
+
+## Data Scale Ablation
+
+This ablation keeps the golden D DeepStack and Matrix CE size-4 recipe, but
+changes the training data scale. The `data25k` subset uses exactly `25000`
+Stage2 train rows selected from the clean 50k family with deterministic
+stratified sampling. Stage1 train keeps rows whose `source_uid` matches the
+selected Stage2 `v4_uid` set, yielding `21323` Stage1 focus-train rows. Eval
+and benchmark identity are unchanged.
+
+### Overall Summary
+
+| Branch | Stage2 train rows | Stage1 train rows | Mode | Rows | Acc | Delta vs 50k | Macro acc | Parse | Trigger | Append |
+|---|---:|---:|---|---:|---:|---:|---:|---:|---:|---:|
+| `data25k` | 25,000 | 21,323 | free | 2,511 | 36.27% | -0.78 | 40.59% | 99.64% | 34.21% | 100.00% |
+| `data25k` | 25,000 | 21,323 | softforce | 2,511 | 35.45% | -2.48 | 39.63% | 99.48% | 51.97% | 100.00% |
+| `data50k_golden` | 46,883 | 39,998 | free | 2,511 | 37.04% | anchor | 41.16% | 99.84% | 29.79% | 100.00% |
+| `data50k_golden` | 46,883 | 39,998 | softforce | 2,511 | 37.92% | anchor | 42.33% | 99.48% | 40.98% | 100.00% |
+
+Free mode is fairly robust to the 25k subset, while softforce is more sensitive:
+it triggers more often but loses accuracy versus the 50k golden branch.
+
+### Per-Benchmark Accuracy
+
+Free mode:
+
+| Benchmark | n | data25k | 50k golden | Delta |
+|---|---:|---:|---:|---:|
+| VStar | 191 | 51.83% | 52.36% | -0.52 |
+| HR | 200 | 57.50% | 52.50% | +5.00 |
+| BLINK | 420 | 55.24% | 56.90% | -1.67 |
+| OCRBench-v2 | 600 | 24.27% | 25.02% | -0.75 |
+| MMMU-Pro | 300 | 32.00% | 35.67% | -3.67 |
+| MathVista | 300 | 46.67% | 49.67% | -3.00 |
+| MathVerse | 500 | 16.60% | 16.00% | +0.60 |
+
+Softforce mode:
+
+| Benchmark | n | data25k | 50k golden | Delta |
+|---|---:|---:|---:|---:|
+| VStar | 191 | 48.69% | 50.79% | -2.09 |
+| HR | 200 | 57.00% | 59.50% | -2.50 |
+| BLINK | 420 | 53.57% | 55.48% | -1.90 |
+| OCRBench-v2 | 600 | 23.34% | 24.54% | -1.20 |
+| MMMU-Pro | 300 | 32.33% | 38.00% | -5.67 |
+| MathVista | 300 | 45.67% | 49.00% | -3.33 |
+| MathVerse | 500 | 16.80% | 19.00% | -2.20 |
+
+### Stage1 Internal Diagnostics
+
+| Branch | Mean NLL correct D | Wrong-same beat rate | Query top1 | Query top2 | MRR | Mean diagonal gap |
+|---|---:|---:|---:|---:|---:|---:|
+| `data25k` | 1.2928 | 87.00% | 68.00% | 88.00% | 81.72% | +0.1067 |
+| `data50k_golden` | 1.3334 | 90.50% | 77.00% | 91.50% | 86.92% | n/a |
+
+The lower NLL for `data25k` should not be overread: retrieval and wrong-same
+separation are weaker than the 50k golden anchor.
+
+### Source Artifacts
+
+| Branch | Mode | Summary path |
+|---|---|---|
+| `data25k` | subset manifest | `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_25k_clean_imend_from_50k_seed20260704/subset_manifest.json` |
+| `data25k` | Stage1 internal readout | `outputs/clean_training/qwen3_stage1_ddeepstack_data25k_8gpu_20260704_202756/stage1_micro4/internal_diagnostics_step2000_20260704_202756/readout/readout_eval_report.json` |
+| `data25k` | Stage1 internal query | `outputs/clean_training/qwen3_stage1_ddeepstack_data25k_8gpu_20260704_202756/stage1_micro4/internal_diagnostics_step2000_20260704_202756/query_sensitivity/query_sensitivity_report.json` |
+| `data25k` | free | `outputs/clean_benchmarks/qwen3_stage2_ddeepstack_data25k_coredev2511_dynamic_maxtok512_flash2_ddeepstack_gpu0_1_2_3_4_5_6_7_20260704_202756/tgvf_free/summary.json` |
+| `data25k` | softforce | `outputs/clean_benchmarks/qwen3_stage2_ddeepstack_data25k_coredev2511_dynamic_maxtok512_flash2_ddeepstack_gpu0_1_2_3_4_5_6_7_20260704_202756/tgvf_softforce/summary.json` |
+| `data50k_golden` | free | `outputs/clean_benchmarks/qwen3_stage2_ddeepstack_coredev2511_dynamic_maxtok512_flash2_ddeepstack_gpu1_7_20260703_084300/tgvf_free/summary.json` |
+| `data50k_golden` | softforce | `outputs/clean_benchmarks/qwen3_stage2_ddeepstack_coredev2511_dynamic_maxtok512_flash2_ddeepstack_gpu0_7_20260703_084300/tgvf_softforce/summary.json` |

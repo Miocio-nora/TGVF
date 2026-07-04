@@ -114,7 +114,7 @@ If a mistake is found:
 
 ### ABL-20260704-202756-data25k-ddeepstack-coredev2511
 
-- Status: RUNNING.
+- Status: DONE.
 - Question:
   - Run the `data25k` ablation through the standard clean D DeepStack pipeline:
     Stage1 smoke, Stage1 train, Stage1 internal diagnostics, Stage2 smoke,
@@ -266,15 +266,50 @@ If a mistake is found:
   - `2026-07-04 20:31:35 JST`.
   - Stage1 smoke plan was written and torchrun started.
 - Finished:
-  - Pending.
+  - `2026-07-05 01:15 JST`.
 - Metrics:
-  - Pending.
+  - Stage1 internal diagnostics:
+    - Mean NLL correct D: `1.2928`.
+    - Wrong-same beat rate: `87.00%`.
+    - Query retrieval top1/top2/MRR: `68.00%` / `88.00%` / `81.72%`.
+    - Mean diagonal gap: `+0.1067`.
+  - Stage2 training completed:
+    - Final checkpoint:
+      `outputs/clean_training/qwen3_stage2_ddeepstack_norm01_from_stage1_ddeepstack_data25k_8gpu_20260704_202756/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt`.
+    - Final logged train loss: `0.60645`.
+    - Final validation loss: `1.03906`.
+    - W&B run:
+      `https://wandb.ai/mio_nora/tgvf-clean-qwen3-deepstack/runs/pjfocnew`.
+  - CoreDev-2511 all 2,511 rows:
+    - TGVF free: accuracy `36.27%`, macro accuracy `40.59%`,
+      parse `99.64%`, trigger `34.21%`, append `100.00%`,
+      malformed `0.00%`.
+    - TGVF softforce: accuracy `35.45%`, macro accuracy `39.63%`,
+      parse `99.48%`, trigger `51.97%`, append `100.00%`,
+      malformed `0.00%`.
+  - Delta versus 50k golden:
+    - Free: `-0.78` accuracy points, `-0.57` macro points, trigger `+4.42`
+      points.
+    - Softforce: `-2.48` accuracy points, `-2.70` macro points,
+      trigger `+10.99` points.
 - Analysis:
-  - Pending.
+  - The 25k subset preserves most of the free-mode external benchmark score
+    despite weaker Stage1 retrieval diagnostics. Free mode lands close to the
+    50k golden branch.
+  - Softforce is more sensitive to the smaller data scale: trigger rate rises
+    sharply, but accuracy drops by about `2.5` points overall and `2.7` macro
+    points versus golden.
+  - The Stage1 internal readout NLL is lower than golden, but retrieval
+    top1/top2/MRR and wrong-same separation are lower. This matches the earlier
+    pattern that NLL alone is not enough to judge a healthy TGVF branch.
+  - Detailed benchmark results are recorded in
+    `docs/TGVF_ABLATION_BENCHMARK_RESULTS.md`.
 - Conclusion:
-  - Pending.
+  - `data25k` is a valid completed data-scale ablation. It is not better than
+    the 50k golden branch, but free-mode degradation is modest; softforce
+    degradation is meaningful.
 - Comparable to baseline:
-  - Planned as a named data-scale ablation. The intended comparison changes
+  - Valid as a named data-scale ablation. The intended comparison changes
     train data scale only while holding diagnostics and CoreDev-2511 evaluation
     identity fixed.
 

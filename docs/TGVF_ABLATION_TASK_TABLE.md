@@ -159,7 +159,7 @@ and 100k points are placeholders until those data are generated.
 
 | Branch | Data scale | Data status | Training status | Stage1 internal | Stage2 internal | CoreDev free | CoreDev softforce | Notes |
 |---|---:|---|---|---|---|---:|---:|---|
-| `data25k` | 25k | Generated deterministic subset | Running | Pending | Pending | Pending | Pending | Stage2 train rows `25000`; Stage1 matched focus train rows `21323`; selection seed `data25k_seed20260704` |
+| `data25k` | 25k | Generated deterministic subset | Done | Done | Optional / skipped | 36.27% | 35.45% | Stage2 train rows `25000`; Stage1 matched focus train rows `21323`; free is `-0.78` vs golden, softforce is `-2.48` |
 | `data50k_golden` | 50k | Available | Done | Done | Done | 37.04% | 37.92% | Current golden point; Stage1 train rows are `39998`, Stage2 train rows are `46883` after filtering/splitting |
 | `data75k` | 75k | Not generated | Blocked | Blocked | Blocked | TODO | TODO | Need data generation before training |
 | `data100k` | 100k | Not generated | Blocked | Blocked | Blocked | TODO | TODO | Need data generation before training |
@@ -177,5 +177,4 @@ For the curve, report at minimum:
 | Priority | Task | Why |
 |---:|---|---|
 | P1 | Review Matrix CE size sweep and choose whether to promote size `3`, size `4`, or size `5` as the next training default | Size `5` has best Stage1 internal retrieval, size `3` has best current softforce score, and size `4` remains the golden anchor |
-| P2 | Build `data25k` deterministic subset and run complete pipeline | First data-scale curve point below 50k |
 | P3 | Generate 75k/100k teacher data | Required before upper data-scale curve points can start |
