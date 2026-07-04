@@ -75,13 +75,18 @@ This sweep changes only the Matrix CE same-image grouping/readout size on top
 of the golden D DeepStack setting. All other training and benchmark variables
 should remain fixed.
 
+Detailed per-benchmark results for this sweep are recorded in
+[TGVF_ABLATION_BENCHMARK_RESULTS.md](TGVF_ABLATION_BENCHMARK_RESULTS.md).
+Tables in this section are ordered by size from small to large so the trend is
+easier to read. `size 1` is the Matrix-CE-off control.
+
 | Branch | Matrix CE setting | Status | Stage1 | Stage1 internal | Stage2 | Stage2 internal | CoreDev free | CoreDev softforce | Decision / note |
 |---|---|---|---|---|---|---|---|---|---|
+| `mce_off_size1` | Matrix CE off / size `1` | Done | Done (`QUEUE-20260704-010949-mce-size2-size1-continuation`) | Done | Done | Optional / skipped | 35.84% | 36.17% | No-Matrix-CE control; lower Stage1 retrieval despite lower readout NLL |
+| `mce_size2` | enabled, size `2` | Done | Done (`QUEUE-20260704-010949-mce-size2-size1-continuation`) | Done | Done | Optional / skipped | 35.79% | 35.40% | Pairwise same-image contrast degrades Stage1 retrieval and softforce transfer |
+| `mce_size3` | enabled, size `3` | Done | Done (`EXP-20260703-201944-stage1-d-deepstack-size3-8gpu`) | Done (`DIAG-20260703-224753-stage1-d-deepstack-size3-internal-diagnostics`) | Done (`PIPE-20260703-224753-mce-size3-post-stage1-clean-driver`) | Optional / skipped | 35.72% | 38.42% | Strong Stage1 internal; best softforce score in the current size sweep |
 | `mce_size4_golden` | enabled, size `4` | Done | Done | Done | Done | Done | 37.04% | 37.92% | Current golden experimental baseline |
 | `mce_size5` | enabled, size `5` | Done | Done | Done | Done | Optional / skipped | 36.08% | 36.43% | Best Stage1 internal retrieval, but external benchmark underperforms golden |
-| `mce_size3` | enabled, size `3` | Done | Done (`EXP-20260703-201944-stage1-d-deepstack-size3-8gpu`) | Done (`DIAG-20260703-224753-stage1-d-deepstack-size3-internal-diagnostics`) | Done (`PIPE-20260703-224753-mce-size3-post-stage1-clean-driver`) | Optional / skipped | 35.72% | 38.42% | Strong Stage1 internal; best softforce score in the current size sweep |
-| `mce_size2` | enabled, size `2` | Done | Done (`QUEUE-20260704-010949-mce-size2-size1-continuation`) | Done | Done | Optional / skipped | 35.79% | 35.40% | Pairwise same-image contrast degrades Stage1 retrieval and softforce transfer |
-| `mce_off_size1` | Matrix CE off / size `1` | Done | Done (`QUEUE-20260704-010949-mce-size2-size1-continuation`) | Done | Done | Optional / skipped | 35.84% | 36.17% | No-Matrix-CE control; lower Stage1 retrieval despite lower readout NLL |
 
 ### Stage1 Internal Sweep Summary
 
@@ -91,11 +96,11 @@ the query-sensitivity report.
 
 | Branch | Matrix CE setting | Readout NLL | Query top-1 | Query top-2 | Query MRR | Note |
 |---|---|---:|---:|---:|---:|---|
+| `mce_off_size1` | Matrix CE off / size `1` | 1.119355 | 0.585 | 0.795 | 0.750333 | NLL alone is misleading; retrieval remains weak |
+| `mce_size2` | enabled, size `2` | 1.347021 | 0.555 | 0.800 | 0.738083 | Retrieval drops sharply |
+| `mce_size3` | enabled, size `3` | 1.272090 | 0.790 | 0.920 | 0.881250 | Also above golden on retrieval |
 | `mce_size4_golden` | enabled, size `4` | 1.333408 | 0.770 | 0.915 | 0.869167 | Golden internal anchor |
 | `mce_size5` | enabled, size `5` | 1.301865 | 0.820 | 0.950 | 0.900833 | Best Stage1 retrieval in this sweep |
-| `mce_size3` | enabled, size `3` | 1.272090 | 0.790 | 0.920 | 0.881250 | Also above golden on retrieval |
-| `mce_size2` | enabled, size `2` | 1.347021 | 0.555 | 0.800 | 0.738083 | Retrieval drops sharply |
-| `mce_off_size1` | Matrix CE off / size `1` | 1.119355 | 0.585 | 0.795 | 0.750333 | NLL alone is misleading; retrieval remains weak |
 
 Interpretation: size `5` and size `3` are healthy at the Stage1 internal
 level, while size `2` and Matrix-CE-off lose the retrieval structure that this
@@ -107,18 +112,15 @@ evidence of a better TGVF conditioning branch.
 
 | Branch | Free acc | Free trigger | Softforce acc | Softforce trigger | Rows |
 |---|---:|---:|---:|---:|---:|
+| `mce_off_size1` | 35.84% | 26.48% | 36.17% | 42.73% | 2,511 |
+| `mce_size2` | 35.79% | 30.86% | 35.40% | 44.05% | 2,511 |
+| `mce_size3` | 35.72% | 29.07% | 38.42% | 45.52% | 2,511 |
 | `mce_size4_golden` | 37.04% | 29.79% | 37.92% | 40.98% | 2,511 |
 | `mce_size5` | 36.08% | 27.32% | 36.43% | 40.58% | 2,511 |
-| `mce_size3` | 35.72% | 29.07% | 38.42% | 45.52% | 2,511 |
-| `mce_size2` | 35.79% | 30.86% | 35.40% | 44.05% | 2,511 |
-| `mce_off_size1` | 35.84% | 26.48% | 36.17% | 42.73% | 2,511 |
 
-Existing size-5 result paths:
-
-| Mode | Summary |
-|---|---|
-| `mce_size5` free | `outputs/clean_benchmarks/qwen3_stage2_ddeepstack_size5_coredev2511_dynamic_maxtok512_flash2_ddeepstack_gpu0_7_20260703_172325/tgvf_free/summary.json` |
-| `mce_size5` softforce | `outputs/clean_benchmarks/qwen3_stage2_ddeepstack_size5_coredev2511_dynamic_maxtok512_flash2_ddeepstack_gpu0_7_20260703_172325/tgvf_softforce/summary.json` |
+Per-mode source summary paths for all size-sweep branches are listed in the
+source-artifact table of
+[TGVF_ABLATION_BENCHMARK_RESULTS.md](TGVF_ABLATION_BENCHMARK_RESULTS.md).
 
 ## D DeepStack On/Off Ablation
 
