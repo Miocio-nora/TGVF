@@ -112,6 +112,172 @@ If a mistake is found:
 
 ## Experiment Entries
 
+### ABL-20260704-202756-data25k-ddeepstack-coredev2511
+
+- Status: RUNNING.
+- Question:
+  - Run the `data25k` ablation through the standard clean D DeepStack pipeline:
+    Stage1 smoke, Stage1 train, Stage1 internal diagnostics, Stage2 smoke,
+    Stage2 train, CoreDev-2511 smoke, CoreDev-2511 free, and CoreDev-2511
+    softforce.
+- Ablation table row:
+  - `docs/TGVF_ABLATION_TASK_TABLE.md`, branch `data25k`.
+- Baseline anchors:
+  - Current D DeepStack golden / Matrix CE size-4 Stage1/Stage2:
+    `EXP-20260702-180906-stage1-d-deepstack-wandb-relaunch`,
+    `EXP-20260703-005210-stage2-d-deepstack-8gpu`, and
+    `BENCH-20260703-084300-stage2-d-deepstack-coredev2511`.
+  - Golden benchmark scores: free `37.04%`, softforce `37.92%` on the
+    CoreDev-2511 complete 2,511-row manifest.
+- Intended diff:
+  - Change only the training data scale from the current clean teacher 50k
+    family to a deterministic `data25k` subset.
+  - Define `data25k` as exactly `25000` Stage2 train rows, stratified by
+    `(source_dataset, source_profile, question_type, focus_category,
+    need_focus)` using largest-remainder allocation and deterministic
+    `sha256(seed::v4_uid)` ordering inside each stratum.
+  - Stage1 train keeps rows whose `source_uid` is selected by the Stage2
+    subset. Stage1 and Stage2 eval/test files remain unchanged copies of the
+    50k test files for comparable diagnostics.
+- Allowed changed variables:
+  - Train data subset:
+    - Stage1 train rows `21323`.
+    - Stage2 train rows `25000`.
+  - Stage1 runtime GPU allocation uses GPUs `0,1,2,3,4,5,6,7`; global batch
+    remains `32 = world_size 8 * micro_batch 4 * grad_accum 1`.
+  - Output paths and timestamp suffix `20260704_202756`.
+- Not allowed to change:
+  - Model/processor, protocol, D DeepStack state, Matrix CE size-4 setting,
+    max image resolution `512`, Stage1/Stage2 optimizer/loss recipes, Stage2
+    mask and DeepStack scopes, CoreDev-2511 sample set, scoring backend,
+    post-D continuation mode, FlashAttention-2 benchmark setting, and unified
+    eval `max_tokens=512`.
+- Code / worktree:
+  - Branch: `clean/tgvf-clean-project-20260625`.
+  - HEAD before launch: `c00a736afc8521012b2a53e8453f83391381f8f4`.
+  - Worktree before launch: docs dirty for ledger/task bookkeeping only;
+    generated data and pipeline files are ignored output assets.
+- Model / processor:
+  - Stage1 model id: `Qwen/Qwen3-VL-8B-Thinking`.
+  - Stage2 model and processor:
+    `/nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking`.
+- Data subset manifest:
+  - `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_25k_clean_imend_from_50k_seed20260704/subset_manifest.json`.
+  - Selection seed: `data25k_seed20260704`.
+- Source train / validation data:
+  - Stage1 source train:
+    `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend/splits/tgvf_v4_teacher_stage1_protocol_c_focus.train.jsonl`,
+    rows `39998`, sha256
+    `c94a38b824b6603e555eed5ef3584c19cc903b76995d49c67ace36b18268443c`.
+  - Stage1 source test:
+    `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend/splits/tgvf_v4_teacher_stage1_protocol_c_focus.test.jsonl`,
+    rows `867`, sha256
+    `de61c731eb961825a77df587cd76c00eabfea75b5c6003096f3cc7f1a51dd82d`.
+  - Stage2 source train:
+    `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend_open_answer/splits/tgvf_v4_teacher_stage2_protocol_c.train.jsonl`,
+    rows `46883`, sha256
+    `b5027e72dda7601073ddb8bc9cf1853ec564fa415a3e9cb7d1e684cc7c0d733b`.
+  - Stage2 source val/test:
+    `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend_open_answer/splits/tgvf_v4_teacher_stage2_protocol_c.test.jsonl`,
+    rows `1002`, sha256
+    `3b719e1bd03a09741cc05dac3ed85e423a9b2c29209b07546792a6795cdbbfc5`.
+- Data25k train / validation data:
+  - Stage1 train:
+    `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_25k_clean_imend_from_50k_seed20260704/splits/tgvf_v4_teacher_stage1_protocol_c_focus.train.jsonl`,
+    rows `21323`, sha256
+    `2e0c9df87f5c6128c12d9b051553b35e41f2ff95bd9df94b88952d40ce50ab5f`.
+  - Stage1 eval:
+    `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_25k_clean_imend_from_50k_seed20260704/splits/tgvf_v4_teacher_stage1_protocol_c_focus.test.jsonl`,
+    rows `867`, sha256
+    `de61c731eb961825a77df587cd76c00eabfea75b5c6003096f3cc7f1a51dd82d`.
+  - Stage2 train:
+    `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_25k_clean_imend_from_50k_seed20260704/splits/tgvf_v4_teacher_stage2_protocol_c.train.jsonl`,
+    rows `25000`, sha256
+    `4c422706c563ec322b7756a97d4619992c6304d67e0fd37e626adc90a8ba643c`.
+  - Stage2 val/test:
+    `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_25k_clean_imend_from_50k_seed20260704/splits/tgvf_v4_teacher_stage2_protocol_c.test.jsonl`,
+    rows `1002`, sha256
+    `3b719e1bd03a09741cc05dac3ed85e423a9b2c29209b07546792a6795cdbbfc5`.
+- CoreDev-2511 benchmark source:
+  - Manifest:
+    `revisit_vlm_clean/benchmark_manifests/core_balanced_dev_2511_seed20260625.json`.
+  - File sha256:
+    `3a013b2bcc64316054d28239a3cea3f44211cadbfe19787be3b7f285620fa5c1`.
+  - Internal manifest hash:
+    `a461d9b482b7165b42b9bbb0fbf0ea6aff31fde0a838c13d953f070e770b0579`.
+  - Rows: `2511`.
+  - Benchmark root:
+    `/home/dredvpn009/Flash_Storage/datasets/benchmarks`.
+- Stage1 training identity:
+  - D DeepStack enabled, branch layers `[8,16,24]`.
+  - Matrix CE enabled, same-image readout/group size `4`.
+  - Token row mode `row_only`, capture mode `teacher_forced`,
+    FVT position mode `native_source_grid`.
+  - Losses: generation `1.0`, visual token manifold `0.0`, visual token norm
+    `0.1`, same-image negative `1.0`, margin `1.0`.
+  - Batch identity: `32 = world_size 8 * micro_batch 4 * grad_accum 1`.
+  - Max steps/save every: `2000` / `500`.
+  - W&B: project `tgvf-clean-qwen3-deepstack`, mode `online` for main run.
+- Stage2 training identity:
+  - Loads the Stage1 data25k checkpoint once produced.
+  - D DeepStack enabled; original-image DeepStack scope `through_answer`.
+  - Mask original image after TGVF probability `0.75`, scope
+    `through_answer`.
+  - Fast batched Stage2 enabled, target focus ratio `0.8`.
+  - LoRA rank/alpha/dropout `64/256/0.05`; LoRA target modules
+    `q_proj,k_proj,v_proj,o_proj,gate_proj,up_proj,down_proj`.
+  - Batch identity: `128 = world_size 8 * micro_batch 4 * grad_accum 4`.
+  - Max steps/save/eval every: `1200` / `300` / `300`.
+  - W&B: project `tgvf-clean-qwen3-deepstack`, mode `online` for main run.
+- Evaluation identity:
+  - Modes: `tgvf_free`, `tgvf_softforce`.
+  - Backend: clean native `tgvf_stage2_qwen3_native`.
+  - Attention: FlashAttention-2.
+  - DeepStack original-image scope: `no_block`.
+  - D DeepStack enabled.
+  - Post-D continuation: `kv_cache`.
+  - Unified max tokens: `512`.
+  - Softforce prompt: `Use focus tool.`.
+- Planned outputs:
+  - Driver:
+    `outputs/clean_pipeline/data25k_20260704_202756/run_data25k_pipeline.sh`.
+  - Stage1 checkpoint:
+    `outputs/clean_training/qwen3_stage1_ddeepstack_data25k_8gpu_20260704_202756/stage1_micro4/clean_training_execution/checkpoint_step_2000.pt`.
+  - Stage1 internal diagnostics:
+    `outputs/clean_training/qwen3_stage1_ddeepstack_data25k_8gpu_20260704_202756/stage1_micro4/internal_diagnostics_step2000_20260704_202756`.
+  - Stage2 checkpoint:
+    `outputs/clean_training/qwen3_stage2_ddeepstack_norm01_from_stage1_ddeepstack_data25k_8gpu_20260704_202756/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt`.
+  - TGVF free:
+    `outputs/clean_benchmarks/qwen3_stage2_ddeepstack_data25k_coredev2511_dynamic_maxtok512_flash2_ddeepstack_gpu0_1_2_3_4_5_6_7_20260704_202756/tgvf_free/summary.json`.
+  - TGVF softforce:
+    `outputs/clean_benchmarks/qwen3_stage2_ddeepstack_data25k_coredev2511_dynamic_maxtok512_flash2_ddeepstack_gpu0_1_2_3_4_5_6_7_20260704_202756/tgvf_softforce/summary.json`.
+- Script / command:
+  - Syntax check passed:
+    `bash -n outputs/clean_pipeline/data25k_20260704_202756/run_data25k_pipeline.sh`.
+  - Launch command:
+    `tmux new-session -d -s data25k_20260704_202756 'cd /nvmesv/dredvpn009/projects/r-vlm/revisit_vlm && bash outputs/clean_pipeline/data25k_20260704_202756/run_data25k_pipeline.sh 2>&1 | tee outputs/clean_pipeline/data25k_20260704_202756/data25k_driver.log'`.
+- GPUs:
+  - Preflight: GPUs `0,1,2,3,4,5,6,7` all reported `0 MiB` used.
+- tmux:
+  - `data25k_20260704_202756`.
+  - Log:
+    `outputs/clean_pipeline/data25k_20260704_202756/data25k_driver.log`.
+- Started:
+  - `2026-07-04 20:31:35 JST`.
+  - Stage1 smoke plan was written and torchrun started.
+- Finished:
+  - Pending.
+- Metrics:
+  - Pending.
+- Analysis:
+  - Pending.
+- Conclusion:
+  - Pending.
+- Comparable to baseline:
+  - Planned as a named data-scale ablation. The intended comparison changes
+    train data scale only while holding diagnostics and CoreDev-2511 evaluation
+    identity fixed.
+
 ### ABL-20260704-141526-resolution214-ddeepstack-original-coredev2511
 
 - Status: DONE.
@@ -613,7 +779,7 @@ If a mistake is found:
 
 ### PIPE-20260703-224753-mce-size3-post-stage1-clean-driver
 
-- Status: RUNNING.
+- Status: DONE.
 - Question:
   - Automatically continue the `mce_size3` branch after Stage1 diagnostics
     through Stage2 smoke, Stage2 training, CoreDev-2511 smoke, CoreDev-2511
@@ -707,13 +873,24 @@ If a mistake is found:
     - Last observed progress at ledger update: step `5/1200`,
       loss `3.96875`, peak rank-0 memory about `76.20` GB.
 - Finished:
+  - `2026-07-04 02:41 JST`.
 - Metrics:
+  - Stage2 checkpoint produced:
+    `outputs/clean_training/qwen3_stage2_ddeepstack_norm01_from_stage1_ddeepstack_mce_size3_8gpu_20260703_224753/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt`.
+  - CoreDev-2511 free: accuracy `35.72%`, trigger `29.07%`, parse
+    `99.68%`, append `100.00%`, malformed `0.00%`, rows `2511`.
+  - CoreDev-2511 softforce: accuracy `38.42%`, trigger `45.52%`, parse
+    `99.52%`, append `100.00%`, malformed `0.00%`, rows `2511`.
 - Analysis:
+  - Completed as the Matrix CE size-3 branch. Detailed per-benchmark results
+    are recorded in `docs/TGVF_ABLATION_BENCHMARK_RESULTS.md`.
 - Conclusion:
+  - Size `3` is complete in the size sweep and remains the strongest current
+    softforce branch.
 
 ### QUEUE-20260704-010949-mce-size2-size1-continuation
 
-- Status: RUNNING.
+- Status: DONE.
 - Question:
   - Prevent idle GPU time after the running `mce_size3` pipeline finishes by
     automatically continuing the Matrix CE ablation sweep with `mce_size2`
@@ -822,9 +999,30 @@ If a mistake is found:
     `pipeline_mce_size3_20260703_224753`; no queued branch training has started
     at launch time.
 - Finished:
+  - `2026-07-04 13:34 JST`.
 - Metrics:
+  - `mce_size2` Stage2 checkpoint produced:
+    `outputs/clean_training/qwen3_stage2_ddeepstack_norm01_from_stage1_ddeepstack_mce_size2_8gpu_20260704_010949/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt`.
+  - `mce_size2` CoreDev-2511 free: accuracy `35.79%`, trigger `30.86%`,
+    parse `99.68%`, append `100.00%`, malformed `0.00%`, rows `2511`.
+  - `mce_size2` CoreDev-2511 softforce: accuracy `35.40%`, trigger
+    `44.05%`, parse `99.56%`, append `100.00%`, malformed `0.00%`,
+    rows `2511`.
+  - `mce_off_size1` Stage2 checkpoint produced:
+    `outputs/clean_training/qwen3_stage2_ddeepstack_norm01_from_stage1_ddeepstack_mce_off_size1_8gpu_20260704_010949/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt`.
+  - `mce_off_size1` CoreDev-2511 free: accuracy `35.84%`, trigger
+    `26.48%`, parse `99.64%`, append `100.00%`, malformed `0.00%`,
+    rows `2511`.
+  - `mce_off_size1` CoreDev-2511 softforce: accuracy `36.17%`, trigger
+    `42.73%`, parse `99.12%`, append `100.00%`, malformed `0.00%`,
+    rows `2511`.
 - Analysis:
+  - Queue completed both remaining low-size Matrix CE branches. Detailed
+    per-benchmark results are recorded in
+    `docs/TGVF_ABLATION_BENCHMARK_RESULTS.md`.
 - Conclusion:
+  - Size `2` and Matrix-CE-off are complete. Both underperform the golden
+    branch and the size-3 softforce branch.
 
 ### EXP-20260703-105444-stage1-d-deepstack-size5-8gpu
 

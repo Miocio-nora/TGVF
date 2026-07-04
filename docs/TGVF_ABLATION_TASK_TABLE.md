@@ -159,7 +159,7 @@ and 100k points are placeholders until those data are generated.
 
 | Branch | Data scale | Data status | Training status | Stage1 internal | Stage2 internal | CoreDev free | CoreDev softforce | Notes |
 |---|---:|---|---|---|---|---:|---:|---|
-| `data25k` | 25k | Planned subset | TODO | TODO | TODO | TODO | TODO | Prefer deterministic stratified downsample from the same clean source distribution |
+| `data25k` | 25k | Generated deterministic subset | Running | Pending | Pending | Pending | Pending | Stage2 train rows `25000`; Stage1 matched focus train rows `21323`; selection seed `data25k_seed20260704` |
 | `data50k_golden` | 50k | Available | Done | Done | Done | 37.04% | 37.92% | Current golden point; Stage1 train rows are `39998`, Stage2 train rows are `46883` after filtering/splitting |
 | `data75k` | 75k | Not generated | Blocked | Blocked | Blocked | TODO | TODO | Need data generation before training |
 | `data100k` | 100k | Not generated | Blocked | Blocked | Blocked | TODO | TODO | Need data generation before training |
