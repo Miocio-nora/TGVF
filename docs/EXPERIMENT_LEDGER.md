@@ -114,7 +114,7 @@ If a mistake is found:
 
 ### ABL-20260704-141526-resolution214-ddeepstack-original-coredev2511
 
-- Status: RUNNING.
+- Status: DONE.
 - Question:
   - Run the `resolution214` ablation through the current D DeepStack training
     and CoreDev-2511 benchmark flow, and also rerun the original Qwen3
@@ -250,15 +250,54 @@ If a mistake is found:
   - Driver started original@214 smoke in the background and Stage1
     resolution214 smoke in the foreground.
 - Finished:
-  - Pending.
+  - `2026-07-04 18:55 JST`.
 - Metrics:
-  - Pending.
+  - Stage1 internal diagnostics at resolution `214`:
+    - Mean NLL correct D: `1.3541`.
+    - Wrong-same beat rate: `90.00%`.
+    - Query retrieval top1/top2/MRR: `78.50%` / `94.50%` / `88.21%`.
+    - Mean diagonal gap: `+0.1638`.
+  - Stage2 internal diagnostics at resolution `214`:
+    - Mean NLL correct D: `1.6719`.
+    - Wrong-same beat rate: `35.50%`.
+    - Query retrieval top1/top2/MRR: `22.50%` / `41.00%` / `47.49%`.
+    - Mean diagonal gap: `-0.0283`.
+    - Artifact status file reports `completed`; the CLI then exited with a
+      final stdout JSON serialization error for a Python `set`. Treat this as
+      a reporting bug after artifact writeout, not as failed diagnostics.
+  - CoreDev-2511 all 2,511 rows, resolution `214`:
+    - Original@214: accuracy `23.96%`, macro accuracy `27.44%`,
+      parse `92.59%`, trigger `0.00%`, malformed `0.00%`.
+    - TGVF free@214: accuracy `30.82%`, macro accuracy `33.69%`,
+      parse `99.84%`, trigger `23.06%`, append `100.00%`,
+      malformed `0.00%`.
+    - TGVF softforce@214: accuracy `30.73%`, macro accuracy `33.90%`,
+      parse `99.36%`, trigger `36.48%`, append `100.00%`,
+      malformed `0.00%`.
+  - Delta versus matching resolution-512 anchors:
+    - Original: `-6.89` accuracy points.
+    - TGVF free: `-6.22` accuracy points.
+    - TGVF softforce: `-7.20` accuracy points.
+  - Delta versus original@214:
+    - TGVF free: `+6.86` accuracy points.
+    - TGVF softforce: `+6.76` accuracy points.
 - Analysis:
-  - Pending.
+  - Lowering max image resolution from `512` to `214` produces a large
+    accuracy drop for original and TGVF. The drop is broad enough that
+    resolution `214` should be kept as an efficiency ablation rather than a
+    default setting for the current recipe.
+  - TGVF still substantially improves over original@214, especially on
+    BLINK, MMMU-Pro, MathVista, and MathVerse, so the D DeepStack mechanism is
+    not broken by the lower resolution. The lower-resolution image features
+    simply carry less useful evidence for the CoreDev-2511 mix.
+  - Per-benchmark and per-mode details are recorded in
+    `docs/TGVF_ABLATION_BENCHMARK_RESULTS.md`.
 - Conclusion:
-  - Pending.
+  - Keep resolution `512` as the current golden setting. Resolution `214`
+    is complete as an ablation and is not recommended when accuracy is the
+    priority.
 - Comparable to baseline:
-  - Planned as a named resolution ablation. The D DeepStack branch changes
+  - Valid as a named resolution ablation. The D DeepStack branch changes
     resolution throughout training and eval; original@214 changes resolution
     for evaluation only and should be compared against the original max-answer
     512 baseline with this caveat.

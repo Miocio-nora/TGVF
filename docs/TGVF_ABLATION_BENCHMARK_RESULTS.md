@@ -196,3 +196,81 @@ Branch: `mce_size5`
 | `mce_size4_golden` | softforce | `outputs/clean_benchmarks/qwen3_stage2_ddeepstack_coredev2511_dynamic_maxtok512_flash2_ddeepstack_gpu0_7_20260703_084300/tgvf_softforce/summary.json` |
 | `mce_size5` | free | `outputs/clean_benchmarks/qwen3_stage2_ddeepstack_size5_coredev2511_dynamic_maxtok512_flash2_ddeepstack_gpu0_7_20260703_172325/tgvf_free/summary.json` |
 | `mce_size5` | softforce | `outputs/clean_benchmarks/qwen3_stage2_ddeepstack_size5_coredev2511_dynamic_maxtok512_flash2_ddeepstack_gpu0_7_20260703_172325/tgvf_softforce/summary.json` |
+
+## Resolution Ablation
+
+This ablation changes max image resolution from the golden `512` setting to
+`214`. For TGVF, Stage1 training, Stage1 internal diagnostics, Stage2 training,
+Stage2 internal diagnostics, and CoreDev-2511 evaluation all use resolution
+`214`. Original@214 is an eval rerun at resolution `214`.
+
+### Overall Summary
+
+`Delta vs 512` compares each method against its own `512` anchor.
+
+| Method | Resolution | Rows | Acc | Delta vs 512 | Macro acc | Parse | Trigger | Append |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| Original | 512 | 2,511 | 30.86% | anchor | 36.14% | 94.15% | 0.00% | n/a |
+| Original | 214 | 2,511 | 23.96% | -6.89 | 27.44% | 92.59% | 0.00% | n/a |
+| D DeepStack free | 512 | 2,511 | 37.04% | anchor | 41.16% | 99.84% | 29.79% | 100.00% |
+| D DeepStack free | 214 | 2,511 | 30.82% | -6.22 | 33.69% | 99.84% | 23.06% | 100.00% |
+| D DeepStack softforce | 512 | 2,511 | 37.92% | anchor | 42.33% | 99.48% | 40.98% | 100.00% |
+| D DeepStack softforce | 214 | 2,511 | 30.73% | -7.20 | 33.90% | 99.36% | 36.48% | 100.00% |
+
+Resolution `214` is clearly worse than `512` for this recipe. TGVF still beats
+original@214 by `+6.86` points in free mode and `+6.76` points in softforce
+mode, but the absolute score drop is large enough that `214` should remain an
+efficiency ablation rather than a default setting.
+
+### Per-Benchmark Accuracy At Resolution 214
+
+| Benchmark | n | Original acc | Free acc | Free delta vs original | Softforce acc | Softforce delta vs original |
+|---|---:|---:|---:|---:|---:|---:|
+| VStar | 191 | 39.79% | 39.27% | -0.52 | 37.70% | -2.09 |
+| HR | 200 | 38.00% | 37.50% | -0.50 | 42.50% | +4.50 |
+| BLINK | 420 | 38.10% | 50.48% | +12.38 | 47.38% | +9.29 |
+| OCRBench-v2 | 600 | 17.45% | 19.47% | +2.03 | 18.42% | +0.98 |
+| MMMU-Pro | 300 | 22.67% | 34.33% | +11.67 | 34.33% | +11.67 |
+| MathVista | 300 | 31.67% | 41.00% | +9.33 | 41.33% | +9.67 |
+| MathVerse | 500 | 4.40% | 13.80% | +9.40 | 15.60% | +11.20 |
+
+### Per-Benchmark Parse And Trigger At Resolution 214
+
+Original has no focus trigger. TGVF append success is `100.00%` on every
+benchmark, and malformed focus action rate is `0.00%` on every benchmark.
+
+| Benchmark | Original parse | Free parse | Free trigger | Softforce parse | Softforce trigger |
+|---|---:|---:|---:|---:|---:|
+| VStar | 98.95% | 100.00% | 0.52% | 100.00% | 52.88% |
+| HR | 88.50% | 99.50% | 22.50% | 98.50% | 70.00% |
+| BLINK | 61.67% | 99.29% | 3.81% | 96.90% | 18.81% |
+| OCRBench-v2 | 100.00% | 100.00% | 24.00% | 100.00% | 37.00% |
+| MMMU-Pro | 100.00% | 100.00% | 20.33% | 100.00% | 24.33% |
+| MathVista | 100.00% | 100.00% | 13.67% | 100.00% | 24.33% |
+| MathVerse | 100.00% | 100.00% | 54.20% | 100.00% | 45.60% |
+
+### Internal Diagnostics At Resolution 214
+
+| Stage | Mean NLL correct D | Wrong-same beat rate | Query top1 | Query top2 | MRR | Mean diagonal gap |
+|---|---:|---:|---:|---:|---:|---:|
+| Stage1 | 1.3541 | 90.00% | 78.50% | 94.50% | 88.21% | +0.1638 |
+| Stage2 | 1.6719 | 35.50% | 22.50% | 41.00% | 47.49% | -0.0283 |
+
+Stage2 internal diagnostics completed and wrote all artifacts. The CLI exited
+with a final stdout JSON serialization error for a Python `set`; this is a
+reporting bug after artifact writeout, not a failed diagnostic run.
+
+### Source Artifacts
+
+| Branch | Mode | Summary path |
+|---|---|---|
+| `resolution512_golden` | original | `outputs/clean_benchmarks/qwen3_original_coredev2511_4shard_maxans512_20260628_0216_rescored_bboxfix_20260628_035759/merged/summary.json` |
+| `resolution512_golden` | free | `outputs/clean_benchmarks/qwen3_stage2_ddeepstack_coredev2511_dynamic_maxtok512_flash2_ddeepstack_gpu1_7_20260703_084300/tgvf_free/summary.json` |
+| `resolution512_golden` | softforce | `outputs/clean_benchmarks/qwen3_stage2_ddeepstack_coredev2511_dynamic_maxtok512_flash2_ddeepstack_gpu0_7_20260703_084300/tgvf_softforce/summary.json` |
+| `resolution214` | original | `outputs/clean_benchmarks/qwen3_original_resolution214_coredev2511_dynamic_maxans512_flash2_gpu4_5_6_7_20260704_141526/summary.json` |
+| `resolution214` | free | `outputs/clean_benchmarks/qwen3_stage2_ddeepstack_resolution214_coredev2511_dynamic_maxtok512_flash2_ddeepstack_gpu0_1_2_3_4_5_6_7_20260704_141526/tgvf_free/summary.json` |
+| `resolution214` | softforce | `outputs/clean_benchmarks/qwen3_stage2_ddeepstack_resolution214_coredev2511_dynamic_maxtok512_flash2_ddeepstack_gpu0_1_2_3_4_5_6_7_20260704_141526/tgvf_softforce/summary.json` |
+| `resolution214` | Stage1 internal readout | `outputs/clean_training/qwen3_stage1_ddeepstack_resolution214_4gpu_20260704_141526/stage1_micro4/internal_diagnostics_step2000_20260704_141526/readout/readout_eval_report.json` |
+| `resolution214` | Stage1 internal query | `outputs/clean_training/qwen3_stage1_ddeepstack_resolution214_4gpu_20260704_141526/stage1_micro4/internal_diagnostics_step2000_20260704_141526/query_sensitivity/query_sensitivity_report.json` |
+| `resolution214` | Stage2 internal readout | `outputs/clean_training/qwen3_stage2_ddeepstack_norm01_from_stage1_ddeepstack_resolution214_8gpu_20260704_141526/stage2_micro4/internal_diagnostics_step1200_20260704_141526/readout/readout_eval_report.json` |
+| `resolution214` | Stage2 internal query | `outputs/clean_training/qwen3_stage2_ddeepstack_norm01_from_stage1_ddeepstack_resolution214_8gpu_20260704_141526/stage2_micro4/internal_diagnostics_step1200_20260704_141526/query_sensitivity/query_sensitivity_report.json` |

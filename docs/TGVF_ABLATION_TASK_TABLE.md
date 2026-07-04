@@ -143,10 +143,13 @@ changes the image resolution from the golden `512` to `214`. The intended
 comparison is a complete training/eval pipeline rerun, not only a benchmark-time
 resolution change, unless explicitly marked as an eval-only diagnostic.
 
+Detailed per-benchmark resolution results are recorded in
+[TGVF_ABLATION_BENCHMARK_RESULTS.md](TGVF_ABLATION_BENCHMARK_RESULTS.md).
+
 | Branch | Max image resolution | Status | Stage1 | Stage1 internal | Stage2 | Stage2 internal | CoreDev free | CoreDev softforce | Notes |
 |---|---:|---|---|---|---|---|---|---|---|
 | `resolution512_golden` | 512 | Done | Done | Done | Done | Done | 37.04% | 37.92% | Current golden experimental baseline |
-| `resolution214` | 214 | Planned | TODO | TODO | TODO | TODO | TODO | TODO | Keep D DeepStack on, Matrix CE size `4`, data scale 50k, and CoreDev-2511 eval identity fixed except resolution |
+| `resolution214` | 214 | Done | Done | Done | Done | Done | 30.82% | 30.73% | Original@214 is 23.96%; lowering resolution hurts all three methods versus 512, but TGVF still beats original@214 by about +6.8 points |
 
 ## Data Scale Ablation
 
@@ -174,6 +177,5 @@ For the curve, report at minimum:
 | Priority | Task | Why |
 |---:|---|---|
 | P1 | Review Matrix CE size sweep and choose whether to promote size `3`, size `4`, or size `5` as the next training default | Size `5` has best Stage1 internal retrieval, size `3` has best current softforce score, and size `4` remains the golden anchor |
-| P2 | Run `resolution214` through the complete pipeline | Measures the cost/accuracy tradeoff of lower image resolution under the golden D DeepStack recipe |
 | P2 | Build `data25k` deterministic subset and run complete pipeline | First data-scale curve point below 50k |
 | P3 | Generate 75k/100k teacher data | Required before upper data-scale curve points can start |
