@@ -4,6 +4,8 @@ Date: 2026-07-02
 
 D-DeepStack addendum: 2026-07-03
 
+Size-5 Matrix CE sampler ablation addendum: 2026-07-03
+
 Scope: complete `core_balanced_dev_2511_seed20260625` / CoreDev-2511 manifest, 2,511 samples.
 
 Methods shown:
@@ -15,6 +17,10 @@ Methods shown:
 - `Stage3 Last Soft`: Stage3 last checkpoint, step200, `tgvf_softforce`.
 - `D-DeepStack Stage2 Free`: Stage2 D-DeepStack checkpoint, `tgvf_free`.
 - `D-DeepStack Stage2 Soft`: Stage2 D-DeepStack checkpoint,
+  `tgvf_softforce`.
+- `D-DeepStack Size5 Free`: Stage2 D-DeepStack checkpoint derived from the
+  size-5 Matrix CE sampler ablation, `tgvf_free`.
+- `D-DeepStack Size5 Soft`: same size-5 Matrix CE sampler ablation,
   `tgvf_softforce`.
 
 All TGVF rows use the clean native backend, FlashAttention-2, DeepStack
@@ -62,6 +68,37 @@ CoreDev-2511 overall accuracy by `+6.19` points in free mode and `+7.07`
 points in softforce mode. Excluding VStar, the weighted overall is `35.78%`
 for D-DeepStack free and `36.86%` for D-DeepStack softforce over the remaining
 2,320 rows.
+
+## Size-5 Matrix CE Sampler Ablation
+
+This is a named ablation, not a replacement for the current D-DeepStack Stage2
+default result. The changed variable is the size-5 Matrix CE sampler branch
+used to produce the Stage1 source checkpoint and the derived Stage2
+D-DeepStack checkpoint. The CoreDev-2511 evaluation identity is otherwise held
+fixed: same 2,511-row manifest, same sample-id order, clean native backend,
+FlashAttention-2, DeepStack `no_block`, D-DeepStack enabled, post-D `kv_cache`,
+scoring backend `auto`, max image resolution 512, and unified
+`max_tokens=512`.
+
+| Mode | n | Acc | Delta vs Original | Delta vs prior D-Deep | Macro Avg | Trigger | Parse | Append | Malformed |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| D-DeepStack Size5 Free | 2511 | 36.08% | +5.22 | -0.96 | 40.41% | 27.32% | 99.60% | 100.00% | 0.00% |
+| D-DeepStack Size5 Soft | 2511 | 36.43% | +5.57 | -1.50 | 40.55% | 40.58% | 99.52% | 100.00% | 0.00% |
+
+The size-5 ablation remains above `Original`, but underperforms the prior
+D-DeepStack Stage2 checkpoint on CoreDev-2511 overall accuracy in both modes.
+Macro average also drops versus prior D-DeepStack: `-0.75` points for free and
+`-1.78` points for softforce.
+
+| Benchmark | n | Size5 Free Acc | Delta vs prior D-Deep Free | Size5 Free Trigger | Size5 Soft Acc | Delta vs prior D-Deep Soft | Size5 Soft Trigger |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| VStar | 191 | 49.74% | -2.62 | 7.33% | 48.69% | -2.09 | 62.30% |
+| HR | 200 | 55.00% | +2.50 | 38.00% | 57.50% | -2.00 | 71.00% |
+| BLINK | 420 | 56.19% | -0.71 | 8.33% | 55.71% | +0.24 | 25.48% |
+| OCRBench-v2 | 600 | 24.00% | -1.02 | 22.67% | 24.95% | +0.41 | 38.83% |
+| MMMU-Pro | 300 | 35.67% | +0.00 | 24.33% | 34.33% | -3.67 | 28.33% |
+| MathVista | 300 | 48.67% | -1.00 | 17.33% | 46.67% | -2.33 | 22.33% |
+| MathVerse | 500 | 13.60% | -2.40 | 60.00% | 16.00% | -3.00 | 53.20% |
 
 ## Per-Benchmark Results
 
@@ -113,3 +150,5 @@ validation-set score over 1,901 samples.
 | Stage3 Last Soft | `outputs/clean_benchmarks/qwen3_stage3_step200_coredev2511_dynamic_maxtok512_flash2_gpu0_7_20260702_023637/tgvf_softforce/summary.json` |
 | D-DeepStack Stage2 Free | `outputs/clean_benchmarks/qwen3_stage2_ddeepstack_coredev2511_dynamic_maxtok512_flash2_ddeepstack_gpu1_7_20260703_084300/tgvf_free/summary.json` |
 | D-DeepStack Stage2 Soft | `outputs/clean_benchmarks/qwen3_stage2_ddeepstack_coredev2511_dynamic_maxtok512_flash2_ddeepstack_gpu0_7_20260703_084300/tgvf_softforce/summary.json` |
+| D-DeepStack Size5 Free | `outputs/clean_benchmarks/qwen3_stage2_ddeepstack_size5_coredev2511_dynamic_maxtok512_flash2_ddeepstack_gpu0_7_20260703_172325/tgvf_free/summary.json` |
+| D-DeepStack Size5 Soft | `outputs/clean_benchmarks/qwen3_stage2_ddeepstack_size5_coredev2511_dynamic_maxtok512_flash2_ddeepstack_gpu0_7_20260703_172325/tgvf_softforce/summary.json` |

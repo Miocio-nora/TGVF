@@ -53,6 +53,10 @@
 
 权威 run 的 batch identity 是 `32 = 4 * 4 * 2`。默认 launcher 仍可在单进程下解析为 `32 = 1 * 1 * 32`；换设备数时必须保持 global batch，除非这是明确命名的 ablation。
 
+将 Matrix CE same-image grouping 从权威的 readout batch size `4` 改成
+size-5 sampler 行为，必须作为明确命名的 ablation 记录；它不是默认
+Stage1 recipe 的静默替换。
+
 Stage1 train data:
 
 ```text
@@ -147,6 +151,10 @@ Stage2 deepstack.d_features_enabled: false
 - Stage2 fast batched path 在最终 focus/action 序列里同时注入 original image DeepStack 和 D DeepStack，并按 token position 合并排序。
 - Matrix CE 交换 negative D 时，D merge tokens 和 D DeepStack branch features 一起交换。
 - Norm loss 在该 ablation 中同时监督主 D norm 和 D DeepStack branch norm；CE 与 matrix CE 目标不变。
+
+2026-07-03 的 `D DeepStack + size-5 Matrix CE sampler` 分支是进一步的
+sampler ablation：它复用 D DeepStack 机制，但不能替代上面的 D DeepStack
+主线结果或默认 Stage1/Stage2 recipe。
 
 Stage1 入口：
 
