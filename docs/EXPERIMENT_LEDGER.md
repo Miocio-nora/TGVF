@@ -112,6 +112,157 @@ If a mistake is found:
 
 ## Experiment Entries
 
+### ABL-20260704-141526-resolution214-ddeepstack-original-coredev2511
+
+- Status: RUNNING.
+- Question:
+  - Run the `resolution214` ablation through the current D DeepStack training
+    and CoreDev-2511 benchmark flow, and also rerun the original Qwen3
+    CoreDev-2511 benchmark at max image resolution `214`.
+- Ablation table row:
+  - `docs/TGVF_ABLATION_TASK_TABLE.md`, branch `resolution214`.
+- Baseline anchors:
+  - Current D DeepStack golden / Matrix CE size-4 Stage1/Stage2:
+    `EXP-20260702-180906-stage1-d-deepstack-wandb-relaunch`,
+    `EXP-20260703-005210-stage2-d-deepstack-8gpu`, and
+    `BENCH-20260703-084300-stage2-d-deepstack-coredev2511`.
+  - Current valid original CoreDev-2511 baseline:
+    `outputs/clean_benchmarks/qwen3_original_coredev2511_4shard_maxans512_20260628_0216_rescored_bboxfix_20260628_035759/merged`.
+- Intended diff:
+  - Change max image resolution from `512` to `214`.
+  - For D DeepStack: apply `max_image_resolution=214` to Stage1 training,
+    Stage1 internal diagnostics, Stage2 training, and CoreDev-2511 TGVF eval.
+  - For original: rerun the original Qwen3 CoreDev-2511 benchmark with
+    `max_image_resolution=214`.
+- Allowed changed variables:
+  - Max image resolution: `214`.
+  - Runtime GPU allocation:
+    - original@214 uses GPUs `4,5,6,7`;
+    - Stage1 uses GPUs `0,1,2,3`;
+    - Stage2 and TGVF CoreDev-2511 eval use GPUs `0,1,2,3,4,5,6,7`.
+  - Original benchmark uses dynamic queue scheduling and FlashAttention-2
+    instead of the old fixed-shard SDPA original baseline; this is recorded as
+    a resolution-214 original rerun, not a pure single-variable rerun of the
+    2026-06-28 original baseline launcher.
+- Not allowed to change:
+  - Model/processor, train data, CoreDev-2511 sample set, manifest hash,
+    scoring backend, D DeepStack state, Matrix CE size-4 setting, Stage2
+    recipe, Stage2 mask/deepstack scopes, post-D continuation mode, and token
+    budget policy.
+- Code / worktree:
+  - Branch: `clean/tgvf-clean-project-20260625`.
+  - HEAD before launch: `5a4017ee5aa6591d7321c450535075facfe1dac6`.
+  - Worktree before launch: dirty only because this ledger entry is being
+    added; generated ignored output driver exists under
+    `outputs/clean_pipeline/resolution214_20260704_141526`.
+- Model / processor:
+  - Stage1 model id: `Qwen/Qwen3-VL-8B-Thinking`.
+  - Stage2/original local model and processor:
+    `/nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking`.
+- Train / validation data:
+  - Stage1 train:
+    `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend/splits/tgvf_v4_teacher_stage1_protocol_c_focus.train.jsonl`.
+    Rows `39998`, sha256
+    `c94a38b824b6603e555eed5ef3584c19cc903b76995d49c67ace36b18268443c`.
+  - Stage1 eval:
+    `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend/splits/tgvf_v4_teacher_stage1_protocol_c_focus.test.jsonl`.
+  - Stage2 train:
+    `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend_open_answer/splits/tgvf_v4_teacher_stage2_protocol_c.train.jsonl`.
+    Rows `46883`, sha256
+    `b5027e72dda7601073ddb8bc9cf1853ec564fa415a3e9cb7d1e684cc7c0d733b`.
+  - Stage2 val/eval:
+    `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend_open_answer/splits/tgvf_v4_teacher_stage2_protocol_c.test.jsonl`.
+    Rows `1002`, sha256
+    `3b719e1bd03a09741cc05dac3ed85e423a9b2c29209b07546792a6795cdbbfc5`.
+- CoreDev-2511 benchmark source:
+  - Manifest:
+    `revisit_vlm_clean/benchmark_manifests/core_balanced_dev_2511_seed20260625.json`.
+  - File sha256:
+    `3a013b2bcc64316054d28239a3cea3f44211cadbfe19787be3b7f285620fa5c1`.
+  - Internal manifest hash:
+    `a461d9b482b7165b42b9bbb0fbf0ea6aff31fde0a838c13d953f070e770b0579`.
+  - Rows: `2511`.
+  - Benchmark root:
+    `/home/dredvpn009/Flash_Storage/datasets/benchmarks`.
+- Stage1 training identity:
+  - D DeepStack enabled, branch layers `[8,16,24]`.
+  - Matrix CE enabled, same-image readout/group size `4`.
+  - Token row mode `row_only`, capture mode `teacher_forced`,
+    FVT position mode `native_source_grid`.
+  - Losses: generation `1.0`, visual token manifold `0.0`, visual token norm
+    `0.1`, same-image negative `1.0`, margin `1.0`.
+  - Batch identity: `32 = world_size 4 * micro_batch 4 * grad_accum 2`.
+  - Max steps/save every: `2000` / `500`.
+  - W&B: project `tgvf-clean-qwen3-deepstack`, mode `online` for main run.
+- Stage2 training identity:
+  - Loads the Stage1 resolution-214 checkpoint once produced.
+  - D DeepStack enabled; original-image DeepStack scope `through_answer`.
+  - Mask original image after TGVF probability `0.75`, scope
+    `through_answer`.
+  - Fast batched Stage2 enabled, target focus ratio `0.8`.
+  - LoRA rank/alpha/dropout `64/256/0.05`; LoRA target modules
+    `q_proj,k_proj,v_proj,o_proj,gate_proj,up_proj,down_proj`.
+  - Batch identity: `128 = world_size 8 * micro_batch 4 * grad_accum 4`.
+  - Max steps/save/eval every: `1200` / `300` / `300`.
+  - W&B: project `tgvf-clean-qwen3-deepstack`, mode `online` for main run.
+- Evaluation identity:
+  - Original@214:
+    - Mode/backend: `original` / `qwen3_original`.
+    - Attention: FlashAttention-2.
+    - Max answer tokens: `512`.
+    - DeepStack: off/noop.
+  - TGVF@214:
+    - Modes: `tgvf_free`, `tgvf_softforce`.
+    - Backend: clean native `tgvf_stage2_qwen3_native`.
+    - Attention: FlashAttention-2.
+    - DeepStack original-image scope: `no_block`.
+    - D DeepStack enabled.
+    - Post-D continuation: `kv_cache`.
+    - Unified max tokens: `512`.
+    - Softforce prompt: `Use focus tool.`.
+- Planned outputs:
+  - Driver:
+    `outputs/clean_pipeline/resolution214_20260704_141526/run_resolution214_queue.sh`.
+  - Original@214:
+    `outputs/clean_benchmarks/qwen3_original_resolution214_coredev2511_dynamic_maxans512_flash2_gpu4_5_6_7_20260704_141526/summary.json`.
+  - Stage1 checkpoint:
+    `outputs/clean_training/qwen3_stage1_ddeepstack_resolution214_4gpu_20260704_141526/stage1_micro4/clean_training_execution/checkpoint_step_2000.pt`.
+  - Stage1 internal diagnostics:
+    `outputs/clean_training/qwen3_stage1_ddeepstack_resolution214_4gpu_20260704_141526/stage1_micro4/internal_diagnostics_step2000_20260704_141526`.
+  - Stage2 checkpoint:
+    `outputs/clean_training/qwen3_stage2_ddeepstack_norm01_from_stage1_ddeepstack_resolution214_8gpu_20260704_141526/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt`.
+  - TGVF free:
+    `outputs/clean_benchmarks/qwen3_stage2_ddeepstack_resolution214_coredev2511_dynamic_maxtok512_flash2_ddeepstack_gpu0_1_2_3_4_5_6_7_20260704_141526/tgvf_free/summary.json`.
+  - TGVF softforce:
+    `outputs/clean_benchmarks/qwen3_stage2_ddeepstack_resolution214_coredev2511_dynamic_maxtok512_flash2_ddeepstack_gpu0_1_2_3_4_5_6_7_20260704_141526/tgvf_softforce/summary.json`.
+- Script / command:
+  - Syntax check passed:
+    `bash -n outputs/clean_pipeline/resolution214_20260704_141526/run_resolution214_queue.sh`.
+  - Launch command:
+    `tmux new-session -d -s resolution214_20260704_141526 'cd /nvmesv/dredvpn009/projects/r-vlm/revisit_vlm && bash outputs/clean_pipeline/resolution214_20260704_141526/run_resolution214_queue.sh'`.
+- GPUs:
+  - Preflight: GPUs `0,1,2,3,4,5,6,7` all reported `0 MiB` used.
+  - Runtime layout described above.
+- tmux:
+  - `resolution214_20260704_141526`.
+- Started:
+  - `2026-07-04 14:19:44 JST`.
+  - Driver started original@214 smoke in the background and Stage1
+    resolution214 smoke in the foreground.
+- Finished:
+  - Pending.
+- Metrics:
+  - Pending.
+- Analysis:
+  - Pending.
+- Conclusion:
+  - Pending.
+- Comparable to baseline:
+  - Planned as a named resolution ablation. The D DeepStack branch changes
+    resolution throughout training and eval; original@214 changes resolution
+    for evaluation only and should be compared against the original max-answer
+    512 baseline with this caveat.
+
 ### EXP-20260703-201944-stage1-d-deepstack-size3-8gpu
 
 - Status: DONE.
