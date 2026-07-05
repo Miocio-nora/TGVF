@@ -96,6 +96,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--stage1-eval-jsonl", default=STAGE1_EVAL_JSONL)
     parser.add_argument("--stage2-train-file", default=STAGE2_TRAIN_JSONL)
     parser.add_argument("--stage2-val-file", default=STAGE2_VAL_JSONL)
+    parser.add_argument("--stage1-step-label", default="2000")
+    parser.add_argument("--stage2-max-steps", type=int, default=1200)
+    parser.add_argument("--stage2-save-every", type=int, default=300)
+    parser.add_argument("--stage2-eval-every", type=int, default=300)
+    parser.add_argument("--stage2-global-batch", type=int, default=128)
+    parser.add_argument("--stage2-micro-batch-size", type=int, default=4)
+    parser.add_argument("--stage2-gradient-accumulation-steps", type=int, default=4)
+    parser.add_argument("--stage2-warmup-steps", type=int, default=100)
     parser.add_argument("--benchmark-root", default=BENCHMARK_ROOT)
     parser.add_argument("--wandb-project", default="tgvf-clean-qwen3-deepstack")
     parser.add_argument("--batch-size", type=int, default=1, help="Dynamic benchmark generation batch size.")
@@ -122,7 +130,7 @@ def main() -> int:
     driver_output_dir = Path(
         args.driver_output_dir or f"outputs/clean_pipeline/{args.branch_id}_{timestamp}"
     )
-    stage1_diag_dir = stage1_output_dir / f"internal_diagnostics_step2000_{timestamp}"
+    stage1_diag_dir = stage1_output_dir / f"internal_diagnostics_step{args.stage1_step_label}_{timestamp}"
     stage2_dir = Path(
         "outputs/clean_training"
     ) / f"qwen3_stage2_ddeepstack_norm01_from_stage1_ddeepstack_{args.branch_id}_8gpu_{timestamp}" / "stage2_micro4"
@@ -135,7 +143,9 @@ def main() -> int:
     bench_smoke_dir = Path(
         "outputs/clean_benchmarks"
     ) / f"qwen3_stage2_ddeepstack_{args.branch_id}_coredev2511_dynamic_smoke_free_maxtok512_flash2_ddeepstack_gpu{diagnostic_gpu}_{timestamp}"
-    stage2_checkpoint = stage2_dir / "clean_training_execution" / "checkpoint_step_1200.pt"
+    stage2_checkpoint = (
+        stage2_dir / "clean_training_execution" / f"checkpoint_step_{args.stage2_max_steps}.pt"
+    )
 
     plan = {
         "branch_id": args.branch_id,
@@ -389,11 +399,11 @@ def _stage2_plan_cmd(
         "--max-seq-len",
         "2048",
         "--max-steps",
-        "1" if smoke else "1200",
+        "1" if smoke else str(args.stage2_max_steps),
         "--save-every",
-        "1" if smoke else "300",
+        "1" if smoke else str(args.stage2_save_every),
         "--eval-every",
-        "1" if smoke else "300",
+        "1" if smoke else str(args.stage2_eval_every),
         "--seed",
         "20260525",
         "--dtype",
@@ -438,7 +448,7 @@ def _stage2_plan_cmd(
         "--warmup-ratio",
         "0.03",
         "--warmup-steps",
-        "100",
+        str(args.stage2_warmup_steps),
         "--min-lr-ratio",
         "0.1",
         "--adam-beta1",
@@ -454,13 +464,13 @@ def _stage2_plan_cmd(
         "--loss-visual-token-manifold",
         "0.0",
         "--global-batch",
-        "128",
+        str(args.stage2_global_batch),
         "--world-size",
         str(world_size),
         "--micro-batch-size",
-        "4",
+        str(args.stage2_micro_batch_size),
         "--gradient-accumulation-steps",
-        "4",
+        str(args.stage2_gradient_accumulation_steps),
         "--wandb-mode",
         "disabled" if smoke else "online",
         *(["--wandb-project", args.wandb_project] if not smoke else []),

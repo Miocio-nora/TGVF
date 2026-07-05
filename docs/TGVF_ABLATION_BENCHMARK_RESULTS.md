@@ -1,6 +1,6 @@
 # TGVF Ablation Benchmark Results
 
-Date: 2026-07-04
+Date: 2026-07-05
 
 This file records detailed external benchmark results for TGVF ablations. The
 main ablation board should keep only compact overall summaries and link here
@@ -196,6 +196,66 @@ Branch: `mce_size5`
 | `mce_size4_golden` | softforce | `outputs/clean_benchmarks/qwen3_stage2_ddeepstack_coredev2511_dynamic_maxtok512_flash2_ddeepstack_gpu0_7_20260703_084300/tgvf_softforce/summary.json` |
 | `mce_size5` | free | `outputs/clean_benchmarks/qwen3_stage2_ddeepstack_size5_coredev2511_dynamic_maxtok512_flash2_ddeepstack_gpu0_7_20260703_172325/tgvf_free/summary.json` |
 | `mce_size5` | softforce | `outputs/clean_benchmarks/qwen3_stage2_ddeepstack_size5_coredev2511_dynamic_maxtok512_flash2_ddeepstack_gpu0_7_20260703_172325/tgvf_softforce/summary.json` |
+
+## Global Batch Ablation
+
+This branch reuses the completed `bs2x` Stage1 checkpoint trained with global
+batch `64 / 1000` steps, but restores the golden Stage2 schedule
+`128 / 1200`. It isolates whether the earlier `bs2x_gbs64_256_same_samples`
+regression came mainly from the larger Stage2 global batch. CoreDev-2511
+evaluation identity is unchanged from the shared setting above.
+
+Branch: `bs2x_stage1_stage2_gbs128_normal`
+
+### Overall Summary
+
+| Mode | Rows | Acc | Delta vs golden | Macro acc | Macro delta vs golden | Parse | Trigger | Append | Malformed |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| free | 2,511 | 35.29% | -1.75 | 39.70% | -1.46 | 99.52% | 29.91% | 100.00% | 0.00% |
+| softforce | 2,511 | 36.61% | -1.31 | 40.63% | -1.70 | 99.32% | 45.08% | 100.00% | 0.00% |
+
+Restoring the normal Stage2 batch schedule improves over the large-Stage2-batch
+`bs2x_gbs64_256_same_samples` branch, but it still does not recover the current
+golden external benchmark score. The stronger `bs2x` Stage1 internal retrieval
+therefore does not directly translate to better CoreDev-2511 accuracy.
+
+### Per-Benchmark Accuracy
+
+Free mode:
+
+| Benchmark | n | Acc | Golden acc | Delta vs golden | Trigger | Parse |
+|---|---:|---:|---:|---:|---:|---:|
+| VStar | 191 | 51.31% | 52.36% | -1.05 | 10.99% | 100.00% |
+| HR | 200 | 53.50% | 52.50% | +1.00 | 42.50% | 98.00% |
+| BLINK | 420 | 55.24% | 56.90% | -1.67 | 10.71% | 98.57% |
+| OCRBench-v2 | 600 | 24.03% | 25.02% | -0.99 | 22.67% | 99.67% |
+| MMMU-Pro | 300 | 34.67% | 35.67% | -1.00 | 31.33% | 100.00% |
+| MathVista | 300 | 47.33% | 49.67% | -2.33 | 18.33% | 100.00% |
+| MathVerse | 500 | 11.80% | 16.00% | -4.20 | 63.00% | 100.00% |
+
+Softforce mode:
+
+| Benchmark | n | Acc | Golden acc | Delta vs golden | Trigger | Parse |
+|---|---:|---:|---:|---:|---:|---:|
+| VStar | 191 | 49.21% | 50.79% | -1.57 | 71.73% | 100.00% |
+| HR | 200 | 57.50% | 59.50% | -2.00 | 76.50% | 99.50% |
+| BLINK | 420 | 54.05% | 55.48% | -1.43 | 31.19% | 96.19% |
+| OCRBench-v2 | 600 | 25.72% | 24.54% | +1.18 | 39.67% | 100.00% |
+| MMMU-Pro | 300 | 33.00% | 38.00% | -5.00 | 33.67% | 100.00% |
+| MathVista | 300 | 47.33% | 49.00% | -1.67 | 26.33% | 100.00% |
+| MathVerse | 500 | 17.60% | 19.00% | -1.40 | 58.60% | 100.00% |
+
+Append success is `100.00%`, focus-valid equals trigger rate, and malformed
+focus action rate is `0.00%` for every benchmark in both modes.
+
+### Source Artifacts
+
+| Branch | Mode | Summary path |
+|---|---|---|
+| `bs2x_stage1_stage2_gbs128_normal` | Stage1 checkpoint | `outputs/clean_training/qwen3_stage1_ddeepstack_bs2x_gbs64_same_samples_8gpu_20260705_045433/stage1_micro4/clean_training_execution/checkpoint_step_1000.pt` |
+| `bs2x_stage1_stage2_gbs128_normal` | Stage2 checkpoint | `outputs/clean_training/qwen3_stage2_ddeepstack_norm01_from_stage1_ddeepstack_bs2x_stage1_stage2_gbs128_normal_8gpu_20260705_103502/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt` |
+| `bs2x_stage1_stage2_gbs128_normal` | free | `outputs/clean_benchmarks/qwen3_stage2_ddeepstack_bs2x_stage1_stage2_gbs128_normal_coredev2511_dynamic_maxtok512_flash2_ddeepstack_gpu0_1_2_3_4_5_6_7_20260705_103502/tgvf_free/summary.json` |
+| `bs2x_stage1_stage2_gbs128_normal` | softforce | `outputs/clean_benchmarks/qwen3_stage2_ddeepstack_bs2x_stage1_stage2_gbs128_normal_coredev2511_dynamic_maxtok512_flash2_ddeepstack_gpu0_1_2_3_4_5_6_7_20260705_103502/tgvf_softforce/summary.json` |
 
 ## Resolution Ablation
 

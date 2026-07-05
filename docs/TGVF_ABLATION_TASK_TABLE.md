@@ -1,6 +1,6 @@
 # TGVF Ablation Task Table
 
-Date: 2026-07-04
+Date: 2026-07-05
 
 This document is the working ablation board for the current clean TGVF line.
 It records the intended task pipeline and which branches are already complete.
@@ -149,6 +149,7 @@ Detailed per-benchmark resolution results are recorded in
 | Branch | Max image resolution | Status | Stage1 | Stage1 internal | Stage2 | Stage2 internal | CoreDev free | CoreDev softforce | Notes |
 |---|---:|---|---|---|---|---|---|---|---|
 | `resolution512_golden` | 512 | Done | Done | Done | Done | Done | 37.04% | 37.92% | Current golden experimental baseline |
+| `resolution1024` | 1024 | Failed at Stage1 smoke | OOM before train | Not run | Not run | Not run | N/A | N/A | Golden micro-batch-4 Stage1 recipe does not fit at 1024 resolution on the available 180GB-class GPUs |
 | `resolution214` | 214 | Done | Done | Done | Done | Done | 30.82% | 30.73% | Original@214 is 23.96%; lowering resolution hurts all three methods versus 512, but TGVF still beats original@214 by about +6.8 points |
 
 ## Data Scale Ablation
@@ -171,6 +172,24 @@ For the curve, report at minimum:
 - CoreDev-2511 free/softforce overall and macro accuracy.
 - Trigger, parse, append, malformed rates.
 - Training cost: wall time, GPU count, global batch, optimizer steps.
+
+## Global Batch Ablation
+
+This ablation keeps the golden D DeepStack, Matrix CE size-4, 50k data, and
+512-resolution recipe fixed, but changes the effective global batch. The first
+branch uses the same sample-slot budget as golden by halving optimizer steps
+when doubling global batch. Micro-batch size stays `4` so Matrix CE group size
+does not change.
+
+| Branch | Stage1 batch / steps | Stage2 batch / steps | Sample budget | Status | Stage1 internal | CoreDev free | CoreDev softforce | Notes |
+|---|---|---|---|---|---|---:|---:|---|
+| `gbs32_128_golden` | `32 / 2000` | `128 / 1200` | Anchor | Done | Done | 37.04% | 37.92% | Current golden experimental baseline |
+| `bs2x_gbs64_256_same_samples` | `64 / 1000` | `256 / 600` | Same as golden | Done | Top1 82.5%, top2 97.5%, readout NLL 1.2766 | 35.13% | 36.09% | Worse than golden despite stronger Stage1 internal; trigger rises to 39.43% free / 58.18% softforce |
+| `bs2x_stage1_stage2_gbs128_normal` | `64 / 1000` | `128 / 1200` | Same as golden for Stage2 | Done | Same Stage1 as bs2x: top1 82.5%, top2 97.5%, readout NLL 1.2766 | 35.29% | 36.61% | Better than the bs2x large-Stage2-batch branch, but still below golden by `-1.75` free / `-1.31` softforce overall points |
+
+Detailed per-benchmark results for `bs2x_stage1_stage2_gbs128_normal` are
+recorded in
+[TGVF_ABLATION_BENCHMARK_RESULTS.md](TGVF_ABLATION_BENCHMARK_RESULTS.md).
 
 ## Immediate Queue
 

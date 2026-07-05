@@ -112,6 +112,754 @@ If a mistake is found:
 
 ## Experiment Entries
 
+### ABL-20260705-225035-resolution1024-readout1-flash2-stage1-smoke
+
+- Status: FAILED_FLASH2_READOUT_ASSERT.
+- Question:
+  - Can Stage1 FlashAttention-2 make the current golden D DeepStack Stage1
+    recipe at max image resolution `1024` pass a 1-step smoke when paired with
+    `readout_batch_size=1`?
+- Baseline anchors:
+  - Failed unchanged-queue feasibility result:
+    `ABL-20260705-135011-resolution1024-golden-stage1-stage2`.
+  - Failed readout-only smoke:
+    `ABL-20260705-185625-resolution1024-readout1-stage1-smoke`.
+  - Failed allocator smoke:
+    `ABL-20260705-190311-resolution1024-readout1-expandable-stage1-smoke`.
+- Intended diff:
+  - Change Stage1 attention implementation from `sdpa` to
+    `flash_attention_2`.
+  - Keep Stage1 `readout_batch_size=1`.
+  - Do not use `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`.
+  - Keep Stage1 micro-batch `4`, Matrix CE same-image group size `4`,
+    world size `4`, gradient accumulation `2`, global batch `32`,
+    max image resolution `1024`, D DeepStack enabled, and all optimizer/loss
+    settings unchanged.
+  - This is a diagnostic smoke only: `max_steps=1`, W&B disabled, no Stage2,
+    no internal diagnostics, and no external benchmark.
+- Code / worktree:
+  - Branch: `clean/tgvf-clean-project-20260625`.
+  - HEAD before launch: `9bbee464e708c045089fdf5fa562228b6b88baa5`.
+  - Worktree before launch: dirty by current experiment docs and
+    `scripts/run_clean_ddeepstack_ablation_pipeline.py`.
+- Environment:
+  - `flash_attn` import: found.
+  - `flash_attn_2_cuda` import: found.
+- Data / model:
+  - Stage1 train:
+    `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend/splits/tgvf_v4_teacher_stage1_protocol_c_focus.train.jsonl`,
+    rows `39998`, sha256
+    `c94a38b824b6603e555eed5ef3584c19cc903b76995d49c67ace36b18268443c`.
+  - Stage1 model id: `Qwen/Qwen3-VL-8B-Thinking`.
+- Stage1 identity:
+  - D DeepStack enabled, branch layers `[8,16,24]`.
+  - Matrix CE enabled, same-image group size `4`.
+  - Token row mode `row_only`, capture mode `teacher_forced`,
+    FVT position mode `native_source_grid`.
+  - Batch identity: `32 = world_size 4 * micro_batch 4 * grad_accum 2`.
+  - Readout batch size: `1`.
+  - Attention implementation: `flash_attention_2`.
+- Planned output:
+  - `outputs/clean_training/qwen3_stage1_ddeepstack_resolution1024_readout1_flash2_4gpu_20260705_225035_smoke/stage1_micro4_readout1/clean_training_execution/checkpoint_step_1.pt`.
+- Commands:
+  - Plan:
+    `PYTHONPATH=revisit_vlm_clean/src:src python -m revisit_vlm_clean.cli.train_stage1 --run-id clean_qwen3_stage1_ddeepstack_resolution1024_readout1_flash2_4gpu_smoke_20260705_225035 --train-file data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend/splits/tgvf_v4_teacher_stage1_protocol_c_focus.train.jsonl --output-dir outputs/clean_training/qwen3_stage1_ddeepstack_resolution1024_readout1_flash2_4gpu_20260705_225035_smoke/stage1_micro4_readout1 --model-id Qwen/Qwen3-VL-8B-Thinking --protocol protocol_c_tool_observation --max-image-resolution 1024 --max-steps 1 --save-every 1 --seed 20260525 --dtype bfloat16 --attn-implementation flash_attention_2 --variant tgvf_v2_bidirectional --d-deepstack-enabled --d-deepstack-branch-layers 8,16,24 --token-row-mode row_only --capture-mode teacher_forced --fvt-position-mode native_source_grid --focus-action-im-end --mask-original-image-after-tgvf --learning-rate 1e-4 --lr-scheduler cosine --warmup-steps 100 --min-lr-ratio 0.1 --max-grad-norm 1.0 --loss-gen 1.0 --loss-visual-token-manifold 0.0 --loss-visual-token-norm 0.1 --loss-same-image-negative 1.0 --same-image-negative-margin 1.0 --same-image-negative-mode matrix_ce --readout-batch-size 1 --world-size 4 --micro-batch-size 4 --gradient-accumulation-steps 2 --global-batch 32 --wandb-mode disabled --write-plan`.
+  - Launch:
+    `CUDA_VISIBLE_DEVICES=0,1,2,3 torchrun --nproc-per-node 4 -m revisit_vlm_clean.training.stage1_executor --plan outputs/clean_training/qwen3_stage1_ddeepstack_resolution1024_readout1_flash2_4gpu_20260705_225035_smoke/stage1_micro4_readout1/training_plan.json --launch-training`.
+- GPUs:
+  - Planned GPUs: `0,1,2,3`.
+  - Preflight: all GPUs `0-7` reported `0 MiB` used.
+- Started:
+  - `2026-07-05 22:51:26 JST`.
+- Finished:
+  - `2026-07-05 22:52:48 JST`.
+- Metrics:
+  - No checkpoint was produced:
+    `outputs/clean_training/qwen3_stage1_ddeepstack_resolution1024_readout1_flash2_4gpu_20260705_225035_smoke/stage1_micro4_readout1/clean_training_execution/checkpoint_step_1.pt`
+    is missing.
+  - Failure log:
+    `outputs/clean_training/qwen3_stage1_ddeepstack_resolution1024_readout1_flash2_4gpu_20260705_225035_smoke/stage1_micro4_readout1/logs/train.log`.
+  - The run entered Stage1 training:
+    `[clean-train] start stage=stage1 ... max_steps=1 accum=2`.
+  - Failure signature:
+    - CUDA device-side assert from
+      `vectorized_gather_kernel index out of bounds`.
+    - Trace reaches Qwen3 self-attention with Transformers
+      `flash_attention_forward` and `flash_attn_varlen_func`.
+    - Representative error:
+      `torch.AcceleratorError: CUDA error: device-side assert triggered`.
+    - No successful checkpoint and no usable step metric was produced.
+  - GPUs were released after torchrun exited; post-run `nvidia-smi` showed
+    GPUs `0-7` at `0 MiB` used.
+- Conclusion:
+  - Stage1 `flash_attention_2` is not currently a drop-in replacement for the
+    Stage1 readout path. The failure happens inside FlashAttention varlen
+    self-attention, before we can assess whether flash2 would solve the 1024
+    OOM.
+  - This points to a compatibility issue between the current Stage1 readout
+    inputs/mask/deepstack shape contract and Qwen3 FlashAttention-2 varlen
+    unpadding, not a normal memory-capacity failure.
+  - Next options are either to debug/adapt the Stage1 readout mask/input path
+    for FlashAttention-2, or to test Stage1 gradient checkpointing as the
+    lower-risk memory-saving route.
+
+### ABL-20260705-190311-resolution1024-readout1-expandable-stage1-smoke
+
+- Status: FAILED_AT_STAGE1_SMOKE.
+- Question:
+  - Can the current golden D DeepStack Stage1 recipe at max image resolution
+    `1024` pass a 1-step smoke with `readout_batch_size=1` plus
+    `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`?
+- Baseline anchors:
+  - Failed unchanged-queue feasibility result:
+    `ABL-20260705-135011-resolution1024-golden-stage1-stage2`.
+  - Failed readout-only smoke:
+    `ABL-20260705-185625-resolution1024-readout1-stage1-smoke`.
+- Intended diff:
+  - Keep Stage1 `readout_batch_size=1` from the previous diagnostic smoke.
+  - Add only allocator setting:
+    `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`.
+  - Keep Stage1 micro-batch `4`, Matrix CE same-image group size `4`,
+    world size `4`, gradient accumulation `2`, global batch `32`,
+    max image resolution `1024`, D DeepStack enabled, and all optimizer/loss
+    settings unchanged.
+  - This is a diagnostic smoke only: `max_steps=1`, W&B disabled, no Stage2,
+    no internal diagnostics, and no external benchmark.
+- Code / worktree:
+  - Branch: `clean/tgvf-clean-project-20260625`.
+  - HEAD before launch: `9bbee464e708c045089fdf5fa562228b6b88baa5`.
+  - Worktree before launch: dirty by current experiment docs and
+    `scripts/run_clean_ddeepstack_ablation_pipeline.py`.
+- Data / model:
+  - Stage1 train:
+    `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend/splits/tgvf_v4_teacher_stage1_protocol_c_focus.train.jsonl`,
+    rows `39998`, sha256
+    `c94a38b824b6603e555eed5ef3584c19cc903b76995d49c67ace36b18268443c`.
+  - Stage1 model id: `Qwen/Qwen3-VL-8B-Thinking`.
+- Stage1 identity:
+  - D DeepStack enabled, branch layers `[8,16,24]`.
+  - Matrix CE enabled, same-image group size `4`.
+  - Token row mode `row_only`, capture mode `teacher_forced`,
+    FVT position mode `native_source_grid`.
+  - Batch identity: `32 = world_size 4 * micro_batch 4 * grad_accum 2`.
+  - Readout batch size: `1`.
+  - Allocator config: `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`.
+- Planned output:
+  - `outputs/clean_training/qwen3_stage1_ddeepstack_resolution1024_readout1_expandable_4gpu_20260705_190311_smoke/stage1_micro4_readout1/clean_training_execution/checkpoint_step_1.pt`.
+- Commands:
+  - Plan:
+    `PYTHONPATH=revisit_vlm_clean/src:src python -m revisit_vlm_clean.cli.train_stage1 --run-id clean_qwen3_stage1_ddeepstack_resolution1024_readout1_expandable_4gpu_smoke_20260705_190311 --train-file data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend/splits/tgvf_v4_teacher_stage1_protocol_c_focus.train.jsonl --output-dir outputs/clean_training/qwen3_stage1_ddeepstack_resolution1024_readout1_expandable_4gpu_20260705_190311_smoke/stage1_micro4_readout1 --model-id Qwen/Qwen3-VL-8B-Thinking --protocol protocol_c_tool_observation --max-image-resolution 1024 --max-steps 1 --save-every 1 --seed 20260525 --dtype bfloat16 --attn-implementation sdpa --variant tgvf_v2_bidirectional --d-deepstack-enabled --d-deepstack-branch-layers 8,16,24 --token-row-mode row_only --capture-mode teacher_forced --fvt-position-mode native_source_grid --focus-action-im-end --mask-original-image-after-tgvf --learning-rate 1e-4 --lr-scheduler cosine --warmup-steps 100 --min-lr-ratio 0.1 --max-grad-norm 1.0 --loss-gen 1.0 --loss-visual-token-manifold 0.0 --loss-visual-token-norm 0.1 --loss-same-image-negative 1.0 --same-image-negative-margin 1.0 --same-image-negative-mode matrix_ce --readout-batch-size 1 --world-size 4 --micro-batch-size 4 --gradient-accumulation-steps 2 --global-batch 32 --wandb-mode disabled --write-plan`.
+  - Launch:
+    `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True CUDA_VISIBLE_DEVICES=0,1,2,3 torchrun --nproc-per-node 4 -m revisit_vlm_clean.training.stage1_executor --plan outputs/clean_training/qwen3_stage1_ddeepstack_resolution1024_readout1_expandable_4gpu_20260705_190311_smoke/stage1_micro4_readout1/training_plan.json --launch-training`.
+- GPUs:
+  - Planned GPUs: `0,1,2,3`.
+  - Preflight: all GPUs `0-7` reported `0 MiB` used.
+- Started:
+  - `2026-07-05 19:04:13 JST`.
+- Finished:
+  - `2026-07-05 19:16:33 JST`.
+- Metrics:
+  - No checkpoint was produced:
+    `outputs/clean_training/qwen3_stage1_ddeepstack_resolution1024_readout1_expandable_4gpu_20260705_190311_smoke/stage1_micro4_readout1/clean_training_execution/checkpoint_step_1.pt`
+    is missing.
+  - Failure log:
+    `outputs/clean_training/qwen3_stage1_ddeepstack_resolution1024_readout1_expandable_4gpu_20260705_190311_smoke/stage1_micro4_readout1/logs/train.log`.
+  - Failure details:
+    - Rank 0 and rank 1 hit NCCL watchdog timeout on
+      `ALLREDUCE`, `NumelIn=72055808`, timeout `600000 ms`.
+    - Rank 3 later reported CUDA OOM during Qwen3 decoder MLP `silu`,
+      attempted allocation `50.00 MiB`.
+    - Rank 3 memory at OOM: GPU total `178.36 GiB`, free `26.12 MiB`,
+      process memory `178.32 GiB`, PyTorch allocated `176.19 GiB`,
+      reserved but unallocated `279.87 MiB`.
+  - GPUs were released after torchrun exited; post-run `nvidia-smi` showed
+    GPUs `0-7` at `0 MiB` used.
+- Conclusion:
+  - `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` did not make the
+    `resolution=1024`, `readout_batch_size=1`, Stage1 micro-batch-4 /
+    Matrix CE size-4 smoke usable.
+  - It delayed the immediate OOM, but the run exceeded the NCCL allreduce
+    timeout and still OOMed on rank 3 before producing a checkpoint.
+  - The next practical non-accuracy-changing direction is Stage1 gradient
+    checkpointing or FlashAttention-2 for Stage1, not allocator-only tuning.
+
+### ABL-20260705-185625-resolution1024-readout1-stage1-smoke
+
+- Status: FAILED_AT_STAGE1_SMOKE.
+- Question:
+  - Can the current golden D DeepStack Stage1 recipe at max image resolution
+    `1024` pass a 1-step smoke if only Stage1 `readout_batch_size` is reduced
+    from `4` to `1`?
+- Baseline anchor:
+  - Failed unchanged-queue feasibility result:
+    `ABL-20260705-135011-resolution1024-golden-stage1-stage2`.
+  - Golden D DeepStack / Matrix CE size-4 Stage1:
+    `EXP-20260702-180906-stage1-d-deepstack-wandb-relaunch`.
+- Intended diff:
+  - Change Stage1 readout chunk size from `4` to `1`.
+  - Keep Stage1 micro-batch `4`, Matrix CE same-image group size `4`,
+    world size `4`, gradient accumulation `2`, global batch `32`,
+    max image resolution `1024`, D DeepStack enabled, and all optimizer/loss
+    settings unchanged.
+  - This is a diagnostic smoke only: `max_steps=1`, W&B disabled, no Stage2,
+    no internal diagnostics, and no external benchmark.
+- Code / worktree:
+  - Branch: `clean/tgvf-clean-project-20260625`.
+  - HEAD before launch: `9bbee464e708c045089fdf5fa562228b6b88baa5`.
+  - Worktree before launch: dirty by current experiment docs and
+    `scripts/run_clean_ddeepstack_ablation_pipeline.py`.
+- Data / model:
+  - Stage1 train:
+    `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend/splits/tgvf_v4_teacher_stage1_protocol_c_focus.train.jsonl`,
+    rows `39998`, sha256
+    `c94a38b824b6603e555eed5ef3584c19cc903b76995d49c67ace36b18268443c`.
+  - Stage1 model id: `Qwen/Qwen3-VL-8B-Thinking`.
+- Stage1 identity:
+  - D DeepStack enabled, branch layers `[8,16,24]`.
+  - Matrix CE enabled, same-image group size `4`.
+  - Token row mode `row_only`, capture mode `teacher_forced`,
+    FVT position mode `native_source_grid`.
+  - Batch identity: `32 = world_size 4 * micro_batch 4 * grad_accum 2`.
+  - Readout batch size: `1`.
+- Planned output:
+  - `outputs/clean_training/qwen3_stage1_ddeepstack_resolution1024_readout1_4gpu_20260705_185625_smoke/stage1_micro4_readout1/clean_training_execution/checkpoint_step_1.pt`.
+- Commands:
+  - Plan:
+    `PYTHONPATH=revisit_vlm_clean/src:src python -m revisit_vlm_clean.cli.train_stage1 --run-id clean_qwen3_stage1_ddeepstack_resolution1024_readout1_4gpu_smoke_20260705_185625 --train-file data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend/splits/tgvf_v4_teacher_stage1_protocol_c_focus.train.jsonl --output-dir outputs/clean_training/qwen3_stage1_ddeepstack_resolution1024_readout1_4gpu_20260705_185625_smoke/stage1_micro4_readout1 --model-id Qwen/Qwen3-VL-8B-Thinking --protocol protocol_c_tool_observation --max-image-resolution 1024 --max-steps 1 --save-every 1 --seed 20260525 --dtype bfloat16 --attn-implementation sdpa --variant tgvf_v2_bidirectional --d-deepstack-enabled --d-deepstack-branch-layers 8,16,24 --token-row-mode row_only --capture-mode teacher_forced --fvt-position-mode native_source_grid --focus-action-im-end --mask-original-image-after-tgvf --learning-rate 1e-4 --lr-scheduler cosine --warmup-steps 100 --min-lr-ratio 0.1 --max-grad-norm 1.0 --loss-gen 1.0 --loss-visual-token-manifold 0.0 --loss-visual-token-norm 0.1 --loss-same-image-negative 1.0 --same-image-negative-margin 1.0 --same-image-negative-mode matrix_ce --readout-batch-size 1 --world-size 4 --micro-batch-size 4 --gradient-accumulation-steps 2 --global-batch 32 --wandb-mode disabled --write-plan`.
+  - Launch:
+    `CUDA_VISIBLE_DEVICES=0,1,2,3 torchrun --nproc-per-node 4 -m revisit_vlm_clean.training.stage1_executor --plan outputs/clean_training/qwen3_stage1_ddeepstack_resolution1024_readout1_4gpu_20260705_185625_smoke/stage1_micro4_readout1/training_plan.json --launch-training`.
+- GPUs:
+  - Planned GPUs: `0,1,2,3`.
+  - Preflight: all GPUs `0-7` reported `0 MiB` used.
+- Started:
+  - `2026-07-05 18:57:19 JST`.
+- Finished:
+  - `2026-07-05 18:58:37 JST`.
+- Metrics:
+  - No checkpoint was produced:
+    `outputs/clean_training/qwen3_stage1_ddeepstack_resolution1024_readout1_4gpu_20260705_185625_smoke/stage1_micro4_readout1/clean_training_execution/checkpoint_step_1.pt`
+    is missing.
+  - Failure log:
+    `outputs/clean_training/qwen3_stage1_ddeepstack_resolution1024_readout1_4gpu_20260705_185625_smoke/stage1_micro4_readout1/logs/train.log`.
+  - Failure point: rank 2 OOM during Stage1 readout in Qwen3 decoder MLP
+    `down_proj` / `F.linear`, after entering
+    `[clean-train] start stage=stage1`.
+  - Reported GPU memory: GPU 2 total `178.36 GiB`, free `48.12 MiB`,
+    process memory `178.30 GiB`, PyTorch allocated `174.24 GiB`, PyTorch
+    reserved but unallocated `2.27 GiB`; attempted allocation `48.00 MiB`.
+- Conclusion:
+  - Reducing Stage1 readout chunk size from `4` to `1` reduces pressure but is
+    still insufficient by itself for max image resolution `1024` with the
+    golden Stage1 micro-batch-4 / Matrix CE size-4 recipe.
+  - Compared with the unchanged `readout_batch_size=4` smoke, the failed
+    allocation dropped from `190 MiB` to `48 MiB`, so the next least-invasive
+    tests should target allocator fragmentation or runtime memory savings
+    without changing Matrix CE size: `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`,
+    FlashAttention-2 for Stage1 if supported, or Stage1 gradient checkpointing.
+
+### ABL-20260705-135011-resolution1024-golden-stage1-stage2
+
+- Status: FAILED_AT_STAGE1_SMOKE.
+- Question:
+  - After `ABL-20260705-103502-bs2x-stage1-stage2-gbs128-normal` finishes,
+    test the current golden D DeepStack Stage1/Stage2 recipe at max image
+    resolution `1024`.
+  - This run intentionally targets the TGVF training/evaluation path only:
+    Stage1 smoke, Stage1 train, Stage1 internal diagnostics, Stage2 smoke,
+    Stage2 train, CoreDev-2511 smoke, CoreDev-2511 free, and CoreDev-2511
+    softforce.
+- Ablation table row:
+  - `docs/TGVF_ABLATION_TASK_TABLE.md`, branch `resolution1024`.
+- Baseline anchors:
+  - Current D DeepStack golden / Matrix CE size-4 Stage1/Stage2:
+    `EXP-20260702-180906-stage1-d-deepstack-wandb-relaunch`,
+    `EXP-20260703-005210-stage2-d-deepstack-8gpu`, and
+    `BENCH-20260703-084300-stage2-d-deepstack-coredev2511`.
+  - Resolution-214 reference:
+    `ABL-20260704-141526-resolution214-ddeepstack-original-coredev2511`.
+- Intended diff:
+  - Change max image resolution from golden `512` to `1024`.
+  - Apply `max_image_resolution=1024` consistently to Stage1 training,
+    Stage1 internal diagnostics, Stage2 training, and CoreDev-2511 TGVF eval.
+  - Do not run original@1024 in this queued run.
+- Allowed changed variables:
+  - Max image resolution: `1024`.
+  - Output paths and timestamp suffix `20260705_135011`.
+  - Runtime sequencing: a watcher waits for the currently running normal-Stage2
+    benchmark to finish before launching this queue.
+- Not allowed to change:
+  - Model/processor, train data, validation data, CoreDev-2511 sample set,
+    manifest hash, scoring backend, D DeepStack state, Matrix CE size-4
+    setting, Stage1/Stage2 optimizer/loss recipes, Stage2 mask/deepstack
+    scopes, post-D continuation mode, FlashAttention-2 benchmark setting, and
+    unified eval `max_tokens=512`.
+- Code / worktree:
+  - Branch: `clean/tgvf-clean-project-20260625`.
+  - HEAD before queue: `9bbee464e708c045089fdf5fa562228b6b88baa5`.
+  - Worktree before queue: dirty by current experiment docs, generated
+    pipeline files under `outputs/clean_pipeline`, and the existing
+    backward-compatible pipeline option extension in
+    `scripts/run_clean_ddeepstack_ablation_pipeline.py`.
+- Model / processor:
+  - Stage1 model id: `Qwen/Qwen3-VL-8B-Thinking`.
+  - Stage2 model and processor:
+    `/nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking`.
+- Train / validation data:
+  - Stage1 train:
+    `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend/splits/tgvf_v4_teacher_stage1_protocol_c_focus.train.jsonl`,
+    rows `39998`, sha256
+    `c94a38b824b6603e555eed5ef3584c19cc903b76995d49c67ace36b18268443c`.
+  - Stage1 eval:
+    `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend/splits/tgvf_v4_teacher_stage1_protocol_c_focus.test.jsonl`,
+    rows `867`, sha256
+    `de61c731eb961825a77df587cd76c00eabfea75b5c6003096f3cc7f1a51dd82d`.
+  - Stage2 train:
+    `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend_open_answer/splits/tgvf_v4_teacher_stage2_protocol_c.train.jsonl`,
+    rows `46883`, sha256
+    `b5027e72dda7601073ddb8bc9cf1853ec564fa415a3e9cb7d1e684cc7c0d733b`.
+  - Stage2 val/test:
+    `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend_open_answer/splits/tgvf_v4_teacher_stage2_protocol_c.test.jsonl`,
+    rows `1002`, sha256
+    `3b719e1bd03a09741cc05dac3ed85e423a9b2c29209b07546792a6795cdbbfc5`.
+- CoreDev-2511 benchmark source:
+  - Manifest:
+    `revisit_vlm_clean/benchmark_manifests/core_balanced_dev_2511_seed20260625.json`.
+  - File sha256:
+    `3a013b2bcc64316054d28239a3cea3f44211cadbfe19787be3b7f285620fa5c1`.
+  - Internal manifest hash:
+    `a461d9b482b7165b42b9bbb0fbf0ea6aff31fde0a838c13d953f070e770b0579`.
+  - Rows: `2511`.
+  - Golden sample-id hash:
+    `eefcb804abf78e76ce24a345ccaf5347e1deb3bcce9c007b030eefabba41d427`.
+  - Benchmark root:
+    `/home/dredvpn009/Flash_Storage/datasets/benchmarks`.
+- Stage1 training identity:
+  - D DeepStack enabled, branch layers `[8,16,24]`.
+  - Matrix CE enabled, same-image readout/group size `4`.
+  - Token row mode `row_only`, capture mode `teacher_forced`,
+    FVT position mode `native_source_grid`.
+  - Losses: generation `1.0`, visual token manifold `0.0`, visual token norm
+    `0.1`, same-image negative `1.0`, margin `1.0`.
+  - Batch identity: `32 = world_size 4 * micro_batch 4 * grad_accum 2`.
+  - Max steps/save/warmup: `2000` / `500` / `100`.
+  - W&B: project `tgvf-clean-qwen3-deepstack`, mode `online` for main run.
+- Stage2 training identity:
+  - Loads the Stage1 resolution-1024 checkpoint once produced.
+  - D DeepStack enabled; original-image DeepStack scope `through_answer`.
+  - Mask original image after TGVF probability `0.75`, scope
+    `through_answer`.
+  - Fast batched Stage2 enabled, target focus ratio `0.8`.
+  - LoRA rank/alpha/dropout `64/256/0.05`; LoRA target modules
+    `q_proj,k_proj,v_proj,o_proj,gate_proj,up_proj,down_proj`.
+  - Batch identity: `128 = world_size 8 * micro_batch 4 * grad_accum 4`.
+  - Max steps/save/eval/warmup: `1200` / `300` / `300` / `100`.
+  - W&B: project `tgvf-clean-qwen3-deepstack`, mode `online` for main run.
+- Evaluation identity:
+  - Modes: `tgvf_free`, `tgvf_softforce`.
+  - Backend: clean native `tgvf_stage2_qwen3_native`.
+  - Attention: FlashAttention-2.
+  - DeepStack original-image scope: `no_block`.
+  - D DeepStack enabled.
+  - Post-D continuation: `kv_cache`.
+  - Unified max tokens: `512`.
+  - Softforce prompt: `Use focus tool.`.
+- Planned outputs:
+  - Watcher:
+    `outputs/clean_pipeline/resolution1024_20260705_135011/watch_after_bs2x_normal_then_run_resolution1024.sh`.
+  - Driver:
+    `outputs/clean_pipeline/resolution1024_20260705_135011/run_resolution1024_queue.sh`.
+  - Stage1 checkpoint:
+    `outputs/clean_training/qwen3_stage1_ddeepstack_resolution1024_4gpu_20260705_135011/stage1_micro4/clean_training_execution/checkpoint_step_2000.pt`.
+  - Stage1 internal diagnostics:
+    `outputs/clean_training/qwen3_stage1_ddeepstack_resolution1024_4gpu_20260705_135011/stage1_micro4/internal_diagnostics_step2000_20260705_135011`.
+  - Stage2 checkpoint:
+    `outputs/clean_training/qwen3_stage2_ddeepstack_norm01_from_stage1_ddeepstack_resolution1024_8gpu_20260705_135011/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt`.
+  - TGVF free:
+    `outputs/clean_benchmarks/qwen3_stage2_ddeepstack_resolution1024_coredev2511_dynamic_maxtok512_flash2_ddeepstack_gpu0_1_2_3_4_5_6_7_20260705_135011/tgvf_free/summary.json`.
+  - TGVF softforce:
+    `outputs/clean_benchmarks/qwen3_stage2_ddeepstack_resolution1024_coredev2511_dynamic_maxtok512_flash2_ddeepstack_gpu0_1_2_3_4_5_6_7_20260705_135011/tgvf_softforce/summary.json`.
+- Script / command:
+  - Syntax checks passed:
+    `bash -n outputs/clean_pipeline/resolution1024_20260705_135011/watch_after_bs2x_normal_then_run_resolution1024.sh`
+    and
+    `bash -n outputs/clean_pipeline/resolution1024_20260705_135011/run_resolution1024_queue.sh`.
+  - Planned watcher launch:
+    `tmux new-session -d -s watch_res1024_after_bs2x_20260705_135011 'cd /nvmesv/dredvpn009/projects/r-vlm/revisit_vlm && bash outputs/clean_pipeline/resolution1024_20260705_135011/watch_after_bs2x_normal_then_run_resolution1024.sh 2>&1 | tee outputs/clean_pipeline/resolution1024_20260705_135011/watcher.log'`.
+- GPUs:
+  - Watcher waits for the current 8-GPU benchmark to finish.
+  - Stage1 uses GPUs `0,1,2,3`.
+  - Stage2 and TGVF CoreDev-2511 eval use GPUs `0,1,2,3,4,5,6,7`.
+- tmux:
+  - Watcher session: `watch_res1024_after_bs2x_20260705_135011`.
+  - Watcher log:
+    `outputs/clean_pipeline/resolution1024_20260705_135011/watcher.log`.
+- Started:
+  - Watcher started at `2026-07-05 13:53:19 JST`.
+- Finished:
+  - `2026-07-05 14:22:32 JST`.
+- Metrics:
+  - No Stage1/Stage2/benchmark metrics were produced.
+  - Stage1 smoke failed before checkpoint creation:
+    `outputs/clean_training/qwen3_stage1_ddeepstack_resolution1024_4gpu_20260705_135011/stage1_micro4/clean_training_execution/checkpoint_step_2000.pt`
+    does not exist.
+  - Failure log:
+    `outputs/clean_pipeline/resolution1024_20260705_135011/resolution1024_queue.log`.
+- Analysis:
+  - The watcher correctly launched after
+    `ABL-20260705-103502-bs2x-stage1-stage2-gbs128-normal` completed.
+  - The first Stage1 smoke run OOMed on rank 2 inside the Qwen3 decoder MLP
+    SiLU path while using max image resolution `1024` and the golden Stage1
+    batch identity `32 = world_size 4 * micro_batch 4 * grad_accum 2`.
+  - Reported GPU memory at the failure: GPU 2 total `178.36 GiB`, free
+    `118.12 MiB`, process memory `178.23 GiB`, PyTorch allocated
+    `175.60 GiB`; attempted allocation `190.00 MiB`.
+- Conclusion:
+  - The current golden Stage1 micro-batch-4 recipe does not fit at
+    `max_image_resolution=1024` on the available 180GB-class GPUs. This branch
+    did not enter formal Stage1 training and is not a valid resolution accuracy
+    comparison.
+- Comparable to baseline:
+  - Not comparable as an accuracy ablation because the run failed at Stage1
+    smoke before producing a checkpoint. It is only a feasibility result for
+    `resolution=1024` with the unchanged golden batch settings.
+
+### ABL-20260705-103502-bs2x-stage1-stage2-gbs128-normal
+
+- Status: DONE.
+- Question:
+  - Test whether the `bs2x_gbs64_256_same_samples` regression came from the
+    Stage2 large-batch setting rather than the stronger Stage1 checkpoint.
+  - Reuse the completed bs2x Stage1 checkpoint, but train Stage2 with the
+    normal golden Stage2 batch schedule.
+- Ablation table row:
+  - `docs/TGVF_ABLATION_TASK_TABLE.md`, branch
+    `bs2x_stage1_stage2_gbs128_normal`.
+- Baseline anchors:
+  - Same-stage1 failed branch:
+    `ABL-20260705-045433-bs2x-gbs64-256-same-samples`.
+  - Golden D DeepStack / Matrix CE size-4 benchmark anchor:
+    `BENCH-20260703-084300-stage2-d-deepstack-coredev2511`.
+- Intended diff:
+  - Keep the bs2x Stage1 checkpoint fixed.
+  - Change Stage2 from the failed branch's `global_batch=256`,
+    `gradient_accumulation_steps=8`, `max_steps=600`, warmup/save/eval
+    `50/150/150` back to the golden normal Stage2 schedule:
+    `global_batch=128`, `gradient_accumulation_steps=4`, `max_steps=1200`,
+    warmup/save/eval `100/300/300`.
+  - Stage2 sample-slot budget remains comparable:
+    `128 * 1200 = 153,600`, matching golden and matching the previous
+    bs2x Stage2 sample-slot budget `256 * 600 = 153,600`.
+- Allowed changed variables:
+  - Stage2 effective global batch, Stage2 gradient accumulation, Stage2
+    optimizer-step count, and derived warmup/save/eval cadence.
+  - Output paths and timestamp suffix `20260705_103502`.
+- Not allowed to change:
+  - Stage1 checkpoint, Stage2 train/val data, model/processor, D DeepStack
+    state, Matrix CE size-4 Stage1 source, Stage2 mask and DeepStack scopes,
+    optimizer type, LR values, loss weights, CoreDev-2511 sample set, scoring
+    backend, post-D continuation mode, FlashAttention-2 benchmark setting, and
+    unified eval `max_tokens=512`.
+- Code / worktree:
+  - Branch: `clean/tgvf-clean-project-20260625`.
+  - HEAD before launch: `9bbee464e708c045089fdf5fa562228b6b88baa5`.
+  - Worktree before launch: dirty by current experiment docs and the existing
+    backward-compatible pipeline option extension in
+    `scripts/run_clean_ddeepstack_ablation_pipeline.py`.
+- Stage1 checkpoint:
+  - `outputs/clean_training/qwen3_stage1_ddeepstack_bs2x_gbs64_same_samples_8gpu_20260705_045433/stage1_micro4/clean_training_execution/checkpoint_step_1000.pt`.
+  - sha256:
+    `e8bb24edc6fd914005e0c1f113ae4624cd83ea9e0b96597724daa057cb2a7ec2`.
+- Stage1 processor / model:
+  - Stage1 model id: `Qwen/Qwen3-VL-8B-Thinking`.
+  - Stage2 model and processor:
+    `/nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking`.
+- Train / validation data:
+  - Stage2 train:
+    `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend_open_answer/splits/tgvf_v4_teacher_stage2_protocol_c.train.jsonl`,
+    rows `46883`, sha256
+    `b5027e72dda7601073ddb8bc9cf1853ec564fa415a3e9cb7d1e684cc7c0d733b`.
+  - Stage2 val/test:
+    `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend_open_answer/splits/tgvf_v4_teacher_stage2_protocol_c.test.jsonl`,
+    rows `1002`, sha256
+    `3b719e1bd03a09741cc05dac3ed85e423a9b2c29209b07546792a6795cdbbfc5`.
+- Stage2 training identity:
+  - D DeepStack enabled; original-image DeepStack scope `through_answer`.
+  - Mask original image after TGVF probability `0.75`, scope
+    `through_answer`.
+  - Fast batched Stage2 enabled, target focus ratio `0.8`.
+  - LoRA rank/alpha/dropout `64/256/0.05`; LoRA target modules
+    `q_proj,k_proj,v_proj,o_proj,gate_proj,up_proj,down_proj`.
+  - Batch identity: `128 = world_size 8 * micro_batch 4 * grad_accum 4`.
+  - Max steps/save/eval/warmup: `1200` / `300` / `300` / `100`.
+  - W&B: project `tgvf-clean-qwen3-deepstack`, mode `online` for main run.
+- CoreDev-2511 benchmark source:
+  - Manifest:
+    `revisit_vlm_clean/benchmark_manifests/core_balanced_dev_2511_seed20260625.json`.
+  - File sha256:
+    `3a013b2bcc64316054d28239a3cea3f44211cadbfe19787be3b7f285620fa5c1`.
+  - Internal manifest hash:
+    `a461d9b482b7165b42b9bbb0fbf0ea6aff31fde0a838c13d953f070e770b0579`.
+  - Rows: `2511`.
+  - Golden free/soft sample-id hash:
+    `eefcb804abf78e76ce24a345ccaf5347e1deb3bcce9c007b030eefabba41d427`;
+    free vs softforce overlap verified `100%`.
+  - Benchmark root:
+    `/home/dredvpn009/Flash_Storage/datasets/benchmarks`.
+- Evaluation identity:
+  - Modes: `tgvf_free`, `tgvf_softforce`.
+  - Backend: clean native `tgvf_stage2_qwen3_native`.
+  - Attention: FlashAttention-2.
+  - DeepStack original-image scope: `no_block`.
+  - D DeepStack enabled.
+  - Post-D continuation: `kv_cache` / natural continue.
+  - Unified max tokens: `512`.
+  - Softforce prompt: `Use focus tool.`.
+- Planned outputs:
+  - Driver:
+    `outputs/clean_pipeline/bs2x_stage1_stage2_gbs128_normal_20260705_103502/run_pipeline.sh`.
+  - Pipeline plan:
+    `outputs/clean_pipeline/bs2x_stage1_stage2_gbs128_normal_20260705_103502/pipeline_plan.json`.
+  - Stage2 checkpoint:
+    `outputs/clean_training/qwen3_stage2_ddeepstack_norm01_from_stage1_ddeepstack_bs2x_stage1_stage2_gbs128_normal_8gpu_20260705_103502/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt`.
+  - TGVF free:
+    `outputs/clean_benchmarks/qwen3_stage2_ddeepstack_bs2x_stage1_stage2_gbs128_normal_coredev2511_dynamic_maxtok512_flash2_ddeepstack_gpu0_1_2_3_4_5_6_7_20260705_103502/tgvf_free/summary.json`.
+  - TGVF softforce:
+    `outputs/clean_benchmarks/qwen3_stage2_ddeepstack_bs2x_stage1_stage2_gbs128_normal_coredev2511_dynamic_maxtok512_flash2_ddeepstack_gpu0_1_2_3_4_5_6_7_20260705_103502/tgvf_softforce/summary.json`.
+- Script / command:
+  - Driver generated by:
+    `python scripts/run_clean_ddeepstack_ablation_pipeline.py --branch-id bs2x_stage1_stage2_gbs128_normal --timestamp 20260705_103502 --stage1-checkpoint outputs/clean_training/qwen3_stage1_ddeepstack_bs2x_gbs64_same_samples_8gpu_20260705_045433/stage1_micro4/clean_training_execution/checkpoint_step_1000.pt --stage1-output-dir outputs/clean_training/qwen3_stage1_ddeepstack_bs2x_gbs64_same_samples_8gpu_20260705_045433/stage1_micro4 --gpus 0,1,2,3,4,5,6,7 --stage1-step-label 1000 --steps stage2_smoke,stage2_train,bench_smoke,bench_free,bench_softforce --batch-size 1 --driver-output-dir outputs/clean_pipeline/bs2x_stage1_stage2_gbs128_normal_20260705_103502 --write-driver --print-json`.
+  - Syntax check passed:
+    `bash -n outputs/clean_pipeline/bs2x_stage1_stage2_gbs128_normal_20260705_103502/run_pipeline.sh`.
+  - Planned launch command:
+    `tmux new-session -d -s bs2x_s1_normal_s2_20260705_103502 'cd /nvmesv/dredvpn009/projects/r-vlm/revisit_vlm && bash outputs/clean_pipeline/bs2x_stage1_stage2_gbs128_normal_20260705_103502/run_pipeline.sh 2>&1 | tee outputs/clean_pipeline/bs2x_stage1_stage2_gbs128_normal_20260705_103502/driver.log'`.
+- GPUs:
+  - Planned GPUs: `0,1,2,3,4,5,6,7`.
+  - Preflight: all 8 GPUs reported `0 MiB` used.
+- tmux:
+  - `bs2x_s1_normal_s2_20260705_103502`.
+  - Log:
+    `outputs/clean_pipeline/bs2x_stage1_stage2_gbs128_normal_20260705_103502/driver.log`.
+- Started:
+  - `2026-07-05 10:38:09 JST`.
+- Finished:
+  - `2026-07-05 14:19:23 JST`.
+- Metrics:
+  - Stage2 checkpoint exists:
+    `outputs/clean_training/qwen3_stage2_ddeepstack_norm01_from_stage1_ddeepstack_bs2x_stage1_stage2_gbs128_normal_8gpu_20260705_103502/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt`.
+  - `tgvf_free`: rows `2511/2511`; accuracy `35.29%`; macro average
+    `39.70%`; trigger/focus-valid rate `29.91%`; answer parse rate `99.52%`;
+    append-success rate `100.00%`; malformed rate `0.00%`.
+  - `tgvf_softforce`: rows `2511/2511`; accuracy `36.61%`; macro average
+    `40.63%`; trigger/focus-valid rate `45.08%`; answer parse rate `99.32%`;
+    append-success rate `100.00%`; malformed rate `0.00%`.
+  - Per-benchmark `tgvf_free` accuracies:
+    `blink=55.24%`, `hr_bench_4k=53.50%`, `mathverse=11.80%`,
+    `mathvista=47.33%`, `mmmu_pro=34.67%`, `ocrbench_v2=24.03%`,
+    `vstar_bench=51.31%`.
+  - Per-benchmark `tgvf_softforce` accuracies:
+    `blink=54.05%`, `hr_bench_4k=57.50%`, `mathverse=17.60%`,
+    `mathvista=47.33%`, `mmmu_pro=33.00%`, `ocrbench_v2=25.72%`,
+    `vstar_bench=49.21%`.
+- Analysis:
+  - Versus golden D DeepStack / Matrix CE size-4:
+    `tgvf_free` is `-1.75` overall points and `-1.46` macro points;
+    trigger is essentially unchanged (`+0.12` points).
+  - Versus golden D DeepStack / Matrix CE size-4:
+    `tgvf_softforce` is `-1.31` overall points and `-1.70` macro points;
+    trigger is higher by `+4.10` points.
+  - Restoring the normal Stage2 batch schedule improves over the failed
+    `bs2x_gbs64_256_same_samples` Stage2-large-batch branch, but still does
+    not recover the current golden external benchmark accuracy.
+- Conclusion:
+  - The previous bs2x regression is not only a Stage2-large-batch artifact.
+    The stronger bs2x Stage1 internal retrieval does not translate into better
+    CoreDev-2511 accuracy under the normal Stage2 schedule.
+- Comparable to baseline:
+  - Planned as a valid Stage2-batch isolation ablation against both the failed
+    bs2x Stage2 branch and the current golden CoreDev-2511 benchmark, with
+    identical CoreDev-2511 sample set and identical external evaluation
+    settings.
+
+### ABL-20260705-045433-bs2x-gbs64-256-same-samples
+
+- Status: DONE.
+- Question:
+  - Run a global-batch 2x ablation through the standard clean D DeepStack
+    pipeline with the same sample-slot budget as the current golden branch:
+    Stage1 smoke, Stage1 train, Stage1 internal diagnostics, Stage2 smoke,
+    Stage2 train, CoreDev-2511 smoke, CoreDev-2511 free, and CoreDev-2511
+    softforce.
+- Ablation table row:
+  - `docs/TGVF_ABLATION_TASK_TABLE.md`, branch
+    `bs2x_gbs64_256_same_samples`.
+- Baseline anchors:
+  - Current D DeepStack golden / Matrix CE size-4 Stage1/Stage2:
+    `EXP-20260702-180906-stage1-d-deepstack-wandb-relaunch`,
+    `EXP-20260703-005210-stage2-d-deepstack-8gpu`, and
+    `BENCH-20260703-084300-stage2-d-deepstack-coredev2511`.
+  - Golden benchmark scores: free `37.04%`, softforce `37.92%` on the
+    CoreDev-2511 complete 2,511-row manifest.
+- Intended diff:
+  - Change the effective global batch only, with derived step-count changes to
+    keep the total sample-slot budget comparable to golden:
+    - Stage1: `64 = world_size 8 * micro_batch 4 * grad_accum 2`, max steps
+      `1000`; sample slots `64,000`, matching golden
+      `32 * 2000 = 64,000`.
+    - Stage2: `256 = world_size 8 * micro_batch 4 * grad_accum 8`, max steps
+      `600`; sample slots `153,600`, matching golden
+      `128 * 1200 = 153,600`.
+  - Keep `micro_batch_size=4` so Matrix CE same-image group/readout size
+    remains `4`.
+  - Keep learning rates unchanged. Scale warmup/save/eval cadence with the
+    halved optimizer-step count: Stage1 warmup `50`, save every `250`;
+    Stage2 warmup `50`, save/eval every `150`.
+- Allowed changed variables:
+  - Effective global batch, gradient accumulation, optimizer-step count, and
+    derived warmup/save/eval intervals required by the same-sample-budget
+    design.
+  - Output paths and timestamp suffix `20260705_045433`.
+- Not allowed to change:
+  - Model/processor, protocol, D DeepStack state, Matrix CE size-4 setting,
+    train data, validation data, max image resolution `512`, optimizer type,
+    LR values, loss weights, Stage2 mask and DeepStack scopes, CoreDev-2511
+    sample set, scoring backend, post-D continuation mode, FlashAttention-2
+    benchmark setting, and unified eval `max_tokens=512`.
+- Code / worktree:
+  - Branch: `clean/tgvf-clean-project-20260625`.
+  - HEAD before launch: `9bbee466f5ced417d26f26404f56af1c7ef851dd`.
+  - Worktree before launch: dirty by planned ledger/task-table edits and a
+    backward-compatible `scripts/run_clean_ddeepstack_ablation_pipeline.py`
+    option extension for Stage2 max-step/global-batch overrides.
+- Model / processor:
+  - Stage1 model id: `Qwen/Qwen3-VL-8B-Thinking`.
+  - Stage2 model and processor:
+    `/nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking`.
+- Train / validation data:
+  - Stage1 train:
+    `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend/splits/tgvf_v4_teacher_stage1_protocol_c_focus.train.jsonl`,
+    rows `39998`, sha256
+    `c94a38b824b6603e555eed5ef3584c19cc903b76995d49c67ace36b18268443c`.
+  - Stage1 eval:
+    `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend/splits/tgvf_v4_teacher_stage1_protocol_c_focus.test.jsonl`,
+    rows `867`, sha256
+    `de61c731eb961825a77df587cd76c00eabfea75b5c6003096f3cc7f1a51dd82d`.
+  - Stage2 train:
+    `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend_open_answer/splits/tgvf_v4_teacher_stage2_protocol_c.train.jsonl`,
+    rows `46883`, sha256
+    `b5027e72dda7601073ddb8bc9cf1853ec564fa415a3e9cb7d1e684cc7c0d733b`.
+  - Stage2 val/test:
+    `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend_open_answer/splits/tgvf_v4_teacher_stage2_protocol_c.test.jsonl`,
+    rows `1002`, sha256
+    `3b719e1bd03a09741cc05dac3ed85e423a9b2c29209b07546792a6795cdbbfc5`.
+- CoreDev-2511 benchmark source:
+  - Manifest:
+    `revisit_vlm_clean/benchmark_manifests/core_balanced_dev_2511_seed20260625.json`.
+  - File sha256:
+    `3a013b2bcc64316054d28239a3cea3f44211cadbfe19787be3b7f285620fa5c1`.
+  - Internal manifest hash:
+    `a461d9b482b7165b42b9bbb0fbf0ea6aff31fde0a838c13d953f070e770b0579`.
+  - Rows: `2511`.
+  - Benchmark root:
+    `/home/dredvpn009/Flash_Storage/datasets/benchmarks`.
+- Stage1 training identity:
+  - D DeepStack enabled, branch layers `[8,16,24]`.
+  - Matrix CE enabled, same-image readout/group size `4`.
+  - Token row mode `row_only`, capture mode `teacher_forced`,
+    FVT position mode `native_source_grid`.
+  - Losses: generation `1.0`, visual token manifold `0.0`, visual token norm
+    `0.1`, same-image negative `1.0`, margin `1.0`.
+  - Batch identity: `64 = world_size 8 * micro_batch 4 * grad_accum 2`.
+  - Max steps/save every/warmup: `1000` / `250` / `50`.
+  - W&B: project `tgvf-clean-qwen3-deepstack`, mode `online` for main run.
+- Stage2 training identity:
+  - Loads the Stage1 checkpoint once produced:
+    `outputs/clean_training/qwen3_stage1_ddeepstack_bs2x_gbs64_same_samples_8gpu_20260705_045433/stage1_micro4/clean_training_execution/checkpoint_step_1000.pt`.
+  - D DeepStack enabled; original-image DeepStack scope `through_answer`.
+  - Mask original image after TGVF probability `0.75`, scope
+    `through_answer`.
+  - Fast batched Stage2 enabled, target focus ratio `0.8`.
+  - LoRA rank/alpha/dropout `64/256/0.05`; LoRA target modules
+    `q_proj,k_proj,v_proj,o_proj,gate_proj,up_proj,down_proj`.
+  - Batch identity: `256 = world_size 8 * micro_batch 4 * grad_accum 8`.
+  - Max steps/save/eval every/warmup: `600` / `150` / `150` / `50`.
+  - W&B: project `tgvf-clean-qwen3-deepstack`, mode `online` for main run.
+- Evaluation identity:
+  - Modes: `tgvf_free`, `tgvf_softforce`.
+  - Backend: clean native `tgvf_stage2_qwen3_native`.
+  - Attention: FlashAttention-2.
+  - DeepStack original-image scope: `no_block`.
+  - D DeepStack enabled.
+  - Post-D continuation: `kv_cache`.
+  - Unified max tokens: `512`.
+  - Softforce prompt: `Use focus tool.`.
+- Planned outputs:
+  - Driver:
+    `outputs/clean_pipeline/bs2x_gbs64_256_same_samples_20260705_045433/run_bs2x_pipeline.sh`.
+  - Stage1 checkpoint:
+    `outputs/clean_training/qwen3_stage1_ddeepstack_bs2x_gbs64_same_samples_8gpu_20260705_045433/stage1_micro4/clean_training_execution/checkpoint_step_1000.pt`.
+  - Stage1 internal diagnostics:
+    `outputs/clean_training/qwen3_stage1_ddeepstack_bs2x_gbs64_same_samples_8gpu_20260705_045433/stage1_micro4/internal_diagnostics_step1000_20260705_045433`.
+  - Stage2 checkpoint:
+    `outputs/clean_training/qwen3_stage2_ddeepstack_norm01_from_stage1_ddeepstack_bs2x_gbs64_256_same_samples_8gpu_20260705_045433/stage2_micro4/clean_training_execution/checkpoint_step_600.pt`.
+  - TGVF free:
+    `outputs/clean_benchmarks/qwen3_stage2_ddeepstack_bs2x_gbs64_256_same_samples_coredev2511_dynamic_maxtok512_flash2_ddeepstack_gpu0_1_2_3_4_5_6_7_20260705_045433/tgvf_free/summary.json`.
+  - TGVF softforce:
+    `outputs/clean_benchmarks/qwen3_stage2_ddeepstack_bs2x_gbs64_256_same_samples_coredev2511_dynamic_maxtok512_flash2_ddeepstack_gpu0_1_2_3_4_5_6_7_20260705_045433/tgvf_softforce/summary.json`.
+- Script / command:
+  - Top-level driver:
+    `outputs/clean_pipeline/bs2x_gbs64_256_same_samples_20260705_045433/run_bs2x_pipeline.sh`.
+  - Syntax check passed:
+    `bash -n outputs/clean_pipeline/bs2x_gbs64_256_same_samples_20260705_045433/run_bs2x_pipeline.sh`.
+  - Post-Stage1 pipeline dry-run printed expected paths with Stage2
+    checkpoint `checkpoint_step_600.pt`.
+  - Launch command:
+    `tmux new-session -d -s bs2x_20260705_045433 'cd /nvmesv/dredvpn009/projects/r-vlm/revisit_vlm && bash outputs/clean_pipeline/bs2x_gbs64_256_same_samples_20260705_045433/run_bs2x_pipeline.sh 2>&1 | tee outputs/clean_pipeline/bs2x_gbs64_256_same_samples_20260705_045433/bs2x_driver.log'`.
+- GPUs:
+  - Preflight: GPUs `0,1,2,3,4,5,6,7` all reported `0 MiB` used.
+- tmux:
+  - `bs2x_20260705_045433`.
+  - Log:
+    `outputs/clean_pipeline/bs2x_gbs64_256_same_samples_20260705_045433/bs2x_driver.log`.
+- Started:
+  - `2026-07-05 04:58:16 JST`.
+- Finished:
+  - Driver log completed with `[done] bs2x same-sample pipeline finished`;
+    verified on `2026-07-05 10:23:34 JST`.
+- Metrics:
+  - Stage1 training: `1000` optimizer steps, `2000` micro-steps,
+    `5085.67s`; checkpoint
+    `outputs/clean_training/qwen3_stage1_ddeepstack_bs2x_gbs64_same_samples_8gpu_20260705_045433/stage1_micro4/clean_training_execution/checkpoint_step_1000.pt`.
+  - Stage1 internal readout: correct-D NLL `1.2766`,
+    correct-D beats wrong-same `94.0%`, delta vs wrong-same `0.5031`.
+  - Stage1 internal query sensitivity: top1 `82.5%`, top2 `97.5%`,
+    MRR `90.79%`, diagonal gap `0.2383`.
+  - Stage2 training: `600` optimizer steps, `4800` micro-steps,
+    `8845.21s`; checkpoint
+    `outputs/clean_training/qwen3_stage2_ddeepstack_norm01_from_stage1_ddeepstack_bs2x_gbs64_256_same_samples_8gpu_20260705_045433/stage2_micro4/clean_training_execution/checkpoint_step_600.pt`.
+  - CoreDev-2511 free: overall accuracy `35.13%`, macro accuracy `39.33%`,
+    trigger `39.43%`, parse `99.60%`, append `100.00%`, malformed `0.00%`.
+  - CoreDev-2511 softforce: overall accuracy `36.09%`, macro accuracy
+    `40.29%`, trigger `58.18%`, parse `99.52%`, append `100.00%`,
+    malformed `0.00%`.
+  - Golden deltas: free `-1.91` overall / `-1.83` macro / `+9.64`
+    trigger; softforce `-1.84` overall / `-2.04` macro / `+17.20`
+    trigger.
+- Analysis:
+  - Stage1 internal diagnostics improved over the golden anchor, but external
+    CoreDev-2511 did not improve.
+  - The main behavioral change is higher trigger rate, especially in
+    softforce. The extra triggering is not reliably beneficial: HR improves in
+    free, but MMMU-Pro, MathVerse, MathVista, and VStar lose accuracy.
+- Conclusion:
+  - This same-sample-budget 2x global-batch branch is a valid ablation result
+    but should not replace the current D DeepStack golden configuration.
+    Higher Stage1 retrieval/readout quality did not transfer cleanly to
+    CoreDev-2511 benchmark accuracy.
+- Comparable to baseline:
+  - Planned as a valid global-batch ablation against the current D DeepStack
+    golden branch, with the same train data, same CoreDev-2511 evaluation
+    identity, and same sample-slot budget.
+
 ### ABL-20260704-202756-data25k-ddeepstack-coredev2511
 
 - Status: DONE.
