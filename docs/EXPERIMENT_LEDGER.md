@@ -112,6 +112,225 @@ If a mistake is found:
 
 ## Experiment Entries
 
+### TIME-20260706-112106-inference-time-coredev7
+
+- Status: DONE.
+- Question:
+  - Run a small quantitative inference-time test that is fast enough for
+    iteration while still touching every CoreDev-2511 benchmark family once.
+- Baseline anchors:
+  - Same checkpoint, manifest, model, processor, and runtime identity as
+    `TIME-20260706-105206-inference-time-coredev140`.
+- Intended diff:
+  - Reduce sample rule from first `20` rows per benchmark to first `1` row per
+    benchmark, for `7` measured rows total.
+  - Keep the seven timing methods:
+    `original`, `tgvf_cached_prewarm_force`, `tgvf_reencode_force`,
+    `tgvf_cached_prewarm_free`, `tgvf_reencode_free`,
+    `tgvf_cached_prewarm_softforce`, `tgvf_reencode_softforce`.
+  - Keep warmup `1`, single GPU `cuda:0`, FlashAttention-2, resolution `512`,
+    unified `max_tokens=512`.
+- Planned output:
+  - `outputs/clean_timing/tgvf_inference_time_coredev7_20260706_112106`.
+- Planned command:
+  - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=revisit_vlm_clean/src:src python scripts/run_tgvf_inference_time_test.py --run-id tgvf_inference_time_coredev7_20260706_112106 --output-dir outputs/clean_timing/tgvf_inference_time_coredev7_20260706_112106 --stage2-checkpoint outputs/clean_training/qwen3_stage2_ddeepstack_norm01_from_stage1_ddeepstack_8gpu_20260703_005210/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt --stage2-eval-jsonl data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend_open_answer/splits/tgvf_v4_teacher_stage2_protocol_c.test.jsonl --model-id /nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking --processor-id /nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking --manifest-path revisit_vlm_clean/benchmark_manifests/core_balanced_dev_2511_seed20260625.json --benchmark-root /home/dredvpn009/Flash_Storage/datasets/benchmarks --device cuda:0 --device-map cuda:0 --dtype bfloat16 --attn-implementation flash_attention_2 --max-image-resolution 512 --max-tokens 512 --rows-per-benchmark 1 --warmup-samples 1 --progress-every 1`.
+- GPUs:
+  - Planned GPU: `0`.
+- Completed:
+  - `2026-07-06 11:28 JST`.
+- Outputs:
+  - `outputs/clean_timing/tgvf_inference_time_coredev7_20260706_112106/run_config.txt`.
+  - `outputs/clean_timing/tgvf_inference_time_coredev7_20260706_112106/timing_run_identity.json`.
+  - `outputs/clean_timing/tgvf_inference_time_coredev7_20260706_112106/sample_manifest.json`.
+  - `outputs/clean_timing/tgvf_inference_time_coredev7_20260706_112106/timing_rows.jsonl`.
+  - `outputs/clean_timing/tgvf_inference_time_coredev7_20260706_112106/timing_summary.json`.
+- Measured rows:
+  - `49` timing rows, exactly `7` methods x `7` measured CoreDev rows.
+  - Sample rule: first `1` manifest row per benchmark; warmup `1` row per
+    method excluded from aggregates.
+- Overall timing summary:
+  - `original`: mean row wall `8.509s`, P50 `12.950s`, P90 `13.063s`,
+    mean output tokens `333.4`.
+  - `tgvf_cached_prewarm_force`: trigger `100.0%`, mean row wall `3.011s`,
+    P50 `2.653s`, P90 `4.586s`, mean output tokens `45.0`.
+  - `tgvf_reencode_force`: trigger `100.0%`, mean row wall `3.126s`,
+    P50 `2.959s`, P90 `4.796s`, mean output tokens `45.0`.
+  - `tgvf_cached_prewarm_free`: trigger `42.9%`, mean row wall `5.212s`,
+    P50 `3.138s`, P90 `10.643s`, parse rate `85.7%`.
+  - `tgvf_reencode_free`: trigger `42.9%`, mean row wall `5.172s`,
+    P50 `3.073s`, P90 `10.686s`, parse rate `85.7%`.
+  - `tgvf_cached_prewarm_softforce`: trigger `28.6%`, mean row wall
+    `3.498s`, P50 `3.075s`, P90 `5.435s`, parse rate `100.0%`.
+  - `tgvf_reencode_softforce`: trigger `28.6%`, mean row wall `3.477s`,
+    P50 `3.172s`, P90 `5.458s`, parse rate `100.0%`.
+- Phase findings:
+  - In force mode, fresh post-focus reencode vision tap mean `0.064s`
+    per trigger, P50 `0.042s`, P90 `0.123s`.
+  - In force mode, cached-feature prewarm vision probe mean `0.054s`, the
+    same order of magnitude as the forced fresh tap.
+  - Free triggered rows: reencode tap mean `0.027s`; post-D continuation mean
+    about `5.52s`.
+  - Softforce triggered rows: reencode tap mean `0.025s`; post-D continuation
+    mean about `1.82s`.
+- Conclusion:
+  - This CoreDev-7 timing run is a small order-of-magnitude estimate, not a
+    stable benchmark statistic. It is enough to show that reencode/tap overhead
+    is tens of milliseconds to about one tenth of a second per trigger under
+    these settings, while end-to-end latency is dominated by focus generation,
+    post-D continuation, and output length variance.
+
+### TIME-20260706-105206-inference-time-coredev140
+
+- Status: INTERRUPTED_PARTIAL_ORIGINAL_ONLY.
+- Question:
+  - Quantitatively estimate per-sample inference latency and post-focus
+    reencode overhead for TGVF on a deterministic CoreDev-2511 subset.
+- Baseline anchors:
+  - Current golden D DeepStack / Matrix CE size-4 Stage2 checkpoint:
+    `outputs/clean_training/qwen3_stage2_ddeepstack_norm01_from_stage1_ddeepstack_8gpu_20260703_005210/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt`.
+  - CoreDev-2511 manifest:
+    `revisit_vlm_clean/benchmark_manifests/core_balanced_dev_2511_seed20260625.json`,
+    hash `a461d9b482b7165b42b9bbb0fbf0ea6aff31fde0a838c13d953f070e770b0579`.
+- Intended diff:
+  - Use isolated timing script `scripts/run_tgvf_inference_time_test.py`; no
+    default benchmark/runtime path changes.
+  - Sample rule: first `20` manifest rows per benchmark in manifest order,
+    for `140` measured rows total across the seven CoreDev-2511 benchmark
+    families.
+  - Warmup: run the first selected sample before measured rows for each method;
+    warmup rows are excluded from timing summaries.
+  - Methods:
+    `original`, `tgvf_cached_prewarm_force`, `tgvf_reencode_force`,
+    `tgvf_cached_prewarm_free`, `tgvf_reencode_free`,
+    `tgvf_cached_prewarm_softforce`, `tgvf_reencode_softforce`.
+  - Timing semantics:
+    `tgvf_cached_prewarm_*` excludes synthetic cached-feature prewarm from row
+    latency and records it separately; `tgvf_reencode_*` forces a fresh
+    post-focus Qwen3 vision tap before D construction.
+  - Runtime identity: single GPU `cuda:0`, FlashAttention-2, resolution `512`,
+    unified `max_tokens=512`, post-D continuation `kv_cache`, DeepStack
+    `no_block`, D DeepStack enabled.
+- Planned output:
+  - `outputs/clean_timing/tgvf_inference_time_coredev140_20260706_105206`.
+- Planned command:
+  - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=revisit_vlm_clean/src:src python scripts/run_tgvf_inference_time_test.py --run-id tgvf_inference_time_coredev140_20260706_105206 --output-dir outputs/clean_timing/tgvf_inference_time_coredev140_20260706_105206 --stage2-checkpoint outputs/clean_training/qwen3_stage2_ddeepstack_norm01_from_stage1_ddeepstack_8gpu_20260703_005210/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt --stage2-eval-jsonl data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend_open_answer/splits/tgvf_v4_teacher_stage2_protocol_c.test.jsonl --model-id /nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking --processor-id /nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking --manifest-path revisit_vlm_clean/benchmark_manifests/core_balanced_dev_2511_seed20260625.json --benchmark-root /home/dredvpn009/Flash_Storage/datasets/benchmarks --device cuda:0 --device-map cuda:0 --dtype bfloat16 --attn-implementation flash_attention_2 --max-image-resolution 512 --max-tokens 512 --rows-per-benchmark 20 --warmup-samples 1 --progress-every 10`.
+- GPUs:
+  - Planned GPU: `0`.
+- Started:
+  - `2026-07-06 10:53 JST`.
+- Interrupted:
+  - `2026-07-06 11:20 JST`, after user noted that the 140-row single-GPU
+    timing run was unnecessarily large for the current estimate.
+- Output:
+  - `outputs/clean_timing/tgvf_inference_time_coredev140_20260706_105206/timing_rows.jsonl`.
+- Partial metrics:
+  - Completed and wrote `140` rows for method `original`.
+  - No complete TGVF method group was written before interruption.
+  - Original 140-row stage elapsed about `1281s` (`21.4 min`) according to
+    progress output.
+- Conclusion:
+  - Treat this as an original-only side result. It is not valid for
+    cached-vs-reencode comparison.
+
+### TIME-20260706-104840-inference-time-force-reencode-smoke
+
+- Status: DONE.
+- Question:
+  - Smoke-test the isolated timing script on force-triggered rows so the D
+    append and fresh reencode timers are exercised.
+- Baseline anchors:
+  - Same as `TIME-20260706-104452-inference-time-reencode-smoke`.
+- Intended diff:
+  - Use fixed script after the first smoke found that free/softforce on the
+    first manifest row did not trigger and therefore did not exercise D append.
+  - Run only `tgvf_cached_prewarm_force` and `tgvf_reencode_force`.
+  - Use `--max-samples 1`, `--warmup-samples 0`, single GPU `cuda:0`,
+    FlashAttention-2, resolution `512`, unified `max_tokens=512`.
+- Planned output:
+  - `outputs/clean_timing/tgvf_inference_time_force_smoke_20260706_104840`.
+- Planned command:
+  - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=revisit_vlm_clean/src:src python scripts/run_tgvf_inference_time_test.py --run-id tgvf_inference_time_force_smoke_20260706_104840 --output-dir outputs/clean_timing/tgvf_inference_time_force_smoke_20260706_104840 --stage2-checkpoint outputs/clean_training/qwen3_stage2_ddeepstack_norm01_from_stage1_ddeepstack_8gpu_20260703_005210/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt --stage2-eval-jsonl data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend_open_answer/splits/tgvf_v4_teacher_stage2_protocol_c.test.jsonl --model-id /nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking --processor-id /nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking --manifest-path revisit_vlm_clean/benchmark_manifests/core_balanced_dev_2511_seed20260625.json --benchmark-root /home/dredvpn009/Flash_Storage/datasets/benchmarks --device cuda:0 --device-map cuda:0 --dtype bfloat16 --attn-implementation flash_attention_2 --max-image-resolution 512 --max-tokens 512 --methods tgvf_cached_prewarm_force,tgvf_reencode_force --max-samples 1 --warmup-samples 0 --progress-every 1`.
+- GPUs:
+  - Planned GPU: `0`.
+- Started:
+  - `2026-07-06 10:48 JST`.
+- Finished:
+  - `2026-07-06 10:49 JST`.
+- Output:
+  - `outputs/clean_timing/tgvf_inference_time_force_smoke_20260706_104840/timing_rows.jsonl`.
+  - `outputs/clean_timing/tgvf_inference_time_force_smoke_20260706_104840/timing_summary.json`.
+- Metrics:
+  - `tgvf_cached_prewarm_force`: triggered `1/1`, append success `1/1`,
+    D shape `[234,4096]`, cache hit `1`, cache miss `0`,
+    cached lookup `0.000012s`, synthetic prewarm `0.0673s`,
+    D-from-capture `0.0618s`, append `0.0870s`,
+    post-D continuation `0.9361s`.
+  - `tgvf_reencode_force`: triggered `1/1`, append success `1/1`,
+    D shape `[234,4096]`, cache hit `0`, cache miss `1`,
+    fresh reencode vision tap `0.0589s`, D-from-capture `0.0627s`,
+    append `0.0549s`, post-D continuation `0.9373s`.
+- Conclusion:
+  - Smoke validates the isolated force-triggered timing path and confirms that
+    cached and reencode variants exercise the intended cache-hit/cache-miss
+    branches.
+
+### TIME-20260706-104452-inference-time-reencode-smoke
+
+- Status: SIDE_RESULT_SCHEMA_FIX_NEEDED.
+- Question:
+  - Prepare and smoke-test an isolated inference-time measurement path for
+    TGVF cached-feature D append versus a time-test-only fresh vision reencode
+    path.
+- Baseline anchors:
+  - Current golden D DeepStack / Matrix CE size-4 Stage2 checkpoint:
+    `outputs/clean_training/qwen3_stage2_ddeepstack_norm01_from_stage1_ddeepstack_8gpu_20260703_005210/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt`.
+  - CoreDev-2511 manifest:
+    `revisit_vlm_clean/benchmark_manifests/core_balanced_dev_2511_seed20260625.json`,
+    hash `a461d9b482b7165b42b9bbb0fbf0ea6aff31fde0a838c13d953f070e770b0579`,
+    rows `2511`.
+- Intended diff:
+  - Add/use isolated timing script:
+    `scripts/run_tgvf_inference_time_test.py`.
+  - Do not change the default clean benchmark/runtime behavior.
+  - Time-test methods:
+    `original`, `tgvf_cached_prewarm_free`, `tgvf_reencode_free`,
+    `tgvf_cached_prewarm_softforce`, `tgvf_reencode_softforce`.
+  - `tgvf_cached_prewarm_*` precomputes original-image vision features before
+    row timing to simulate a no-reencode/cached-feature D path.
+  - `tgvf_reencode_*` forces a fresh post-focus Qwen3 vision tap before D
+    construction, then uses the same TGVF adapter, append, and continuation
+    path.
+  - This smoke uses `--max-samples 1`, `--warmup-samples 0`, single GPU
+    `cuda:0`, FlashAttention-2, resolution `512`, unified `max_tokens=512`,
+    DeepStack `no_block`, D DeepStack enabled.
+- Code / worktree:
+  - Branch: `clean/tgvf-clean-project-20260625`.
+  - Worktree before launch: dirty with new timing report doc and new timing
+    script.
+- Planned output:
+  - `outputs/clean_timing/tgvf_inference_time_smoke_20260706_104452`.
+- Planned command:
+  - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=revisit_vlm_clean/src:src python scripts/run_tgvf_inference_time_test.py --run-id tgvf_inference_time_smoke_20260706_104452 --output-dir outputs/clean_timing/tgvf_inference_time_smoke_20260706_104452 --stage2-checkpoint outputs/clean_training/qwen3_stage2_ddeepstack_norm01_from_stage1_ddeepstack_8gpu_20260703_005210/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt --stage2-eval-jsonl data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend_open_answer/splits/tgvf_v4_teacher_stage2_protocol_c.test.jsonl --model-id /nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking --processor-id /nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking --manifest-path revisit_vlm_clean/benchmark_manifests/core_balanced_dev_2511_seed20260625.json --benchmark-root /home/dredvpn009/Flash_Storage/datasets/benchmarks --device cuda:0 --device-map cuda:0 --dtype bfloat16 --attn-implementation flash_attention_2 --max-image-resolution 512 --max-tokens 512 --max-samples 1 --warmup-samples 0 --progress-every 1`.
+- GPUs:
+  - Planned GPU: `0`.
+  - Preflight: GPUs `0-7` all reported `0 MiB` used.
+- Started:
+  - `2026-07-06 10:45 JST`.
+- Finished:
+  - `2026-07-06 10:47 JST`.
+- Output:
+  - `outputs/clean_timing/tgvf_inference_time_smoke_20260706_104452/timing_rows.jsonl`.
+  - `outputs/clean_timing/tgvf_inference_time_smoke_20260706_104452/timing_summary.json`.
+- Metrics / issue:
+  - All five methods produced rows without runtime errors.
+  - The selected first manifest row did not trigger focus in free or softforce,
+    so append/reencode timers were not exercised.
+  - The row mapping initially reported TGVF non-trigger `wall_time_sec=0`
+    because native wall time lived in `debug["wall_time_sec"]`; fixed in
+    `scripts/run_tgvf_inference_time_test.py` before force smoke.
+- Conclusion:
+  - Valid as a load/schema side result only, not valid for reencode timing.
+
 ### ABL-20260705-225035-resolution1024-readout1-flash2-stage1-smoke
 
 - Status: FAILED_FLASH2_READOUT_ASSERT.
