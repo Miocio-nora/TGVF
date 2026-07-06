@@ -161,6 +161,24 @@ Overall timing summary:
 | cached softforce | 7 | 28.6% | 3.498 | 3.075 | 5.435 | 43.3 | 100.0% |
 | reencode softforce | 7 | 28.6% | 3.477 | 3.172 | 5.458 | 43.3 | 100.0% |
 
+Per-token timing summary:
+
+These are aggregate ratios over the measured rows, not averages of per-row
+ratios. `E2E output tok/s` divides reported output tokens by row wall time.
+For TGVF, `action tok/s` divides action tokens by focus-capture time, and
+`answer tok/s` divides answer tokens on triggered rows by post-D continuation
+time.
+
+| Method | Output tokens | E2E output tok/s | E2E sec/token | Action tok/s | Action sec/token | Answer tok/s | Answer sec/token |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| original | 2334 | 39.186 | 0.026 | n/a | n/a | n/a | n/a |
+| cached force | 315 | 14.944 | 0.067 | 21.580 | 0.046 | 24.600 | 0.041 |
+| reencode force | 315 | 14.393 | 0.069 | 21.632 | 0.046 | 23.611 | 0.042 |
+| cached free | 550 | 15.076 | 0.066 | 16.724 | 0.060 | 24.867 | 0.040 |
+| reencode free | 550 | 15.193 | 0.066 | 16.756 | 0.060 | 24.801 | 0.040 |
+| cached softforce | 303 | 12.373 | 0.081 | 17.175 | 0.058 | 24.049 | 0.042 |
+| reencode softforce | 303 | 12.451 | 0.080 | 17.156 | 0.058 | 23.113 | 0.043 |
+
 Triggered-row phase summary:
 
 | Method | Triggered rows | Focus capture sec | Cached prewarm sec | Reencode tap sec | D build sec | D append sec | Post-D continue sec |
@@ -193,6 +211,10 @@ Main reading:
 - End-to-end latency is dominated by language generation phases: focus capture
   and post-D continuation. The free-mode triggered rows spend about `5.5s` in
   post-D continuation, while the reencode tap is only about `0.027s`.
+- Per-token timing shows the same thing: original direct generation is about
+  `39.2` output tok/s on this subset, while TGVF post-D answer continuation is
+  about `23-25` answer tok/s and action generation is about `17-22` action
+  tok/s.
 - Observed cached-vs-reencode end-to-end deltas are tiny relative to generation
   variance on this 7-row subset: force `+0.115s`, free `-0.040s`, softforce
   `-0.022s` mean row wall time.
@@ -201,45 +223,11 @@ Main reading:
   bottleneck. A larger subset would refine the distribution, but this is enough
   to rule out a multi-second reencode penalty.
 
-## Report Tables
+## Formal Timing Extension
 
-Overall timing summary:
-
-| Method | Rows | Trigger rate | Mean end2end sec | P50 end2end sec | P90 end2end sec | Mean output tokens | Parse rate |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| original | TBD | n/a | TBD | TBD | TBD | TBD | TBD |
-| TGVF no-reencode free | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
-| TGVF no-reencode softforce | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
-| TGVF reencode free | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
-| TGVF reencode softforce | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
-
-Triggered-row timing summary:
-
-| Method | Triggered rows | Focus capture sec | D append sec | Reencode sec | Post-D continue sec | Delta vs no-reencode per trigger |
-|---|---:|---:|---:|---:|---:|---:|
-| TGVF no-reencode free | TBD | TBD | TBD | n/a | TBD | anchor |
-| TGVF no-reencode softforce | TBD | TBD | TBD | n/a | TBD | anchor |
-| TGVF reencode free | TBD | TBD | TBD | TBD | TBD | TBD |
-| TGVF reencode softforce | TBD | TBD | TBD | TBD | TBD | TBD |
-
-Amortized overhead summary:
-
-| Mode | Trigger rate | Delta sec per trigger | Trigger-weighted overhead sec/sample | End-to-end delta vs original |
-|---|---:|---:|---:|---:|
-| free | TBD | TBD | TBD | TBD |
-| softforce | TBD | TBD | TBD | TBD |
-
-Per-benchmark timing summary:
-
-| Benchmark | Rows | Method | Trigger rate | Mean end2end sec | P90 end2end sec | Mean output tokens |
-|---|---:|---|---:|---:|---:|---:|
-| BLINK | TBD | TBD | TBD | TBD | TBD | TBD |
-| HR | TBD | TBD | TBD | TBD | TBD | TBD |
-| VStar | TBD | TBD | TBD | TBD | TBD | TBD |
-| OCRBench-v2 | TBD | TBD | TBD | TBD | TBD | TBD |
-| MMMU-Pro | TBD | TBD | TBD | TBD | TBD | TBD |
-| MathVista | TBD | TBD | TBD | TBD | TBD | TBD |
-| MathVerse | TBD | TBD | TBD | TBD | TBD | TBD |
+There are no unfilled measured tables in this report. A larger future timing
+run should add a new measured section instead of leaving placeholders in the
+main text.
 
 ## Interpretation Rules
 
