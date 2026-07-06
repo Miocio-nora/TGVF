@@ -126,10 +126,95 @@ reported aggregate. If we care about per-sample latency, use one GPU and a
 fixed batch size. If we care about throughput, use the dynamic multi-GPU queue
 and report rows/sec separately from per-row phase timing.
 
+## Measured CoreDev-35 Result
+
+Run:
+`outputs/clean_timing/tgvf_inference_time_coredev35_20260706_124428`.
+
+This is the preferred small timing estimate in this report. It uses first `5`
+manifest rows per benchmark, `35` measured rows total, and `245` timing rows
+across seven methods. It keeps the same checkpoint/runtime identity as the
+CoreDev-7 pilot and changes only `rows_per_benchmark` from `1` to `5`.
+
+Overall timing summary:
+
+| Method | Rows | Trigger rate | Mean end2end sec | P50 end2end sec | P90 end2end sec | Mean output tokens | Parse rate |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| original | 35 | n/a | 9.058 | 13.181 | 13.343 | 347.9 | n/a |
+| cached force | 35 | 100.0% | 3.445 | 2.427 | 4.801 | 54.9 | 94.3% |
+| reencode force | 35 | 100.0% | 3.433 | 2.371 | 5.072 | 54.9 | 94.3% |
+| cached free | 35 | 28.6% | 4.003 | 3.124 | 7.483 | 56.2 | 97.1% |
+| reencode free | 35 | 28.6% | 3.981 | 2.846 | 7.555 | 56.2 | 97.1% |
+| cached softforce | 35 | 42.9% | 4.446 | 3.500 | 7.332 | 52.9 | 100.0% |
+| reencode softforce | 35 | 42.9% | 4.424 | 3.355 | 7.287 | 52.9 | 100.0% |
+
+Per-token timing summary:
+
+| Method | Output tokens | E2E output tok/s | E2E sec/token | Action tok/s | Action sec/token | Answer tok/s | Answer sec/token |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| original | 12178 | 38.413 | 0.026 | n/a | n/a | n/a | n/a |
+| cached force | 1923 | 15.947 | 0.063 | 20.268 | 0.049 | 24.671 | 0.041 |
+| reencode force | 1923 | 16.005 | 0.062 | 21.272 | 0.047 | 24.345 | 0.041 |
+| cached free | 1968 | 14.048 | 0.071 | 17.055 | 0.059 | 24.506 | 0.041 |
+| reencode free | 1968 | 14.123 | 0.071 | 16.888 | 0.059 | 24.879 | 0.040 |
+| cached softforce | 1851 | 11.894 | 0.084 | 17.045 | 0.059 | 24.281 | 0.041 |
+| reencode softforce | 1851 | 11.954 | 0.084 | 16.936 | 0.059 | 24.294 | 0.041 |
+
+Triggered-row phase summary:
+
+| Method | Triggered rows | Focus capture sec | Cached prewarm sec | Reencode tap sec | Post-D continue sec |
+|---|---:|---:|---:|---:|---:|
+| cached force | 35 | 1.036 | 0.059 | n/a | 2.227 |
+| reencode force | 35 | 0.986 | n/a | 0.059 | 2.257 |
+| cached free | 10 | 3.378 | 0.071 | n/a | 2.905 |
+| reencode free | 10 | 3.487 | n/a | 0.067 | 2.862 |
+| cached softforce | 15 | 3.780 | 0.065 | n/a | 2.117 |
+| reencode softforce | 15 | 3.816 | n/a | 0.062 | 2.116 |
+
+Cached-vs-reencode paired deltas:
+
+| Pair | Rows | Mean delta sec | P50 delta sec | P10 / P90 delta sec | Reencode faster / slower | Mean abs row delta |
+|---|---:|---:|---:|---:|---:|---:|
+| force, all triggered | 35 | -0.012 | -0.032 | -0.215 / +0.203 | 21 / 14 | 0.140 |
+| free, all rows | 35 | -0.021 | -0.016 | -0.269 / +0.188 | 18 / 17 | 0.157 |
+| free, triggered-or-focus | 10 | +0.051 | +0.074 | -0.213 / +0.331 | 4 / 6 | 0.189 |
+| softforce, all rows | 35 | -0.022 | -0.036 | -0.110 / +0.081 | 22 / 13 | 0.083 |
+| softforce, triggered-or-focus | 15 | -0.002 | -0.036 | -0.094 / +0.139 | 10 / 5 | 0.099 |
+
+Compact per-benchmark force timing, five selected rows per benchmark:
+
+| Benchmark | Original sec | Cached force sec | Reencode force sec | Delta sec | Reencode tap sec |
+|---|---:|---:|---:|---:|---:|
+| vstar_bench | 5.228 | 2.045 | 2.057 | +0.012 | 0.060 |
+| hr_bench_4k | 6.663 | 2.381 | 2.314 | -0.067 | 0.113 |
+| blink | 11.257 | 2.335 | 2.231 | -0.104 | 0.089 |
+| ocrbench_v2 | 6.800 | 3.678 | 3.680 | +0.002 | 0.038 |
+| mmmu_pro | 9.861 | 6.050 | 6.077 | +0.027 | 0.056 |
+| mathvista | 10.314 | 2.995 | 2.946 | -0.049 | 0.030 |
+| mathverse | 13.282 | 4.633 | 4.725 | +0.091 | 0.024 |
+
+Main reading:
+
+- The true post-focus vision tap cost is about `0.06s` per trigger.
+- Cached prewarm and fresh reencode taps are the same order of magnitude:
+  force `0.059s` vs `0.059s`, free `0.071s` vs `0.067s`, softforce `0.065s`
+  vs `0.062s`.
+- End-to-end cached-vs-reencode differences are near zero:
+  force `-0.012s`, free `-0.021s`, softforce `-0.022s` mean
+  `reencode - cached`.
+- These tiny negative deltas do not show that reencode is intrinsically faster.
+  They are smaller than row-level runtime variance: for force, the mean absolute
+  paired row delta is `0.140s`, while the mean signed delta is only `-0.012s`.
+- The latency bottleneck remains language-side generation, especially focus
+  capture and post-D continuation, not the visual reencode/tap.
+
 ## Measured CoreDev-7 Result
 
 Run:
 `outputs/clean_timing/tgvf_inference_time_coredev7_20260706_112106`.
+
+This was the first pilot run. It is useful for the order-of-magnitude check,
+but CoreDev-35 above is the preferred small timing estimate.
 
 Identity:
 

@@ -112,6 +112,94 @@ If a mistake is found:
 
 ## Experiment Entries
 
+### TIME-20260706-124428-inference-time-coredev35
+
+- Status: DONE.
+- Question:
+  - Reduce the noise in the CoreDev inference-time estimate by increasing the
+    deterministic timing subset from `1` row per benchmark to `5` rows per
+    benchmark, while keeping the run cheap enough for iteration.
+- Baseline anchors:
+  - Same timing protocol as `TIME-20260706-112106-inference-time-coredev7`.
+  - Stage2 checkpoint:
+    `outputs/clean_training/qwen3_stage2_ddeepstack_norm01_from_stage1_ddeepstack_8gpu_20260703_005210/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt`.
+  - CoreDev-2511 manifest:
+    `revisit_vlm_clean/benchmark_manifests/core_balanced_dev_2511_seed20260625.json`,
+    hash `a461d9b482b7165b42b9bbb0fbf0ea6aff31fde0a838c13d953f070e770b0579`.
+  - Model / processor:
+    `/nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking`.
+- Intended diff:
+  - Change only `--rows-per-benchmark` from `1` to `5`.
+  - Selected sample count becomes `35`: first `5` manifest rows per benchmark
+    for `blink`, `hr_bench_4k`, `mathverse`, `mathvista`, `mmmu_pro`,
+    `ocrbench_v2`, and `vstar_bench`.
+  - Expected timing rows: `245`, exactly `7` timing methods x `35` measured
+    rows.
+- Held fixed:
+  - Methods:
+    `original`, `tgvf_cached_prewarm_force`, `tgvf_reencode_force`,
+    `tgvf_cached_prewarm_free`, `tgvf_reencode_free`,
+    `tgvf_cached_prewarm_softforce`, `tgvf_reencode_softforce`.
+  - Warmup `1`, single GPU `cuda:0`, FlashAttention-2, resolution `512`,
+    unified `max_tokens=512`, post-D continuation `kv_cache`, DeepStack
+    `no_block`, D DeepStack enabled.
+  - Isolated timing script only; no default benchmark/runtime code changes.
+- Code / worktree:
+  - Commit before launch: `f65a1be4d2cbd39272a79b2d2cb63a95a16272b9`.
+  - Worktree before ledger edit: clean.
+- Planned output:
+  - `outputs/clean_timing/tgvf_inference_time_coredev35_20260706_124428`.
+- Planned command:
+  - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=revisit_vlm_clean/src:src python scripts/run_tgvf_inference_time_test.py --run-id tgvf_inference_time_coredev35_20260706_124428 --output-dir outputs/clean_timing/tgvf_inference_time_coredev35_20260706_124428 --stage2-checkpoint outputs/clean_training/qwen3_stage2_ddeepstack_norm01_from_stage1_ddeepstack_8gpu_20260703_005210/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt --stage2-eval-jsonl data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend_open_answer/splits/tgvf_v4_teacher_stage2_protocol_c.test.jsonl --model-id /nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking --processor-id /nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking --manifest-path revisit_vlm_clean/benchmark_manifests/core_balanced_dev_2511_seed20260625.json --benchmark-root /home/dredvpn009/Flash_Storage/datasets/benchmarks --device cuda:0 --device-map cuda:0 --dtype bfloat16 --attn-implementation flash_attention_2 --max-image-resolution 512 --max-tokens 512 --rows-per-benchmark 5 --warmup-samples 1 --progress-every 5`.
+- GPUs:
+  - Planned GPU: `0`.
+- Started:
+  - `2026-07-06 12:45 JST` in Codex exec session `60072`.
+- Finished:
+  - `2026-07-06 13:08 JST`.
+- Outputs:
+  - `outputs/clean_timing/tgvf_inference_time_coredev35_20260706_124428/run_config.txt`.
+  - `outputs/clean_timing/tgvf_inference_time_coredev35_20260706_124428/timing_run_identity.json`.
+  - `outputs/clean_timing/tgvf_inference_time_coredev35_20260706_124428/sample_manifest.json`.
+  - `outputs/clean_timing/tgvf_inference_time_coredev35_20260706_124428/timing_rows.jsonl`.
+  - `outputs/clean_timing/tgvf_inference_time_coredev35_20260706_124428/timing_summary.json`.
+- Measured rows:
+  - `245` timing rows, exactly `7` methods x `35` measured CoreDev rows.
+- Overall timing summary:
+  - `original`: mean row wall `9.058s`, P50 `13.181s`, P90 `13.343s`,
+    mean output tokens `347.9`.
+  - `tgvf_cached_prewarm_force`: trigger `100.0%`, mean row wall `3.445s`,
+    P50 `2.427s`, P90 `4.801s`, parse rate `94.3%`.
+  - `tgvf_reencode_force`: trigger `100.0%`, mean row wall `3.433s`,
+    P50 `2.371s`, P90 `5.072s`, parse rate `94.3%`.
+  - `tgvf_cached_prewarm_free`: trigger `28.6%`, mean row wall `4.003s`,
+    P50 `3.124s`, P90 `7.483s`, parse rate `97.1%`.
+  - `tgvf_reencode_free`: trigger `28.6%`, mean row wall `3.981s`,
+    P50 `2.846s`, P90 `7.555s`, parse rate `97.1%`.
+  - `tgvf_cached_prewarm_softforce`: trigger `42.9%`, mean row wall
+    `4.446s`, P50 `3.500s`, P90 `7.332s`, parse rate `100.0%`.
+  - `tgvf_reencode_softforce`: trigger `42.9%`, mean row wall `4.424s`,
+    P50 `3.355s`, P90 `7.287s`, parse rate `100.0%`.
+- Phase findings:
+  - Fresh reencode vision tap mean per trigger:
+    force `0.059s`, free `0.067s`, softforce `0.062s`.
+  - Cached-feature prewarm probe mean:
+    force `0.059s`, free `0.071s`, softforce `0.065s`.
+  - Post-D continuation means:
+    force `2.26s`, free `2.86s`, softforce `2.12s` for reencode variants.
+- Paired cached-vs-reencode deltas:
+  - Force all-triggered mean delta `reencode - cached = -0.012s`; P50
+    `-0.032s`, P10/P90 `-0.215s/+0.203s`, absolute mean row delta `0.140s`.
+  - Free all-row mean delta `-0.021s`; triggered-or-focus rows mean `+0.051s`.
+  - Softforce all-row mean delta `-0.022s`; triggered-or-focus rows mean
+    `-0.002s`.
+- Conclusion:
+  - The `5` rows per benchmark timing run confirms the CoreDev-7 reading:
+    reencode/tap overhead is about `0.06s` per trigger and is not a main
+    latency bottleneck. The tiny negative end-to-end mean deltas do not mean
+    reencode is genuinely faster; they are much smaller than row-level
+    generation/runtime variance.
+
 ### TIME-20260706-112106-inference-time-coredev7
 
 - Status: DONE.
