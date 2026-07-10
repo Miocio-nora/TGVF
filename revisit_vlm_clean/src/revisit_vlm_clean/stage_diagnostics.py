@@ -505,6 +505,7 @@ def _load_stage2_lora_model(
     protocol_token_info: dict[str, Any],
 ) -> tuple[Any, dict[str, Any]]:
     from peft import LoraConfig, get_peft_model, set_peft_model_state_dict
+    from revisit_vlm_clean.peft_token_rows import trainable_token_indices_from_checkpoint
 
     checkpoint_config = checkpoint.get("config") or {}
     lora_cfg = checkpoint_config.get("lora") or {}
@@ -513,6 +514,13 @@ def _load_stage2_lora_model(
         "trainable_tokens" in key or "token_adapter" in key for key in qwen_lora_state
     )
     modules_to_save = lora_cfg.get("modules_to_save")
+    protocol_token_ids = list(
+        protocol_token_info.get("tgvf_protocol_token_ids", {}).values()
+    )
+    trainable_token_indices = trainable_token_indices_from_checkpoint(
+        state=qwen_lora_state,
+        token_ids=protocol_token_ids,
+    )
     peft_config = LoraConfig(
         r=int(lora_cfg.get("rank", 64)),
         lora_alpha=int(lora_cfg.get("alpha", 256)),
@@ -526,7 +534,7 @@ def _load_stage2_lora_model(
         modules_to_save=list(modules_to_save) if modules_to_save else None,
         ensure_weight_tying=False,
         trainable_token_indices=(
-            list(protocol_token_info.get("tgvf_protocol_token_ids", {}).values())
+            trainable_token_indices
             if checkpoint_has_trainable_token_adapter and not modules_to_save
             else None
         ),
@@ -538,7 +546,7 @@ def _load_stage2_lora_model(
         "loaded": True,
         "available_in_checkpoint": True,
         "modules_to_save": modules_to_save,
-        "target_modules": peft_config.target_modules,
+        "target_modules": sorted(peft_config.target_modules or []),
         "checkpoint_has_trainable_token_adapter": checkpoint_has_trainable_token_adapter,
     }
 
@@ -546,7 +554,7 @@ def _load_stage2_lora_model(
 def _validate_peft_load_result(load_result: Any) -> None:
     unexpected = list(getattr(load_result, "unexpected_keys", []) or [])
     missing = list(getattr(load_result, "missing_keys", []) or [])
-    adapter_markers = ("lora_", "modules_to_save", "token_adapter", "trainable_tokens")
+    adapter_markers = ("lora_", "modules_to_save", "trainable_tokens_delta")
     adapter_missing = [key for key in missing if any(marker in key for marker in adapter_markers)]
     if unexpected or adapter_missing:
         raise RuntimeError(

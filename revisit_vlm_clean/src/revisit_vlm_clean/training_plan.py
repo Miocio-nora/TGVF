@@ -38,6 +38,10 @@ from .defaults import (
 )
 from .schema import DeepStackScope, DeepStackState, StrEnum, _to_jsonable
 from .tgvf_protocol import SUPPORTED_PROTOCOLS
+from .peft_token_rows import (
+    PROTOCOL_TOKEN_TRAINING_FULL_MODULES,
+    PROTOCOL_TOKEN_TRAINING_MODES,
+)
 
 
 class TrainingStage(StrEnum):
@@ -261,6 +265,7 @@ class Stage2LaunchConfig:
     lora_dropout: float = 0.05
     lora_bias: str = "none"
     lora_target_modules: tuple[str, ...] = DEFAULT_STAGE2_LORA_TARGET_MODULES
+    protocol_token_training_mode: str = PROTOCOL_TOKEN_TRAINING_FULL_MODULES
     lr_lora: float = 2e-5
     lr_tgvf: float = 5e-6
     lr_calibration: float = 1e-5
@@ -322,6 +327,11 @@ class Stage2LaunchConfig:
             raise ValueError("lora_bias must be none, all, or lora_only")
         if not self.lora_target_modules:
             raise ValueError("lora_target_modules must not be empty")
+        if self.protocol_token_training_mode not in PROTOCOL_TOKEN_TRAINING_MODES:
+            raise ValueError(
+                "protocol_token_training_mode must be one of "
+                f"{list(PROTOCOL_TOKEN_TRAINING_MODES)}"
+            )
         if float(self.adam_eps) <= 0:
             raise ValueError("adam_eps must be > 0")
         if float(self.weight_decay) < 0:
@@ -541,7 +551,7 @@ def build_stage2_launch_plan(
             "target_focus_ratio": config.target_focus_ratio,
         },
         "tgvf": _stage2_tgvf_config(config),
-        "module_policy": _stage2_module_policy(),
+        "module_policy": _stage2_module_policy(config),
         "mask_policy": {
             "mask_original_image_after_tgvf": config.mask_original_image_after_tgvf,
             "mask_original_image_after_tgvf_prob": config.mask_original_image_after_tgvf_prob,
@@ -557,6 +567,7 @@ def build_stage2_launch_plan(
             "dropout": config.lora_dropout,
             "bias": config.lora_bias,
             "target_modules": list(config.lora_target_modules),
+            "protocol_token_training_mode": config.protocol_token_training_mode,
         },
         "loss": {
             "weighted_span_loss": dict(config.weighted_span_loss),
@@ -973,7 +984,8 @@ def _stage1_readout_context(config: Stage1LaunchConfig) -> dict[str, Any]:
     }
 
 
-def _stage2_module_policy() -> dict[str, Any]:
+def _stage2_module_policy(config: Stage2LaunchConfig) -> dict[str, Any]:
+    row_only = config.protocol_token_training_mode == "row_only"
     return {
         "trainable": [
             "qwen_lora_adapters",
@@ -981,8 +993,13 @@ def _stage2_module_policy() -> dict[str, Any]:
             "protocol_c_token_rows_restored_from_stage1",
         ],
         "token_row_implementation": {
-            "current_peft_path": 'modules_to_save=["embed_tokens", "lm_head"]',
-            "switching_requires_named_ablation": True,
+            "mode": config.protocol_token_training_mode,
+            "current_peft_path": (
+                'trainable_token_indices={"embed_tokens": ids, "lm_head": ids}'
+                if row_only
+                else 'modules_to_save=["embed_tokens", "lm_head"]'
+            ),
+            "named_ablation": row_only,
         },
         "frozen": [
             "base_qwen_weights_outside_lora_and_saved_token_modules",
@@ -1139,6 +1156,8 @@ def _stage2_legacy_command(config: Stage2LaunchConfig) -> list[str]:
         config.lora_bias,
         "--lora-target-modules",
         ",".join(config.lora_target_modules),
+        "--protocol-token-training-mode",
+        config.protocol_token_training_mode,
         "--mask-original-image-after-tgvf-prob",
         str(config.mask_original_image_after_tgvf_prob),
         "--mask-original-image-after-tgvf-scope",

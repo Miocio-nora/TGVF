@@ -1816,6 +1816,12 @@ def _checkpoint_runtime_config(
 ) -> dict[str, Any]:
     model = bundle.get("model") or {}
     training = bundle.get("training") or {}
+    lora = dict(bundle.get("lora") or {})
+    if expected_stage == TrainingStage.STAGE2:
+        token_mode = str(lora.get("protocol_token_training_mode") or "full_modules")
+        lora["modules_to_save"] = (
+            ["embed_tokens", "lm_head"] if token_mode == "full_modules" else None
+        )
     return {
         "stage": str(expected_stage),
         "run_id": bundle.get("run_id"),
@@ -1824,6 +1830,7 @@ def _checkpoint_runtime_config(
         "tgvf_protocol": bundle.get("protocol"),
         "training": training,
         "tgvf": _checkpoint_tgvf_config(bundle=bundle, loaded_modules=loaded_modules),
+        "lora": lora if expected_stage == TrainingStage.STAGE2 else None,
     }
 
 
@@ -5005,11 +5012,16 @@ def _load_stage2_parameter_audit_modules(bundle: dict[str, Any]) -> dict[str, An
             PROTOCOL_E_ACTION_EVIDENCE_SPECIAL,
             ensure_tgvf_protocol_tokens,
             load_qwen3_vl,
+            protocol_special_token_ids,
         )
         from revisit_vlm.tgvf_training import build_tgvf_module
         from revisit_vlm.tgvf_v3_stage1 import freeze_qwen_backbone, infer_qwen3_stage1_dims
         from revisit_vlm.tgvf_v3_stage2 import TGVFv3Stage2Dataset
         from scripts.train_tgvf_v3_stage2 import _restore_protocol_c_token_rows_from_stage1
+        from revisit_vlm_clean.peft_token_rows import (
+            PROTOCOL_TOKEN_TRAINING_FULL_MODULES,
+            protocol_token_peft_kwargs,
+        )
     except Exception as exc:
         raise RuntimeError("Stage2 model parameter audit dependencies are unavailable") from exc
     model_cfg = bundle.get("model") or {}
@@ -5045,13 +5057,33 @@ def _load_stage2_parameter_audit_modules(bundle: dict[str, Any]) -> dict[str, An
     token_info: dict[str, Any] = {}
     if protocol in token_row_protocols:
         token_info = ensure_tgvf_protocol_tokens(processor.tokenizer, model, protocol=protocol)
+    stage1_checkpoint = torch.load(checkpoint_path, map_location="cpu")
+    token_mode = str(
+        lora.get("protocol_token_training_mode")
+        or PROTOCOL_TOKEN_TRAINING_FULL_MODULES
+    )
+    if protocol in token_row_protocols and token_mode != PROTOCOL_TOKEN_TRAINING_FULL_MODULES:
+        _restore_protocol_c_token_rows_from_stage1(
+            model=model,
+            tokenizer=processor.tokenizer,
+            protocol=protocol,
+            stage1_checkpoint=stage1_checkpoint,
+        )
     freeze_qwen_backbone(model)
     runtime = ((bundle.get("module_policy") or {}).get("training_runtime") or {})
     if runtime.get("gradient_checkpointing") and hasattr(model, "gradient_checkpointing_enable"):
         model.gradient_checkpointing_enable()
     if hasattr(model, "config"):
         model.config.use_cache = False
-    modules_to_save = ["embed_tokens", "lm_head"] if protocol in token_row_protocols else None
+    token_peft_kwargs = (
+        protocol_token_peft_kwargs(
+            mode=token_mode,
+            token_ids=list(protocol_special_token_ids(processor.tokenizer, protocol=protocol).values()),
+        )
+        if protocol in token_row_protocols
+        else {"modules_to_save": None, "trainable_token_indices": None}
+    )
+    modules_to_save = token_peft_kwargs["modules_to_save"]
     model = get_peft_model(
         model,
         LoraConfig(
@@ -5062,12 +5094,12 @@ def _load_stage2_parameter_audit_modules(bundle: dict[str, Any]) -> dict[str, An
             bias=str(lora.get("bias") or "none"),
             task_type="CAUSAL_LM",
             modules_to_save=modules_to_save,
+            trainable_token_indices=token_peft_kwargs["trainable_token_indices"],
             ensure_weight_tying=False,
         ),
     )
     utility_model = model.get_base_model() if hasattr(model, "get_base_model") else model
-    stage1_checkpoint = torch.load(checkpoint_path, map_location="cpu")
-    if protocol in token_row_protocols:
+    if protocol in token_row_protocols and token_mode == PROTOCOL_TOKEN_TRAINING_FULL_MODULES:
         _restore_protocol_c_token_rows_from_stage1(
             model=model,
             tokenizer=processor.tokenizer,
@@ -5121,6 +5153,8 @@ def _load_stage2_parameter_audit_modules(bundle: dict[str, Any]) -> dict[str, An
             "dims": dims,
             "stage1_global_step": stage1_checkpoint.get("global_step"),
             "modules_to_save": modules_to_save,
+            "protocol_token_training_mode": token_mode,
+            "trainable_token_indices": token_peft_kwargs["trainable_token_indices"],
             "resolved_tgvf_config": tgvf_cfg,
         },
     }

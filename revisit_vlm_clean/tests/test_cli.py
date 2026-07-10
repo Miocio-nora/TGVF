@@ -1691,6 +1691,7 @@ def test_stage2_training_write_plan_cli(tmp_path) -> None:
         "bias": "none",
         "dropout": 0.05,
         "rank": 64,
+        "protocol_token_training_mode": "full_modules",
         "target_modules": [
             "q_proj",
             "k_proj",
@@ -1757,6 +1758,40 @@ def test_stage2_training_write_plan_cli(tmp_path) -> None:
     assert "--launch-training" in clean_command
     command = (output_dir / "legacy_reference_command.sh").read_text()
     assert command == "# unavailable\n"
+
+
+def test_stage2_narrow_lora_ablation_is_opt_in(tmp_path) -> None:
+    train_file = tmp_path / "stage2.train.jsonl"
+    checkpoint = tmp_path / "stage1.pt"
+    train_file.write_text(
+        '{"image": "/tmp/image.jpg", "question": "q", "answer": "a", '
+        '"need_focus": true, "evidence_state": "need_local_visual_evidence"}\n',
+        encoding="utf-8",
+    )
+    _write_minimal_stage1_checkpoint(checkpoint)
+    output_dir = tmp_path / "stage2_narrow_lora"
+
+    assert stage2_main(
+        [
+            "--run-id", "stage2_narrow_lora_unit",
+            "--train-file", str(train_file),
+            "--stage1-checkpoint", str(checkpoint),
+            "--output-dir", str(output_dir),
+            "--lora-rank", "16",
+            "--lora-target-modules", "q_proj,v_proj,o_proj",
+            "--protocol-token-training-mode", "row_only",
+            "--loss-evidence", "0.2",
+            "--write-plan",
+        ]
+    ) == 0
+
+    plan = json.loads((output_dir / "training_plan.json").read_text())
+    assert plan["lora"]["rank"] == 16
+    assert plan["lora"]["target_modules"] == ["q_proj", "v_proj", "o_proj"]
+    assert plan["lora"]["protocol_token_training_mode"] == "row_only"
+    assert plan["loss"]["weighted_span_loss"]["evidence"] == 0.2
+    assert plan["module_policy"]["token_row_implementation"]["mode"] == "row_only"
+    assert plan["module_policy"]["token_row_implementation"]["named_ablation"] is True
 
 
 def test_stage2_training_executor_preflight_cli(tmp_path, capsys) -> None:

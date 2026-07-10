@@ -12,6 +12,11 @@ from typing import Any
 import torch
 import torch.distributed as dist
 from peft import LoraConfig, get_peft_model, get_peft_model_state_dict
+from revisit_vlm_clean.peft_token_rows import (
+    PROTOCOL_TOKEN_TRAINING_FULL_MODULES,
+    PROTOCOL_TOKEN_TRAINING_MODES,
+    protocol_token_peft_kwargs,
+)
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
 
@@ -95,17 +100,37 @@ def main() -> None:
     }
     if args.tgvf_protocol in token_row_protocols:
         protocol_token_info = ensure_tgvf_protocol_tokens(processor.tokenizer, model, protocol=args.tgvf_protocol)
+    stage1_checkpoint = torch.load(args.stage1_checkpoint, map_location="cpu")
+    if (
+        args.tgvf_protocol in token_row_protocols
+        and args.protocol_token_training_mode != PROTOCOL_TOKEN_TRAINING_FULL_MODULES
+    ):
+        _restore_protocol_c_token_rows_from_stage1(
+            model=model,
+            tokenizer=processor.tokenizer,
+            protocol=args.tgvf_protocol,
+            stage1_checkpoint=stage1_checkpoint,
+        )
     freeze_qwen_backbone(model)
     if args.gradient_checkpointing and hasattr(model, "gradient_checkpointing_enable"):
         model.gradient_checkpointing_enable()
     if hasattr(model, "config"):
         model.config.use_cache = False
     lora_targets = [item.strip() for item in args.lora_target_modules.split(",") if item.strip()]
-    lora_modules_to_save = (
-        ["embed_tokens", "lm_head"]
+    token_peft_kwargs = (
+        protocol_token_peft_kwargs(
+            mode=args.protocol_token_training_mode,
+            token_ids=list(
+                protocol_special_token_ids(
+                    processor.tokenizer,
+                    protocol=args.tgvf_protocol,
+                ).values()
+            ),
+        )
         if args.tgvf_protocol in token_row_protocols
-        else None
+        else {"modules_to_save": None, "trainable_token_indices": None}
     )
+    lora_modules_to_save = token_peft_kwargs["modules_to_save"]
     lora_config = LoraConfig(
         r=args.lora_rank,
         lora_alpha=args.lora_alpha,
@@ -114,6 +139,7 @@ def main() -> None:
         bias=args.lora_bias,
         task_type="CAUSAL_LM",
         modules_to_save=lora_modules_to_save,
+        trainable_token_indices=token_peft_kwargs["trainable_token_indices"],
         ensure_weight_tying=False,
     )
     model = get_peft_model(model, lora_config)
@@ -121,7 +147,6 @@ def main() -> None:
     utility_model = model.get_base_model() if hasattr(model, "get_base_model") else model
     tokenizer_size_after = len(processor.tokenizer)
 
-    stage1_checkpoint = torch.load(args.stage1_checkpoint, map_location="cpu")
     stage1_tgvf_config_resolution = _apply_stage1_tgvf_config(args, stage1_checkpoint)
     if args.d_deepstack_enabled and not args.deepstack_enabled:
         raise ValueError("Stage2 D DeepStack checkpoint config requires --deepstack-enabled")
@@ -173,11 +198,14 @@ def main() -> None:
         d_deepstack_branch_layers=tuple(args.d_deepstack_branch_layers),
     ).to(device=device, dtype=train_dtype)
     stage1_token_row_info = {}
-    if args.tgvf_protocol in {
+    if (
+        args.protocol_token_training_mode == PROTOCOL_TOKEN_TRAINING_FULL_MODULES
+        and args.tgvf_protocol in {
         PROTOCOL_C_THINKING_SPECIAL,
         PROTOCOL_C_TOOL_OBSERVATION,
         PROTOCOL_C_TOOL_OBSERVATION_QWEN2_NO_THINK,
-    }:
+        }
+    ):
         stage1_token_row_info = _restore_protocol_c_token_rows_from_stage1(
             model=model,
             tokenizer=processor.tokenizer,
@@ -250,6 +278,7 @@ def main() -> None:
             "bias": args.lora_bias,
             "target_modules": lora_targets,
             "modules_to_save": lora_modules_to_save,
+            "protocol_token_training_mode": args.protocol_token_training_mode,
         },
         "lr_groups": lr_groups,
         "optimizer": {
@@ -907,6 +936,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--lora-dropout", type=float, default=0.05)
     parser.add_argument("--lora-bias", default="none", choices=("none", "all", "lora_only"))
     parser.add_argument("--lora-target-modules", default="q_proj,k_proj,v_proj,o_proj,gate_proj,up_proj,down_proj")
+    parser.add_argument(
+        "--protocol-token-training-mode",
+        choices=PROTOCOL_TOKEN_TRAINING_MODES,
+        default=PROTOCOL_TOKEN_TRAINING_FULL_MODULES,
+    )
     parser.add_argument("--lr-lora", type=float, default=2e-5)
     parser.add_argument("--lr-tgvf", type=float, default=5e-6)
     parser.add_argument("--lr-calibration", type=float, default=1e-5)

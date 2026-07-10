@@ -27,6 +27,7 @@ from revisit_vlm_clean.training_plan import (
     resolve_batch_identity,
     write_training_plan,
 )
+from revisit_vlm_clean.peft_token_rows import PROTOCOL_TOKEN_TRAINING_MODES
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -99,6 +100,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--lora-target-modules",
         default=",".join(DEFAULT_STAGE2_LORA_TARGET_MODULES),
+    )
+    parser.add_argument(
+        "--protocol-token-training-mode",
+        choices=PROTOCOL_TOKEN_TRAINING_MODES,
+        default="full_modules",
     )
     parser.add_argument("--lr-lora", type=float, default=2e-5)
     parser.add_argument("--lr-tgvf", type=float, default=5e-6)
@@ -212,6 +218,7 @@ def _defaults() -> dict[str, object]:
             "dropout": 0.05,
             "bias": "none",
             "target_modules": list(DEFAULT_STAGE2_LORA_TARGET_MODULES),
+            "protocol_token_training_mode": "full_modules",
         },
         "weighted_span_loss": dict(DEFAULT_STAGE2_SPAN_WEIGHTS),
         "lr_scheduler": "cosine",
@@ -298,6 +305,7 @@ def _config_from_args(args: argparse.Namespace) -> Stage2LaunchConfig:
         lora_dropout=args.lora_dropout,
         lora_bias=args.lora_bias,
         lora_target_modules=_parse_lora_target_modules(args.lora_target_modules),
+        protocol_token_training_mode=args.protocol_token_training_mode,
         lr_lora=args.lr_lora,
         lr_tgvf=args.lr_tgvf,
         lr_calibration=args.lr_calibration,
