@@ -2,7 +2,7 @@
 
 ## Status
 
-- Suite status: planned.
+- Suite status: running.
 - Mainline status: unchanged.
 - The authoritative recipe remains the 2026-07-03 golden D-DeepStack Stage2
   run.
@@ -19,10 +19,10 @@ behavior, and which changes damage tool triggering or reasoning-heavy tasks?
 
 | ID | LoRA targets | Protocol-token training | Evidence weight | Status |
 |---|---|---|---:|---|
-| R16-A rank-only | q/k/v/o + gate/up/down | full modules | 1.0 | Planned |
-| R16-B targets-only | q/v/o | full modules | 1.0 | Planned |
-| R16-C row-only | q/k/v/o + gate/up/down | row only | 1.0 | Planned |
-| R16-D evidence-0.2 | q/k/v/o + gate/up/down | full modules | 0.2 | Planned |
+| R16-A rank-only | q/k/v/o + gate/up/down | full modules | 1.0 | Running |
+| R16-B targets-only | q/v/o | full modules | 1.0 | Smoke passed; queued |
+| R16-C row-only | q/k/v/o + gate/up/down | row only | 1.0 | Smoke passed; queued |
+| R16-D evidence-0.2 | q/k/v/o + gate/up/down | full modules | 0.2 | Smoke passed; queued |
 | R16-H combined | q/v/o | row only | 0.2 | Done |
 
 R16-H is the completed combined experiment documented in
@@ -96,6 +96,26 @@ Each experiment runs this gated sequence:
 - Driver: `scripts/run_stage2_r16_disentanglement.sh`.
 - Suite output:
   `outputs/clean_ablation/stage2_r16_disentanglement_20260712_121814`.
+
+### Plan And Smoke Gate
+
+| ID | Main plan sha256 | LLM trainable | Smoke loss | Validation | Peak GB |
+|---|---|---:|---:|---:|---:|
+| R16-A | `faf25f744188c388f9a4e6b43db5e883a521f19207ddbda1cbbaef3a9f6ae384` | 1,286,152,192 | 4.2344 | 4.2500 | 68.59 |
+| R16-B | `e747b172b839a6b2088bf67ddf432bbbb2e032e1dba8c0e0634d4cac42fd6c27` | 1,254,891,520 | 4.2344 | 4.2500 | 52.62 |
+| R16-C | `3e1aaaa469261afffbf025392c30757cc2f5cc1f626348f85dd66d05484b621a` | 43,679,744 | 4.2500 | 4.2500 | 65.16 |
+| R16-D | `9beb47791eb80961fe1404915bdf0b08dc8c6c60a00b2b0ae64a8a943c4b9158` | 1,286,152,192 | 4.6484 | 4.9688 | 68.60 |
+
+All smokes completed one optimizer step from four micro steps, ran validation,
+and saved a checkpoint whose state checks passed. TGVF trainable parameters
+are fixed at 72,055,808 in all four runs. After normalizing artifact paths and
+declared ablation fields, R16-A matches the golden plan and R16-B/C/D match
+R16-A exactly.
+
+- Formal queue started: `2026-07-12 12:33:24 JST`.
+- tmux: `stage2_r16_disentanglement_20260712_121814`.
+- R16-A W&B:
+  `https://wandb.ai/mio_nora/tgvf-clean-qwen3-deepstack/runs/vkzcu54m`.
 
 ## Primary Metrics
 
