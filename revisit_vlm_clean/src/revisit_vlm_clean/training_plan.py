@@ -572,6 +572,8 @@ def build_stage2_launch_plan(
                 "sample_scope": "same_image_single_focus",
                 "score_span": "post_d_readout_before_answer",
                 "candidate_swap": "d_and_d_deepstack_features",
+                "backward_mode": "sequential_weighted_ce_then_matrix_ce",
+                "groups_per_optimizer_step": 1,
                 "original_image_mask_probability": 1.0,
                 "vision_encode_count_per_group": 1,
                 "drop_incomplete_group_remainders": True,

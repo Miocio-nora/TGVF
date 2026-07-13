@@ -64,6 +64,16 @@ scope, score span, candidate swap contract, and deterministic sampler identity.
 Runtime logs include Matrix-CE loss, Top-1, positive and negative score means,
 positive-negative margin, and hashed auxiliary sample traces.
 
+The executable training path uses
+`sequential_weighted_ce_then_matrix_ce`: it backpropagates the ordinary
+weighted Stage2 CE before constructing the auxiliary Matrix-CE graph. The two
+gradient contributions are accumulated into the same optimizer update, so the
+objective is unchanged while the two large graphs do not coexist in memory.
+The auxiliary cursor contributes one independently sampled same-image group
+per optimizer step with the full configured Matrix-CE weight. This is an
+unbiased, higher-variance estimate of averaging one group per accumulation
+micro-step and is the recorded low-cost pilot mode.
+
 ## Verification
 
 CPU regression suite:
@@ -98,6 +108,24 @@ The smoke completed forward, backward, optimizer step, validation, and
 checkpoint publication with finite losses and gradients. Its single-group
 Top-1 is not an effectiveness result.
 
+The first 4-GPU `micro_batch=4` smoke exposed an SDPA OOM near the full
+`178 GiB` device capacity because weighted CE and Matrix-CE graphs were held
+simultaneously. Allocator tuning did not fix it, and FlashAttention-2 is not a
+valid fallback for this path because its manual DeepStack forward triggered a
+CUDA gather assertion. Sequential backward fixed the SDPA OOM. A final
+`accumulation=2` gate completed with exactly one Matrix-CE group:
+
+```text
+output: outputs/clean_ablation/
+  stage2_matrixce_preservation_golden_100step_4gpu_20260713_170018/
+  smoke_stage2_micro4_accum2_v2
+optimizer-step loss: 10.03125
+mean weighted CE: 3.9375
+Matrix-CE: 6.09375
+peak allocated memory: 131.23 GiB
+elapsed: 146.41 s
+```
+
 ## Controlled Pilot
 
 The first effectiveness run should preserve the authoritative Golden Stage2
@@ -107,9 +135,10 @@ configuration and change only Matrix-CE:
 - Golden rank-64 broad LoRA and full-modules protocol-token training.
 - Golden weighted span CE, target focus ratio, masks, and DeepStack scopes.
 - Matrix-CE enabled with `K=4`, weight `1.0`, readout batch size `4`.
-- Global batch `128`; device count and accumulation may change only if their
-  product preserves that global batch.
-- Save/evaluate at steps `100`, `200`, and `300` for the first pilot.
+- One Matrix-CE group per optimizer step, sequential backward after weighted
+  Stage2 CE.
+- GPUs `0-3`; `4 * micro batch 4 * accumulation 8 = global batch 128`.
+- Run `100` optimizer steps and save/evaluate at step `100` only.
 
 Primary acceptance criteria:
 

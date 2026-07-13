@@ -1796,6 +1796,8 @@ def test_stage2_matrix_ce_preservation_plan_is_opt_in(tmp_path) -> None:
     assert matrix["readout_batch_size"] == 2
     assert matrix["sample_scope"] == "same_image_single_focus"
     assert matrix["score_span"] == "post_d_readout_before_answer"
+    assert matrix["backward_mode"] == "sequential_weighted_ce_then_matrix_ce"
+    assert matrix["groups_per_optimizer_step"] == 1
     assert matrix["original_image_mask_probability"] == 1.0
     assert matrix["vision_encode_count_per_group"] == 1
     assert plan["loss"]["same_image_matrix_ce"] == 0.75

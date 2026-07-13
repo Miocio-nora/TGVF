@@ -2960,7 +2960,13 @@ def _write_single_process_training_runtime(
             for micro_index in range(accumulation_steps):
                 batch_record = train_cursor.next_batch()
                 matrix_ce_batch_record = (
-                    matrix_ce_cursor.next_batch() if matrix_ce_cursor is not None else None
+                    matrix_ce_cursor.next_batch()
+                    if _stage2_matrix_ce_micro_step_enabled(
+                        matrix_ce_cursor=matrix_ce_cursor,
+                        micro_index=micro_index,
+                        accumulation_steps=accumulation_steps,
+                    )
+                    else None
                 )
                 with _training_micro_step_sync_context(
                     modules=modules,
@@ -2975,9 +2981,7 @@ def _write_single_process_training_runtime(
                         expected_stage=expected_stage,
                         samples=batch_record["samples"],
                         matrix_ce_samples=(
-                            matrix_ce_batch_record["samples"]
-                            if matrix_ce_batch_record is not None
-                            else None
+                            [] if matrix_ce_cursor is not None else None
                         ),
                     )
                     loss_tensor = result.get("loss_tensor")
@@ -2990,24 +2994,67 @@ def _write_single_process_training_runtime(
                     loss_value = _scalar_float(loss_tensor)
                     if loss_value is None or not math.isfinite(loss_value):
                         raise ValueError("single-process training requires finite losses")
-                    loss_scalars = _loss_scalar_fields(result)
-                    loss_scalars["loss_total"] = loss_value
-                    debug_payload = dict(result.get("debug") or {})
-                    if debug_payload:
-                        micro_debug_logs.append(debug_payload)
                     sample_weight = _micro_batch_sample_weight(
                         sample_count=result.get("sample_count"),
                         nominal_micro_batch_size=nominal_micro_batch_size,
                     )
                     scaled_loss = loss_tensor * sample_weight / float(accumulation_steps)
                     scaled_loss.backward()
+                    scaled_loss_total = _scalar_float(scaled_loss)
+                    if matrix_ce_batch_record is not None:
+                        matrix_result = _run_stage2_matrix_ce_step_probe(
+                            bundle=bundle,
+                            loaded_modules=loaded_modules,
+                            samples=matrix_ce_batch_record["samples"],
+                        )
+                        matrix_loss_tensor = matrix_result.get("loss_tensor")
+                        if matrix_loss_tensor is None or not hasattr(
+                            matrix_loss_tensor, "backward"
+                        ):
+                            raise ValueError(
+                                "Stage2 Matrix-CE training requires a differentiable loss"
+                            )
+                        if getattr(matrix_loss_tensor, "requires_grad", False) is not True:
+                            raise ValueError("Stage2 Matrix-CE loss tensor must require gradients")
+                        matrix_loss_value = _scalar_float(matrix_loss_tensor)
+                        if matrix_loss_value is None or not math.isfinite(matrix_loss_value):
+                            raise ValueError("Stage2 Matrix-CE training requires finite losses")
+                        matrix_loss_weight = float(
+                            (bundle.get("loss") or {}).get("same_image_matrix_ce") or 0.0
+                        )
+                        scaled_matrix_loss = (
+                            matrix_loss_tensor
+                            * matrix_loss_weight
+                            * sample_weight
+                        )
+                        scaled_matrix_loss.backward()
+                        scaled_loss_total = float(scaled_loss_total or 0.0) + float(
+                            _scalar_float(scaled_matrix_loss) or 0.0
+                        )
+                        loss_value += matrix_loss_weight * matrix_loss_value
+                        result["loss_same_image_matrix_ce"] = matrix_loss_value
+                        result["loss_total"] = loss_value
+                        result_debug = dict(result.get("debug") or {})
+                        result_debug.update(dict(matrix_result.get("debug") or {}))
+                        result_debug["matrix_ce_backward_mode"] = (
+                            "sequential_weighted_ce_then_matrix_ce"
+                        )
+                        result_debug["matrix_ce_groups_per_optimizer_step"] = 1
+                        result["debug"] = result_debug
+                    loss_scalars = _loss_scalar_fields(result)
+                    if matrix_ce_cursor is not None and matrix_ce_batch_record is None:
+                        loss_scalars.pop("loss_same_image_matrix_ce", None)
+                    loss_scalars["loss_total"] = loss_value
+                    debug_payload = dict(result.get("debug") or {})
+                    if debug_payload:
+                        micro_debug_logs.append(debug_payload)
                 total_micro_steps += 1
                 micro_losses.append(
                     {
                         "micro_step": total_micro_steps,
                         "micro_index": micro_index,
                         **loss_scalars,
-                        "scaled_loss_total": _scalar_float(scaled_loss),
+                        "scaled_loss_total": scaled_loss_total,
                         "sample_count": result.get("sample_count"),
                         "nominal_micro_batch_size": nominal_micro_batch_size,
                         "loss_sample_weight": sample_weight,
@@ -3094,12 +3141,20 @@ def _write_single_process_training_runtime(
                     expected_stage=expected_stage,
                 )
                 validation_records.append(validation_record)
-            loss_values = [
-                float(item["loss_total"])
-                for item in micro_losses
-                if isinstance(item.get("loss_total"), (int, float))
-            ]
-            mean_loss = _mean(loss_values)
+            if matrix_ce_cursor is not None:
+                optimized_loss_values = [
+                    float(item["scaled_loss_total"])
+                    for item in micro_losses
+                    if isinstance(item.get("scaled_loss_total"), (int, float))
+                ]
+                mean_loss = sum(optimized_loss_values) if optimized_loss_values else None
+            else:
+                loss_values = [
+                    float(item["loss_total"])
+                    for item in micro_losses
+                    if isinstance(item.get("loss_total"), (int, float))
+                ]
+                mean_loss = _mean(loss_values)
             loss_means = _mean_loss_scalar_fields(micro_losses)
             debug_summary = _summarize_training_debug(micro_debug_logs)
             progress_logger.log_event(
@@ -3627,6 +3682,18 @@ def _build_stage2_matrix_ce_cursor(
         )
     except Exception as exc:
         raise RuntimeError("Stage2 Matrix-CE auxiliary cursor setup failed") from exc
+
+
+def _stage2_matrix_ce_micro_step_enabled(
+    *,
+    matrix_ce_cursor: Any | None,
+    micro_index: int,
+    accumulation_steps: int,
+) -> bool:
+    return (
+        matrix_ce_cursor is not None
+        and int(micro_index) == max(1, int(accumulation_steps)) - 1
+    )
 
 
 def _sample_trace_entry(
@@ -4425,7 +4492,6 @@ def _run_stage2_training_step_probe(
         from revisit_vlm.tgvf_v3_stage2 import Stage2LossWeights, TGVFv3Stage2Dataset
         from revisit_vlm.tgvf_v3_stage2_fast import (
             v3_stage2_batched_training_step,
-            v3_stage2_same_image_matrix_ce_step,
         )
     except Exception as exc:
         raise RuntimeError("Stage2 training-step audit dependencies are unavailable") from exc
@@ -4498,31 +4564,16 @@ def _run_stage2_training_step_probe(
             raise RuntimeError("Stage2 Matrix-CE plan did not produce an auxiliary cursor")
         matrix_ce_samples = matrix_cursor.next_batch()["samples"]
     if matrix_enabled and matrix_ce_samples:
-        matrix_output = v3_stage2_same_image_matrix_ce_step(
-            qwen_model=qwen_model,
-            qwen_forward_model=qwen_forward_model,
-            processor=processor,
-            foveal_module=foveal_module,
+        matrix_result = _run_stage2_matrix_ce_step_probe(
+            bundle=bundle,
+            loaded_modules=loaded_modules,
             samples=matrix_ce_samples,
-            loss_weights=Stage2LossWeights(
-                **span_weights,
-                visual_token_manifold=float(loss.get("visual_token_manifold") or 0.0),
-            ),
-            device=_parameter_audit_device(torch),
-            hidden_state_index=int(((bundle.get("training") or {}).get("capture_layer")) or -1),
-            max_image_resolution=(bundle.get("training") or {}).get("max_image_resolution"),
-            mask_original_image_after_tgvf_scope=str(
-                (bundle.get("mask_policy") or {}).get("mask_original_image_after_tgvf_scope")
-            ),
-            protocol=str(bundle.get("protocol")),
-            deepstack_enabled=bool((bundle.get("deepstack") or {}).get("enabled")),
-            readout_batch_size=int(matrix_config.get("readout_batch_size") or 4),
         )
-        output.loss_same_image_matrix_ce = matrix_output.loss
+        output.loss_same_image_matrix_ce = matrix_result["loss_tensor"]
         output.loss_total = output.loss_total + float(
             loss.get("same_image_matrix_ce") or 0.0
-        ) * matrix_output.loss
-        output.debug.update(matrix_output.debug)
+        ) * matrix_result["loss_tensor"]
+        output.debug.update(matrix_result["debug"])
     return {
         "forward_completed": True,
         "sample_count": len(samples),
@@ -4536,6 +4587,66 @@ def _run_stage2_training_step_probe(
             (bundle.get("mask_policy") or {}).get("mask_original_image_after_tgvf")
         ),
         "debug": output.debug,
+    }
+
+
+def _run_stage2_matrix_ce_step_probe(
+    *,
+    bundle: dict[str, Any],
+    loaded_modules: dict[str, Any],
+    samples: list[Any],
+) -> dict[str, Any]:
+    try:
+        import torch
+
+        from revisit_vlm.tgvf_v3_stage2 import Stage2LossWeights
+        from revisit_vlm.tgvf_v3_stage2_fast import v3_stage2_same_image_matrix_ce_step
+    except Exception as exc:
+        raise RuntimeError("Stage2 Matrix-CE step dependencies are unavailable") from exc
+    modules = dict(loaded_modules.get("modules") or {})
+    qwen_forward_model = modules.get("qwen_lora")
+    if qwen_forward_model is None:
+        raise ValueError("Stage2 Matrix-CE step requires qwen_lora module")
+    qwen_model = loaded_modules.get("qwen_model")
+    if qwen_model is None and hasattr(qwen_forward_model, "get_base_model"):
+        qwen_model = qwen_forward_model.get_base_model()
+    if qwen_model is None:
+        qwen_model = qwen_forward_model
+    processor = loaded_modules.get("processor")
+    if processor is None:
+        raise ValueError("Stage2 Matrix-CE step requires processor")
+    foveal_module = modules.get("tgvf")
+    if foveal_module is None:
+        raise ValueError("Stage2 Matrix-CE step requires tgvf module")
+    loss = bundle.get("loss") or {}
+    span_weights = dict(loss.get("weighted_span_loss") or {})
+    matrix_config = ((bundle.get("training") or {}).get("matrix_ce_preservation") or {})
+    matrix_output = v3_stage2_same_image_matrix_ce_step(
+        qwen_model=qwen_model,
+        qwen_forward_model=qwen_forward_model,
+        processor=processor,
+        foveal_module=foveal_module,
+        samples=samples,
+        loss_weights=Stage2LossWeights(
+            **span_weights,
+            visual_token_manifold=float(loss.get("visual_token_manifold") or 0.0),
+        ),
+        device=_parameter_audit_device(torch),
+        hidden_state_index=int(((bundle.get("training") or {}).get("capture_layer")) or -1),
+        max_image_resolution=(bundle.get("training") or {}).get("max_image_resolution"),
+        mask_original_image_after_tgvf_scope=str(
+            (bundle.get("mask_policy") or {}).get("mask_original_image_after_tgvf_scope")
+        ),
+        protocol=str(bundle.get("protocol")),
+        deepstack_enabled=bool((bundle.get("deepstack") or {}).get("enabled")),
+        readout_batch_size=int(matrix_config.get("readout_batch_size") or 4),
+    )
+    return {
+        "forward_completed": True,
+        "sample_count": len(samples),
+        "loss_total": _scalar_float(matrix_output.loss),
+        "loss_tensor": matrix_output.loss,
+        "debug": matrix_output.debug,
     }
 
 

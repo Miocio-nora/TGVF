@@ -151,6 +151,29 @@ def test_stage2_matrix_ce_reuses_one_same_image_vision_encode(monkeypatch) -> No
     assert all(item.model_inputs["_v_pre"] is items[0].model_inputs["_v_pre"] for item in items)
 
 
+def test_stage2_matrix_ce_runs_once_on_last_accumulation_micro_step() -> None:
+    from revisit_vlm_clean.training.executor import (
+        _stage2_matrix_ce_micro_step_enabled,
+    )
+
+    cursor = object()
+    enabled = [
+        _stage2_matrix_ce_micro_step_enabled(
+            matrix_ce_cursor=cursor,
+            micro_index=micro_index,
+            accumulation_steps=8,
+        )
+        for micro_index in range(8)
+    ]
+
+    assert enabled == [False, False, False, False, False, False, False, True]
+    assert not _stage2_matrix_ce_micro_step_enabled(
+        matrix_ce_cursor=None,
+        micro_index=7,
+        accumulation_steps=8,
+    )
+
+
 def test_stage2_runtime_config_rejects_missing_files(tmp_path) -> None:
     config = Stage2RuntimeConfig(
         stage2_checkpoint=str(tmp_path / "missing.pt"),

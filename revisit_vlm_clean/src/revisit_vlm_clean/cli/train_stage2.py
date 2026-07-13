@@ -236,6 +236,8 @@ def _defaults() -> dict[str, object]:
             "readout_batch_size": 4,
             "sample_scope": "same_image_single_focus",
             "score_span": "post_d_readout_before_answer",
+            "backward_mode": "sequential_weighted_ce_then_matrix_ce",
+            "groups_per_optimizer_step": 1,
             "original_image_mask_probability": 1.0,
             "vision_encode_count_per_group": 1,
         },
