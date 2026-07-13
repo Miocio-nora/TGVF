@@ -2,7 +2,7 @@
 
 ## Status
 
-- Suite status: completed.
+- Suite and R16-E follow-up status: completed.
 - Mainline status: unchanged.
 - The authoritative recipe remains the 2026-07-03 golden D-DeepStack Stage2
   run.
@@ -23,7 +23,7 @@ behavior, and which changes damage tool triggering or reasoning-heavy tasks?
 | R16-B targets-only | q/v/o | full modules | 1.0 | Done |
 | R16-C row-only | q/k/v/o + gate/up/down | row only | 1.0 | Done |
 | R16-D evidence-0.2 | q/k/v/o + gate/up/down | full modules | 0.2 | Done |
-| R16-E row-only + evidence-0.2 | q/k/v/o + gate/up/down | row only | 0.2 | Running |
+| R16-E row-only + evidence-0.2 | q/k/v/o + gate/up/down | row only | 0.2 | Done |
 | R16-H combined | q/v/o | row only | 0.2 | Done |
 
 R16-H is the completed combined experiment documented in
@@ -101,6 +101,9 @@ Each experiment runs this gated sequence:
 - Driver: `scripts/run_stage2_r16_disentanglement.sh`.
 - Suite output:
   `outputs/clean_ablation/stage2_r16_disentanglement_20260712_121814`.
+- R16-E driver: `scripts/run_stage2_r16e_rowonly_evidence02.sh`.
+- R16-E output:
+  `outputs/clean_ablation/stage2_r16e_rowonly_evidence02_20260713_111841`.
 
 ### Plan And Smoke Gate
 
@@ -110,12 +113,13 @@ Each experiment runs this gated sequence:
 | R16-B | `e747b172b839a6b2088bf67ddf432bbbb2e032e1dba8c0e0634d4cac42fd6c27` | 1,254,891,520 | 4.2344 | 4.2500 | 52.62 |
 | R16-C | `3e1aaaa469261afffbf025392c30757cc2f5cc1f626348f85dd66d05484b621a` | 43,679,744 | 4.2500 | 4.2500 | 65.16 |
 | R16-D | `9beb47791eb80961fe1404915bdf0b08dc8c6c60a00b2b0ae64a8a943c4b9158` | 1,286,152,192 | 4.6484 | 4.9688 | 68.60 |
+| R16-E | `391584f39d0e07054ca6f25a512c4053c01631511e92b9f111e84f5fb7871536` | 43,679,744 | 4.6484 | 4.9688 | 65.16 |
 
 All smokes completed one optimizer step from four micro steps, ran validation,
 and saved a checkpoint whose state checks passed. TGVF trainable parameters
-are fixed at 72,055,808 in all four runs. After normalizing artifact paths and
-declared ablation fields, R16-A matches the golden plan and R16-B/C/D match
-R16-A exactly.
+are fixed at 72,055,808 in all five runs. After normalizing artifact paths and
+declared ablation fields, R16-A matches the golden plan, R16-B/C/D match R16-A,
+and R16-E differs from C/D only by the declared interaction variable.
 
 - Formal queue started: `2026-07-12 12:33:24 JST`.
 - Formal queue finished: `2026-07-13 02:32:44 JST`.
@@ -123,6 +127,7 @@ R16-A exactly.
 - tmux: `stage2_r16_disentanglement_20260712_121814`.
 - W&B runs: R16-A `vkzcu54m`, R16-B `sqr3ckcw`, R16-C `0vq6jcoe`,
   R16-D `62h5chag`.
+- R16-E queue: `2026-07-13 11:24:54` to `15:01:21 JST`; W&B `3caoo70p`.
 
 ## Primary Metrics
 
@@ -143,6 +148,7 @@ R16-A exactly.
 | R16-B | 2:24:00 | 0.9893 | 1.0859 | `sqr3ckcw` | `a27ea300...` |
 | R16-C | 2:42:04 | 0.8857 | 0.9219 | `0vq6jcoe` | `dc550559...` |
 | R16-D | 2:42:41 | 0.8076 | 0.7891 | `62h5chag` | `cc505421...` |
+| R16-E | 2:44:02 | 0.8105 | 0.7891 | `3caoo70p` | `5cfc75be...` |
 
 Every main run completed 1200 optimizer steps and published a valid final
 checkpoint. The checkpoint column shows the sha256 prefix.
@@ -156,6 +162,7 @@ checkpoint. The checkpoint column shows the sha256 prefix.
 | R16-B | 1.5968 | 47.50% | 32.00% | 53.00% | 0.5527 | 2.1784 |
 | R16-C | 1.6097 | 34.00% | 18.50% | 41.00% | 0.4586 | 2.0905 |
 | R16-D | 1.6161 | 44.00% | 22.00% | 51.50% | 0.4993 | 2.1328 |
+| R16-E | 1.6234 | 38.50% | 23.50% | 48.50% | 0.5025 | 2.0971 |
 | R16-H | 1.5840 | 51.50% | 28.00% | 53.50% | 0.5396 | 2.1659 |
 
 All variants had finite rate 1.0 and no collapse warning. R16-B has the best
@@ -173,11 +180,12 @@ The table below uses strict all-row accuracy, counting malformed rows as wrong.
 | R16-B | 35.51% | 34.73% | 29.11% | 31.94% | +2.83 pp | 74.15 | 70.01 |
 | R16-C | **37.57%** | **37.11%** | 38.87% | 50.62% | +11.75 pp | 72.24 | 66.65 |
 | R16-D | 37.55% | 36.88% | 34.65% | 46.44% | +11.79 pp | 71.32 | 66.23 |
+| R16-E | 37.14% | 36.47% | 32.70% | 46.79% | +14.10 pp | 70.92 | 66.60 |
 | R16-H | 36.91% | 34.98% | 20.91% | 20.19% | -0.72 pp | 75.56 | 74.55 |
 
 R16-B had 11 free and 12 softforce empty-generation failures with
 `target_hidden_states must contain at least one token`. All were counted wrong
-above. A/C/D had zero malformed rows; every variant had zero append failures.
+above. A/C/D/E had zero malformed rows; every variant had zero append failures.
 All manifests contain the exact expected 2511 sample ids in the expected order.
 
 ## Main Effects Relative To R16-A
@@ -187,10 +195,15 @@ All manifests contain the exact expected 2511 sample ids in the expected order.
 | q/v/o targets only | -1.45 pp | -1.87 pp | -2.69 pp | -4.80 pp | -7.05 pp | -17.36 pp |
 | Protocol rows only | +0.62 pp | +0.51 pp | +0.69 pp | -1.13 pp | +2.71 pp | +1.31 pp |
 | Evidence weight 0.2 | +0.59 pp | +0.28 pp | +0.84 pp | +0.09 pp | -1.51 pp | -2.87 pp |
+| Row-only + evidence 0.2 | +0.19 pp | -0.13 pp | +0.40 pp | -0.42 pp | -3.47 pp | -2.51 pp |
 
 Target narrowing is the only large, consistently negative main effect. Row-only
 and evidence down-weighting each provide small aggregate improvements, but
 neither restores reasoning-heavy performance.
+
+The R16-E interaction is not additive. Relative to R16-C, E loses `0.43 / 0.65`
+free/softforce accuracy points; relative to R16-D, it loses `0.41 / 0.41`
+points. It should not replace either single-variable result.
 
 ## Reasoning Macro
 
@@ -204,6 +217,7 @@ MathVerse.
 | R16-B | 30.51% | 28.42% | -2.09 pp |
 | R16-C | 33.89% | 32.09% | -1.80 pp |
 | R16-D | **34.04%** | 33.31% | -0.73 pp |
+| R16-E | 33.60% | 32.80% | -0.80 pp |
 | R16-H | 32.00% | 29.96% | -2.04 pp |
 
 Rank 16 alone does not preserve the golden softforce reasoning gain. Evidence
@@ -221,6 +235,7 @@ golden softforce and is not a general reasoning recovery.
 | R16-B | 47.64% | 50.50% | **59.52%** | 24.44% | 33.33% | 44.00% | 14.20% |
 | R16-C | 52.36% | **56.00%** | 55.95% | **25.91%** | 35.00% | 48.67% | **18.00%** |
 | R16-D | 51.83% | 55.00% | 57.62% | 24.98% | 33.00% | **51.33%** | 17.80% |
+| R16-E | 48.69% | 55.50% | 56.67% | 25.44% | 35.33% | 47.67% | 17.80% |
 | R16-H | **56.54%** | **56.00%** | 55.71% | 25.46% | 32.00% | 48.00% | 16.00% |
 
 ### Softforce
@@ -232,6 +247,7 @@ golden softforce and is not a general reasoning recovery.
 | R16-B | 50.26% | 54.00% | 56.90% | **25.00%** | 29.00% | 44.67% | 11.60% |
 | R16-C | 51.83% | 59.00% | **57.38%** | 24.99% | 29.67% | **49.00%** | 17.60% |
 | R16-D | 51.83% | 55.50% | 55.24% | 24.84% | 35.33% | 47.00% | 17.60% |
+| R16-E | 48.17% | 57.50% | 54.29% | 25.12% | 35.00% | 46.00% | 17.40% |
 | R16-H | **52.36%** | 52.00% | 54.52% | 24.55% | 29.67% | 46.00% | 14.20% |
 
 ## Output Health
@@ -245,6 +261,7 @@ golden softforce and is not a general reasoning recovery.
 | R16-B | 74.15 | 78.38 | 63.86 | 46 | 126 | 261 | 76 |
 | R16-C | 72.24 | 73.21 | 70.71 | 43 | 136 | 254 | 51 |
 | R16-D | 71.32 | 75.67 | 63.13 | 44 | 134 | 205 | 52 |
+| R16-E | 70.92 | 74.05 | 64.48 | 43 | 129 | 223 | 54 |
 | R16-H | 75.56 | 79.32 | 61.33 | 47 | 132 | 241 | 76 |
 
 ### Softforce
@@ -256,6 +273,7 @@ golden softforce and is not a general reasoning recovery.
 | R16-B | 70.01 | 74.43 | 60.60 | 45 | 119 | 197 | 60 |
 | R16-C | 66.65 | 75.20 | 58.30 | 39 | 125 | 224 | 42 |
 | R16-D | 66.23 | 76.51 | 54.37 | 42 | 125 | 184 | 37 |
+| R16-E | 66.60 | 77.46 | 54.25 | 40 | 123 | 200 | 44 |
 | R16-H | 74.55 | 77.32 | 63.56 | 47 | 129 | 234 | 73 |
 
 ## Conclusions
@@ -275,9 +293,12 @@ golden softforce and is not a general reasoning recovery.
 4. Evidence weight 0.2 is also a small aggregate positive and gives the best
    A-D free reasoning macro, mainly through MathVista/MathVerse while MMMU
    declines. The effect is task-specific.
-5. None of A-D restores original reasoning behavior. The proposed no-focus
+5. Combining row-only and evidence weight 0.2 in R16-E is a negative
+   interaction rather than an additive gain. It underperforms both R16-C and
+   R16-D on free and softforce overall accuracy and should not be promoted.
+6. None of A-E restores original reasoning behavior. The proposed no-focus
    original-Qwen reasoning replay remains the most targeted low-cost follow-up.
-6. Golden D-DeepStack Stage2 remains authoritative. R16-C and R16-D merit
+7. Golden D-DeepStack Stage2 remains authoritative. R16-C and R16-D merit
    follow-up only as named ablations, with another seed before promotion.
 
 ## Decision Policy
