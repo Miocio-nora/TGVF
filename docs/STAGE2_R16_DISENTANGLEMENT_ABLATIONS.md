@@ -23,7 +23,7 @@ behavior, and which changes damage tool triggering or reasoning-heavy tasks?
 | R16-B targets-only | q/v/o | full modules | 1.0 | Done |
 | R16-C row-only | q/k/v/o + gate/up/down | row only | 1.0 | Done |
 | R16-D evidence-0.2 | q/k/v/o + gate/up/down | full modules | 0.2 | Done |
-| R16-E row-only + evidence-0.2 | q/k/v/o + gate/up/down | row only | 0.2 | Planned |
+| R16-E row-only + evidence-0.2 | q/k/v/o + gate/up/down | row only | 0.2 | Running |
 | R16-H combined | q/v/o | row only | 0.2 | Done |
 
 R16-H is the completed combined experiment documented in
