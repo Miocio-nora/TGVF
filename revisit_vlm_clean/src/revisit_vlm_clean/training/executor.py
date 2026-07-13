@@ -2059,6 +2059,7 @@ def _write_actual_training_step_runtime_audit(
         "loss_no_focus": result.get("loss_no_focus"),
         "loss_gen": result.get("loss_gen"),
         "loss_same_image_negative": result.get("loss_same_image_negative"),
+        "loss_same_image_matrix_ce": result.get("loss_same_image_matrix_ce"),
         "loss_visual_token_manifold": result.get("loss_visual_token_manifold"),
         "loss_visual_token_norm": result.get("loss_visual_token_norm"),
         "sample_count": result.get("sample_count"),
@@ -2898,6 +2899,11 @@ def _write_single_process_training_runtime(
         rank=rank,
         world_size=world_size,
     )
+    matrix_ce_cursor = _build_stage2_matrix_ce_cursor(
+        bundle=bundle,
+        rank=rank,
+        world_size=world_size,
+    ) if expected_stage == TrainingStage.STAGE2 else None
     validation_cursor = (
         _build_single_process_sample_cursor(
             bundle=bundle,
@@ -2929,6 +2935,9 @@ def _write_single_process_training_runtime(
             "max_steps": max_steps,
             "gradient_accumulation_steps": accumulation_steps,
             "ddp_enabled": distributed,
+            "matrix_ce_preservation": (
+                matrix_ce_cursor.summary() if matrix_ce_cursor is not None else None
+            ),
             "wandb_logging": progress_logger.summary(),
         },
         stdout=(
@@ -2950,6 +2959,9 @@ def _write_single_process_training_runtime(
             optimizer.zero_grad(set_to_none=True)
             for micro_index in range(accumulation_steps):
                 batch_record = train_cursor.next_batch()
+                matrix_ce_batch_record = (
+                    matrix_ce_cursor.next_batch() if matrix_ce_cursor is not None else None
+                )
                 with _training_micro_step_sync_context(
                     modules=modules,
                     expected_stage=expected_stage,
@@ -2962,6 +2974,11 @@ def _write_single_process_training_runtime(
                         loaded_modules=loaded_modules,
                         expected_stage=expected_stage,
                         samples=batch_record["samples"],
+                        matrix_ce_samples=(
+                            matrix_ce_batch_record["samples"]
+                            if matrix_ce_batch_record is not None
+                            else None
+                        ),
                     )
                     loss_tensor = result.get("loss_tensor")
                     if loss_tensor is None:
@@ -2998,6 +3015,22 @@ def _write_single_process_training_runtime(
                         if debug_payload
                         else None,
                         "sample_trace": batch_record["sample_trace"],
+                        "matrix_ce_sample_trace": (
+                            [
+                                _sample_trace_entry(
+                                    index=index,
+                                    sample=sample,
+                                    dataset_role="matrix_ce_aux",
+                                )
+                                for index, sample in zip(
+                                    matrix_ce_batch_record["sample_indices"],
+                                    matrix_ce_batch_record["samples"],
+                                    strict=True,
+                                )
+                            ]
+                            if matrix_ce_batch_record is not None
+                            else None
+                        ),
                     }
                 )
             grad_after_accumulation = _optimizer_grad_summary(optimizer)
@@ -3565,6 +3598,37 @@ def _build_single_process_sample_cursor(
     )
 
 
+def _build_stage2_matrix_ce_cursor(
+    *,
+    bundle: dict[str, Any],
+    rank: int,
+    world_size: int,
+) -> Any | None:
+    matrix_config = ((bundle.get("training") or {}).get("matrix_ce_preservation") or {})
+    if not bool(matrix_config.get("enabled")):
+        return None
+    train_identity = ((bundle.get("dataset") or {}).get("train_file") or {})
+    path = str(train_identity.get("path") or "")
+    if not path:
+        raise ValueError("Stage2 Matrix-CE cursor requires dataset.train_file.path")
+    try:
+        from revisit_vlm.tgvf_v3_stage2 import (
+            Stage2SameImageFocusBatchCursor,
+            TGVFv3Stage2Dataset,
+        )
+
+        dataset = TGVFv3Stage2Dataset(path)
+        return Stage2SameImageFocusBatchCursor(
+            dataset.samples,
+            group_size=int(matrix_config.get("group_size") or 4),
+            seed=int((bundle.get("training") or {}).get("seed") or 0),
+            rank=rank,
+            world_size=world_size,
+        )
+    except Exception as exc:
+        raise RuntimeError("Stage2 Matrix-CE auxiliary cursor setup failed") from exc
+
+
 def _sample_trace_entry(
     *,
     index: int,
@@ -3612,6 +3676,15 @@ def _run_single_process_validation_step(
                 loaded_modules=loaded_modules,
                 expected_stage=expected_stage,
                 samples=batch_record["samples"],
+                matrix_ce_samples=(
+                    []
+                    if bool(
+                        ((bundle.get("training") or {}).get("matrix_ce_preservation") or {}).get(
+                            "enabled"
+                        )
+                    )
+                    else None
+                ),
             )
     finally:
         _restore_module_training_mode(modules, previous_training_states)
@@ -3967,6 +4040,7 @@ def _run_training_step_probe_for_stage(
     loaded_modules: dict[str, Any],
     expected_stage: TrainingStage,
     samples: list[Any] | None = None,
+    matrix_ce_samples: list[Any] | None = None,
 ) -> dict[str, Any]:
     kwargs = {
         "bundle": bundle,
@@ -3977,6 +4051,8 @@ def _run_training_step_probe_for_stage(
         kwargs["samples"] = samples
     if expected_stage == TrainingStage.STAGE1:
         return _run_stage1_training_step_probe(**kwargs)
+    if matrix_ce_samples is not None:
+        kwargs["matrix_ce_samples"] = matrix_ce_samples
     return _run_stage2_training_step_probe(**kwargs)
 
 
@@ -4205,6 +4281,9 @@ def _stage2_training_step_flags(
     debug: dict[str, Any],
 ) -> dict[str, Any]:
     expected_weights = dict((bundle.get("loss") or {}).get("weighted_span_loss") or {})
+    matrix_config = ((bundle.get("training") or {}).get("matrix_ce_preservation") or {})
+    matrix_expected = bool(matrix_config.get("enabled"))
+    matrix_applied = bool(debug.get("matrix_ce_enabled"))
     mask_policy = bundle.get("mask_policy") or {}
     fast_path_used = debug.get("fast_batched_stage2") is True
     weighted_span_loss_applied = bool(
@@ -4224,6 +4303,11 @@ def _stage2_training_step_flags(
     return {
         "fast_batched_stage2_used": fast_path_used,
         "weighted_span_loss_applied": weighted_span_loss_applied,
+        "matrix_ce_preservation_applied": matrix_applied == matrix_expected,
+        "matrix_ce_preservation_expected": matrix_expected,
+        "matrix_ce_preservation_observed": matrix_applied,
+        "matrix_ce_group_size_observed": debug.get("matrix_ce_group_size"),
+        "matrix_ce_score_span_observed": debug.get("matrix_ce_score_span"),
         "mask_scope_applied": mask_scope_matches,
         "expected_weighted_span_loss": expected_weights,
         "observed_loss_token_weights": {
@@ -4333,12 +4417,16 @@ def _run_stage2_training_step_probe(
     artifacts: dict[str, dict[str, Any]],
     loaded_modules: dict[str, Any],
     samples: list[Any] | None = None,
+    matrix_ce_samples: list[Any] | None = None,
 ) -> dict[str, Any]:
     try:
         import torch
 
         from revisit_vlm.tgvf_v3_stage2 import Stage2LossWeights, TGVFv3Stage2Dataset
-        from revisit_vlm.tgvf_v3_stage2_fast import v3_stage2_batched_training_step
+        from revisit_vlm.tgvf_v3_stage2_fast import (
+            v3_stage2_batched_training_step,
+            v3_stage2_same_image_matrix_ce_step,
+        )
     except Exception as exc:
         raise RuntimeError("Stage2 training-step audit dependencies are unavailable") from exc
     modules = dict(loaded_modules.get("modules") or {})
@@ -4398,6 +4486,43 @@ def _run_stage2_training_step_probe(
         protocol=str(bundle.get("protocol")),
         deepstack_enabled=bool((bundle.get("deepstack") or {}).get("enabled")),
     )
+    matrix_config = ((bundle.get("training") or {}).get("matrix_ce_preservation") or {})
+    matrix_enabled = bool(matrix_config.get("enabled"))
+    if matrix_enabled and matrix_ce_samples is None:
+        matrix_cursor = _build_stage2_matrix_ce_cursor(
+            bundle=bundle,
+            rank=0,
+            world_size=1,
+        )
+        if matrix_cursor is None:
+            raise RuntimeError("Stage2 Matrix-CE plan did not produce an auxiliary cursor")
+        matrix_ce_samples = matrix_cursor.next_batch()["samples"]
+    if matrix_enabled and matrix_ce_samples:
+        matrix_output = v3_stage2_same_image_matrix_ce_step(
+            qwen_model=qwen_model,
+            qwen_forward_model=qwen_forward_model,
+            processor=processor,
+            foveal_module=foveal_module,
+            samples=matrix_ce_samples,
+            loss_weights=Stage2LossWeights(
+                **span_weights,
+                visual_token_manifold=float(loss.get("visual_token_manifold") or 0.0),
+            ),
+            device=_parameter_audit_device(torch),
+            hidden_state_index=int(((bundle.get("training") or {}).get("capture_layer")) or -1),
+            max_image_resolution=(bundle.get("training") or {}).get("max_image_resolution"),
+            mask_original_image_after_tgvf_scope=str(
+                (bundle.get("mask_policy") or {}).get("mask_original_image_after_tgvf_scope")
+            ),
+            protocol=str(bundle.get("protocol")),
+            deepstack_enabled=bool((bundle.get("deepstack") or {}).get("enabled")),
+            readout_batch_size=int(matrix_config.get("readout_batch_size") or 4),
+        )
+        output.loss_same_image_matrix_ce = matrix_output.loss
+        output.loss_total = output.loss_total + float(
+            loss.get("same_image_matrix_ce") or 0.0
+        ) * matrix_output.loss
+        output.debug.update(matrix_output.debug)
     return {
         "forward_completed": True,
         "sample_count": len(samples),
@@ -4406,6 +4531,7 @@ def _run_stage2_training_step_probe(
         "loss_focus": _scalar_float(output.loss_focus),
         "loss_no_focus": _scalar_float(output.loss_no_focus),
         "loss_visual_token_manifold": _scalar_float(output.loss_visual_token_manifold),
+        "loss_same_image_matrix_ce": _scalar_float(output.loss_same_image_matrix_ce),
         "mask_original_image_after_tgvf": bool(
             (bundle.get("mask_policy") or {}).get("mask_original_image_after_tgvf")
         ),

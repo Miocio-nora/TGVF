@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from types import SimpleNamespace
 from typing import Any
 
@@ -45,7 +45,7 @@ from revisit_vlm.tgvf_foveal import (
     FovealCrossAttentionOutput,
     finalize_tgvf_output_with_frozen_qwen_merger,
 )
-from revisit_vlm.tgvf_training import IGNORE_INDEX
+from revisit_vlm.tgvf_training import IGNORE_INDEX, same_image_negative_matrix_ce_loss
 from revisit_vlm.tgvf_v3_stage1 import (
     _find_focus_target_span_in_forced_ids,
     _full_mm_token_type_ids,
@@ -93,12 +93,14 @@ class _FocusPrepared:
     value_span_matched: bool
     final_input_ids: torch.Tensor
     final_labels: torch.Tensor
+    matrix_ce_labels: torch.Tensor | None
     final_weights: torch.Tensor
     final_inputs_embeds: torch.Tensor
     final_attention_mask_2d: torch.Tensor
     final_attention_mask: torch.Tensor
     final_position_ids: torch.Tensor
     final_mm_token_type_ids: torch.Tensor
+    fvt_token_indices: torch.Tensor
     d_token_indices: torch.Tensor | None
     d_deepstack_visual_embeds: list[torch.Tensor] | None
     masked_image_key_count: int
@@ -118,6 +120,13 @@ class _NoFocusPrepared:
     final_weights: torch.Tensor
     final_attention_mask: torch.Tensor
     value_span_matched: bool
+
+
+@dataclass
+class Stage2MatrixCEOutput:
+    loss: torch.Tensor
+    score_matrix: torch.Tensor
+    debug: dict[str, Any]
 
 
 def v3_stage2_batched_training_step(
@@ -169,61 +178,22 @@ def v3_stage2_batched_training_step(
     ]
     no_focus_items = [item for item in base_items if not item.sample.need_focus]
 
-    focus_prepared: list[_FocusPrepared] = []
-    if focus_items:
-        focus_hidden = _batched_focus_first_forward(
-            qwen_model=qwen_model,
-            qwen_forward_model=qwen_forward_model,
-            tokenizer=tokenizer,
-            focus_items=focus_items,
-            device=device,
-            hidden_state_index=hidden_state_index,
-            loss_weights=loss_weights,
-            protocol=protocol,
-            deepstack_enabled=deepstack_enabled,
-        )
-        for item, action_ids, action_weights, target_span, target_hidden in focus_hidden:
-            pre = item.model_inputs["_v_pre"].to(device)
-            merged = item.model_inputs["_v_merge"].to(device)
-            output = foveal_module(
-                target_hidden_states=target_hidden,
-                pre_merge_visual_tokens=pre,
-                metadata={
-                    "target": item.sample.target,
-                    "stage": "tgvf_v3_stage2_fast",
-                    "evidence_state": NEED_LOCAL_EVIDENCE,
-                    "qwen_model": qwen_model,
-                    "processor": processor,
-                    "image": _image_input(item.sample.image, max_image_resolution=max_image_resolution),
-                    "question": item.sample.prompt_question,
-                    "device": device,
-                    "deepstack_pre_merge_visual_tokens": _item_deepstack_pre_merge_features(item),
-                },
-            )
-            output = finalize_tgvf_output_with_frozen_qwen_merger(qwen_model, output)
-            d = output.foveated_visual_tokens
-            focus_prepared.append(
-                _prepare_focus_final(
-                    qwen_model=qwen_model,
-                    processor=processor,
-                    item=item,
-                    action_ids=action_ids,
-                    action_weights=action_weights,
-                    target_span=target_span,
-                    target_hidden_states=target_hidden,
-                    pre_merge_visual_tokens=pre,
-                    merged_visual_tokens=merged,
-                    foveated_visual_tokens=d,
-                    d_deepstack_visual_embeds=output.deepstack_visual_embeds,
-                    loss_weights=loss_weights,
-                    device=device,
-                    mask_original_image_after_tgvf=mask_original_image_after_tgvf,
-                    mask_original_image_after_tgvf_prob=mask_original_image_after_tgvf_prob,
-                    mask_original_image_after_tgvf_scope=mask_original_image_after_tgvf_scope,
-                    protocol=protocol,
-                    deepstack_enabled=deepstack_enabled,
-                )
-            )
+    focus_prepared = _prepare_single_focus_items(
+        qwen_model=qwen_model,
+        qwen_forward_model=qwen_forward_model,
+        processor=processor,
+        foveal_module=foveal_module,
+        focus_items=focus_items,
+        loss_weights=loss_weights,
+        device=device,
+        hidden_state_index=hidden_state_index,
+        max_image_resolution=max_image_resolution,
+        mask_original_image_after_tgvf=mask_original_image_after_tgvf,
+        mask_original_image_after_tgvf_prob=mask_original_image_after_tgvf_prob,
+        mask_original_image_after_tgvf_scope=mask_original_image_after_tgvf_scope,
+        protocol=protocol,
+        deepstack_enabled=deepstack_enabled,
+    )
 
     for item in multi_focus_items:
         focus_prepared.append(
@@ -379,6 +349,7 @@ def v3_stage2_batched_training_step(
         loss_focus=loss_focus,
         loss_no_focus=loss_no_focus,
         loss_visual_token_manifold=loss_manifold,
+        loss_same_image_matrix_ce=zero,
         debug={
             "fast_batched_stage2": True,
             "focus_count": len(focus_prepared),
@@ -415,6 +386,263 @@ def v3_stage2_batched_training_step(
             "debug_examples": examples,
         },
     )
+
+
+def v3_stage2_same_image_matrix_ce_step(
+    *,
+    qwen_model: Any,
+    qwen_forward_model: Any,
+    processor: Any,
+    foveal_module: torch.nn.Module,
+    samples: list[TGVFv3Stage2Sample],
+    loss_weights: Stage2LossWeights,
+    device: torch.device | str,
+    hidden_state_index: int = -1,
+    max_image_resolution: int | None = 512,
+    mask_original_image_after_tgvf_scope: str = ORIGINAL_IMAGE_MASK_SCOPE_EVIDENCE_ONLY,
+    protocol: TGVFProtocol = "legacy_v3_tags",
+    deepstack_enabled: bool = False,
+    readout_batch_size: int = 4,
+) -> Stage2MatrixCEOutput:
+    protocol = normalize_tgvf_protocol(protocol)
+    if len(samples) < 2:
+        raise ValueError("Stage2 Matrix-CE requires at least two samples")
+    if int(readout_batch_size) < 1:
+        raise ValueError("Stage2 Matrix-CE readout_batch_size must be >= 1")
+    image_keys = {str(sample.image_id or sample.image) for sample in samples}
+    if len(image_keys) != 1:
+        raise ValueError("Stage2 Matrix-CE samples must share one image")
+    if any(not sample.need_focus or sample.trajectory_type != "single_focus" for sample in samples):
+        raise ValueError("Stage2 Matrix-CE supports only single-focus samples")
+
+    base_items = [
+        _build_base_item(
+            qwen_model=qwen_model,
+            processor=processor,
+            sample=sample,
+            device=device,
+            max_image_resolution=max_image_resolution,
+        )
+        for sample in samples
+    ]
+    _attach_same_image_vision_features(
+        qwen_model=qwen_model,
+        base_items=base_items,
+        device=device,
+    )
+    prepared = _prepare_single_focus_items(
+        qwen_model=qwen_model,
+        qwen_forward_model=qwen_forward_model,
+        processor=processor,
+        foveal_module=foveal_module,
+        focus_items=base_items,
+        loss_weights=loss_weights,
+        device=device,
+        hidden_state_index=hidden_state_index,
+        max_image_resolution=max_image_resolution,
+        mask_original_image_after_tgvf=True,
+        mask_original_image_after_tgvf_prob=1.0,
+        mask_original_image_after_tgvf_scope=mask_original_image_after_tgvf_scope,
+        protocol=protocol,
+        deepstack_enabled=deepstack_enabled,
+    )
+    cross_items = _stage2_matrix_ce_cross_items(prepared)
+    scores = []
+    for start in range(0, len(cross_items), int(readout_batch_size)):
+        chunk = cross_items[start : start + int(readout_batch_size)]
+        batch = _pad_focus_batch(chunk, device=device, deepstack_enabled=deepstack_enabled)
+        outputs = _qwen_manual_forward_with_optional_deepstack(
+            qwen_forward_model,
+            inputs_embeds=batch["inputs_embeds"],
+            attention_mask=batch["attention_mask"],
+            position_ids=batch["position_ids"],
+            mm_token_type_ids=batch["mm_token_type_ids"],
+            use_cache=False,
+            output_hidden_states=False,
+            return_dict=True,
+            visual_pos_masks=batch.get("visual_pos_masks"),
+            deepstack_visual_embeds=batch.get("deepstack_visual_embeds"),
+        )
+        scores.extend(_sequence_log_likelihoods(outputs.logits, batch["labels"]).unbind(0))
+    group_size = len(prepared)
+    score_matrix = torch.stack(scores).view(group_size, group_size)
+    loss = same_image_negative_matrix_ce_loss([score_matrix])
+    diagonal = score_matrix.diagonal()
+    off_diagonal = score_matrix[
+        ~torch.eye(group_size, dtype=torch.bool, device=score_matrix.device)
+    ]
+    top1 = float(
+        (score_matrix.argmax(dim=-1) == torch.arange(group_size, device=score_matrix.device))
+        .float()
+        .mean()
+        .detach()
+        .cpu()
+        .item()
+    )
+    return Stage2MatrixCEOutput(
+        loss=loss,
+        score_matrix=score_matrix,
+        debug={
+            "matrix_ce_enabled": True,
+            "same_image_negative_enabled": True,
+            "matrix_ce_group_size": group_size,
+            "matrix_ce_readout_batch_size": int(readout_batch_size),
+            "matrix_ce_score_span": "post_d_readout_before_answer",
+            "matrix_ce_candidate_swap": "d_and_d_deepstack_features",
+            "matrix_ce_original_image_mask_probability": 1.0,
+            "matrix_ce_vision_encode_count": 1,
+            "matrix_ce_top1": top1,
+            "matrix_ce_positive_score_mean": float(diagonal.detach().float().mean().cpu().item()),
+            "matrix_ce_negative_score_mean": float(
+                off_diagonal.detach().float().mean().cpu().item()
+            ),
+            "matrix_ce_positive_negative_margin": float(
+                (diagonal.detach().float().mean() - off_diagonal.detach().float().mean())
+                .cpu()
+                .item()
+            ),
+        },
+    )
+
+
+def _prepare_single_focus_items(
+    *,
+    qwen_model: Any,
+    qwen_forward_model: Any,
+    processor: Any,
+    foveal_module: torch.nn.Module,
+    focus_items: list[_BaseItem],
+    loss_weights: Stage2LossWeights,
+    device: torch.device | str,
+    hidden_state_index: int,
+    max_image_resolution: int | None,
+    mask_original_image_after_tgvf: bool,
+    mask_original_image_after_tgvf_prob: float,
+    mask_original_image_after_tgvf_scope: str,
+    protocol: TGVFProtocol,
+    deepstack_enabled: bool,
+) -> list[_FocusPrepared]:
+    if not focus_items:
+        return []
+    focus_hidden = _batched_focus_first_forward(
+        qwen_model=qwen_model,
+        qwen_forward_model=qwen_forward_model,
+        tokenizer=processor.tokenizer,
+        focus_items=focus_items,
+        device=device,
+        hidden_state_index=hidden_state_index,
+        loss_weights=loss_weights,
+        protocol=protocol,
+        deepstack_enabled=deepstack_enabled,
+    )
+    prepared = []
+    for item, action_ids, action_weights, target_span, target_hidden in focus_hidden:
+        pre = item.model_inputs["_v_pre"].to(device)
+        merged = item.model_inputs["_v_merge"].to(device)
+        output = foveal_module(
+            target_hidden_states=target_hidden,
+            pre_merge_visual_tokens=pre,
+            metadata={
+                "target": item.sample.target,
+                "stage": "tgvf_v3_stage2_fast",
+                "evidence_state": NEED_LOCAL_EVIDENCE,
+                "qwen_model": qwen_model,
+                "processor": processor,
+                "image": _image_input(item.sample.image, max_image_resolution=max_image_resolution),
+                "question": item.sample.prompt_question,
+                "device": device,
+                "deepstack_pre_merge_visual_tokens": _item_deepstack_pre_merge_features(item),
+            },
+        )
+        output = finalize_tgvf_output_with_frozen_qwen_merger(qwen_model, output)
+        prepared.append(
+            _prepare_focus_final(
+                qwen_model=qwen_model,
+                processor=processor,
+                item=item,
+                action_ids=action_ids,
+                action_weights=action_weights,
+                target_span=target_span,
+                target_hidden_states=target_hidden,
+                pre_merge_visual_tokens=pre,
+                merged_visual_tokens=merged,
+                foveated_visual_tokens=output.foveated_visual_tokens,
+                d_deepstack_visual_embeds=output.deepstack_visual_embeds,
+                loss_weights=loss_weights,
+                device=device,
+                mask_original_image_after_tgvf=mask_original_image_after_tgvf,
+                mask_original_image_after_tgvf_prob=mask_original_image_after_tgvf_prob,
+                mask_original_image_after_tgvf_scope=mask_original_image_after_tgvf_scope,
+                protocol=protocol,
+                deepstack_enabled=deepstack_enabled,
+            )
+        )
+    return prepared
+
+
+def _stage2_matrix_ce_cross_items(items: list[_FocusPrepared]) -> list[_FocusPrepared]:
+    cross_items = []
+    for row in items:
+        if row.matrix_ce_labels is None:
+            raise ValueError("Stage2 Matrix-CE row is missing readout labels")
+        for candidate in items:
+            embeds = row.final_inputs_embeds.clone()
+            embeds = _scatter_visual_embeds(
+                embeds,
+                token_indices=row.fvt_token_indices,
+                visual_embeds=candidate.foveated_visual_tokens,
+            )
+            cross_items.append(
+                replace(
+                    row,
+                    final_labels=row.matrix_ce_labels,
+                    final_inputs_embeds=embeds,
+                    d_deepstack_visual_embeds=candidate.d_deepstack_visual_embeds,
+                )
+            )
+    return cross_items
+
+
+def _sequence_log_likelihoods(logits: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
+    shift_logits = logits[:, :-1, :].contiguous()
+    shift_labels = labels[:, 1:].contiguous()
+    per_token_nll = F.cross_entropy(
+        shift_logits.view(-1, shift_logits.shape[-1]),
+        shift_labels.view(-1),
+        ignore_index=IGNORE_INDEX,
+        reduction="none",
+    ).view_as(shift_labels)
+    valid = shift_labels != IGNORE_INDEX
+    return -(per_token_nll * valid.to(per_token_nll.dtype)).sum(dim=-1)
+
+
+def _attach_same_image_vision_features(
+    *,
+    qwen_model: Any,
+    base_items: list[_BaseItem],
+    device: torch.device | str,
+) -> None:
+    if not base_items:
+        return
+    first = base_items[0]
+    _attach_batched_vision_features(
+        qwen_model=qwen_model,
+        base_items=[first],
+        device=device,
+    )
+    feature_names = (
+        "_v_pre",
+        "_v_merge",
+        "_deepstack_visual_embeds",
+        "_deepstack_pre_merge_visual_embeds",
+    )
+    for item in base_items[1:]:
+        if item.visual_pre_count != first.visual_pre_count:
+            raise RuntimeError("same-image Matrix-CE V_pre token counts differ")
+        if item.visual_merge_count != first.visual_merge_count:
+            raise RuntimeError("same-image Matrix-CE V_merge token counts differ")
+        for name in feature_names:
+            item.model_inputs[name] = first.model_inputs[name]
 
 
 def _build_base_item(
@@ -802,6 +1030,10 @@ def _prepare_focus_final(
         answer_query_start = ev_start + int(
             _encode_text(tokenizer, ev_answer_text[:answer_start], device).view(-1).numel()
         )
+    if answer_query_start is None or answer_query_start <= ev_start:
+        raise RuntimeError("Stage2 Matrix-CE readout span is empty or missing")
+    matrix_ce_labels = torch.full_like(input_ids, IGNORE_INDEX)
+    matrix_ce_labels[:, ev_start:answer_query_start] = input_ids[:, ev_start:answer_query_start]
     block_query_end = original_image_mask_block_query_end(
         answer_query_start=answer_query_start,
         scope=mask_original_image_after_tgvf_scope,
@@ -843,12 +1075,14 @@ def _prepare_focus_final(
         value_span_matched=value_span_matched,
         final_input_ids=input_ids,
         final_labels=labels,
+        matrix_ce_labels=matrix_ce_labels,
         final_weights=weights,
         final_inputs_embeds=embeds,
         final_attention_mask_2d=attention_mask_2d,
         final_attention_mask=attention_mask,
         final_position_ids=position_ids,
         final_mm_token_type_ids=mm_token_type_ids,
+        fvt_token_indices=fvt_positions.to(device),
         d_token_indices=fvt_positions.to(device) if prepared_d_deepstack is not None else None,
         d_deepstack_visual_embeds=prepared_d_deepstack,
         masked_image_key_count=int(item.image_token_indices.numel()) if mask_active else 0,
@@ -1151,12 +1385,14 @@ def _prepare_multi_focus_final(
         value_span_matched=value_span_matched,
         final_input_ids=input_ids,
         final_labels=labels,
+        matrix_ce_labels=None,
         final_weights=weights,
         final_inputs_embeds=embeds,
         final_attention_mask_2d=attention_mask_2d,
         final_attention_mask=attention_mask,
         final_position_ids=position_ids,
         final_mm_token_type_ids=mm_token_type_ids,
+        fvt_token_indices=d_token_indices,
         d_token_indices=d_token_indices if d_deepstack_visual_embeds is not None else None,
         d_deepstack_visual_embeds=d_deepstack_visual_embeds,
         masked_image_key_count=int(item.image_token_indices.numel()) if mask_active else 0,

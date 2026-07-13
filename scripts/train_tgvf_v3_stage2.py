@@ -42,13 +42,17 @@ from revisit_vlm.tgvf_training import (
 from revisit_vlm.tgvf_v3_stage1 import freeze_qwen_backbone, infer_qwen3_stage1_dims
 from revisit_vlm.tgvf_v3_stage2 import (
     ORIGINAL_IMAGE_MASK_SCOPE_CHOICES,
+    Stage2SameImageFocusBatchCursor,
     Stage2LossWeights,
     TGVFv3Stage2Dataset,
     dataset_stage2_stats,
     tgvf_v3_stage2_collate,
     v3_stage2_training_step,
 )
-from revisit_vlm.tgvf_v3_stage2_fast import v3_stage2_batched_training_step
+from revisit_vlm.tgvf_v3_stage2_fast import (
+    v3_stage2_batched_training_step,
+    v3_stage2_same_image_matrix_ce_step,
+)
 from revisit_vlm.wandb_logging import WandbLogger
 
 
@@ -76,6 +80,17 @@ def main() -> None:
     val_dataset = (
         TGVFv3Stage2Dataset(args.val_file, min_confidence=args.min_confidence)
         if args.val_file
+        else None
+    )
+    matrix_ce_cursor = (
+        Stage2SameImageFocusBatchCursor(
+            train_dataset.samples,
+            group_size=args.matrix_ce_group_size,
+            seed=args.seed,
+            rank=rank,
+            world_size=world_size,
+        )
+        if args.matrix_ce_preservation
         else None
     )
 
@@ -331,8 +346,22 @@ def main() -> None:
         "protocol_c_tokenizer_info": protocol_token_info,
         "protocol_c_stage1_token_rows": stage1_token_row_info,
         "fast_batched_stage2": args.fast_batched_stage2,
-        "matrix_ce_enabled": False,
-        "same_image_negative_enabled": False,
+        "matrix_ce_enabled": bool(args.matrix_ce_preservation),
+        "same_image_negative_enabled": bool(args.matrix_ce_preservation),
+        "matrix_ce_preservation": {
+            "enabled": bool(args.matrix_ce_preservation),
+            "weight": float(args.loss_same_image_matrix_ce)
+            if args.matrix_ce_preservation
+            else 0.0,
+            "group_size": int(args.matrix_ce_group_size),
+            "readout_batch_size": int(args.matrix_ce_readout_batch_size),
+            "sample_scope": "same_image_single_focus",
+            "score_span": "post_d_readout_before_answer",
+            "candidate_swap": "d_and_d_deepstack_features",
+            "original_image_mask_probability": 1.0,
+            "vision_encode_count_per_group": 1,
+            "sampling": matrix_ce_cursor.summary() if matrix_ce_cursor is not None else None,
+        },
         "contrastive_alignment_enabled": False,
         "tgvf_trainable": True,
         "qwen_base_frozen": True,
@@ -409,6 +438,7 @@ def main() -> None:
     running_loss_focus = 0.0
     running_loss_no_focus = 0.0
     running_loss_visual_token_manifold = 0.0
+    running_loss_same_image_matrix_ce = 0.0
     running_logs: list[dict[str, Any]] = []
 
     while optimizer_step < args.max_steps:
@@ -439,6 +469,30 @@ def main() -> None:
             protocol=args.tgvf_protocol,
             deepstack_enabled=bool(args.deepstack_enabled),
         )
+        if matrix_ce_cursor is not None:
+            matrix_ce_batch = matrix_ce_cursor.next_batch()
+            matrix_output = v3_stage2_same_image_matrix_ce_step(
+                qwen_model=utility_model,
+                qwen_forward_model=model,
+                processor=processor,
+                foveal_module=foveal_module,
+                samples=matrix_ce_batch["samples"],
+                loss_weights=loss_weights,
+                device=device,
+                hidden_state_index=args.capture_layer,
+                max_image_resolution=args.max_image_resolution,
+                mask_original_image_after_tgvf_scope=args.mask_original_image_after_tgvf_scope,
+                protocol=args.tgvf_protocol,
+                deepstack_enabled=bool(args.deepstack_enabled),
+                readout_batch_size=args.matrix_ce_readout_batch_size,
+            )
+            output.loss_same_image_matrix_ce = matrix_output.loss
+            output.loss_total = (
+                output.loss_total
+                + float(args.loss_same_image_matrix_ce) * matrix_output.loss
+            )
+            output.debug.update(matrix_output.debug)
+            output.debug["matrix_ce_sample_indices"] = matrix_ce_batch["sample_indices"]
         if not torch.isfinite(output.loss_total):
             raise RuntimeError(f"Non-finite Stage2 loss at micro step {micro_step}: {output.loss_total}")
         (output.loss_total / args.gradient_accumulation_steps).backward()
@@ -447,6 +501,9 @@ def main() -> None:
         running_loss_focus += float(output.loss_focus.detach().cpu())
         running_loss_no_focus += float(output.loss_no_focus.detach().cpu())
         running_loss_visual_token_manifold += float(output.loss_visual_token_manifold.detach().cpu())
+        running_loss_same_image_matrix_ce += float(
+            output.loss_same_image_matrix_ce.detach().cpu()
+        )
         running_logs.append(output.debug)
         if micro_step % args.gradient_accumulation_steps != 0:
             continue
@@ -469,6 +526,8 @@ def main() -> None:
                 "loss_focus": running_loss_focus / max(len(running_logs), 1),
                 "loss_no_focus": running_loss_no_focus / max(len(running_logs), 1),
                 "loss_visual_token_manifold": running_loss_visual_token_manifold / max(len(running_logs), 1),
+                "loss_same_image_matrix_ce": running_loss_same_image_matrix_ce
+                / max(len(running_logs), 1),
                 "grad_norm": float(grad_norm.detach().cpu()),
                 "learning_rates": [group["lr"] for group in optimizer.param_groups],
                 "peak_memory_gb": peak_memory_gb(),
@@ -489,6 +548,7 @@ def main() -> None:
             running_loss_focus = 0.0
             running_loss_no_focus = 0.0
             running_loss_visual_token_manifold = 0.0
+            running_loss_same_image_matrix_ce = 0.0
             running_logs = []
 
         if is_main and (optimizer_step % args.save_every == 0 or optimizer_step == args.max_steps):
@@ -594,7 +654,8 @@ def validate_stage2(
             "focus_sample_mask_active_rate": sum(mask_focus) / max(len(mask_focus), 1),
             "no_focus_mask_active_rate": sum(mask_no_focus) / max(len(mask_no_focus), 1),
             "value_span_match_rate": sum(value_rates) / max(len(value_rates), 1) if value_rates else None,
-            "matrix_ce_enabled": False,
+            "matrix_ce_enabled": bool(args.matrix_ce_preservation),
+            "matrix_ce_evaluated": False,
             **_merge_boundary_debug(boundary_logs),
         },
     }
@@ -752,6 +813,17 @@ def summarize_step_debug(debug_logs: list[dict[str, Any]]) -> dict[str, Any]:
         examples.extend(item.get("debug_examples", []))
         if len(examples) >= 2:
             break
+    matrix_top1 = [
+        float(item["matrix_ce_top1"])
+        for item in debug_logs
+        if item.get("matrix_ce_top1") is not None
+    ]
+    matrix_margins = [
+        float(item["matrix_ce_positive_negative_margin"])
+        for item in debug_logs
+        if item.get("matrix_ce_positive_negative_margin") is not None
+    ]
+    matrix_enabled = any(bool(item.get("matrix_ce_enabled")) for item in debug_logs)
     return {
         "focus_count": focus,
         "no_focus_count": no_focus,
@@ -772,8 +844,12 @@ def summarize_step_debug(debug_logs: list[dict[str, Any]]) -> dict[str, Any]:
             PROTOCOL_E_ACTION_EVIDENCE_SPECIAL,
         },
         "tgvf_protocol": protocol,
-        "matrix_ce_enabled": False,
-        "same_image_negative_enabled": False,
+        "matrix_ce_enabled": matrix_enabled,
+        "same_image_negative_enabled": matrix_enabled,
+        "matrix_ce_top1": sum(matrix_top1) / len(matrix_top1) if matrix_top1 else None,
+        "matrix_ce_positive_negative_margin": (
+            sum(matrix_margins) / len(matrix_margins) if matrix_margins else None
+        ),
         **_merge_boundary_debug(debug_logs),
         "debug_examples": examples[:2],
     }
@@ -979,6 +1055,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--loss-no-focus-evidence-state", type=float, default=0.2)
     parser.add_argument("--loss-no-focus-answer", type=float, default=1.0)
     parser.add_argument("--loss-visual-token-manifold", type=float, default=0.0)
+    parser.add_argument(
+        "--matrix-ce-preservation",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+    )
+    parser.add_argument("--loss-same-image-matrix-ce", type=float, default=1.0)
+    parser.add_argument("--matrix-ce-group-size", type=int, default=4)
+    parser.add_argument("--matrix-ce-readout-batch-size", type=int, default=4)
     parser.add_argument("--num-workers", type=int, default=0)
     parser.add_argument("--pin-memory", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--persistent-workers", action=argparse.BooleanOptionalAction, default=True)
@@ -1002,6 +1086,14 @@ def parse_args() -> argparse.Namespace:
         parser.error("--deepstack-enabled requires --fast-batched-stage2")
     if args.d_deepstack_enabled and args.variant != "tgvf_v2_bidirectional":
         parser.error("--d-deepstack-enabled currently requires --variant tgvf_v2_bidirectional")
+    if args.matrix_ce_preservation and not args.fast_batched_stage2:
+        parser.error("--matrix-ce-preservation requires --fast-batched-stage2")
+    if args.matrix_ce_preservation and args.loss_same_image_matrix_ce <= 0:
+        parser.error("--loss-same-image-matrix-ce must be > 0 when Matrix-CE is enabled")
+    if args.matrix_ce_group_size < 2:
+        parser.error("--matrix-ce-group-size must be >= 2")
+    if args.matrix_ce_readout_batch_size < 1:
+        parser.error("--matrix-ce-readout-batch-size must be >= 1")
     return args
 
 
@@ -1043,6 +1135,7 @@ def _wandb_metrics(log: dict[str, Any]) -> dict[str, Any]:
         "train/loss_focus": log.get("loss_focus"),
         "train/loss_no_focus": log.get("loss_no_focus"),
         "train/loss_visual_token_manifold": log.get("loss_visual_token_manifold"),
+        "train/loss_same_image_matrix_ce": log.get("loss_same_image_matrix_ce"),
         "train/grad_norm": log.get("grad_norm"),
         "train/peak_memory_gb": log.get("peak_memory_gb"),
         "train/focus_count": log.get("focus_count"),
@@ -1063,6 +1156,10 @@ def _wandb_metrics(log: dict[str, Any]) -> dict[str, Any]:
         "train/markers_are_plain_text": float(bool(log.get("markers_are_plain_text"))),
         "train/matrix_ce_enabled": float(bool(log.get("matrix_ce_enabled"))),
         "train/same_image_negative_enabled": float(bool(log.get("same_image_negative_enabled"))),
+        "train/matrix_ce_top1": log.get("matrix_ce_top1"),
+        "train/matrix_ce_positive_negative_margin": log.get(
+            "matrix_ce_positive_negative_margin"
+        ),
     }
     for key, value in log.items():
         if key.startswith("protocol_c_boundary_acc_") or key.startswith("protocol_c_boundary_support_"):

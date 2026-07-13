@@ -279,6 +279,10 @@ class Stage2LaunchConfig:
     weight_decay: float = 0.01
     max_grad_norm: float = 1.0
     loss_visual_token_manifold: float = 0.0
+    matrix_ce_preservation: bool = False
+    loss_same_image_matrix_ce: float = 1.0
+    matrix_ce_group_size: int = 4
+    matrix_ce_readout_batch_size: int = 4
     weighted_span_loss: dict[str, float] = field(
         default_factory=lambda: dict(DEFAULT_STAGE2_SPAN_WEIGHTS)
     )
@@ -338,6 +342,18 @@ class Stage2LaunchConfig:
             raise ValueError("weight_decay must be >= 0")
         if float(self.max_grad_norm) <= 0:
             raise ValueError("max_grad_norm must be > 0")
+        if float(self.loss_same_image_matrix_ce) < 0:
+            raise ValueError("loss_same_image_matrix_ce must be >= 0")
+        if self.matrix_ce_preservation and float(self.loss_same_image_matrix_ce) <= 0:
+            raise ValueError(
+                "loss_same_image_matrix_ce must be > 0 when Matrix-CE preservation is enabled"
+            )
+        if int(self.matrix_ce_group_size) < 2:
+            raise ValueError("matrix_ce_group_size must be >= 2")
+        if int(self.matrix_ce_readout_batch_size) < 1:
+            raise ValueError("matrix_ce_readout_batch_size must be >= 1")
+        if self.matrix_ce_preservation and not self.fast_batched_stage2:
+            raise ValueError("Matrix-CE preservation requires fast_batched_stage2")
         missing_weights = set(DEFAULT_STAGE2_SPAN_WEIGHTS) - set(self.weighted_span_loss)
         if missing_weights:
             raise ValueError(f"weighted_span_loss missing keys: {sorted(missing_weights)}")
@@ -549,6 +565,17 @@ def build_stage2_launch_plan(
             "fast_batched_stage2": config.fast_batched_stage2,
             "fvt_position_mode": config.fvt_position_mode,
             "target_focus_ratio": config.target_focus_ratio,
+            "matrix_ce_preservation": {
+                "enabled": config.matrix_ce_preservation,
+                "group_size": config.matrix_ce_group_size,
+                "readout_batch_size": config.matrix_ce_readout_batch_size,
+                "sample_scope": "same_image_single_focus",
+                "score_span": "post_d_readout_before_answer",
+                "candidate_swap": "d_and_d_deepstack_features",
+                "original_image_mask_probability": 1.0,
+                "vision_encode_count_per_group": 1,
+                "drop_incomplete_group_remainders": True,
+            },
         },
         "tgvf": _stage2_tgvf_config(config),
         "module_policy": _stage2_module_policy(config),
@@ -572,6 +599,11 @@ def build_stage2_launch_plan(
         "loss": {
             "weighted_span_loss": dict(config.weighted_span_loss),
             "visual_token_manifold": config.loss_visual_token_manifold,
+            "same_image_matrix_ce": (
+                config.loss_same_image_matrix_ce
+                if config.matrix_ce_preservation
+                else 0.0
+            ),
         },
         "optimizer": {
             "name": "adamw",
@@ -1174,6 +1206,12 @@ def _stage2_legacy_command(config: Stage2LaunchConfig) -> list[str]:
         str(config.warmup_ratio),
         "--loss-visual-token-manifold",
         str(config.loss_visual_token_manifold),
+        "--loss-same-image-matrix-ce",
+        str(config.loss_same_image_matrix_ce),
+        "--matrix-ce-group-size",
+        str(config.matrix_ce_group_size),
+        "--matrix-ce-readout-batch-size",
+        str(config.matrix_ce_readout_batch_size),
     ]
     _append_optional(command, "--warmup-steps", config.warmup_steps)
     command.extend(
@@ -1210,6 +1248,11 @@ def _stage2_legacy_command(config: Stage2LaunchConfig) -> list[str]:
         "--mask-original-image-after-tgvf"
         if config.mask_original_image_after_tgvf
         else "--no-mask-original-image-after-tgvf"
+    )
+    command.append(
+        "--matrix-ce-preservation"
+        if config.matrix_ce_preservation
+        else "--no-matrix-ce-preservation"
     )
     for key, value in config.weighted_span_loss.items():
         command.extend([f"--loss-{key.replace('_', '-')}", str(value)])

@@ -124,6 +124,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-grad-norm", type=float, default=1.0)
     parser.add_argument("--loss-visual-token-manifold", type=float, default=0.0)
     parser.add_argument(
+        "--matrix-ce-preservation",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+    )
+    parser.add_argument("--loss-same-image-matrix-ce", type=float, default=1.0)
+    parser.add_argument("--matrix-ce-group-size", type=int, default=4)
+    parser.add_argument("--matrix-ce-readout-batch-size", type=int, default=4)
+    parser.add_argument(
         "--loss-evidence-state",
         type=float,
         default=DEFAULT_STAGE2_SPAN_WEIGHTS["evidence_state"],
@@ -221,6 +229,16 @@ def _defaults() -> dict[str, object]:
             "protocol_token_training_mode": "full_modules",
         },
         "weighted_span_loss": dict(DEFAULT_STAGE2_SPAN_WEIGHTS),
+        "matrix_ce_preservation": {
+            "enabled": False,
+            "loss_weight_when_enabled": 1.0,
+            "group_size": 4,
+            "readout_batch_size": 4,
+            "sample_scope": "same_image_single_focus",
+            "score_span": "post_d_readout_before_answer",
+            "original_image_mask_probability": 1.0,
+            "vision_encode_count_per_group": 1,
+        },
         "lr_scheduler": "cosine",
         "warmup_steps": 100,
         "warmup_ratio": 0.03,
@@ -319,6 +337,10 @@ def _config_from_args(args: argparse.Namespace) -> Stage2LaunchConfig:
         weight_decay=args.weight_decay,
         max_grad_norm=args.max_grad_norm,
         loss_visual_token_manifold=args.loss_visual_token_manifold,
+        matrix_ce_preservation=args.matrix_ce_preservation,
+        loss_same_image_matrix_ce=args.loss_same_image_matrix_ce,
+        matrix_ce_group_size=args.matrix_ce_group_size,
+        matrix_ce_readout_batch_size=args.matrix_ce_readout_batch_size,
         weighted_span_loss=weighted_span_loss,
         min_confidence=args.min_confidence,
         wandb_project=args.wandb_project,

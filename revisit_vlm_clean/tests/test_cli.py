@@ -914,6 +914,8 @@ def test_training_default_clis(capsys) -> None:
     assert '"q_proj"' in stage2_defaults
     assert '"warmup_steps": 100' in stage2_defaults
     assert '"adam_betas": [' in stage2_defaults
+    assert '"matrix_ce_preservation": {' in stage2_defaults
+    assert '"enabled": false' in stage2_defaults
 
 
 def test_visual_token_norm_loss_tracks_log_norm_ratio() -> None:
@@ -1686,6 +1688,8 @@ def test_stage2_training_write_plan_cli(tmp_path) -> None:
         "original_image_scope": "through_answer",
     }
     assert plan["loss"]["weighted_span_loss"]["focus_target"] == 1.5
+    assert plan["training"]["matrix_ce_preservation"]["enabled"] is False
+    assert plan["loss"]["same_image_matrix_ce"] == 0.0
     assert plan["lora"] == {
         "alpha": 256,
         "bias": "none",
@@ -1758,6 +1762,43 @@ def test_stage2_training_write_plan_cli(tmp_path) -> None:
     assert "--launch-training" in clean_command
     command = (output_dir / "legacy_reference_command.sh").read_text()
     assert command == "# unavailable\n"
+
+
+def test_stage2_matrix_ce_preservation_plan_is_opt_in(tmp_path) -> None:
+    train_file = tmp_path / "stage2.train.jsonl"
+    checkpoint = tmp_path / "stage1.pt"
+    train_file.write_text(
+        '{"image": "/tmp/image.jpg", "question": "q", "answer": "a", '
+        '"need_focus": true, "evidence_state": "need_local_visual_evidence"}\n',
+        encoding="utf-8",
+    )
+    _write_minimal_stage1_checkpoint(checkpoint)
+    output_dir = tmp_path / "stage2_matrix_ce"
+
+    assert stage2_main(
+        [
+            "--run-id", "stage2_matrix_ce_unit",
+            "--train-file", str(train_file),
+            "--stage1-checkpoint", str(checkpoint),
+            "--output-dir", str(output_dir),
+            "--matrix-ce-preservation",
+            "--loss-same-image-matrix-ce", "0.75",
+            "--matrix-ce-group-size", "4",
+            "--matrix-ce-readout-batch-size", "2",
+            "--write-plan",
+        ]
+    ) == 0
+
+    plan = json.loads((output_dir / "training_plan.json").read_text())
+    matrix = plan["training"]["matrix_ce_preservation"]
+    assert matrix["enabled"] is True
+    assert matrix["group_size"] == 4
+    assert matrix["readout_batch_size"] == 2
+    assert matrix["sample_scope"] == "same_image_single_focus"
+    assert matrix["score_span"] == "post_d_readout_before_answer"
+    assert matrix["original_image_mask_probability"] == 1.0
+    assert matrix["vision_encode_count_per_group"] == 1
+    assert plan["loss"]["same_image_matrix_ce"] == 0.75
 
 
 def test_stage2_narrow_lora_ablation_is_opt_in(tmp_path) -> None:

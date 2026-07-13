@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+import random
 from collections import Counter
 from dataclasses import asdict, dataclass, field
+from hashlib import sha1
 from pathlib import Path
 from typing import Any, Literal
 
@@ -126,6 +128,7 @@ class TGVFv3Stage2StepOutput:
     loss_focus: torch.Tensor
     loss_no_focus: torch.Tensor
     loss_visual_token_manifold: torch.Tensor
+    loss_same_image_matrix_ce: torch.Tensor
     debug: dict[str, Any]
 
 
@@ -277,6 +280,89 @@ class TGVFv3Stage2Dataset(Dataset[TGVFv3Stage2Sample]):
             "focus_ratio": counts["focus"] / total if total else 0.0,
             "no_focus_ratio": counts["no_focus"] / total if total else 0.0,
         }
+
+
+class Stage2SameImageFocusBatchCursor:
+    """Cycle deterministic, rank-owned same-image single-focus groups."""
+
+    def __init__(
+        self,
+        samples: list[TGVFv3Stage2Sample],
+        *,
+        group_size: int,
+        seed: int,
+        rank: int = 0,
+        world_size: int = 1,
+    ) -> None:
+        if int(group_size) < 2:
+            raise ValueError("Stage2 Matrix-CE group_size must be >= 2")
+        self.group_size = int(group_size)
+        self.seed = int(seed)
+        self.rank = int(rank)
+        self.world_size = int(world_size)
+        if self.rank < 0 or self.world_size < 1 or self.rank >= self.world_size:
+            raise ValueError("invalid Stage2 Matrix-CE rank/world_size")
+
+        groups_by_key: dict[str, list[tuple[int, TGVFv3Stage2Sample]]] = {}
+        for index, sample in enumerate(samples):
+            if not sample.need_focus or sample.trajectory_type != "single_focus":
+                continue
+            key = str(sample.image_id or sample.image)
+            owner = int(sha1(key.encode("utf-8")).hexdigest(), 16) % self.world_size
+            if owner != self.rank:
+                continue
+            groups_by_key.setdefault(key, []).append((index, sample))
+        self.groups = [
+            group for group in groups_by_key.values() if len(group) >= self.group_size
+        ]
+        if not self.groups:
+            raise ValueError(
+                "Stage2 Matrix-CE found no rank-owned same-image single-focus group "
+                f"with at least {self.group_size} rows"
+            )
+        self.eligible_sample_count = sum(len(group) for group in self.groups)
+        self.epoch = 0
+        self.epoch_batches: list[list[tuple[int, TGVFv3Stage2Sample]]] = []
+        self.batch_cursor = 0
+
+    def next_batch(self) -> dict[str, Any]:
+        if self.batch_cursor >= len(self.epoch_batches):
+            self._refresh_epoch()
+        selected = self.epoch_batches[self.batch_cursor]
+        self.batch_cursor += 1
+        return {
+            "samples": [sample for _, sample in selected],
+            "sample_indices": [index for index, _ in selected],
+        }
+
+    def summary(self) -> dict[str, Any]:
+        return {
+            "mode": "same_image_single_focus_matrix_ce_cycle",
+            "group_size": self.group_size,
+            "eligible_image_group_count": len(self.groups),
+            "eligible_sample_count": self.eligible_sample_count,
+            "drop_incomplete_group_remainders": True,
+            "group_owner": "sha1(image_key)%world_size",
+            "rank": self.rank,
+            "world_size": self.world_size,
+            "seed": self.seed,
+            "epoch": self.epoch,
+        }
+
+    def _refresh_epoch(self) -> None:
+        rng = random.Random(self.seed + self.epoch)
+        groups = [list(group) for group in self.groups]
+        rng.shuffle(groups)
+        batches = []
+        for group in groups:
+            rng.shuffle(group)
+            for start in range(0, len(group) - self.group_size + 1, self.group_size):
+                batches.append(group[start : start + self.group_size])
+        if not batches:
+            raise RuntimeError("Stage2 Matrix-CE cursor produced no complete groups")
+        self.epoch += 1
+        self.epoch_batches = batches
+        self.batch_cursor = 0
 
 
 def tgvf_v3_stage2_collate(samples: list[TGVFv3Stage2Sample]) -> list[TGVFv3Stage2Sample]:
@@ -1011,6 +1097,7 @@ def v3_stage2_training_step(
         loss_focus=loss_focus,
         loss_no_focus=loss_no_focus,
         loss_visual_token_manifold=loss_man,
+        loss_same_image_matrix_ce=zero,
         debug={
             "focus_count": focus_count,
             "no_focus_count": no_focus_count,
