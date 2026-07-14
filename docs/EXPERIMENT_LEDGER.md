@@ -604,6 +604,15 @@ If a mistake is found:
   - Promote micro8/accum4 for this replay run. Do not test micro16 because the
     historical probe OOMed near full device memory and current D-DeepStack plus
     long replay targets add risk.
+- Formal launch:
+  - Started `2026-07-14 23:26:53 JST` on GPUs `0,1,2,3`.
+  - tmux `stage2_r16c_direct_replay_micro8_20260714_232021`.
+  - W&B online run `bioq5qzk`:
+    `https://wandb.ai/mio_nora/tgvf-clean-qwen3-deepstack/runs/bioq5qzk`.
+  - Main log:
+    `outputs/clean_ablation/stage2_r16c_direct_reasoning_replay_micro8_4gpu_20260714_232021/logs/train.log`.
+  - Main checkpoint target:
+    `outputs/clean_ablation/stage2_r16c_direct_reasoning_replay_micro8_4gpu_20260714_232021/main/stage2_micro8/clean_training_execution/checkpoint_step_1200.pt`.
 - Golden status:
   - Named throughput configuration for the replay ablation only; no Golden
     default changes.
