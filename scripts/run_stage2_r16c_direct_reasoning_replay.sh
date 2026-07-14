@@ -2,10 +2,15 @@
 set -euo pipefail
 
 ROOT=/nvmesv/dredvpn009/projects/r-vlm/revisit_vlm
-STAMP=20260714_225235
-RUN_ROOT="$ROOT/outputs/clean_ablation/stage2_r16c_direct_reasoning_replay_4gpu_${STAMP}"
+STAMP=${STAMP:-20260714_225235}
+RUN_VARIANT=${RUN_VARIANT:-stage2_r16c_direct_reasoning_replay}
+RUN_ROOT=${RUN_ROOT:-"$ROOT/outputs/clean_ablation/stage2_r16c_direct_reasoning_replay_4gpu_${STAMP}"}
 SMOKE_DIR="$RUN_ROOT/smoke/stage2_micro4"
 TRAIN_DIR="$RUN_ROOT/main/stage2_micro4"
+MICRO_BATCH_SIZE=${MICRO_BATCH_SIZE:-4}
+GRADIENT_ACCUMULATION_STEPS=${GRADIENT_ACCUMULATION_STEPS:-8}
+SMOKE_MASTER_PORT=${SMOKE_MASTER_PORT:-29751}
+TRAIN_MASTER_PORT=${TRAIN_MASTER_PORT:-29752}
 
 DATA_ROOT="$ROOT/data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend_open_answer_original_reasoning_v1"
 TRAIN_FILE="$DATA_ROOT/splits/tgvf_v4_teacher_stage2_protocol_c.train.jsonl"
@@ -37,8 +42,8 @@ write_plan() {
     --protocol protocol_c_tool_observation \
     --global-batch 128 \
     --world-size 4 \
-    --micro-batch-size 4 \
-    --gradient-accumulation-steps 8 \
+    --micro-batch-size "$MICRO_BATCH_SIZE" \
+    --gradient-accumulation-steps "$GRADIENT_ACCUMULATION_STEPS" \
     --max-steps "$max_steps" \
     --save-every "$save_every" \
     --eval-every "$eval_every" \
@@ -93,7 +98,7 @@ write_plan() {
 prepare() {
   write_plan \
     "$SMOKE_DIR" \
-    "stage2_r16c_direct_reasoning_replay_smoke_4gpu_${STAMP}" \
+    "${RUN_VARIANT}_smoke_4gpu_${STAMP}" \
     1 1 1 disabled
   python -m revisit_vlm_clean.training.stage2_executor \
     --plan "$SMOKE_DIR/training_plan.json" \
@@ -101,7 +106,7 @@ prepare() {
 
   write_plan \
     "$TRAIN_DIR" \
-    "stage2_r16c_direct_reasoning_replay_main_4gpu_${STAMP}" \
+    "${RUN_VARIANT}_main_4gpu_${STAMP}" \
     1200 300 300 online
   python -m revisit_vlm_clean.training.stage2_executor \
     --plan "$TRAIN_DIR/training_plan.json" \
@@ -119,7 +124,7 @@ smoke() {
   echo "[$(date -Is)] Stage2 R16-C direct-reasoning replay smoke start"
   PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
   CUDA_VISIBLE_DEVICES=0,1,2,3 \
-  MASTER_PORT=29751 \
+  MASTER_PORT="$SMOKE_MASTER_PORT" \
   torchrun --nproc-per-node 4 \
     -m revisit_vlm_clean.training.stage2_executor \
     --plan "$SMOKE_DIR/training_plan.json" \
@@ -151,7 +156,7 @@ train() {
   echo "[$(date -Is)] Stage2 R16-C direct-reasoning replay training start"
   PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
   CUDA_VISIBLE_DEVICES=0,1,2,3 \
-  MASTER_PORT=29752 \
+  MASTER_PORT="$TRAIN_MASTER_PORT" \
   torchrun --nproc-per-node 4 \
     -m revisit_vlm_clean.training.stage2_executor \
     --plan "$TRAIN_DIR/training_plan.json" \

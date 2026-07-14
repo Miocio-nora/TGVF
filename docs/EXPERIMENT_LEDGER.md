@@ -410,7 +410,7 @@ If a mistake is found:
 
 ### EXP-20260714-225235-stage2-r16c-direct-reasoning-replay
 
-- Status: RUNNING.
+- Status: SIDE_RESULT_STOPPED_FOR_BATCH_OPTIMIZATION.
 - Objective:
   - Test whether replacing only accepted direct/no-focus teacher rationales
     with correct original Qwen3-VL thinking trajectories preserves more of the
@@ -513,9 +513,63 @@ If a mistake is found:
   - Early steady interval is about `54-55 s/step`, implying a rough
     `18 h` 1200-step runtime. This is provisional because replay sequence
     lengths have a long tail and cause visible DDP rank waiting.
+  - User-approved stop at approximately `2026-07-14 23:19 JST` to test a
+    larger per-GPU micro batch while preserving global batch `128`.
+  - Last completed optimizer step `33`, cumulative training-loop time
+    `1131.99 s`, maximum recorded rank-0 peak memory `79.76 GiB`, and mean
+    interval over the final 20 completed steps `27.90 s/step`.
+  - No main checkpoint exists because the first save cadence was step `300`.
+    The output and W&B run are retained as a throughput side result and are
+    not a candidate Stage2 checkpoint.
 - Golden status:
   - This is a named data ablation. Golden defaults remain unchanged until
     internal and complete CoreDev-2511 free/softforce evaluation is finished.
+
+### EXP-20260714-232021-stage2-r16c-direct-reasoning-replay-micro8
+
+- Status: PLANNED.
+- Objective:
+  - Reduce Stage2 wall time by increasing per-GPU micro batch while preserving
+    the exact R16-C replay experiment and effective global batch.
+- Direct baseline:
+  - `EXP-20260714-225235-stage2-r16c-direct-reasoning-replay`, stopped after
+    step `33` solely for this user-approved throughput test.
+- Intended diff:
+  - `micro_batch_size 4 -> 8` and `gradient_accumulation_steps 8 -> 4`.
+  - Preserve `global_batch = 4 GPUs * 8 micro * 4 accumulation = 128`.
+  - Run ids, output paths, ports, and timestamps change accordingly.
+- Fixed identity:
+  - Same Golden Stage1 checkpoint sha256
+    `b119379fc13a3eee1d19fb347bda729262592599218ea1ff88733ba142cb0c0b`.
+  - Same replay train split `45066` rows / sha256
+    `828d9278969538bcc4806b98bdb5ff07c8944bfd305581ac23b97e0bb15f4444`.
+  - Same replay validation split `968` rows / sha256
+    `e251cab1e163e97e79abc108e119be0429d5b36790a126f20c7dc637fb972a44`.
+  - Same model/processor, R16-C broad LoRA + row-only token rows, weighted
+    CE, no Matrix-CE, target focus ratio `0.8`, mask `0.75/through_answer`,
+    original and D DeepStack, resolution `512`, max sequence `2048`, SDPA
+    BF16, optimizer, seed, and 1200-step save/eval cadence.
+- Historical memory evidence:
+  - `EXP-20260626-153326-clean-qwen3-deepstack-mask075-micro-smoke` passed
+    Stage2 `micro=8/accum=4` and OOMed at `micro=16/accum=2` near the card
+    limit. That probe lacked current D-DeepStack/replay length conditions, so
+    the new exact-data smoke remains mandatory.
+- Driver:
+  - Base: `scripts/run_stage2_r16c_direct_reasoning_replay.sh`, now accepting
+    explicit environment overrides while preserving its original defaults.
+  - Fixed wrapper:
+    `scripts/run_stage2_r16c_direct_reasoning_replay_micro8.sh`.
+- Planned outputs:
+  - `outputs/clean_ablation/stage2_r16c_direct_reasoning_replay_micro8_4gpu_20260714_232021`.
+- Launch gate:
+  - Prepare and normalize plans first; then one optimizer-step smoke on GPUs
+    `0,1,2,3` must pass with real direct replay loss, finite gradients,
+    D-DeepStack, Matrix-CE disabled, and no OOM.
+  - Compare smoke wall time and peak memory against the exact micro4 replay
+    smoke before launching the 1200-step run.
+- Golden status:
+  - Named throughput configuration for the replay ablation only; no Golden
+    default changes.
 
 ### EXP-20260714-122949-stage2-r16c-matrixce
 
