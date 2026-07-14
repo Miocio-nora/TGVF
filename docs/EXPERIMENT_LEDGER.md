@@ -488,6 +488,8 @@ If a mistake is found:
   - `outputs/clean_ablation/stage2_r16c_direct_reasoning_replay_4gpu_20260714_225235`.
 - W&B:
   - Formal run online in project `tgvf-clean-qwen3-deepstack`; smoke disabled.
+  - Online run `oxbtvvbc`:
+    `https://wandb.ai/mio_nora/tgvf-clean-qwen3-deepstack/runs/oxbtvvbc`.
 - Smoke gate:
   - Passed on GPUs `0,1,2,3` from `2026-07-14 22:56:54` to `22:58:36`
     JST; one optimizer step, eight micro steps, validation, and checkpoint
@@ -504,6 +506,13 @@ If a mistake is found:
   - tmux `stage2_r16c_direct_replay_20260714_225235`.
   - Main log:
     `outputs/clean_ablation/stage2_r16c_direct_reasoning_replay_4gpu_20260714_225235/logs/train.log`.
+  - First three optimizer steps completed in `64.26 / 119.45 / 173.49`
+    cumulative seconds. Step 1 loss total/focus/direct was
+    `3.92188 / 4.12500 / 1.34082`; Matrix-CE `0`, global batch `128`, and
+    peak rank-0 memory `77.10 GiB`.
+  - Early steady interval is about `54-55 s/step`, implying a rough
+    `18 h` 1200-step runtime. This is provisional because replay sequence
+    lengths have a long tail and cause visible DDP rank waiting.
 - Golden status:
   - This is a named data ablation. Golden defaults remain unchanged until
     internal and complete CoreDev-2511 free/softforce evaluation is finished.
