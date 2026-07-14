@@ -556,7 +556,8 @@ If a mistake is found:
     the new exact-data smoke remains mandatory.
 - Driver:
   - Base: `scripts/run_stage2_r16c_direct_reasoning_replay.sh`, now accepting
-    explicit environment overrides while preserving its original defaults.
+    explicit environment overrides and matching `stage2_micro<N>` directory
+    names while preserving its original micro4 defaults.
   - Fixed wrapper:
     `scripts/run_stage2_r16c_direct_reasoning_replay_micro8.sh`.
 - Planned outputs:
