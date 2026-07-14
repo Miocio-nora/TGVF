@@ -527,7 +527,7 @@ If a mistake is found:
 
 ### EXP-20260714-232021-stage2-r16c-direct-reasoning-replay-micro8
 
-- Status: PLANNED.
+- Status: RUNNING.
 - Objective:
   - Reduce Stage2 wall time by increasing per-GPU micro batch while preserving
     the exact R16-C replay experiment and effective global batch.
@@ -586,6 +586,24 @@ If a mistake is found:
     D-DeepStack, Matrix-CE disabled, and no OOM.
   - Compare smoke wall time and peak memory against the exact micro4 replay
     smoke before launching the 1200-step run.
+- Smoke result:
+  - PASSED on GPUs `0,1,2,3` from `2026-07-14 23:23:55` to `23:25:21`
+    JST; one optimizer step, four micro steps, validation, and checkpoint
+    state checks completed without OOM or non-finite values.
+  - Loss total/focus/direct `3.90625 / 4.10938 / 1.74219`; global batch
+    `128`; actual rank-0 accumulated mix `26 focus / 6 direct`; direct
+    loss-token weight `135`; D-DeepStack enabled; Matrix-CE disabled.
+  - Optimizer-step elapsed `50.90 s`, peak rank-0 memory `129.61 GiB`.
+  - Exact micro4 replay smoke used the same global sample mix/token weight and
+    took `69.75 s` at `77.37 GiB`. Micro8 is `1.37x` faster (`27.0%` less
+    step time) while using `+52.23 GiB`; approximately `50 GiB` of device
+    memory remains.
+  - Smoke checkpoint:
+    `outputs/clean_ablation/stage2_r16c_direct_reasoning_replay_micro8_4gpu_20260714_232021/smoke/stage2_micro8/clean_training_execution/checkpoint_step_1.pt`.
+- Formal decision:
+  - Promote micro8/accum4 for this replay run. Do not test micro16 because the
+    historical probe OOMed near full device memory and current D-DeepStack plus
+    long replay targets add risk.
 - Golden status:
   - Named throughput configuration for the replay ablation only; no Golden
     default changes.
