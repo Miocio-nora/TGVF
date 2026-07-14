@@ -558,10 +558,28 @@ If a mistake is found:
   - Base: `scripts/run_stage2_r16c_direct_reasoning_replay.sh`, now accepting
     explicit environment overrides and matching `stage2_micro<N>` directory
     names while preserving its original micro4 defaults.
+  - Base driver sha256
+    `e61fc4d8cc6cc734f06bf866f463ac884ecf95ccede2836a6264961b9cea7b2e`.
   - Fixed wrapper:
     `scripts/run_stage2_r16c_direct_reasoning_replay_micro8.sh`.
+  - Wrapper sha256
+    `3570dae0237beb3502615f72ea5ad32d7fb516dbb62fe59719e412cb97a15a70`.
 - Planned outputs:
   - `outputs/clean_ablation/stage2_r16c_direct_reasoning_replay_micro8_4gpu_20260714_232021`.
+- Plan preflight:
+  - Generated from clean code commit
+    `c80c0c105b033619496c26f6ee7fdae163a0794e`.
+  - Main plan sha256
+    `0ce22bf1d674a765f36ed0aaf9521a1f5709b99038d185af83fcff79a00279b5`;
+    smoke plan sha256
+    `c4610d0d14879954b5d4732a6bcf7641e7290d34a844e1a3196bc60ab24f91e3`.
+  - Both execution bundles are valid, have zero blocking items, validated
+    checkpoint/optimizer contracts, and report
+    `ready_for_explicit_distributed_launch`.
+  - Machine-normalized comparison against the exact micro4 replay main plan
+    passed: the only training-semantic changes are micro batch `4 -> 8` and
+    accumulation `8 -> 4`; global batch remains `128` and all other plan
+    sections match exactly.
 - Launch gate:
   - Prepare and normalize plans first; then one optimizer-step smoke on GPUs
     `0,1,2,3` must pass with real direct replay loss, finite gradients,
