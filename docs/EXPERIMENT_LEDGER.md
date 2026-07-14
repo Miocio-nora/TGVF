@@ -408,6 +408,68 @@ If a mistake is found:
   - No changes to Golden defaults, no R16-C plan creation, no Stage2 training,
     and no internal/CoreDev evaluation.
 
+### EXP-20260714-225235-stage2-r16c-direct-reasoning-replay
+
+- Status: PLANNED.
+- Objective:
+  - Test whether replacing only accepted direct/no-focus teacher rationales
+    with correct original Qwen3-VL thinking trajectories preserves more of the
+    base model's reasoning distribution while retaining current TGVF tool use.
+- Direct baseline:
+  - `r16_c_rowonly` in
+    `SUITE-20260712-121814-stage2-r16-disentanglement-a-d`.
+  - Baseline main plan sha256
+    `3e1aaaa469261afffbf025392c30757cc2f5cc1f626348f85dd66d05484b621a`.
+- Intended semantic diff:
+  - Replace the old Stage2 train/validation splits with the accepted
+    direct-reasoning replay splits from
+    `DATA-20260714-205619-direct-original-reasoning-replay-all`.
+  - Focus rows and all Stage2 model, optimizer, loss, mask, DeepStack,
+    resolution, sequence-length, sampling-ratio, step, and cadence settings
+    remain fixed to R16-C without Matrix-CE.
+- Stage1 checkpoint:
+  - `outputs/clean_training/qwen3_stage1_ddeepstack_norm01_wandb_4gpu_20260702_180906/stage1_micro4/clean_training_execution/checkpoint_step_2000.pt`.
+  - sha256
+    `b119379fc13a3eee1d19fb347bda729262592599218ea1ff88733ba142cb0c0b`.
+- Stage2 train data:
+  - `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend_open_answer_original_reasoning_v1/splits/tgvf_v4_teacher_stage2_protocol_c.train.jsonl`.
+  - Rows `45066` = `39655` unchanged focus + `5411` accepted direct;
+    sha256
+    `828d9278969538bcc4806b98bdb5ff07c8944bfd305581ac23b97e0bb15f4444`.
+- Stage2 validation data:
+  - `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend_open_answer_original_reasoning_v1/splits/tgvf_v4_teacher_stage2_protocol_c.test.jsonl`.
+  - Rows `968` = `857` unchanged focus + `111` accepted direct; sha256
+    `e251cab1e163e97e79abc108e119be0429d5b36790a126f20c7dc637fb972a44`.
+- Fixed R16-C training identity:
+  - Model/processor
+    `/nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking`.
+  - LoRA rank/alpha `16/64`, broad
+    `q/k/v/o + gate/up/down` targets, protocol token mode `row_only`.
+  - Weighted CE: evidence-state/no-focus reasoning `0.2`, focus target `1.5`,
+    evidence/value/answer/no-focus-answer `1.0`.
+  - Matrix-CE disabled; target focus sampler ratio `0.8`.
+  - Resolution `512`, max sequence `2048`, SDPA BF16, 1200 steps,
+    save/eval every 300, seed `20260525`.
+  - Original-image key mask probability/scope `0.75/through_answer`;
+    original and D DeepStack enabled with training scope `through_answer`.
+- Batch identity:
+  - GPUs `0,1,2,3`.
+  - `global_batch = world_size 4 * micro_batch 4 * accumulation 8 = 128`.
+  - This is the same global and micro batch as R16-C; only world size and
+    accumulation are adjusted to the currently available four GPUs.
+- Driver:
+  - `scripts/run_stage2_r16c_direct_reasoning_replay.sh`.
+  - Sequence: prepare plans -> one-step four-GPU smoke -> 1200-step training.
+  - Smoke gate requires real focus and direct rows, nonzero direct loss-token
+    weight, D-DeepStack enabled, Matrix-CE disabled, and a valid checkpoint.
+- Planned outputs:
+  - `outputs/clean_ablation/stage2_r16c_direct_reasoning_replay_4gpu_20260714_225235`.
+- W&B:
+  - Formal run online in project `tgvf-clean-qwen3-deepstack`; smoke disabled.
+- Golden status:
+  - This is a named data ablation. Golden defaults remain unchanged until
+    internal and complete CoreDev-2511 free/softforce evaluation is finished.
+
 ### EXP-20260714-122949-stage2-r16c-matrixce
 
 - Status: DONE.
