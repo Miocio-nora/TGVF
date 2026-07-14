@@ -111,6 +111,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--device-map", default="auto")
     parser.add_argument("--attn-implementation", default="sdpa")
     parser.add_argument("--trust-remote-code", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument(
+        "--original-no-thinking",
+        action="store_true",
+        help="For qwen3_original only: disable the thinking chat prefill and block think tags.",
+    )
     parser.add_argument("--stage2-checkpoint", default="")
     parser.add_argument("--stage2-eval-jsonl", default="")
     parser.add_argument("--stage2-d-condition", default="correct_D")
@@ -311,6 +316,7 @@ def main(argv: list[str] | None = None) -> int:
                 else args.attn_implementation
             ),
             trust_remote_code=bool(args.trust_remote_code),
+            original_no_thinking=bool(args.original_no_thinking),
             stage2=(
                 _stage2_runtime_config(args, runtime_config)
                 if resolved_backend in {STAGE2_NATIVE_BACKEND, STAGE2_LEGACY_BACKEND}

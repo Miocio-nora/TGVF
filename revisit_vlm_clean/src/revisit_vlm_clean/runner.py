@@ -53,6 +53,7 @@ class BackendConfig:
     device_map: str | None = "auto"
     attn_implementation: str | None = "sdpa"
     trust_remote_code: bool = True
+    original_no_thinking: bool = False
     stage2: Stage2RuntimeConfig | None = None
 
     def to_dict(self) -> dict[str, Any]:
@@ -74,6 +75,7 @@ class BackendConfig:
             "device_map": self.device_map,
             "attn_implementation": self.attn_implementation,
             "trust_remote_code": self.trust_remote_code,
+            "original_no_thinking": self.original_no_thinking,
             "stage2": None if self.stage2 is None else self.stage2.to_dict(),
         }
 
@@ -196,10 +198,17 @@ class Qwen3OriginalBackend(CleanRunnerBackend):
             timing["h2d_sec"] = time.perf_counter() - phase
             prompt_len = int(inputs["input_ids"].shape[-1])
             phase = time.perf_counter()
-            generated = model.generate(
+            generate_kwargs: dict[str, Any] = {
                 **inputs,
-                max_new_tokens=self.max_answer_tokens,
-                do_sample=False,
+                "max_new_tokens": self.max_answer_tokens,
+                "do_sample": False,
+            }
+            if self.backend_config.original_no_thinking:
+                bad_words_ids = _original_no_thinking_bad_words_ids(processor.tokenizer)
+                if bad_words_ids:
+                    generate_kwargs["bad_words_ids"] = bad_words_ids
+            generated = model.generate(
+                **generate_kwargs,
             )
             timing["generate_sec"] = time.perf_counter() - phase
             phase = time.perf_counter()
@@ -226,6 +235,10 @@ class Qwen3OriginalBackend(CleanRunnerBackend):
                                 **timing,
                                 "decode_batch_sec": 0.0,
                                 "batch_wall_sec": batch_wall,
+                            },
+                            "original_generation": {
+                                "schema_version": "clean_qwen3_original_generation_v1",
+                                "no_thinking": bool(self.backend_config.original_no_thinking),
                             },
                             "batch_generation": {
                                 "schema_version": "clean_qwen3_original_batch_generation_v1",
@@ -355,10 +368,10 @@ class Qwen3OriginalBackend(CleanRunnerBackend):
 
         _force_left_padding_for_generation(processor)
         texts = [
-            processor.apply_chat_template(
+            _apply_original_chat_template(
+                processor,
                 messages,
-                tokenize=False,
-                add_generation_prompt=True,
+                no_thinking=bool(self.backend_config.original_no_thinking),
             )
             for messages in messages_batch
         ]
@@ -396,12 +409,16 @@ class Qwen3OriginalBackend(CleanRunnerBackend):
 
     def _vision_content_items(self, media: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
         items = []
-        max_pixels = int(self.max_image_resolution) ** 2
+        max_resolution = int(self.max_image_resolution)
+        max_pixels = max_resolution**2 if max_resolution > 0 else None
         for item in media:
             image = _media_to_image_input(item)
             if image is None:
                 continue
-            items.append({"type": "image", "image": image, "max_pixels": max_pixels})
+            content_item = {"type": "image", "image": image}
+            if max_pixels is not None:
+                content_item["max_pixels"] = max_pixels
+            items.append(content_item)
         if not items:
             raise ValueError("sample has no loadable image media for qwen3_original backend")
         return items
@@ -1135,6 +1152,65 @@ def _dry_output(sample: BenchmarkSample) -> str:
     if sample.choices:
         return "A"
     return "dry_run_answer"
+
+
+def _apply_original_chat_template(
+    processor: Any,
+    messages: list[dict[str, Any]],
+    *,
+    no_thinking: bool,
+) -> str:
+    kwargs: dict[str, Any] = {
+        "tokenize": False,
+        "add_generation_prompt": True,
+    }
+    if no_thinking:
+        kwargs["enable_thinking"] = False
+    try:
+        text = str(processor.apply_chat_template(messages, **kwargs))
+    except TypeError:
+        kwargs.pop("enable_thinking", None)
+        text = str(processor.apply_chat_template(messages, **kwargs))
+    if no_thinking:
+        text = _strip_original_thinking_generation_prompt(text)
+    return text
+
+
+def _strip_original_thinking_generation_prompt(text: str) -> str:
+    thinking_prompt = "<|im_start|>assistant\n<think>\n"
+    plain_prompt = "<|im_start|>assistant\n"
+    if text.endswith(thinking_prompt):
+        return text[: -len(thinking_prompt)] + plain_prompt
+    return text
+
+
+def _original_no_thinking_bad_words_ids(tokenizer: Any) -> list[list[int]]:
+    bad_words: list[list[int]] = []
+    seen: set[tuple[int, ...]] = set()
+    for token_text in ("<think>", "</think>"):
+        token_ids = _encode_without_special_tokens(tokenizer, token_text)
+        if not token_ids:
+            converted = getattr(tokenizer, "convert_tokens_to_ids", lambda value: None)(
+                token_text
+            )
+            if isinstance(converted, int) and converted >= 0:
+                token_ids = [converted]
+        key = tuple(int(item) for item in token_ids if int(item) >= 0)
+        if key and key not in seen:
+            bad_words.append(list(key))
+            seen.add(key)
+    return bad_words
+
+
+def _encode_without_special_tokens(tokenizer: Any, text: str) -> list[int]:
+    encode = getattr(tokenizer, "encode", None)
+    if encode is None:
+        return []
+    try:
+        token_ids = encode(text, add_special_tokens=False)
+    except TypeError:
+        token_ids = encode(text)
+    return [int(item) for item in token_ids or []]
 
 
 def _trim_generated_padding(token_ids: list[int], tokenizer: Any) -> list[int]:

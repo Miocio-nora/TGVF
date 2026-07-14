@@ -34,6 +34,93 @@ Metric names:
 - `Append`: successful D append rate.
 - `Malformed`: malformed focus action rate.
 
+## D DeepStack On/Off Ablation
+
+This ablation compares the current Stage2 line without D DeepStack against the
+D DeepStack golden branch. Both use original-image DeepStack eval scope
+`no_block`; the changed variable is whether D-token DeepStack branch features
+are enabled (`d_features_enabled=false` vs `true`).
+
+### Overall Summary
+
+| Branch | D DeepStack | Mode | Rows | Acc | Delta vs off | Macro acc | Parse | Trigger | Append |
+|---|---|---|---:|---:|---:|---:|---:|---:|---:|
+| `d_deepstack_off` | off | free | 2,511 | 35.53% | anchor | 39.67% | 99.56% | 31.22% | 100.00% |
+| `d_deepstack_off` | off | softforce | 2,511 | 35.98% | anchor | 39.90% | 99.64% | 45.24% | 100.00% |
+| `d_deepstack_on_golden` | on | free | 2,511 | 37.04% | +1.51 | 41.16% | 99.84% | 29.79% | 100.00% |
+| `d_deepstack_on_golden` | on | softforce | 2,511 | 37.92% | +1.94 | 42.33% | 99.48% | 40.98% | 100.00% |
+
+D DeepStack improves CoreDev-2511 overall by `+1.51` points in free mode and
+`+1.94` points in softforce mode.
+
+### Accuracy Matrix
+
+Free mode:
+
+| Benchmark | n | D-off free | D-on free | Delta |
+|---|---:|---:|---:|---:|
+| VStar | 191 | 49.21% | 52.36% | +3.14 |
+| HR | 200 | 54.00% | 52.50% | -1.50 |
+| BLINK | 420 | 55.00% | 56.90% | +1.90 |
+| OCRBench-v2 | 600 | 23.88% | 25.02% | +1.15 |
+| MMMU-Pro | 300 | 34.67% | 35.67% | +1.00 |
+| MathVista | 300 | 46.33% | 49.67% | +3.33 |
+| MathVerse | 500 | 14.60% | 16.00% | +1.40 |
+
+Softforce mode:
+
+| Benchmark | n | D-off softforce | D-on softforce | Delta |
+|---|---:|---:|---:|---:|
+| VStar | 191 | 49.21% | 50.79% | +1.57 |
+| HR | 200 | 51.50% | 59.50% | +8.00 |
+| BLINK | 420 | 56.19% | 55.48% | -0.71 |
+| OCRBench-v2 | 600 | 24.41% | 24.54% | +0.14 |
+| MMMU-Pro | 300 | 33.00% | 38.00% | +5.00 |
+| MathVista | 300 | 50.00% | 49.00% | -1.00 |
+| MathVerse | 500 | 15.00% | 19.00% | +4.00 |
+
+### Full Per-Benchmark Metrics
+
+| Branch | Mode | Benchmark | n | Acc | Trigger | Parse | Focus-valid | Append | Malformed |
+|---|---|---|---:|---:|---:|---:|---:|---:|---:|
+| `d_deepstack_off` | free | VStar | 191 | 49.21% | 17.28% | 100.00% | 17.28% | 100.00% | 0.00% |
+| `d_deepstack_off` | free | HR | 200 | 54.00% | 38.00% | 99.00% | 38.00% | 100.00% | 0.00% |
+| `d_deepstack_off` | free | BLINK | 420 | 55.00% | 8.81% | 98.33% | 8.81% | 100.00% | 0.00% |
+| `d_deepstack_off` | free | OCRBench-v2 | 600 | 23.88% | 23.83% | 99.67% | 23.83% | 100.00% | 0.00% |
+| `d_deepstack_off` | free | MMMU-Pro | 300 | 34.67% | 31.67% | 100.00% | 31.67% | 100.00% | 0.00% |
+| `d_deepstack_off` | free | MathVista | 300 | 46.33% | 21.00% | 100.00% | 21.00% | 100.00% | 0.00% |
+| `d_deepstack_off` | free | MathVerse | 500 | 14.60% | 67.40% | 100.00% | 67.40% | 100.00% | 0.00% |
+| `d_deepstack_off` | softforce | VStar | 191 | 49.21% | 63.35% | 100.00% | 63.35% | 100.00% | 0.00% |
+| `d_deepstack_off` | softforce | HR | 200 | 51.50% | 73.00% | 99.00% | 73.00% | 100.00% | 0.00% |
+| `d_deepstack_off` | softforce | BLINK | 420 | 56.19% | 25.71% | 98.33% | 25.71% | 100.00% | 0.00% |
+| `d_deepstack_off` | softforce | OCRBench-v2 | 600 | 24.41% | 43.67% | 100.00% | 43.67% | 100.00% | 0.00% |
+| `d_deepstack_off` | softforce | MMMU-Pro | 300 | 33.00% | 34.33% | 100.00% | 34.33% | 100.00% | 0.00% |
+| `d_deepstack_off` | softforce | MathVista | 300 | 50.00% | 28.67% | 100.00% | 28.67% | 100.00% | 0.00% |
+| `d_deepstack_off` | softforce | MathVerse | 500 | 15.00% | 62.00% | 100.00% | 62.00% | 100.00% | 0.00% |
+| `d_deepstack_on_golden` | free | VStar | 191 | 52.36% | 11.52% | 100.00% | 11.52% | 100.00% | 0.00% |
+| `d_deepstack_on_golden` | free | HR | 200 | 52.50% | 40.00% | 99.50% | 40.00% | 100.00% | 0.00% |
+| `d_deepstack_on_golden` | free | BLINK | 420 | 56.90% | 7.86% | 99.52% | 7.86% | 100.00% | 0.00% |
+| `d_deepstack_on_golden` | free | OCRBench-v2 | 600 | 25.02% | 22.83% | 99.83% | 22.83% | 100.00% | 0.00% |
+| `d_deepstack_on_golden` | free | MMMU-Pro | 300 | 35.67% | 29.67% | 100.00% | 29.67% | 100.00% | 0.00% |
+| `d_deepstack_on_golden` | free | MathVista | 300 | 49.67% | 20.33% | 100.00% | 20.33% | 100.00% | 0.00% |
+| `d_deepstack_on_golden` | free | MathVerse | 500 | 16.00% | 65.20% | 100.00% | 65.20% | 100.00% | 0.00% |
+| `d_deepstack_on_golden` | softforce | VStar | 191 | 50.79% | 58.64% | 100.00% | 58.64% | 100.00% | 0.00% |
+| `d_deepstack_on_golden` | softforce | HR | 200 | 59.50% | 72.50% | 99.00% | 72.50% | 100.00% | 0.00% |
+| `d_deepstack_on_golden` | softforce | BLINK | 420 | 55.48% | 23.33% | 97.62% | 23.33% | 100.00% | 0.00% |
+| `d_deepstack_on_golden` | softforce | OCRBench-v2 | 600 | 24.54% | 36.17% | 99.83% | 36.17% | 100.00% | 0.00% |
+| `d_deepstack_on_golden` | softforce | MMMU-Pro | 300 | 38.00% | 33.00% | 100.00% | 33.00% | 100.00% | 0.00% |
+| `d_deepstack_on_golden` | softforce | MathVista | 300 | 49.00% | 23.67% | 100.00% | 23.67% | 100.00% | 0.00% |
+| `d_deepstack_on_golden` | softforce | MathVerse | 500 | 19.00% | 57.40% | 100.00% | 57.40% | 100.00% | 0.00% |
+
+### Source Artifacts
+
+| Branch | Mode | Summary path |
+|---|---|---|
+| `d_deepstack_off` | free | `outputs/clean_benchmarks/qwen3_stage2_norm01_coredev2511_dynamic_maxtok512_flash2_multigridfix_gpu0_7_20260701_235228/tgvf_free/summary.json` |
+| `d_deepstack_off` | softforce | `outputs/clean_benchmarks/qwen3_stage2_norm01_coredev2511_dynamic_maxtok512_flash2_multigridfix_gpu0_7_20260702_011343/tgvf_softforce/summary.json` |
+| `d_deepstack_on_golden` | free | `outputs/clean_benchmarks/qwen3_stage2_ddeepstack_coredev2511_dynamic_maxtok512_flash2_ddeepstack_gpu1_7_20260703_084300/tgvf_free/summary.json` |
+| `d_deepstack_on_golden` | softforce | `outputs/clean_benchmarks/qwen3_stage2_ddeepstack_coredev2511_dynamic_maxtok512_flash2_ddeepstack_gpu0_7_20260703_084300/tgvf_softforce/summary.json` |
+
 ## Matrix CE Size Sweep
 
 This ablation changes the same-image Matrix CE grouping/readout size while
@@ -334,6 +421,319 @@ reporting bug after artifact writeout, not a failed diagnostic run.
 | `resolution214` | Stage1 internal query | `outputs/clean_training/qwen3_stage1_ddeepstack_resolution214_4gpu_20260704_141526/stage1_micro4/internal_diagnostics_step2000_20260704_141526/query_sensitivity/query_sensitivity_report.json` |
 | `resolution214` | Stage2 internal readout | `outputs/clean_training/qwen3_stage2_ddeepstack_norm01_from_stage1_ddeepstack_resolution214_8gpu_20260704_141526/stage2_micro4/internal_diagnostics_step1200_20260704_141526/readout/readout_eval_report.json` |
 | `resolution214` | Stage2 internal query | `outputs/clean_training/qwen3_stage2_ddeepstack_norm01_from_stage1_ddeepstack_resolution214_8gpu_20260704_141526/stage2_micro4/internal_diagnostics_step1200_20260704_141526/query_sensitivity/query_sensitivity_report.json` |
+
+## Eval-Only Resolution 1024 Diagnostic
+
+This diagnostic changes only benchmark-time image resolution from `512` to
+`1024`. It does not retrain Stage1 or Stage2. The generation budget remains
+`512`, so the table should be read together with the output-token health
+metrics below.
+
+Identity caveat: the dynamic benchmark command omitted explicit
+`--eval-family project_native_external`, so the summary metadata records
+`eval_family=internal_diagnostic`. The manifest, row count/order, model,
+backend, scorer, FlashAttention-2 setting, and resolution are the intended
+complete CoreDev-2511 evaluation identity.
+
+### Overall Summary
+
+| Method | Resolution | Rows | Acc | Delta vs own 512 | Macro acc | Parse | Trigger | Append | Hit>=512 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| Original | 512 | 2,511 | 30.86% | anchor | 36.14% | 94.15% | 0.00% | n/a | not recorded |
+| Original | 1024 | 2,511 | 32.62% | +1.76 | 39.26% | 94.58% | 0.00% | n/a | 58.70% |
+| D DeepStack free | 512 | 2,511 | 37.04% | anchor | 41.16% | 99.84% | 29.79% | 100.00% | not recorded |
+| D DeepStack free | 1024 | 2,511 | 39.76% | +2.71 | 45.53% | 99.80% | 30.59% | 100.00% | 2.19% |
+| D DeepStack softforce | 512 | 2,511 | 37.92% | anchor | 42.33% | 99.48% | 40.98% | 100.00% | not recorded |
+| D DeepStack softforce | 1024 | 2,511 | 39.58% | +1.65 | 45.07% | 99.40% | 41.78% | 100.00% | 1.75% |
+
+### Per-Benchmark Accuracy At Resolution 1024
+
+| Benchmark | n | Original acc | Free acc | Free delta vs original | Softforce acc | Softforce delta vs original |
+|---|---:|---:|---:|---:|---:|---:|
+| VStar | 191 | 69.63% | 68.59% | -1.05 | 67.54% | -2.09 |
+| HR | 200 | 62.00% | 62.50% | +0.50 | 61.50% | -0.50 |
+| BLINK | 420 | 49.05% | 56.67% | +7.62 | 54.52% | +5.48 |
+| OCRBench-v2 | 600 | 21.51% | 26.05% | +4.54 | 26.46% | +4.95 |
+| MMMU-Pro | 300 | 31.67% | 37.33% | +5.67 | 37.67% | +6.00 |
+| MathVista | 300 | 36.33% | 51.00% | +14.67 | 49.00% | +12.67 |
+| MathVerse | 500 | 4.60% | 16.60% | +12.00 | 18.80% | +14.20 |
+
+### Output-Token Health At Resolution 1024
+
+| Benchmark | Original hit>=512 | Original acc on hit | Original acc on non-hit | Free hit>=512 | Softforce hit>=512 |
+|---|---:|---:|---:|---:|---:|
+| VStar | 31/191 (16.23%) | 54.84% | 72.50% | 0/191 (0.00%) | 0/191 (0.00%) |
+| HR | 32/200 (16.00%) | 12.50% | 71.43% | 0/200 (0.00%) | 0/200 (0.00%) |
+| BLINK | 170/420 (40.48%) | 14.71% | 72.40% | 0/420 (0.00%) | 0/420 (0.00%) |
+| OCRBench-v2 | 370/600 (61.67%) | 27.03% | 47.39% | 50/600 (8.33%) | 44/600 (7.33%) |
+| MMMU-Pro | 211/300 (70.33%) | 19.43% | 60.67% | 2/300 (0.67%) | 0/300 (0.00%) |
+| MathVista | 178/300 (59.33%) | 15.17% | 67.21% | 1/300 (0.33%) | 0/300 (0.00%) |
+| MathVerse | 482/500 (96.40%) | 4.36% | 11.11% | 2/500 (0.40%) | 0/500 (0.00%) |
+
+Original@1024 is not a healthy output setting: `58.70%` of all rows hit the
+`512` output-token cap, and MathVerse is almost completely capped
+(`482/500`). TGVF does not show the same truncation failure under the same
+budget, so the low MathVerse absolute score for TGVF is likely not explained by
+the same output-token pathology. A healthy follow-up should rerun original and
+TGVF with the same higher output budget, e.g. `max_image_resolution=1024` and
+`max_answer_tokens/max_tokens=2048`, before drawing final conclusions about
+MathVerse or original-vs-TGVF deltas at high resolution.
+
+### Source Artifacts
+
+| Branch | Mode | Summary path |
+|---|---|---|
+| `resolution1024_eval_only` | original | `outputs/clean_benchmarks/qwen3_original_evalres1024_coredev2511_dynamic_maxans512_flash2_gpu0_7_20260706_160153/summary.json` |
+| `resolution1024_eval_only` | free | `outputs/clean_benchmarks/qwen3_stage2_ddeepstack_evalres1024_coredev2511_dynamic_maxtok512_flash2_ddeepstack_gpu0_7_20260706_160153/tgvf_free/summary.json` |
+| `resolution1024_eval_only` | softforce | `outputs/clean_benchmarks/qwen3_stage2_ddeepstack_evalres1024_coredev2511_dynamic_maxtok512_flash2_ddeepstack_gpu0_7_20260706_160153/tgvf_softforce/summary.json` |
+
+## Healthy-Budget Resolution 1024 Diagnostic
+
+This follow-up keeps benchmark-time image resolution at `1024` but increases
+the output budget to `2048`: original uses `--max-answer-tokens 2048`, while
+TGVF uses unified `--max-tokens 2048`. It is a CoreDev-350 diagnostic
+(`7` benchmarks x `50` rows), not a complete CoreDev-2511 table.
+
+### Overall Summary
+
+| Method | Rows | Acc | Macro acc | Delta vs original | Parse | Trigger | Hit>=512 | Hit>=2048 | Avg output tokens |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| Original | 350 | 48.00% | 48.00% | anchor | 98.57% | 0.00% | 170/350 (48.6%) | 88/350 (25.1%) | 870.2 |
+| D DeepStack free | 350 | 47.41% | 47.41% | -0.58 | 99.71% | 30.86% | 4/350 (1.1%) | 0/350 (0.0%) | 71.1 |
+| D DeepStack softforce | 350 | 48.54% | 48.54% | +0.54 | 99.14% | 45.43% | 3/350 (0.9%) | 0/350 (0.0%) | 64.9 |
+
+### Per-Benchmark Accuracy
+
+| Benchmark | n | Original acc | Free acc | Free delta | Softforce acc | Softforce delta |
+|---|---:|---:|---:|---:|---:|---:|
+| VStar | 50 | 70.00% | 68.00% | -2.00 | 66.00% | -4.00 |
+| HR | 50 | 68.00% | 68.00% | +0.00 | 68.00% | +0.00 |
+| BLINK | 50 | 60.00% | 60.00% | +0.00 | 62.00% | +2.00 |
+| OCRBench-v2 | 50 | 27.97% | 27.87% | -0.09 | 29.75% | +1.79 |
+| MMMU-Pro | 50 | 36.00% | 34.00% | -2.00 | 48.00% | +12.00 |
+| MathVista | 50 | 56.00% | 60.00% | +4.00 | 46.00% | -10.00 |
+| MathVerse | 50 | 18.00% | 14.00% | -4.00 | 20.00% | +2.00 |
+
+### Output-Token Health
+
+| Benchmark | Original hit>=512 | Original hit>=2048 | Free hit>=512 | Free hit>=2048 | Softforce hit>=512 | Softforce hit>=2048 |
+|---|---:|---:|---:|---:|---:|---:|
+| VStar | 5/50 (10.0%) | 1/50 (2.0%) | 0/50 (0.0%) | 0/50 (0.0%) | 0/50 (0.0%) | 0/50 (0.0%) |
+| HR | 5/50 (10.0%) | 2/50 (4.0%) | 0/50 (0.0%) | 0/50 (0.0%) | 1/50 (2.0%) | 0/50 (0.0%) |
+| BLINK | 20/50 (40.0%) | 7/50 (14.0%) | 0/50 (0.0%) | 0/50 (0.0%) | 0/50 (0.0%) | 0/50 (0.0%) |
+| OCRBench-v2 | 33/50 (66.0%) | 12/50 (24.0%) | 0/50 (0.0%) | 0/50 (0.0%) | 0/50 (0.0%) | 0/50 (0.0%) |
+| MMMU-Pro | 35/50 (70.0%) | 25/50 (50.0%) | 3/50 (6.0%) | 0/50 (0.0%) | 0/50 (0.0%) | 0/50 (0.0%) |
+| MathVista | 24/50 (48.0%) | 11/50 (22.0%) | 0/50 (0.0%) | 0/50 (0.0%) | 0/50 (0.0%) | 0/50 (0.0%) |
+| MathVerse | 48/50 (96.0%) | 30/50 (60.0%) | 1/50 (2.0%) | 0/50 (0.0%) | 2/50 (4.0%) | 0/50 (0.0%) |
+
+| Benchmark | Original avg tokens | Free avg tokens | Softforce avg tokens |
+|---|---:|---:|---:|
+| VStar | 223.8 | 25.9 | 21.9 |
+| HR | 287.3 | 32.1 | 63.1 |
+| BLINK | 667.7 | 33.4 | 33.3 |
+| OCRBench-v2 | 1100.0 | 86.6 | 79.4 |
+| MMMU-Pro | 1307.2 | 170.6 | 68.2 |
+| MathVista | 801.6 | 65.8 | 58.4 |
+| MathVerse | 1703.6 | 83.4 | 130.1 |
+
+The `2048` output budget is still not a healthy original setting at
+`max_image_resolution=1024`: original hits the new `2048` cap on `25.1%` of
+CoreDev-350, including MathVerse `30/50` and MMMU-Pro `25/50`. TGVF does not
+show the same pathology under the same resolution and budget: both free and
+softforce have `0/350` rows hitting `2048`, and fewer than `1.2%` hit `512`.
+
+Interpretation: the low MathVerse score for original at high resolution is
+heavily confounded by long-output truncation. TGVF's MathVerse absolute score
+remains low, but it is not explained by the same output-token failure; this
+points more toward task difficulty, scorer/answer-form sensitivity, or model
+reasoning behavior after focus rather than simple max-token truncation.
+
+### Source Artifacts
+
+| Branch | Mode | Summary path |
+|---|---|---|
+| `healthy_res1024_maxtok2048_coredev350` | original | `outputs/clean_benchmarks/qwen3_original_health_res1024_coredev350_dynamic_maxans2048_flash2_gpu0_7_20260706_214629/summary.json` |
+| `healthy_res1024_maxtok2048_coredev350` | free | `outputs/clean_benchmarks/qwen3_stage2_ddeepstack_health_res1024_coredev350_dynamic_maxtok2048_flash2_ddeepstack_gpu0_7_20260706_214629/tgvf_free/summary.json` |
+| `healthy_res1024_maxtok2048_coredev350` | softforce | `outputs/clean_benchmarks/qwen3_stage2_ddeepstack_health_res1024_coredev350_dynamic_maxtok2048_flash2_ddeepstack_gpu0_7_20260706_214629/tgvf_softforce/summary.json` |
+
+## Original Res/Max Health Sweep
+
+This diagnostic asks whether original Qwen3-thinking can be made naturally
+output-healthy by changing only benchmark-time image resolution while keeping a
+large answer budget. It uses a balanced CoreDev-70 subset (`7` benchmarks x
+`10` rows) sampled from the CoreDev-350 diagnostic manifest, runs original only
+on GPUs `0,1,2,3`, and keeps `max_answer_tokens=2048`. A candidate is considered
+healthy only if `hit>=2048 <= 5%`, parse is at least `95%`, and the output
+length is not dominated by long thinking loops.
+
+### Overall Summary
+
+| Max image res | Rows | Acc | Parse | Hit>=512 | Hit>=1024 | Hit>=1536 | Hit>=2048 | Avg output tokens |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 256 | 70 | 36.51% | 100.00% | 40/70 (57.1%) | 29/70 (41.4%) | 23/70 (32.9%) | 20/70 (28.6%) | 975.0 |
+| 384 | 70 | 35.32% | 98.57% | 36/70 (51.4%) | 30/70 (42.9%) | 27/70 (38.6%) | 19/70 (27.1%) | 981.7 |
+| 512 | 70 | 40.01% | 97.14% | 36/70 (51.4%) | 30/70 (42.9%) | 21/70 (30.0%) | 21/70 (30.0%) | 911.9 |
+
+### Per-Benchmark `hit>=2048`
+
+| Benchmark | res256 | res384 | res512 |
+|---|---:|---:|---:|
+| VStar | 0/10 | 0/10 | 0/10 |
+| HR | 0/10 | 1/10 | 1/10 |
+| BLINK | 0/10 | 0/10 | 1/10 |
+| OCRBench-v2 | 3/10 | 2/10 | 2/10 |
+| MMMU-Pro | 6/10 | 6/10 | 6/10 |
+| MathVista | 4/10 | 3/10 | 4/10 |
+| MathVerse | 7/10 | 7/10 | 7/10 |
+
+Conclusion: no normal output-healthy original setting was found using only
+`max_image_resolution in {256,384,512}` and `max_answer_tokens=2048` under the
+current original Qwen3 thinking prompt. Lowering resolution does not remove the
+long-output failure: MathVerse remains `7/10` hit>=2048 at all three
+resolutions, and MMMU-Pro remains `6/10`. A practical `512` answer-token cap is
+a truncation guard, not natural health. A genuinely healthy original comparison
+would require changing generation behavior, such as a no-thinking/direct-answer
+mode or a validated stop/answer extraction policy; that was intentionally not
+part of this sweep.
+
+### Hit-Stress No-Resolution-Cap Follow-Up
+
+This follow-up selects the `21` rows from the `res512/max_answer_tokens=2048`
+CoreDev-70 run that already hit `2048`, then reruns original Qwen3-thinking with
+`max_answer_tokens=4096`. It compares the normal `max_image_resolution=512`
+setting against `max_image_resolution=0`, where `0` means the original backend
+omits the project-side `max_pixels` image cap. The goal is to distinguish
+legitimate long reasoning from unhealthy loops and to test whether removing the
+image cap mitigates the loop.
+
+| Image setting | Rows | Acc | Parse | Hit>=2048 | Hit>=4096 | Avg output tokens |
+|---|---:|---:|---:|---:|---:|---:|
+| `res512` | 21 | 28.59% | 20/21 (95.2%) | 18/21 (85.7%) | 13/21 (61.9%) | 3350.7 |
+| `nores` | 21 | 28.61% | 19/21 (90.5%) | 17/21 (81.0%) | 14/21 (66.7%) | 3332.4 |
+
+Per-benchmark `hit>=4096`:
+
+| Benchmark | n | res512 | nores |
+|---|---:|---:|---:|
+| HR | 1 | 1/1 | 1/1 |
+| BLINK | 1 | 0/1 | 1/1 |
+| OCRBench-v2 | 2 | 0/2 | 0/2 |
+| MMMU-Pro | 6 | 6/6 | 6/6 |
+| MathVista | 4 | 2/4 | 2/4 |
+| MathVerse | 7 | 4/7 | 4/7 |
+
+Paired comparison: `17/21` rows have exactly the same output-token count under
+`res512` and `nores`; two rows become shorter under `nores` and two become
+longer. The net effect is not a mitigation: `hit>=4096` increases from `13/21`
+to `14/21`, with the BLINK stress row becoming a new cap hit.
+
+Loop inspection: the `>=4096` cap hits are overwhelmingly unhealthy loops, not
+normal long answers. They show repeated self-correction, cyclic reconsideration
+of the same evidence, or high repeated n-gram counts near the tail. This is
+especially clear for MMMU-Pro, where `6/6` stress rows hit `4096` under both
+image settings. Some cap-hit rows can still score correctly because a parseable
+option appears somewhere in the output, but they are operationally unhealthy
+because the model does not naturally terminate. Non-cap `>=2048` rows are mixed:
+some are OCR transcription or long-but-terminating reasoning, so `>=2048` should
+be treated as a warning threshold, while `>=4096` is strong evidence of the
+dead-loop pathology.
+
+Conclusion: removing the project-side original-image resolution cap does not
+fix the original Qwen3-thinking loop. The failure is primarily a generation
+behavior issue, not a simple image-resolution cap issue. Further healthy
+original comparisons should test generation changes such as no-thinking/direct
+answer or a validated stop/answer-extraction policy rather than raising the
+token cap again.
+
+### Balanced No-Resolution-Cap Prevalence
+
+Because the hit-stress diagnostic intentionally selected prior cap-hit rows, a
+balanced CoreDev-70 prevalence check was run with the same no project-side image
+cap and `max_answer_tokens=4096`.
+
+| Setting | Rows | Acc | Parse | Avg prompt len | Max prompt len | Avg output tokens | Hit>=2048 | Hit>=3072 | Hit>=4096 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| `nores/max4096` | 70 | 53.98% | 68/70 (97.1%) | 3046.7 | 15985 | 1296.2 | 18/70 (25.7%) | 15/70 (21.4%) | 15/70 (21.4%) |
+
+Per-benchmark:
+
+| Benchmark | n | Acc | Avg prompt len | Avg output tokens | Hit>=2048 | Hit>=3072 | Hit>=4096 |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| VStar | 10 | 90.00% | 3221.5 | 54.4 | 0/10 | 0/10 | 0/10 |
+| HR | 10 | 80.00% | 15473.0 | 517.7 | 1/10 | 1/10 | 1/10 |
+| BLINK | 10 | 50.00% | 980.9 | 590.8 | 1/10 | 1/10 | 1/10 |
+| OCRBench-v2 | 10 | 37.87% | 629.2 | 874.2 | 0/10 | 0/10 | 0/10 |
+| MMMU-Pro | 10 | 40.00% | 320.4 | 2677.8 | 6/10 | 6/10 | 6/10 |
+| MathVista | 10 | 40.00% | 386.6 | 1410.8 | 3/10 | 2/10 | 2/10 |
+| MathVerse | 10 | 40.00% | 315.6 | 2947.5 | 7/10 | 5/10 | 5/10 |
+
+Interpretation: the stress-set rate was inflated by selection bias
+(`14/21`, `66.7%` hit>=4096), but nores is still not healthy on the balanced
+sample (`15/70`, `21.4%` hit>=4096). The pathology is concentrated in
+MMMU-Pro and MathVerse, not globally caused by longer visual prompts. For
+example, VStar has long nores prompts but `0/10` cap hits, while MMMU-Pro has
+short prompts and `6/10` cap hits. `qwen_vl_utils` also confirms that nores is
+not truly unlimited: omitting project-side `max_pixels` falls back to the
+library's default maximum, equivalent to roughly a `4096 x 4096` square at the
+local patch/merge factor.
+
+Recommended labels for `max_answer_tokens=4096`: use `hit>=4096` as the
+high-precision unhealthy label; use `hit>=3072` as a strong warning or early
+screen; treat `hit>=2048` as a warning requiring inspection because it also
+captures some long but terminating OCR/reasoning rows.
+
+### Original/TGVF 1024 And Nores Max4096
+
+This diagnostic uses the same balanced CoreDev-70 sample set and compares
+original, TGVF free, and TGVF softforce under `max_image_resolution=1024` and
+under no project-side image cap. Original uses `max_answer_tokens=4096`; TGVF
+uses unified `max_tokens=4096`. The nores original row reuses the completed
+balanced nores run above.
+
+| Setting | Mode | Rows | Scored | Acc scored | Acc all rows | Parse | Trigger | Append | Malformed | Avg output tokens | Hit>=512 | Hit>=2048 | Hit>=3072 | Hit>=4096 |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| `res1024/max4096` | original | 70 | 70 | 52.55% | 52.55% | 98.57% | 0.00% | 0.00% | 0.00% | 1255.0 | 30/70 | 17/70 | 14/70 | 14/70 |
+| `res1024/max4096` | TGVF free | 70 | 70 | 45.16% | 45.16% | 100.00% | 34.29% | 34.29% | 0.00% | 106.8 | 1/70 | 1/70 | 1/70 | 0/70 |
+| `res1024/max4096` | TGVF softforce | 70 | 70 | 48.00% | 48.00% | 98.57% | 47.14% | 47.14% | 0.00% | 122.2 | 2/70 | 1/70 | 1/70 | 0/70 |
+| `nores/max4096` | original | 70 | 70 | 53.98% | 53.98% | 97.14% | 0.00% | 0.00% | 0.00% | 1296.2 | 31/70 | 18/70 | 15/70 | 15/70 |
+| `nores/max4096` | TGVF free | 70 | 65 | 45.55% | 42.30% | 92.86% | 32.86% | 25.71% | 7.14% | 105.8 | 1/70 | 1/70 | 1/70 | 0/70 |
+| `nores/max4096` | TGVF softforce | 70 | 64 | 44.69% | 40.86% | 90.00% | 44.29% | 35.71% | 8.57% | 66.7 | 1/70 | 0/70 | 0/70 | 0/70 |
+
+Per-benchmark `Acc scored`:
+
+| Setting | Mode | VStar | HR | BLINK | OCRBench-v2 | MMMU-Pro | MathVista | MathVerse |
+|---|---|---:|---:|---:|---:|---:|---:|---:|
+| `res1024` | original | 80.00% | 70.00% | 60.00% | 37.87% | 40.00% | 40.00% | 40.00% |
+| `res1024` | TGVF free | 80.00% | 80.00% | 60.00% | 26.10% | 20.00% | 30.00% | 20.00% |
+| `res1024` | TGVF softforce | 90.00% | 80.00% | 50.00% | 25.98% | 40.00% | 30.00% | 20.00% |
+| `nores` | original | 90.00% | 80.00% | 50.00% | 37.87% | 40.00% | 40.00% | 40.00% |
+| `nores` | TGVF free | 90.00% | 80.00% | 70.00% | 26.10% | 20.00% | 30.00% | 20.00% |
+| `nores` | TGVF softforce | 90.00% | 75.00% | 50.00% | 26.03% | 40.00% | 30.00% | 20.00% |
+
+Interpretation: `res1024/max4096` is a valid high-budget diagnostic. Original
+scores highest on this small CoreDev-70 slice but remains output-unhealthy:
+`14/70` rows hit `4096`. TGVF free and softforce have `0/70` hit>=4096 and no
+malformed rows at `res1024`, so they remain output-healthy but lower accuracy
+on this reasoning-heavy slice. The nores TGVF rows are not a clean comparison:
+triggered HR focus append can OOM at 180GB, producing `5` malformed rows for
+free and `6` for softforce. For nores TGVF, `Acc all rows` is the safer
+practical number until that OOM path is fixed.
+
+### Source Artifacts
+
+| Branch | Summary path |
+|---|---|
+| `original_health_params_coredev70_res256` | `outputs/clean_benchmarks/qwen3_original_healthparam_coredev70_res256_maxans2048_flash2_gpu0_3_20260706_230528/summary.json` |
+| `original_health_params_coredev70_res384` | `outputs/clean_benchmarks/qwen3_original_healthparam_coredev70_res384_maxans2048_flash2_gpu0_3_20260706_230528/summary.json` |
+| `original_health_params_coredev70_res512` | `outputs/clean_benchmarks/qwen3_original_healthparam_coredev70_res512_maxans2048_flash2_gpu0_3_20260706_230528/summary.json` |
+| `original_hitstress_res512_max4096` | `outputs/clean_benchmarks/qwen3_original_hitstress_res512_maxans4096_flash2_gpu0_3_20260706_235519/summary.json` |
+| `original_hitstress_nores_max4096` | `outputs/clean_benchmarks/qwen3_original_hitstress_nores_maxans4096_flash2_gpu0_3_20260706_235519/summary.json` |
+| `original_nores_balanced_coredev70_max4096` | `outputs/clean_benchmarks/qwen3_original_nores_coredev70_maxans4096_flash2_gpu0_3_20260707_010022/summary.json` |
+| `original_res1024_coredev70_max4096` | `outputs/clean_benchmarks/qwen3_original_res1024_coredev70_maxans4096_flash2_gpu0_1_2_3_5_6_7_20260707_012845/summary.json` |
+| `tgvf_free_res1024_coredev70_max4096` | `outputs/clean_benchmarks/qwen3_stage2_ddeepstack_res1024_coredev70_maxtok4096_flash2_ddeepstack_gpu0_1_2_3_5_6_7_20260707_012845/tgvf_free/summary.json` |
+| `tgvf_softforce_res1024_coredev70_max4096` | `outputs/clean_benchmarks/qwen3_stage2_ddeepstack_res1024_coredev70_maxtok4096_flash2_ddeepstack_gpu0_1_2_3_5_6_7_20260707_012845/tgvf_softforce/summary.json` |
+| `tgvf_free_nores_coredev70_max4096` | `outputs/clean_benchmarks/qwen3_stage2_ddeepstack_nores_coredev70_maxtok4096_flash2_ddeepstack_gpu0_1_2_3_5_6_7_20260707_012845/tgvf_free/summary.json` |
+| `tgvf_softforce_nores_coredev70_max4096` | `outputs/clean_benchmarks/qwen3_stage2_ddeepstack_nores_coredev70_maxtok4096_flash2_ddeepstack_gpu0_1_2_3_5_6_7_20260707_012845/tgvf_softforce/summary.json` |
 
 ## Data Scale Ablation
 

@@ -112,6 +112,3443 @@ If a mistake is found:
 
 ## Experiment Entries
 
+### DATA-20260714-203043-direct-original-reasoning-replay-smoke
+
+- Status: `DONE`.
+- Objective:
+  - Validate an isolated data pipeline that replaces the short teacher-template
+    `no_focus_think` on direct/no-focus Stage2 rows with verified original
+    Qwen3-VL-8B-Thinking reasoning, before any R16-C Stage2 training.
+  - Focus/tool rows are outside the generation population and will be copied
+    byte-for-byte only when a later complete dataset is published.
+- Source identity:
+  - Train split: `46883` rows (`7228` direct, `39655` focus),
+    `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend_open_answer/splits/tgvf_v4_teacher_stage2_protocol_c.train.jsonl`,
+    sha256 `b5027e72dda7601073ddb8bc9cf1853ec564fa415a3e9cb7d1e684cc7c0d733b`.
+  - Test split: `1002` rows (`145` direct, `857` focus), same split root,
+    sha256 `3b719e1bd03a09741cc05dac3ed85e423a9b2c29209b07546792a6795cdbbfc5`.
+- Smoke population:
+  - Deterministic question-type then source round-robin selection with seed
+    `20260714`, four direct rows per split, eight rows total.
+  - Train selected-UID sha256
+    `e8a4070f36afb8327e61583912440ca4465c84a93af0873117776eb5a9decf6e`;
+    test selected-UID sha256
+    `0f41f30e74854d97c5ee17f49c5d5941b2487565131e2114f39aeee75420e8ca`.
+  - Coverage includes math reasoning, whole-image obvious, counting, and color
+    rows across ChartQA, DocVQA, and Visual Genome sources.
+- Generation identity:
+  - Model/processor:
+    `/nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking`.
+  - Original thinking chat template, greedy generation, BF16,
+    FlashAttention-2, image resolution `512`, generation maximum `2048`, and
+    batch size `4` on GPU `0`.
+  - Accept only a natural stop below the generation budget, exactly one
+    `</think>` boundary, no TGVF/tool markers, conservative normalized-exact or
+    decimal-exact final-answer agreement with the existing gold, and at most
+    `1024` generated tokens. The `1024` acceptance ceiling is provisional and
+    will be checked against pilot length statistics.
+  - Rejected direct rows are excluded from a future replay split rather than
+    falling back to the old short template.
+- Code/worktree:
+  - Branch `clean/tgvf-clean-project-20260625`, HEAD
+    `b6193bed86c3513b1639fa924bde7a708893bc5f`, dirty worktree.
+  - New isolated files:
+    `revisit_vlm_clean/src/revisit_vlm_clean/reasoning_replay.py`,
+    `revisit_vlm_clean/src/revisit_vlm_clean/cli/reasoning_replay.py`, and
+    `revisit_vlm_clean/tests/test_reasoning_replay.py`; one new project-script
+    registration in `revisit_vlm_clean/pyproject.toml`. Golden defaults and
+    existing data are unchanged.
+  - Unit tests: `6 passed`.
+- Bound plan:
+  - Output:
+    `outputs/clean_data/tgvf_direct_original_reasoning_replay_smoke8_v3_20260714`.
+  - `run_config.json` identity sha256
+    `3dd9d3f820868b69ff65b545dbe1057101af7eaf997561787f198ed14cf5925f`.
+  - Plan-only preflight completed; all eight selected image paths exist.
+- Launch command:
+  - `PYTHONPATH=revisit_vlm_clean/src python -m revisit_vlm_clean.cli.reasoning_replay --run-id tgvf_direct_original_reasoning_replay_smoke8_v3_20260714 --output-dir outputs/clean_data/tgvf_direct_original_reasoning_replay_smoke8_v3_20260714 --source-train data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend_open_answer/splits/tgvf_v4_teacher_stage2_protocol_c.train.jsonl --source-test data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend_open_answer/splits/tgvf_v4_teacher_stage2_protocol_c.test.jsonl --model-id /nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking --gpus 0 --batch-size 4 --max-new-tokens 2048 --max-accepted-output-tokens 1024 --max-image-resolution 512 --attn-implementation flash_attention_2 --max-direct-per-split 4`.
+- Launch:
+  - Started `2026-07-14T20:32:34+09:00` on GPU `0`, Codex exec session
+    `87894`.
+  - Initial v3 smoke completed in `86.25s` with all `8/8` generations present,
+    no OOM, worker error, malformed think boundary, tool-token leakage, or
+    generation-budget hit. Output tokens had mean `453.75`, median `287`, and
+    max `1666`.
+  - The initial validator reported `0/8` accepted because it compared the
+    entire verbose post-think response to the short gold answer. Manual output
+    inspection found at least six explicit correct conclusions, one clearly
+    wrong chart-series answer (`6` versus gold `4`), and one color-boundary
+    answer (`orange-brown` versus gold `orange`). The v3 acceptance result is
+    therefore a validator side result, not a data-quality conclusion.
+  - The validator was tightened to extract only explicit answer positions
+    (`answer is`, boxed values, bold conclusions, and `this image is ...`) and
+    still rejects incidental gold mentions in the explanation. Unconstrained
+    gold-substring matching is not used. Unit tests now report `8 passed`.
+  - Retry v4 is `PLANNED` on the same eight UIDs and GPU `0`, output
+    `outputs/clean_data/tgvf_direct_original_reasoning_replay_smoke8_v4_20260714`.
+    Its run identity sha256 is
+    `9b710cc6d079c76eef43e484d0d8f86da608bd73dacbdbe4cd15fce1e8cd216b`;
+    the identity now binds both CLI and core implementation hashes in addition
+    to model, sources, sample UIDs, and runtime settings.
+  - Retry v4 started `2026-07-14T20:35:21+09:00` on GPU `0`, Codex exec
+    session `79620`.
+  - Retry v4 completed successfully with `8/8` generation rows and `6/8`
+    accepted. The accepted conclusions exactly recovered `10`, scanned
+    document page, `41 percentage points`, `15`, `47 percentage points`, and
+    scanned document page. The validator correctly rejected the wrong
+    chart-series answer (`6` versus gold `4`) and conservatively rejected
+    `orange-brown` versus gold `orange`.
+  - Conclusion: model generation, Qwen think-boundary parsing, explicit-answer
+    extraction, and conservative correctness filtering are operational. A
+    larger stratified pilot is required before publishing a replay split.
+- Non-goals:
+  - No replay split publication, Stage2 training, internal evaluation, or
+    CoreDev-2511 evaluation in this smoke.
+
+### DATA-20260714-204238-direct-original-reasoning-replay-pilot128
+
+- Status: `DONE`.
+- Objective:
+  - Estimate replay acceptance, rejection causes, and both generated-output and
+    serialized-training-target lengths across every train direct question type
+    before processing all `7373` train/test direct rows.
+- Baseline:
+  - Successful v4 smoke
+    `DATA-20260714-203043-direct-original-reasoning-replay-smoke`.
+- Fixed source/model semantics:
+  - Same train/test paths and sha256 values as the smoke: train
+    `b5027e72dda7601073ddb8bc9cf1853ec564fa415a3e9cb7d1e684cc7c0d733b`,
+    test `3b719e1bd03a09741cc05dac3ed85e423a9b2c29209b07546792a6795cdbbfc5`.
+  - Model/processor
+    `/nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking`, original thinking
+    template, greedy BF16 generation, FlashAttention-2, resolution `512`, and
+    generation maximum `2048`.
+  - Correctness rules are unchanged. The provisional `1024` length gate now
+    explicitly applies to the exact serialized replay target
+    `<think>reasoning</think> + short gold answer`, while complete Qwen output
+    length is separately recorded.
+- Pilot population:
+  - `64` deterministic stratified direct rows from train and `64` from test,
+    seed `20260714`; no split publication.
+  - Train selection covers all ten direct question types and five source
+    datasets; selected-UID sha256
+    `1e929c76fd13fe82ded3ab36ae1a0e54b7f0cb67650c34039686280db893952a`.
+  - Test selection covers its three direct question types and five source
+    datasets; selected-UID sha256
+    `a7ff4b237ee8b94402ab51ce45ce171045560205341f424119337e33e70830c4`.
+- Runtime:
+  - GPUs `0,1,2,3`, one dynamic worker per GPU, batch size `8` per worker.
+  - Output:
+    `outputs/clean_data/tgvf_direct_original_reasoning_replay_pilot128_v2_20260714`.
+  - Run identity sha256
+    `fee6b85abfe1fe487a6d39d20bb3234ffc98fc56757206ea033dbc1c0722e65c`.
+  - Core/CLI implementation sha256 values:
+    `046e9a4c8fab1ddc5a461aa9616de486128e51edcc4871f2ac215e543a2534d5` /
+    `64cd94ff723c7a22e6f0145cf4cd9c415d4d6eea1f90eefd740822604fd8e92d`.
+- Verification before launch:
+  - Plan-only completed, all selected images exist, dedicated tests `9 passed`,
+    and the complete clean suite passed `254` tests with two unrelated SWIG
+    deprecation warnings.
+- Launch command:
+  - `PYTHONPATH=revisit_vlm_clean/src python -m revisit_vlm_clean.cli.reasoning_replay --run-id tgvf_direct_original_reasoning_replay_pilot128_v2_20260714 --output-dir outputs/clean_data/tgvf_direct_original_reasoning_replay_pilot128_v2_20260714 --source-train data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend_open_answer/splits/tgvf_v4_teacher_stage2_protocol_c.train.jsonl --source-test data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend_open_answer/splits/tgvf_v4_teacher_stage2_protocol_c.test.jsonl --model-id /nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking --gpus 0,1,2,3 --batch-size 8 --max-new-tokens 2048 --max-replay-target-tokens 1024 --max-image-resolution 512 --attn-implementation flash_attention_2 --max-direct-per-split 64 --progress-every 16`.
+- Launch:
+  - Started `2026-07-14T20:42:01+09:00` on GPUs `0,1,2,3`, Codex exec
+    session `67715`.
+  - Generation completed successfully in `187.48s`: `128/128` rows, no worker
+    error or OOM. Initial strict validation accepted `55/128` (`42.97%`), with
+    `71` answer mismatches and `2` generation-budget hits.
+  - Accepted replay-target lengths were mean `165.27`, median `115`, p95 `609`,
+    p99/max `750`; no accepted or correct-matched row approached the
+    provisional `1024` replay-target ceiling. Complete generated output was
+    longer (mean `313.16`, p95 `925`, max `2048`), confirming that verbose
+    post-think final text must not define the training-length gate.
+  - Mismatch audit found a mixture of genuine model errors (`6` versus `4`
+    series, `217` versus `240` medals, `12:55` versus `10:35`) and systematic
+    strict-parser false negatives (`538 more cohabitations` versus `538`,
+    `10 bars` versus `10`, and sentence-form color/object answers).
+  - A validator-only v3 recheck is planned without GPU generation. It permits
+    controlled equivalence only on the first explicit answer candidate: one
+    numeric value with compatible units, approximate numeric answers when the
+    question requests approximation, number-word equivalence, or a complete
+    gold token phrase inside the explicit candidate. It never scans the full
+    explanation for fuzzy matches, so an incorrect final `6` cannot pass by
+    mentioning `4.0` earlier.
+  - Revalidation output:
+    `outputs/clean_data/tgvf_direct_original_reasoning_replay_pilot128_revalidated_v3_20260714`;
+    identity sha256
+    `b66f766fb50ed59c1e1e41ea3998d0e95a79ef1a774879f6d74846a9a1466d6f`.
+    It binds reused generation rows sha256
+    `a2aaa38966e0c85c7b835aa3c04085641a60123a0129e52afbc0510426937fe5`
+    and uses no GPU.
+  - Final v4 validation replaces the provisional replay-target-only cap with
+    the authoritative Stage2 total sequence budget: padded image/question
+    prompt plus serialized replay target must be `<=2048`. The old `1024`
+    target-only cap remains available but is disabled by default.
+  - Final pilot acceptance is `92/128` (`71.88%`): train `43/64` (`67.19%`)
+    and test `49/64` (`76.56%`). Rejections are `34` explicit-answer
+    mismatches and `2` generation-budget hits; there are no malformed think
+    boundaries, tool-marker leaks, or total-sequence overflows.
+  - Accepted match types are `62` normalized-exact and `30` first-explicit
+    candidate equivalences. All 30 relaxed accepts were directly audited and
+    are compatible with the gold answers; no full-explanation substring match
+    is used.
+  - Accepted total replay-sequence lengths: mean `475.30`, median `398.5`, p90
+    `797`, p95 `972`, and max `1555`. The single healthy correct target that
+    exceeded the old target-only 1024 cap has total sequence `1555`, safely
+    below 2048.
+  - Because train pilot intentionally over-samples rare hard types, its raw
+    `67.19%` is not a population estimate. Weighting per-type pilot acceptance
+    by the actual train direct distribution gives an approximate `82.8%`
+    retention estimate (roughly 6k of 7228 train direct rows).
+  - Final validator-only output:
+    `outputs/clean_data/tgvf_direct_original_reasoning_replay_pilot128_revalidated_v4_20260714`,
+    identity sha256
+    `b2b22f0f5f14a2ee9a7e43b67ce5865ade2956da8df785069cab7d80e1723775`.
+- Non-goals:
+  - No published train/test split and no Stage2 training/evaluation.
+
+### DATA-20260714-205619-direct-original-reasoning-replay-all
+
+- Status: `DONE`.
+- Objective:
+  - Generate, validate, and publish the versioned original-Qwen reasoning
+    replay dataset for every direct/no-focus row in the authoritative 50k
+    Stage2 train/test splits. This is data preparation only; no Stage2 training
+    begins in this run.
+- Baseline and evidence:
+  - Finalized 128-row pilot
+    `DATA-20260714-204238-direct-original-reasoning-replay-pilot128`.
+  - Pilot supports the explicit-answer validator and total-sequence `2048`
+    gate; expected train retention is approximately `82.8%`, but the complete
+    run will report the exact value.
+- Exact population:
+  - All `7228` train direct rows, selected-UID sha256
+    `9e9dbc42af59f919b270d3c52a4ccd9a41a999377bf73c2828297c9cbe8d5f01`.
+  - All `145` test direct rows, selected-UID sha256
+    `58807ee99ac07409fff4eabf461974697e8feac62ab35a9c203570198eef6dfb`.
+  - Source split identities remain train `46883` rows / sha256
+    `b5027e72dda7601073ddb8bc9cf1853ec564fa415a3e9cb7d1e684cc7c0d733b`
+    and test `1002` rows / sha256
+    `3b719e1bd03a09741cc05dac3ed85e423a9b2c29209b07546792a6795cdbbfc5`.
+- Generation/runtime identity:
+  - Model/processor
+    `/nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking`, original thinking
+    template, greedy BF16, FlashAttention-2, resolution `512`, generation max
+    `2048`, and total replay-sequence max `2048`.
+  - Dynamic queue on GPUs `0,1,2,3`, batch size `8` per GPU worker.
+  - Estimate from the deliberately difficult pilot is approximately `2-3h`;
+    the complete population is dominated by shorter whole-image-obvious rows,
+    so this is intentionally conservative.
+- Output and publication:
+  - Versioned root:
+    `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend_open_answer_original_reasoning_v1`.
+  - Publish accepted direct rows only, retaining the original short gold
+    answer and replacing only `no_focus_think` with verified original-Qwen
+    reasoning. Rejected direct rows are omitted.
+  - Copy every focus row from each source JSONL without reserialization and
+    require focus payload count/hash identity before publication succeeds.
+- Reproducibility:
+  - Plan-only completed and verified all `7373` selected image paths.
+  - Run identity sha256
+    `d4f07b3dddb8849cc91bd803f780a704e6f49516a8ce9cc14426c6e65b0605f7`.
+  - Core/CLI sha256 values:
+    `724228b5b256abe4e60383c6826f26c26fc1551e827d89bd9c500aee7acdca77` /
+    `577fbb8122b56881ad64c4e68838dad19f1b6d3488138b90b2f4c5865cbd8cfd`.
+  - Complete clean suite passed `258` tests; after the final identity-field
+    addition, focused reasoning-replay plus CLI coverage passed `73` tests.
+- Launch command:
+  - `PYTHONPATH=revisit_vlm_clean/src python -m revisit_vlm_clean.cli.reasoning_replay --run-id tgvf_v4_teacher_50k_original_reasoning_replay_v1_20260714 --output-dir data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend_open_answer_original_reasoning_v1 --source-train data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend_open_answer/splits/tgvf_v4_teacher_stage2_protocol_c.train.jsonl --source-test data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend_open_answer/splits/tgvf_v4_teacher_stage2_protocol_c.test.jsonl --model-id /nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking --gpus 0,1,2,3 --batch-size 8 --max-new-tokens 2048 --max-sequence-tokens 2048 --max-image-resolution 512 --attn-implementation flash_attention_2 --progress-every 100 --publish-splits`.
+- Launch:
+  - Started `2026-07-14T20:59:18+09:00` on GPUs `0,1,2,3`, Codex exec
+    session `38106`.
+  - Completed successfully in `5905.74s` (`1h 38m 26s`). All `7373/7373`
+    selected direct rows have generation/audit records; no worker failure,
+    missing generation, or OOM occurred. GPUs `0-3` were released.
+  - Accepted `5522/7373` (`74.89%`) overall. Train accepted `5411/7228`
+    (`74.86%`); test accepted `111/145` (`76.55%`). Rejections are `1775`
+    explicit-answer mismatches and `76` generation-budget hits. There are zero
+    malformed think-boundary, tool-marker leakage, and accepted-sequence
+    overflow rows.
+  - Accepted match types: `2851` normalized-exact and `2671` controlled
+    first-explicit-candidate equivalences.
+  - Main train direct categories retain: whole-image-obvious `4175/5612`
+    (`74.39%`), math-reasoning `876/1159` (`75.58%`), and counting `291/328`
+    (`88.72%`). Test retains math-reasoning `27/33` (`81.82%`), counting `7/7`,
+    and whole-image-obvious `77/105` (`73.33%`).
+  - Accepted reasoning-token distribution: mean `130.12`, median `88`, p90
+    `213`, p95 `371`, p99 `865`, max `1712`. Accepted complete replay-sequence
+    distribution: mean `416.42`, median `374`, p90 `503`, p95 `659`, p99
+    `1152`, max `2011`; every published row is within the bound 2048 sequence.
+  - Published train split: `45066` rows = `39655` unchanged focus + `5411`
+    replayed direct, sha256
+    `828d9278969538bcc4806b98bdb5ff07c8944bfd305581ac23b97e0bb15f4444`.
+    Independent focus-only payload hash matches source and output at
+    `a441d7d571c4ff8a09c3165b41df0fc52ad77e7f30fe2fda341a1493e7f5c874`.
+  - Published test split: `968` rows = `857` unchanged focus + `111` replayed
+    direct, sha256
+    `e251cab1e163e97e79abc108e119be0429d5b36790a126f20c7dc637fb972a44`.
+    Independent focus-only payload hash matches source and output at
+    `e00b9dfb0a181baaed81946a7327d08dde74cb8b64f700ac4c062fdd7b44e7fc`.
+  - Dataset loader verification succeeded with zero skipped/missing replay
+    rows: train stats `45066 total / 39655 focus / 5411 direct`; test stats
+    `968 total / 857 focus / 111 direct`. Every direct row has non-empty replay
+    reasoning, no TGVF/tool markers, and recorded sequence length `<=2048`.
+  - Audit artifact sha256 values: generation rows
+    `401643a58d343c6669f1f2618c536af5383406fe4f822a8bcc22c3d9b92ef298`,
+    report
+    `563f5a8a7fbb2b5432080cee7db257fcf89f8b3c1abc0e4098994febaecbf650`,
+    run config
+    `701860d3fa1b91f166706cb57374523558f501ab9bf415b0a774417553345699`,
+    and selection manifest
+    `8dca1c603f75617ff8921343f1f1f830ad38478ee25461099a38191daf822a4e`.
+  - Conclusion: the versioned data asset is ready for the separately named
+    R16-C no-Matrix-CE Stage2 experiment. Golden defaults remain unchanged
+    until that experiment is explicitly planned and evaluated.
+- Non-goals:
+  - No changes to Golden defaults, no R16-C plan creation, no Stage2 training,
+    and no internal/CoreDev evaluation.
+
+### EXP-20260714-122949-stage2-r16c-matrixce
+
+- Status: DONE.
+- Objective:
+  - Test whether the R16-C language-adaptation surface plus Stage2 Matrix-CE
+    preservation can retain the strong internal D discrimination of Matrix-CE
+    without the external reasoning regression of the broad rank-64/full-module
+    checkpoint.
+- Direct baselines:
+  - R64/full-module Matrix-CE:
+    `EXP-20260713-200250-stage2-matrixce-preservation-1200step` and
+    `EVAL-20260714-100641-stage2-matrixce-preservation-coredev2511`.
+  - R16-C without Matrix-CE: the `r16_c_rowonly` cell in
+    `SUITE-20260712-121814-stage2-r16-disentanglement-a-d`.
+  - Authoritative Golden Stage2:
+    `EXP-20260703-005210-stage2-d-deepstack-8gpu`.
+- Intended diff from the completed R64 Matrix-CE run:
+  - LoRA rank/alpha `64/256 -> 16/64`.
+  - Protocol-token training `full_modules -> row_only` for the four Protocol-C
+    token rows in `embed_tokens` and `lm_head`.
+  - Keep broad LoRA targets exactly
+    `q/k/v/o + gate/up/down`; this is not the harmful q/v/o-only ablation.
+- Fixed training identity:
+  - Golden D-DeepStack Stage1 checkpoint:
+    `outputs/clean_training/qwen3_stage1_ddeepstack_norm01_wandb_4gpu_20260702_180906/stage1_micro4/clean_training_execution/checkpoint_step_2000.pt`,
+    sha256
+    `b119379fc13a3eee1d19fb347bda729262592599218ea1ff88733ba142cb0c0b`.
+  - Stage2 train rows/hash: `46883` /
+    `b5027e72dda7601073ddb8bc9cf1853ec564fa415a3e9cb7d1e684cc7c0d733b`.
+  - Stage2 validation rows/hash: `1002` /
+    `3b719e1bd03a09741cc05dac3ed85e423a9b2c29209b07546792a6795cdbbfc5`.
+  - Model/processor:
+    `/nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking`.
+  - Weighted CE unchanged: evidence-state/no-focus-state `0.2`, focus target
+    `1.5`, evidence/value/answer/no-focus-answer `1.0`.
+  - Matrix-CE unchanged: enabled, weight `1.0`, group/readout size `4`, one
+    same-image group per optimizer step, sequential CE then Matrix-CE backward,
+    and D plus D-DeepStack candidate swap.
+  - Resolution `512`, max sequence length `2048`, SDPA BF16 training,
+    1200 steps, save/eval every 300, seed `20260525`.
+  - Mask probability/scope `0.75/through_answer`; original and D DeepStack
+    enabled with training scope `through_answer`.
+  - Batch identity `128 = world_size 4 * micro_batch 4 * accumulation 8` on
+    GPUs `0,1,2,3`.
+- Plan verification:
+  - Main plan:
+    `outputs/clean_ablation/stage2_r16c_matrixce_4gpu_20260714_122949/main/stage2_micro4/training_plan.json`,
+    sha256
+    `e4d5c133a3112f567514740fa8d38e477c28bf9bc1ba8ea6943701de14603380`.
+  - Smoke plan sha256
+    `f114df7a170db957d28bb1917dbbc0c6aecfa97ed0b3d6f20557cf547a7257c4`.
+  - Both plans report `ready_for_explicit_distributed_launch`, valid bundles,
+    zero blocking items, and validated checkpoint/optimizer contracts.
+  - Main first-batch sha256
+    `9bef841dde30b785c9e1cec1f480d7b33dec1dd631a1aed49c16fb46631d6bc1`,
+    exactly matching the R64 Matrix-CE run.
+  - Normalized semantic diff against R64 Matrix-CE contains only the declared
+    rank/alpha and row-only changes; dataset absolute-path spelling differs but
+    all hashes/sizes/row counts match.
+- Driver:
+  - `scripts/run_stage2_r16c_matrixce.sh`.
+  - sha256
+    `16a88a3ea3417ee88c1a80d2588644f0334ed5b6631e69f12756f7b892a3f99f`;
+    `bash -n` and `git diff --check` passed.
+  - Sequence: prepare -> one-step four-GPU training smoke -> 1200-step training
+    -> fixed internal readout/query/distribution diagnostics -> four-row free
+    and softforce parser smokes -> complete CoreDev-2511 free and softforce.
+- Planned outputs:
+  - Training/diagnostics:
+    `outputs/clean_ablation/stage2_r16c_matrixce_4gpu_20260714_122949`.
+  - Benchmarks:
+    `outputs/clean_benchmarks/qwen3_stage2_r16c_matrixce_coredev2511_20260714_122949`.
+- Evaluation identity after training:
+  - Complete CoreDev-2511 manifest, `2511` rows, internal hash
+    `a461d9b482b7165b42b9bbb0fbf0ea6aff31fde0a838c13d953f070e770b0579`.
+  - Native Stage2, FlashAttention-2 BF16, dynamic workers on GPUs `0-3`,
+    resolution `512`, unified `max_tokens=512`, scorer `auto`, post-D
+    `kv_cache`, correct-D/target-hint, D DeepStack enabled, original-image
+    DeepStack `no_block`, and softforce prompt `Use focus tool.`.
+- W&B:
+  - Main run online in project `tgvf-clean-qwen3-deepstack`; smoke disabled.
+- Smoke launch:
+  - Started `2026-07-14T12:33:18+09:00` on GPUs `0,1,2,3`.
+  - tmux `stage2_r16c_mce_smoke_20260714_122949`.
+  - Completed one optimizer step and eight CE micro steps in `78.65s`.
+  - Optimized loss `10.1523`; focus/no-focus CE `4.0625/3.2109`;
+    Matrix-CE `6.09375`, auxiliary Top-1 `50%`, initial margin `-1.0417`.
+  - Validation loss `4.25`; checkpoint state/step and optimizer/scheduler
+    checks passed. Smoke checkpoint sha256
+    `fe9bcca86d4cdb22362fa9fe095606f1b7b90e26ef3820f92dfc7aefb758ee38`.
+  - Actual trainable parameters `115,735,552`: LLM LoRA plus protocol rows
+    `43,679,744`, TGVF `72,055,808`. Peak rank-0 memory `129.85 GiB`.
+  - Smoke gate passed; GPUs released before the formal launch.
+- Formal pipeline launch:
+  - Started `2026-07-14T12:36:34+09:00` on GPUs `0,1,2,3`.
+  - tmux `stage2_r16c_mce_pipeline_20260714_122949`.
+  - Training is followed automatically by internal diagnostics and complete
+    CoreDev-2511 free/softforce evaluation after parser smokes.
+  - W&B online run `koos2xpi`:
+    `https://wandb.ai/mio_nora/tgvf-clean-qwen3-deepstack/runs/koos2xpi`.
+    Local W&B files fell back to `/tmp/wandb`, while online syncing is active.
+  - Formal step 1 completed in `79.58s`: loss `10.1523`, Matrix-CE `6.09375`,
+    auxiliary Top-1 `50%`, margin `-1.0417`, peak rank-0 memory `129.85 GiB`.
+  - Through step 5, mean time after the first step is `62.16s/step`; no OOM
+    or non-finite metrics. For context, R64 Matrix-CE averaged `164.49s/step`
+    over its first five steps but accelerated substantially later.
+  - Revised estimate: about `9-12h` training plus `2-3h` diagnostics and
+    external evaluation. Treat this as provisional until later warmup blocks.
+- Code/worktree:
+  - Branch `clean/tgvf-clean-project-20260625`, HEAD `b6193bed86c3513b`.
+  - Existing dirty benchmark/docs changes are preserved. This experiment adds
+    only its driver and ledger entry; no training/evaluation implementation is
+    changed.
+- Deferred follow-up:
+  - Do not change Stage2 data in this run. After its internal and CoreDev
+    results are known, separately prepare reasoning replay where direct/no-focus
+    rows follow the original Qwen `<think>...answer` output distribution while
+    focus rows keep the current tool protocol.
+- Completion:
+  - The entire pipeline finished successfully; no training, diagnostic, parser,
+    or benchmark process remains active, and GPUs `0-3` were released.
+  - Training completed `1200` optimizer steps in `18184.77s` (`5h 03m 05s`).
+    Final loss was `1.00684`; final auxiliary Matrix-CE was
+    `5.96e-8`, auxiliary Top-1 was `100%`, and Protocol-C boundary accuracy
+    was `94.23%` on the final optimizer step.
+  - Final checkpoint:
+    `outputs/clean_ablation/stage2_r16c_matrixce_4gpu_20260714_122949/main/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt`,
+    sha256
+    `da63d43efcf08f714bf231c5e749fb2c9809e8355f85254917a2820b280bf950`.
+  - Internal diagnostics (`200` readout samples and `50` same-image query
+    groups): correct-D NLL `1.6395`, wrong-same discrimination `98.0%`,
+    Top-1/Top-2 `92.0%/98.5%`, MRR `0.9564`, and D/V-merge norm ratio
+    `2.1000`; all values were finite and no collapse warning fired.
+  - Complete CoreDev-2511 free evaluation took `4047.20s`: accuracy `31.53%`,
+    trigger/focus-valid `43.37%`, parse `96.02%`, mean output `103.04`
+    tokens, and `258/2511` rows hit the 512-token budget.
+  - Complete CoreDev-2511 softforce evaluation took `2919.74s`: accuracy
+    `31.87%`, trigger/focus-valid `51.37%`, parse `97.33%`, mean output
+    `64.88` tokens, and `71/2511` rows hit the 512-token budget.
+  - Per-benchmark free accuracy: VStar `52.36%`, HR `54.50%`, BLINK
+    `52.86%`, OCRBench v2 `23.14%`, MMMU-Pro `27.67%`, MathVista `38.33%`,
+    and MathVerse `4.80%`.
+  - Per-benchmark softforce accuracy: VStar `49.21%`, HR `54.50%`, BLINK
+    `53.33%`, OCRBench v2 `23.90%`, MMMU-Pro `27.00%`, MathVista `41.00%`,
+    and MathVerse `5.20%`.
+  - Relative to R16-C without Matrix-CE, accuracy changed by
+    `-6.04/-5.24 pp` in free/softforce. Relative to R64/full-module
+    Matrix-CE, it changed by `-3.18/-1.55 pp` despite slightly better internal
+    query retrieval.
+  - Output inspection found two distinct failures. In free mode, the `258`
+    hit-512 rows and `100` parser failures have zero overlap: long truncations
+    are dominated by non-triggered reasoning, while parser failures are mostly
+    short continuations that trigger focus but do not emit a scoreable answer.
+- Conclusion:
+  - R16-C plus Matrix-CE strongly preserves target-specific D retrieval, but
+    it does not preserve external reasoning or healthy tool continuation. The
+    interaction is worse than both R16-C without Matrix-CE and the R64
+    Matrix-CE checkpoint, so it must remain an ablation and must not change the
+    authoritative Golden Stage2 defaults.
+  - Internal D retrieval is necessary but not sufficient for model selection.
+    The next named experiment remains direct/no-focus original-Qwen reasoning
+    replay while retaining the current focus/tool protocol.
+
+### EVAL-20260714-100641-stage2-matrixce-preservation-coredev2511
+
+- Status: DONE.
+- Objective:
+  - Evaluate the completed 1200-step Stage2 Matrix-CE preservation checkpoint
+    on the complete CoreDev-2511 manifest in free and softforce modes.
+- Source experiment:
+  - `EXP-20260713-200250-stage2-matrixce-preservation-1200step`.
+- Checkpoint:
+  - `outputs/clean_ablation/stage2_matrixce_preservation_golden_1200step_4gpu_20260713_200250/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt`.
+  - sha256 `8c96e703b3568fd2b609eba4f1b05ad5a40edc04a68831529de25ad80de96ae1`.
+- Baseline outputs:
+  - Golden free:
+    `outputs/clean_benchmarks/qwen3_stage2_ddeepstack_coredev2511_dynamic_maxtok512_flash2_ddeepstack_gpu1_7_20260703_084300/tgvf_free`.
+  - Golden softforce:
+    `outputs/clean_benchmarks/qwen3_stage2_ddeepstack_coredev2511_dynamic_maxtok512_flash2_ddeepstack_gpu0_7_20260703_084300/tgvf_softforce`.
+- Evaluation identity:
+  - Complete `core_balanced_dev_2511_seed20260625` manifest, `2511` rows;
+    manifest file sha256
+    `3a013b2bcc64316054d28239a3cea3f44211cadbfe19787be3b7f285620fa5c1`,
+    internal hash
+    `a461d9b482b7165b42b9bbb0fbf0ea6aff31fde0a838c13d953f070e770b0579`.
+  - Sample IDs and order match the Golden free manifest exactly.
+  - Modes `tgvf_free` and `tgvf_softforce`; softforce prompt
+    `Use focus tool.`.
+  - Native Stage2 backend, FlashAttention-2, bfloat16, dynamic scheduling,
+    unified `max_tokens=512`, resolution `512`, scorer `auto`.
+  - Original-image DeepStack `no_block`, D DeepStack enabled, correct-D,
+    target-hint force prefix, and post-D `kv_cache` continuation.
+  - Stage2 eval file rows/hash: `1002` /
+    `3b719e1bd03a09741cc05dac3ed85e423a9b2c29209b07546792a6795cdbbfc5`.
+- Code/worktree:
+  - Branch `clean/tgvf-clean-project-20260625`, HEAD `b6193bed86c3513b`.
+  - Existing dirty benchmark changes add original/no-thinking behavior only;
+    the TGVF Stage2 native path and this evaluation identity are unchanged.
+- Execution:
+  - GPUs `0,1,2,3`, one dynamic worker per GPU, generation batch size `1`.
+  - Run four-row free and softforce parser smokes first. Require four outputs,
+    zero malformed rows, and zero append failures before complete evaluation.
+  - Then run complete CoreDev-2511 free followed by complete softforce.
+- Output root:
+  - `outputs/clean_benchmarks/qwen3_stage2_matrixce_preservation_coredev2511_20260714_100641`.
+- Driver:
+  - `outputs/clean_ablation/stage2_matrixce_preservation_eval_20260714_100641/run_eval.sh`.
+- Started: `2026-07-14T10:08:30+09:00`.
+- tmux: `stage2_mce_eval_20260714_100641`.
+- Smoke gate:
+  - Free and softforce both completed the first four manifest rows.
+  - Both modes: accuracy `75%`, trigger/focus-valid `75%`, answer parse
+    `100%`, append success `100%`, malformed `0`.
+  - Gate passed; complete CoreDev-2511 free started automatically.
+- Finished: `2026-07-14T12:11:17+09:00`.
+  - Total wall time including smokes: `2h02m47s`.
+  - Complete free: `10:10:40-11:16:14`, about `65m34s`.
+  - Complete softforce: `11:16:14-12:11:17`, about `55m03s`.
+- Verification:
+  - Both outputs contain exactly `2511` rows, all officially scored.
+  - Free and softforce sample IDs/order each match their Golden baseline
+    exactly (`cmp` success on all `2511` IDs).
+  - Both modes have append success `100%`, malformed `0`, and runtime-error
+    rows `0`.
+- Complete results versus Golden:
+  - Free overall `34.71%` versus `37.04%` (`-2.33pp`); parse `97.69%`,
+    trigger/focus-valid `47.83%`, mean tokens `94.38`, hit-512
+    `153/2511` (`6.09%`). Golden mean/hit-512 are `72.77` and
+    `57/2511` (`2.27%`).
+  - Softforce overall `33.43%` versus `37.92%` (`-4.50pp`); parse `98.41%`,
+    trigger/focus-valid `57.55%`, mean tokens `73.66`, hit-512
+    `62/2511` (`2.47%`). Golden mean/hit-512 are `69.56` and
+    `46/2511` (`1.83%`).
+  - Softforce raises this checkpoint's trigger rate by `9.72pp` over free but
+    lowers accuracy by `1.28pp`.
+- Per-benchmark accuracy, free current/Golden/delta:
+  - VStar `49.74/52.36/-2.62pp`; HR `55.50/52.50/+3.00pp`;
+    BLINK `55.71/56.90/-1.19pp`; OCR `24.26/25.02/-0.76pp`;
+    MMMU-Pro `30.33/35.67/-5.33pp`; MathVista `45.00/49.67/-4.67pp`;
+    MathVerse `12.00/16.00/-4.00pp`.
+- Per-benchmark accuracy, softforce current/Golden/delta:
+  - VStar `51.83/50.79/+1.05pp`; HR `54.50/59.50/-5.00pp`;
+    BLINK `54.05/55.48/-1.43pp`; OCR `24.56/24.54/+0.02pp`;
+    MMMU-Pro `27.00/38.00/-11.00pp`; MathVista `42.00/49.00/-7.00pp`;
+    MathVerse `10.00/19.00/-9.00pp`.
+- Conclusion:
+  - Stage2 Matrix-CE preservation strongly protects internal D/query
+    discrimination, but this broad rank-64/full-module checkpoint does not
+    preserve complete external benchmark performance.
+  - The failure is concentrated in reasoning benchmarks and is larger under
+    softforce. Triggering is substantially more aggressive than Golden, while
+    the clean append/malformed metrics rule out protocol execution failures as
+    the explanation.
+  - Do not promote this checkpoint over Golden. A separately named
+    rank-16 broad-target, protocol-row-only plus Matrix-CE experiment is the
+    targeted follow-up; keep evidence weight `1.0` to isolate that interaction.
+
+### EXP-20260713-200250-stage2-matrixce-preservation-1200step
+
+- Status: DONE.
+- Objective:
+  - Run the validated Stage2 Matrix-CE preservation recipe for the complete
+    authoritative `1200` optimizer-step schedule.
+- Pilot gate:
+  - `EXP-20260713-170018-stage2-matrixce-preservation-100step` completed.
+  - Step-100 internal query Top-1/Top-2/MRR: `0.780 / 0.920 / 0.875`.
+  - Step-100 correct-D beats wrong-same: `0.855`; correct-D NLL: `1.7902`.
+  - Golden Stage2 query Top-1/Top-2/MRR was
+    `0.235 / 0.490 / 0.5004`; the pilot therefore passed the D-discrimination
+    gate.
+- Execution decision:
+  - Start a new `1200`-step run from the exact Golden Stage1 checkpoint.
+  - Do not resume the pilot checkpoint: the clean executor has no formal
+    continuation path, and the pilot scheduler was constructed with
+    `max_steps=100` and has completed that cosine schedule.
+- Baseline anchor:
+  - Golden Stage2 D-DeepStack run:
+    `EXP-20260703-005210-stage2-d-deepstack-8gpu`.
+  - Validated Matrix-CE pilot:
+    `EXP-20260713-170018-stage2-matrixce-preservation-100step`.
+- Intended diff from Golden Stage2:
+  - Enable Stage2 same-image Matrix-CE preservation with `K=4`, weight `1.0`,
+    readout batch size `4`, sequential CE then Matrix-CE backward, and one
+    auxiliary same-image group per optimizer step.
+  - Use GPUs `0-3` with `world_size=4`, `micro_batch=4`, accumulation `8`,
+    preserving global batch `128`.
+  - Keep the authoritative `1200` steps and save/eval cadence `300`.
+- Fixed identity:
+  - Golden Stage1 checkpoint:
+    `outputs/clean_training/qwen3_stage1_ddeepstack_norm01_wandb_4gpu_20260702_180906/stage1_micro4/clean_training_execution/checkpoint_step_2000.pt`,
+    sha256 `b119379fc13a3eee1d19fb347bda729262592599218ea1ff88733ba142cb0c0b`.
+  - Stage2 train rows `46883`, sha256
+    `b5027e72dda7601073ddb8bc9cf1853ec564fa415a3e9cb7d1e684cc7c0d733b`.
+  - Stage2 validation rows `1002`, sha256
+    `3b719e1bd03a09741cc05dac3ed85e423a9b2c29209b07546792a6795cdbbfc5`.
+  - Model/processor:
+    `/nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking`.
+  - SDPA BF16, resolution `512`, sequence length `2048`, broad rank-64 LoRA,
+    evidence-state weights `0.2`, focus target `1.5`, mask probability `0.75`,
+    original-image and D DeepStack enabled with `through_answer` scope.
+- Planned output:
+  - `outputs/clean_ablation/stage2_matrixce_preservation_golden_1200step_4gpu_20260713_200250/stage2_micro4`.
+- Plan:
+  - `outputs/clean_ablation/stage2_matrixce_preservation_golden_1200step_4gpu_20260713_200250/stage2_micro4/training_plan.json`.
+  - sha256 `1a5ce9c117aeaf022a1b5bb1578e3e6001dca0a574ddd903acbf680505f2ac3a`.
+- Driver:
+  - `outputs/clean_ablation/stage2_matrixce_preservation_golden_1200step_4gpu_20260713_200250/run_formal.sh`.
+  - Training is followed automatically by the fixed step-1200 internal
+    readout/query/distribution diagnostics; external benchmarks are not queued
+    in this driver.
+- Planned GPUs: `0,1,2,3`.
+- Started: `2026-07-13T20:05:15+09:00`.
+- tmux: `stage2_mce1200_20260713_200250`; `MASTER_PORT=29731`.
+- W&B:
+  - Online run `zi1bayir` in project `tgvf-clean-qwen3-deepstack`.
+  - `https://wandb.ai/mio_nora/tgvf-clean-qwen3-deepstack/runs/zi1bayir`.
+- Time estimate:
+  - Pilot steady-state measured `48-56 s/step` after warmup.
+  - Expected training time `17-19h`, including four checkpoint/validation
+    events; expected completion around `2026-07-14 13:00-15:00 JST`.
+- Verification:
+  - Confirm generated plan differs from the pilot only in run/output identity,
+    `max_steps=1200`, and save/eval cadence `300`.
+  - Inspect first optimizer step for finite gradients, one Matrix-CE group,
+    expected loss composition, W&B connection, and memory below B200 capacity.
+  - After step 1200, run the fixed internal diagnostics followed by the
+    comparable CoreDev-2511 free/softforce evaluation.
+- First formal optimizer step:
+  - Completed at elapsed `207.22s` with `8` ordinary CE micros and exactly one
+    four-row Matrix-CE auxiliary group.
+  - Optimized loss `10.150390625`; mean focus/no-focus CE
+    `4.060546875 / 3.2109375`; Matrix-CE `6.09375`.
+  - Auxiliary Top-1 `0.50`, positive-negative margin `-1.0416641`.
+  - Pre-clip/post-clip grad norms `221.6916 / 1.00069`; peak rank-0 memory
+    `131.234 GiB`; finite with no OOM.
+- Finished:
+  - Training completed `1200/1200` optimizer steps and `9600` micro steps in
+    `45380.17s` (`12h36m20s`).
+  - Final checkpoint published at `2026-07-14T08:41:51+09:00` and passed all
+    checkpoint state/step checks.
+  - Automatic internal diagnostics completed at
+    `2026-07-14T09:04:19+09:00`.
+- Final checkpoint:
+  - `outputs/clean_ablation/stage2_matrixce_preservation_golden_1200step_4gpu_20260713_200250/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt`.
+  - sha256 `8c96e703b3568fd2b609eba4f1b05ad5a40edc04a68831529de25ad80de96ae1`.
+- Actual throughput:
+  - Overall `37.82s/step`; the first 100 steps were `67.57s/step`, while the
+    final three 100-step blocks were `28.61`, `27.85`, and `26.32s/step`.
+  - The earlier `17-19h` estimate over-weighted the cold, slow first 100-step
+    segment. Repeated dataset/media access and runtime cache warmup materially
+    improved later throughput.
+- Final training metrics:
+  - Step-1200 optimized loss `0.9331`; Matrix-CE
+    `5.96e-8`, auxiliary Top-1 `1.0`, positive-negative margin `+33.625`.
+  - Validation loss `1.015625` on the scheduled four-row validation probe.
+  - Protocol boundary teacher-forced accuracy: all-step `81.13%`, final
+    100-step `94.73%`, final-step `94.23%`.
+- Final internal metrics:
+  - Correct-D NLL `1.5828`; correct-D beats wrong-same `97.0%`, random
+    `100.0%`, and target-only `100.0%`.
+  - Query Top-1 `90.0%`, Top-2 `97.5%`, MRR `0.9458`; mean diagonal gap
+    `0.6402`.
+  - D/V-merge norm ratio `2.1572`; finite rate `1.0`; collapse warning
+    `false`.
+- Conclusion:
+  - Stage2 Matrix-CE preservation remains effective through the complete
+    1200-step schedule and improves D discrimination beyond both the Golden
+    Stage1 and Golden Stage2 internal anchors. The format boundary proxy also
+    converges, so the checkpoint is ready for free-generation parser smoke and
+    comparable CoreDev-2511 free/softforce evaluation.
+
+### EXP-20260713-170018-stage2-matrixce-preservation-100step
+
+- Status: DONE.
+- Question:
+  - Does retaining same-image Matrix-CE during Stage2 prevent the Golden
+    Stage1 D discrimination from being erased by weighted Stage2 CE?
+- Baseline anchor:
+  - Golden Stage2 D-DeepStack run:
+    `EXP-20260703-005210-stage2-d-deepstack-8gpu`.
+  - Golden plan:
+    `outputs/clean_training/qwen3_stage2_ddeepstack_norm01_from_stage1_ddeepstack_8gpu_20260703_005210/stage2_micro4/training_plan.json`.
+- Intended diff:
+  - Enable Stage2 same-image Matrix-CE preservation with `K=4`, loss weight
+    `1.0`, readout batch size `4`, sequential backward, and one auxiliary
+    same-image group per optimizer step.
+  - Shorten the first effectiveness pilot from `300` to `100` optimizer steps;
+    save and validate at step `100` only.
+  - Execute on GPUs `0-3` while preserving Golden global batch `128` as
+    `4 * micro_batch 4 * gradient_accumulation 8`.
+- Allowed changed variables:
+  - Matrix-CE preservation switch/weight/group/readout size, max steps,
+    save/eval cadence, GPU count, gradient accumulation, run paths, run id,
+    timestamp, and W&B run id.
+- Not allowed to change:
+  - Stage1 checkpoint, Stage2 train/validation rows, model/processor, protocol,
+    seed, global and micro batch, weighted span CE, LoRA configuration,
+    optimizer/LRs/scheduler, target focus ratio, mask policy, original and D
+    DeepStack state, resolution, sequence length, attention implementation,
+    and TGVF configuration.
+- Code / worktree:
+  - Branch `clean/tgvf-clean-project-20260625`, commit `b6193bed86c3513b`.
+  - Matrix-CE implementation is committed and pushed. Pre-existing unrelated
+    benchmark/docs changes remain in the worktree and are not part of this
+    experiment's semantic diff.
+- Stage1 checkpoint:
+  - `outputs/clean_training/qwen3_stage1_ddeepstack_norm01_wandb_4gpu_20260702_180906/stage1_micro4/clean_training_execution/checkpoint_step_2000.pt`.
+  - sha256:
+    `b119379fc13a3eee1d19fb347bda729262592599218ea1ff88733ba142cb0c0b`.
+- Stage1 processor:
+  - `/nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking`.
+- Stage2 checkpoint/output:
+  - `outputs/clean_ablation/stage2_matrixce_preservation_golden_100step_4gpu_20260713_170018/stage2_micro4`.
+- Train data:
+  - `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend_open_answer/splits/tgvf_v4_teacher_stage2_protocol_c.train.jsonl`.
+  - Rows `46883`; sha256
+    `b5027e72dda7601073ddb8bc9cf1853ec564fa415a3e9cb7d1e684cc7c0d733b`.
+- Validation data:
+  - `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend_open_answer/splits/tgvf_v4_teacher_stage2_protocol_c.test.jsonl`.
+  - Rows `1002`; sha256
+    `3b719e1bd03a09741cc05dac3ed85e423a9b2c29209b07546792a6795cdbbfc5`.
+- Internal evaluation:
+  - Stage1 focus test rows `867`, sha256
+    `de61c731eb960825a77df587cd76c00eabfea75b5c6003096f3cc7f1a51dd82d`.
+  - Tasks: readout `200`, distribution `200`, query groups `50`.
+- Training identity:
+  - Golden rank/alpha `64/256`, broad q/k/v/o plus MLP LoRA targets,
+    `full_modules` protocol-token training, Golden weighted CE and masks.
+  - Matrix-CE uses same-image `single_focus` groups, swaps D and D-DeepStack
+    together, scores post-D readout before answer, and forces original-image
+    masking to `1.0` only for the auxiliary score span.
+  - Ordinary weighted CE and Matrix-CE are backpropagated sequentially into
+    the same optimizer update. One Matrix-CE group is sampled on the final
+    accumulation micro-step with the full configured weight.
+- Plan:
+  - `outputs/clean_ablation/stage2_matrixce_preservation_golden_100step_4gpu_20260713_170018/stage2_micro4/training_plan.json`.
+  - sha256:
+    `6657aa157cb2998525d2d4133a4a56060e24143b5d32bec6b1097b9151548d7f`.
+  - Normalized comparison against Golden differs only in the declared
+    Matrix-CE block, 100-step cadence, and 4-GPU accumulation identity; newer
+    plan-schema fields explicitly record the unchanged `full_modules` mode.
+- Driver:
+  - `outputs/clean_ablation/stage2_matrixce_preservation_golden_100step_4gpu_20260713_170018/run_pilot.sh`.
+  - Runs the formal 100-step training and then the fixed 867-row internal
+    readout/query/distribution diagnostics on the step-100 checkpoint.
+- GPUs: `0,1,2,3`.
+- tmux: `stage2_mce100_20260713_170018`; `MASTER_PORT=29719`.
+- Smoke gate:
+  - Initial SDPA `micro_batch=4` and allocator retry OOMed near `178 GiB`
+    because ordinary CE and Matrix-CE graphs coexisted.
+  - FlashAttention-2 feasibility smoke reached a CUDA gather assertion and is
+    excluded from the formal run.
+  - Sequential-backward SDPA accum2 smoke completed one optimizer step with
+    exactly two ordinary CE micros and one Matrix-CE group: optimized loss
+    `10.03125 = mean CE 3.9375 + Matrix-CE 6.09375`, peak `131.23 GiB`, elapsed
+    `146.41s`, finite gradients, validation, and valid checkpoint publication.
+  - Relevant CPU regression suite: `76 passed`.
+- Started: tmux `2026-07-13T17:36:59+09:00`; trainer progress start
+  `2026-07-13T17:37:58+09:00`.
+- W&B:
+  - Online run `3p4p3sgl` in project `tgvf-clean-qwen3-deepstack`.
+  - `https://wandb.ai/mio_nora/tgvf-clean-qwen3-deepstack/runs/3p4p3sgl`.
+- First formal optimizer step:
+  - Completed at elapsed `207.99s` with `8` ordinary Stage2 CE micros and
+    exactly one four-row Matrix-CE trace on micro index `7`.
+  - Optimized loss `10.154296875`; mean focus/no-focus CE
+    `4.064453125 / 3.2109375`; Matrix-CE `6.09375`.
+  - Matrix diagnostic for this single initial group: Top-1 `0.50`, positive
+    minus negative score margin `-1.0416641`.
+  - Pre-clip/post-clip grad norms `222.9189 / 0.99988`; peak rank-0 memory
+    `131.234 GiB`; finite, no OOM.
+  - Linear 100-step training ETA from the first step is about `5.8h`; final
+    checkpoint validation and queued internal diagnostics add extra time.
+- Finished:
+  - Training completed `100/100` steps in `6495.33s` (`1h48m15s`).
+  - Internal diagnostics completed at `2026-07-13T19:54:51+09:00` over
+    readout `200`, query `46` same-image groups / `200` rows, and distribution
+    `200`.
+- Metrics:
+  - Final training Matrix-CE `0.123535`, auxiliary group Top-1 `1.0`, and
+    positive-negative margin `+8.5`.
+  - Internal correct-D NLL `1.7902`; correct-D beats wrong-same `85.5%`.
+  - Internal query Top-1 `78.0%`, Top-2 `92.0%`, MRR `0.8750`.
+  - Golden Stage2 comparison: Top-1 `23.5%`, Top-2 `49.0%`, MRR `0.5004`,
+    correct-D beats wrong-same `40.5%`.
+  - Teacher-forced protocol boundary proxy remained `0/5158`; this pilot is
+    not a deployable Stage2 checkpoint and still requires the full Stage2
+    schedule plus a free-generation parser check.
+- Conclusion:
+  - PASS for the intended D-discrimination gate. Stage2 Matrix-CE preservation
+    restores the Golden Stage1 query signal by step 100, justifying a formal
+    1200-step run. Format learning is explicitly unresolved at this checkpoint.
+- Comparable to baseline:
+  - Internal D discrimination is directly comparable; this short pilot is not
+    a replacement for the completed 1200-step Golden benchmark result.
+
+### EXP-20260710-160934-stage2-narrow-lora-r16-qvo-rowonly-ev02
+
+- Status: DONE.
+- Positioning:
+  - Named Stage2 ablation only. The golden D-DeepStack Stage1/Stage2 recipe
+    remains authoritative until this experiment completes and is evaluated.
+  - No default training value is changed by this experiment. The new
+    `row_only` protocol-token path is opt-in; the existing `full_modules` path
+    remains the default.
+- Question:
+  - Can a narrower Stage2 language adaptation surface preserve more of the
+    original Qwen3-VL reasoning distribution while retaining tool triggering
+    and D readout capability?
+- Baseline anchor:
+  - Golden Stage2 D-DeepStack run:
+    `EXP-20260703-005210-stage2-d-deepstack-8gpu`.
+  - Golden plan:
+    `outputs/clean_training/qwen3_stage2_ddeepstack_norm01_from_stage1_ddeepstack_8gpu_20260703_005210/stage2_micro4/training_plan.json`.
+  - Golden plan sha256:
+    `527d5f51c8c2b47b4533d2a03110adfdc31dff1a6f2c7979324b7df860c591f9`.
+- Intended diff:
+  - Stage1 is unchanged and uses the golden D-DeepStack checkpoint.
+  - Stage2 LoRA rank: `64 -> 16`.
+  - Stage2 LoRA alpha: `256 -> 64`, preserving `alpha/r = 4`.
+  - Stage2 LoRA targets:
+    `q/k/v/o + gate/up/down -> q_proj/v_proj/o_proj`.
+  - Protocol token training:
+    full `embed_tokens/lm_head` modules -> row-only PEFT adapters for the
+    protocol special-token rows in both modules.
+  - Weighted CE `evidence`: `1.0 -> 0.2`.
+- Allowed changed variables:
+  - LoRA rank, alpha, target modules, protocol-token training mode, evidence
+    span weight, output paths, run ids, timestamps, and smoke W&B mode.
+- Not allowed to change:
+  - Stage1 checkpoint, Stage2 train/validation data, model/processor, protocol,
+    global batch, micro batch, accumulation, max steps, save/eval cadence,
+    optimizer/LRs/scheduler, seed, image resolution, sequence length,
+    attention implementation, TGVF configuration, mask policy, DeepStack
+    state, D DeepStack state, target focus ratio, all other CE span weights,
+    and main-run W&B online mode.
+- Code / worktree:
+  - Branch: `clean/tgvf-clean-project-20260625`.
+  - HEAD before ablation implementation:
+    `f24477aed8c09112561d06e2fcea5267d6549792`.
+  - Formal-run commit:
+    `7485a45ec35f6f11aee55e95bf05f5f3dee9a1c8`.
+  - GitHub archive:
+    pushed to `origin/clean/tgvf-clean-project-20260625` before the formal run.
+  - Pre-existing unrelated dirty files are preserved and excluded from the
+    narrow-LoRA code commit.
+- Stage1 checkpoint:
+  - `outputs/clean_training/qwen3_stage1_ddeepstack_norm01_wandb_4gpu_20260702_180906/stage1_micro4/clean_training_execution/checkpoint_step_2000.pt`.
+  - sha256:
+    `b119379fc13a3eee1d19fb347bda729262592599218ea1ff88733ba142cb0c0b`.
+- Stage2 train data:
+  - `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend_open_answer/splits/tgvf_v4_teacher_stage2_protocol_c.train.jsonl`.
+  - Rows: `46883`; sha256:
+    `b5027e72dda7601073ddb8bc9cf1853ec564fa415a3e9cb7d1e684cc7c0d733b`.
+- Stage2 validation data:
+  - `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend_open_answer/splits/tgvf_v4_teacher_stage2_protocol_c.test.jsonl`.
+  - Rows: `1002`; sha256:
+    `3b719e1bd03a09741cc05dac3ed85e423a9b2c29209b07546792a6795cdbbfc5`.
+- Batch identity:
+  - GPUs `0,1,2,3,4,5,6,7`.
+  - `global_batch = 8 * micro_batch 4 * grad_accum 4 = 128`.
+- Outputs:
+  - Smoke:
+    `outputs/clean_training/qwen3_stage2_ddeepstack_narrow_lora_r16_qvo_rowonly_ev02_from_golden_stage1_8gpu_20260710_160934_smoke/stage2_micro4`.
+  - Main:
+    `outputs/clean_training/qwen3_stage2_ddeepstack_narrow_lora_r16_qvo_rowonly_ev02_from_golden_stage1_8gpu_20260710_160934/stage2_micro4`.
+  - Driver:
+    `outputs/clean_training/qwen3_stage2_ddeepstack_narrow_lora_r16_qvo_rowonly_ev02_from_golden_stage1_8gpu_20260710_160934/run_stage2_narrow_lora.sh`.
+- Verification before launch:
+  - Related clean tests: `98 passed`, `2` unrelated deprecation warnings.
+  - First smoke launch failed before any training step because the clean
+    executor's local import omitted `protocol_special_token_ids`; fixed before
+    the successful smoke and recorded in the smoke log.
+  - Successful 8-GPU one-step smoke: loss `4.6484375`, micro steps `4`,
+    checkpoint and validation completed.
+  - Smoke checkpoint:
+    `outputs/clean_training/qwen3_stage2_ddeepstack_narrow_lora_r16_qvo_rowonly_ev02_from_golden_stage1_8gpu_20260710_160934_smoke/stage2_micro4/clean_training_execution/checkpoint_step_1.pt`.
+  - Actual LLM trainable optimizer group: `12,419,072` parameters versus
+    golden `1,417,093,120`; TGVF refiner remains `72,055,808` parameters.
+  - Trainable-token audit confirms only protocol rows in both `embed_tokens`
+    and `lm_head`; no full `modules_to_save` matrix is trainable.
+  - LoRA audit confirms only `q_proj/v_proj/o_proj`, rank `16`.
+  - Smoke checkpoint successfully reloaded through clean Stage2 diagnostics
+    and completed a one-sample readout execution.
+  - Formal plan sha256:
+    `fd265202eaaac6546503321d01c0fe78543e2bc1eb85cf7c29fa73af41d08af3`.
+  - Formal-plan comparison confirms dataset, batch, model, training cadence,
+    TGVF, mask policy, DeepStack, optimizer, and all non-evidence CE weights
+    match the golden plan.
+- Started:
+  - Smoke: `2026-07-10 16:11 JST`.
+  - Main: `2026-07-10 16:17 JST`.
+  - tmux: `stage2_narrow_lora_160934`.
+- Finished:
+  - Main: `2026-07-10 18:40 JST`.
+  - Final checkpoint:
+    `outputs/clean_training/qwen3_stage2_ddeepstack_narrow_lora_r16_qvo_rowonly_ev02_from_golden_stage1_8gpu_20260710_160934/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt`.
+  - Final checkpoint sha256:
+    `943094a006209907962a56da3c158ab084fe6dddb6cffc075ab09024de901d1c`.
+- Metrics:
+  - Completed `1200` optimizer steps and `4800` micro steps.
+  - Training elapsed: `8514.636174678802` seconds.
+  - Final train loss: `0.9111328125`; focus loss `0.9130859375`;
+    no-focus loss `0.64599609375`.
+  - Final validation probe: loss `0.99609375`; focus loss `1.015625`;
+    no-focus loss `0.6171875`; samples `4`.
+  - Final checkpoint contract and state checks passed.
+- Conclusion:
+  - The named narrow-LoRA Stage2 training completed successfully. External
+    and internal evaluation are tracked separately below; no mainline recipe
+    conclusion is made from training loss alone.
+- Comparable to baseline:
+  - Intended to be comparable as a named Stage2 ablation with only the listed
+    variables changed.
+
+### DIAG-20260712-105716-stage2-narrow-lora-internal
+
+- Status: DONE.
+- Question:
+  - Does the final narrow-LoRA checkpoint preserve the golden Stage2 D/readout,
+    same-image retrieval, and FVT distribution diagnostics?
+- Baseline anchor:
+  - `DIAG-20260703-083919-stage2-d-deepstack-internal-diagnostics`.
+  - Golden metrics: readout wrong-same `0.405`, query top-1 `0.235`, top-2
+    `0.490`, MRR `0.5004166667`, D/V-merge norm ratio `2.1197979856`.
+- Checkpoint:
+  - `outputs/clean_training/qwen3_stage2_ddeepstack_narrow_lora_r16_qvo_rowonly_ev02_from_golden_stage1_8gpu_20260710_160934/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt`.
+  - sha256:
+    `943094a006209907962a56da3c158ab084fe6dddb6cffc075ab09024de901d1c`.
+- Eval data:
+  - `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend/splits/tgvf_v4_teacher_stage1_protocol_c_focus.test.jsonl`.
+  - Rows `867`; sha256
+    `de61c731eb961825a77df587cd76c00eabfea75b5c6003096f3cc7f1a51dd82d`.
+- Evaluation identity:
+  - Same as the golden diagnostic: tasks `all`, readout/distribution samples
+    `200`, query groups `50`, seed `20260525`, resolution `512`, native source
+    grid positions, bfloat16, SDPA, D DeepStack reconstructed from checkpoint.
+- Code / worktree:
+  - Branch `clean/tgvf-clean-project-20260625`; HEAD
+    `155dc556b3b1b14520255e3db768c4974c808f22`.
+  - Dirty worktree contains previously recorded benchmark/docs changes; the
+    current original/no-thinking diff does not affect this Stage2 diagnostic.
+- Output:
+  - `outputs/clean_training/qwen3_stage2_ddeepstack_narrow_lora_r16_qvo_rowonly_ev02_from_golden_stage1_8gpu_20260710_160934/stage2_micro4/internal_diagnostics_step1200_20260712_105716`.
+- GPUs:
+  - Planned GPU `0`.
+- tmux:
+  - `stage2_narrow_lora_internal_20260712_105716`.
+- Script:
+  - `outputs/clean_evals/stage2_narrow_lora_20260712_105716/run_internal.sh`.
+- Started:
+  - `2026-07-12 11:00:45 JST` on GPU `0`.
+- Finished:
+  - `2026-07-12 11:11 JST`.
+- Metrics:
+  - Readout, n=`200`: correct-D beats target-only `0.975`, random `0.935`,
+    wrong-same `0.515`, wrong-diff `0.5625`; mean correct-D NLL
+    `1.58396484375`.
+  - Query sensitivity, `46` groups / `200` items: top-1 `0.280`, top-2
+    `0.535`, MRR `0.5395833333`, mean diagonal gap `-0.032578125`.
+  - FVT distribution, n=`200`: D norm `43.2186048317`, V-merge norm
+    `20.6837684965`, ratio `2.1658800070`, manifold loss `0.4416621110`,
+    finite rate `1.0`, collapse warning `false`.
+  - Loader confirmed q/v/o LoRA and checkpoint trainable-token adapters were
+    loaded. The separate legacy `protocol_c_token_rows` field is absent by
+    design for the PEFT row-adapter checkpoint.
+- Conclusion:
+  - Versus golden Stage2, narrow-LoRA improves query top-1 `0.235 -> 0.280`,
+    top-2 `0.490 -> 0.535`, MRR `0.50042 -> 0.53958`, correct-D versus
+    wrong-same `0.405 -> 0.515`, and mean correct-D NLL `1.63734 -> 1.58396`.
+    FVT scale rises modestly from `2.11980` to `2.16588` without collapse.
+
+### BENCH-20260712-105716-stage2-narrow-lora-coredev2511
+
+- Status: DONE.
+- Question:
+  - Does narrow Stage2 language adaptation recover longer/healthier reasoning
+    and preserve tool performance on the complete CoreDev-2511 sample set?
+- Baseline anchor:
+  - `BENCH-20260703-084300-stage2-d-deepstack-coredev2511`.
+  - Golden free output:
+    `outputs/clean_benchmarks/qwen3_stage2_ddeepstack_coredev2511_dynamic_maxtok512_flash2_ddeepstack_gpu1_7_20260703_084300/tgvf_free`.
+  - Golden softforce output:
+    `outputs/clean_benchmarks/qwen3_stage2_ddeepstack_coredev2511_dynamic_maxtok512_flash2_ddeepstack_gpu0_7_20260703_084300/tgvf_softforce`.
+- Intended diff:
+  - Change only the Stage2 checkpoint to the narrow-LoRA ablation checkpoint.
+  - Keep the complete sample set and all evaluation variables fixed.
+- Checkpoint:
+  - `outputs/clean_training/qwen3_stage2_ddeepstack_narrow_lora_r16_qvo_rowonly_ev02_from_golden_stage1_8gpu_20260710_160934/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt`.
+  - sha256:
+    `943094a006209907962a56da3c158ab084fe6dddb6cffc075ab09024de901d1c`.
+- Benchmark identity:
+  - Manifest:
+    `revisit_vlm_clean/benchmark_manifests/core_balanced_dev_2511_seed20260625.json`.
+  - Rows `2511`; file sha256
+    `3a013b2bcc64316054d28239a3cea3f44211cadbfe19787be3b7f285620fa5c1`;
+    internal manifest hash
+    `a461d9b482b7165b42b9bbb0fbf0ea6aff31fde0a838c13d953f070e770b0579`.
+  - Exact sample ids and order match the golden free/softforce result files.
+- Evaluation identity:
+  - Modes `tgvf_free` and `tgvf_softforce`; softforce prompt
+    `Use focus tool.`.
+  - Native Stage2 backend, FlashAttention-2, bfloat16, post-D `kv_cache`,
+    DeepStack enabled with original-image scope `no_block`, D DeepStack
+    enabled, resolution `512`, unified `max_tokens=512`, scorer `auto`.
+- Primary metrics:
+  - Per benchmark and overall accuracy, trigger/focus-valid, parse and append
+    rates.
+  - Mean total generated tokens overall and per benchmark, plus p50/p90/p95,
+    `>=512` hit rate, and triggered versus direct-path token means.
+- Code / worktree:
+  - Branch `clean/tgvf-clean-project-20260625`; HEAD
+    `155dc556b3b1b14520255e3db768c4974c808f22`.
+  - Existing uncommitted original/no-thinking changes do not affect TGVF
+    execution; no benchmark default is changed for this run.
+- Outputs:
+  - Smoke:
+    `outputs/clean_benchmarks/qwen3_stage2_narrow_lora_coredev2511_dynamic_smoke_free_maxtok512_flash2_ddeepstack_gpu0_20260712_105716`.
+  - Complete free:
+    `outputs/clean_benchmarks/qwen3_stage2_narrow_lora_coredev2511_dynamic_maxtok512_flash2_ddeepstack_gpu1_7_20260712_105716/tgvf_free`.
+  - Complete softforce:
+    `outputs/clean_benchmarks/qwen3_stage2_narrow_lora_coredev2511_dynamic_maxtok512_flash2_ddeepstack_gpu0_7_20260712_105716/tgvf_softforce`.
+- GPUs:
+  - Smoke GPU `0`; free planned GPUs `1-7` alongside internal diagnostics;
+    softforce planned GPUs `0-7` after those runs complete.
+- Smoke:
+  - Completed `4/4` rows with accuracy `0.75`, parse rate `1.0`,
+    trigger/focus-valid rate `0.25`, append-success rate `1.0`, malformed
+    rate `0.0`.
+  - Run config confirms the narrow-LoRA checkpoint, FlashAttention-2,
+    resolution `512`, unified `max_tokens=512`, DeepStack `no_block`, and D
+    DeepStack enabled. The triggered row reported D DeepStack execution.
+- Script:
+  - `outputs/clean_evals/stage2_narrow_lora_20260712_105716/run_benchmarks.sh`.
+- tmux:
+  - `stage2_narrow_lora_benchmarks_20260712_105716`.
+- Started:
+  - Complete free: `2026-07-12 11:00:45 JST` on GPUs `1,2,3,4,5,6,7`.
+  - Softforce is queued after successful free completion and release of GPU0
+    by internal diagnostics.
+- Finished:
+  - Complete free: `2026-07-12 11:22 JST`; elapsed `1303.6174` seconds.
+  - Complete softforce: `2026-07-12 11:41 JST`; elapsed `1107.9415`
+    seconds.
+- Metrics:
+  - `tgvf_free`:
+    - Rows `2511`; officially scored `2509`; summary accuracy `0.3693653`;
+      strict all-row accuracy with malformed rows counted wrong `0.3690711`;
+      macro accuracy `0.4142609`; parse rate `0.9940263`.
+    - Trigger/focus-valid rate `0.2090800` / `0.2092467`; append success
+      `1.0`; malformed `2`; append failures `0`.
+    - Mean tokens `75.5587`; p50/p90/p95 `47/132/241`; hit-512
+      `76/2511` (`3.03%`). Direct mean `79.3197`; triggered mean `61.3314`.
+    - Per-benchmark accuracy: VStar `0.56545`, HR `0.56000`, BLINK
+      `0.55714`, OCRBench v2 `0.25456`, MMMU-Pro summary `0.32107`
+      (strict `0.32000`), MathVista summary `0.48161` (strict `0.48000`),
+      MathVerse `0.16000`.
+    - Per-benchmark mean tokens: VStar `27.86`, HR `33.44`, BLINK `42.46`,
+      OCRBench v2 `127.87`, MMMU-Pro `73.78`, MathVista `60.78`, MathVerse
+      `85.59`.
+  - `tgvf_softforce`:
+    - Rows `2511`; officially scored `2508`; summary accuracy `0.3501948`;
+      strict all-row accuracy `0.3497764`; macro accuracy `0.3908230`; parse
+      rate `0.9872561`.
+    - Trigger/focus-valid rate `0.2019116` / `0.2021531`; append success
+      `1.0`; malformed `3`; append failures `0`.
+    - Mean tokens `74.5452`; p50/p90/p95 `47/129/234`; hit-512
+      `73/2511` (`2.91%`). Direct mean `77.3239`; triggered mean `63.5621`.
+    - Per-benchmark accuracy: VStar `0.52356`, HR `0.52000`, BLINK
+      `0.54524`, OCRBench v2 `0.24548`, MMMU-Pro summary `0.29766`
+      (strict `0.29667`), MathVista summary `0.46154` (strict `0.46000`),
+      MathVerse summary `0.14228` (strict `0.14200`).
+    - Per-benchmark mean tokens: VStar `27.91`, HR `30.82`, BLINK `43.49`,
+      OCRBench v2 `127.92`, MMMU-Pro `70.73`, MathVista `59.51`, MathVerse
+      `83.20`.
+  - Versus golden D-DeepStack:
+    - Free summary accuracy `0.37043 -> 0.36937` (`-0.11` points), mean
+      tokens `72.77 -> 75.56`, trigger `0.29789 -> 0.20908`.
+    - Softforce summary accuracy `0.37924 -> 0.35019` (`-2.90` points),
+      mean tokens `69.56 -> 74.55`, trigger `0.40980 -> 0.20191`.
+    - Free accuracy deltas: VStar `+4.19`, HR `+3.50`, BLINK `-1.19`, OCR
+      `+0.43`, MMMU-Pro `-3.56`, MathVista `-1.51`, MathVerse `0.00`
+      percentage points.
+    - Softforce deltas: VStar `+1.57`, HR `-7.50`, BLINK `-0.95`, OCR
+      `+0.00`, MMMU-Pro `-8.23`, MathVista `-2.85`, MathVerse `-4.77`
+      percentage points.
+  - Prompt response contingency: both modes triggered `337` rows, free-only
+    `188`, softforce-only `170`, neither `1816`; softforce did not increase
+    aggregate triggering.
+  - Malformed rows were empty-generation failures before action hidden-state
+    capture (`target_hidden_states must contain at least one token`), not D
+    append failures. They are explicitly counted wrong in strict accuracy.
+- Conclusion:
+  - The combined narrow-LoRA/row-only/evidence-0.2 ablation improves internal
+    D sensitivity but does not recover external reasoning performance.
+  - Free accuracy is effectively flat, while softforce loses `2.90` points
+    and prompt-conditioned trigger rate collapses. The higher mean token count
+    is dominated by direct/OCR tails and more max-token hits, not a reliable
+    recovery of mathematical reasoning.
+  - This result does not justify replacing the golden Stage2 recipe. Because
+    rank/targets, protocol-row training, and evidence weight changed together,
+    the failure cannot be assigned to one component without follow-up
+    single-variable ablations.
+
+### EXP-20260713-111841-stage2-r16e-rowonly-evidence02
+
+- Status: DONE.
+- Question:
+  - At fixed rank `16`, alpha `64`, and broad q/k/v/o + MLP LoRA targets, do
+    protocol row-only training and evidence weight `0.2` combine into a useful
+    interaction without the q/v/o-only failure seen in R16-B/H?
+- Baselines:
+  - R16-A rank-only, R16-C row-only, R16-D evidence-0.2, and the authoritative
+    Golden D-DeepStack Stage2 results in
+    `docs/STAGE2_R16_DISENTANGLEMENT_ABLATIONS.md`.
+- Intended diff:
+  - Relative to R16-C, change only evidence weight from `1.0` to `0.2`.
+  - Relative to R16-D, change only protocol-token training from
+    `full_modules` to `row_only`.
+- Not allowed to change:
+  - Stage1 checkpoint, Stage2 train/validation files, model/processor, seed,
+    batch identity, steps/cadence, optimizer, all other loss weights, TGVF,
+    masks, DeepStack/D-DeepStack, resolution, sequence length, training
+    attention, CoreDev-2511 manifest/order, backend, prompt, continuation,
+    unified generation budget, evaluation attention, and scorer.
+- Code / worktree:
+  - Branch `clean/tgvf-clean-project-20260625`, launch HEAD `93b3ab3`.
+  - Pre-existing benchmark implementation diff sha256:
+    `77ae2670c06afd4dbe764ac234f4e6fc040227aa5d491b20851655e7fd309344`.
+  - Existing unrelated dirty changes are preserved and excluded from the
+    experiment-driver commit.
+- Stage1 checkpoint:
+  - `outputs/clean_training/qwen3_stage1_ddeepstack_norm01_wandb_4gpu_20260702_180906/stage1_micro4/clean_training_execution/checkpoint_step_2000.pt`.
+  - sha256:
+    `b119379fc13a3eee1d19fb347bda729262592599218ea1ff88733ba142cb0c0b`.
+- Stage2 data:
+  - Train rows `46883`, sha256
+    `b5027e72dda7601073ddb8bc9cf1853ec564fa415a3e9cb7d1e684cc7c0d733b`.
+  - Validation rows `1002`, sha256
+    `3b719e1bd03a09741cc05dac3ed85e423a9b2c29209b07546792a6795cdbbfc5`.
+- Training identity:
+  - GPUs `0,1,2,3,4,5,6,7`.
+  - `global_batch = 8 * micro_batch 4 * accumulation 4 = 128`.
+  - 1200 steps; rank/alpha `16/64`; broad targets; `row_only`; evidence
+    `0.2`; W&B online project `tgvf-clean-qwen3-deepstack`.
+- Evaluation identity:
+  - Complete CoreDev-2511 manifest, `2511` rows, internal hash
+    `a461d9b482b7165b42b9bbb0fbf0ea6aff31fde0a838c13d953f070e770b0579`.
+  - Free/softforce, native Stage2, FlashAttention-2, D-DeepStack enabled,
+    original DeepStack `no_block`, KV continuation, resolution `512`, unified
+    max tokens `512`, scorer `auto`, softforce prompt `Use focus tool.`.
+- Driver:
+  - `scripts/run_stage2_r16e_rowonly_evidence02.sh`.
+- Output root:
+  - `outputs/clean_ablation/stage2_r16e_rowonly_evidence02_20260713_111841`.
+- Execution policy:
+  - Prepare and verify plan differences, run an 8-GPU one-step smoke, then
+    Stage2 training, evaluation smoke, internal diagnostics plus complete free,
+    followed by complete softforce.
+- Plan preflight:
+  - Main execution bundle reports `ready_for_explicit_distributed_launch`.
+  - Main plan sha256:
+    `391584f39d0e07054ca6f25a512c4053c01631511e92b9f111e84f5fb7871536`.
+  - Relative to R16-C, the only semantic plan change is evidence weight
+    `1.0 -> 0.2`; relative to R16-D, it is `full_modules -> row_only` and the
+    corresponding token-row implementation. All fixed fields match.
+- Smoke gate:
+  - Completed one optimizer step from four micro steps, validation, checkpoint
+    save, and checkpoint state checks.
+  - Loss `4.6484375`, validation loss `4.96875`, peak memory `65.16 GB/GPU`.
+  - Actual trainable parameters: total `115,735,552`, including TGVF
+    `72,055,808` and LLM/protocol rows `43,679,744`.
+- Started:
+  - Plan preparation: `2026-07-13 11:21:32 JST`.
+  - Smoke: `2026-07-13 11:22:41` to `11:24:10 JST`.
+  - Formal queue: `2026-07-13 11:24:54 JST`.
+  - tmux: `stage2_r16e_rowonly_evidence02_20260713_111841`.
+  - W&B online run `3caoo70p`; first optimizer step completed with loss
+    `4.6484375`.
+- Finished:
+  - Training: `2026-07-13 14:09:47 JST`.
+  - Complete free: `2026-07-13 14:36:52 JST`.
+  - Complete softforce and queue: `2026-07-13 15:01:21 JST`.
+  - Queue wall time: `3h 36m 27s`.
+  - Final checkpoint sha256:
+    `5cfc75bef0aa16fb07f4f94e1b06bceed9481c6cbe4472b708f7ad1b5ecfc0b1`.
+- Metrics:
+  - Training elapsed `9842.24s`; final/validation loss
+    `0.810546875 / 0.7890625`.
+  - Internal: correct-D NLL `1.6234`, wrong-same `38.50%`, Top-1 `23.50%`,
+    Top-2 `48.50%`, MRR `0.5025`, D/V norm `2.0971`, finite rate `1.0`, no
+    collapse warning.
+  - Strict complete CoreDev-2511 free/softforce accuracy:
+    `37.14% / 36.47%`; trigger rates `32.70% / 46.79%`; reasoning macro
+    `33.60% / 32.80%`; mean tokens `70.92 / 66.60`.
+  - Free per benchmark: VStar `48.69%`, HR `55.50%`, BLINK `56.67%`, OCR
+    `25.44%`, MMMU-Pro `35.33%`, MathVista `47.67%`, MathVerse `17.80%`.
+  - Softforce per benchmark: VStar `48.17%`, HR `57.50%`, BLINK `54.29%`,
+    OCR `25.12%`, MMMU-Pro `35.00%`, MathVista `46.00%`, MathVerse `17.40%`.
+  - Both modes contain the exact expected 2511 sample ids/order, zero
+    malformed rows, and zero append failures.
+- Conclusion:
+  - R16-E is not an additive combination. Relative to R16-C it loses
+    `0.43 / 0.65` free/softforce points; relative to R16-D it loses
+    `0.41 / 0.41` points.
+  - The interaction retains healthy output lengths and a `+14.10` point
+    trigger lift, but does not improve overall or reasoning accuracy.
+  - Do not promote R16-E. Golden remains authoritative; R16-C and R16-D remain
+    separate named ablations, and reasoning replay remains the targeted next
+    experiment.
+
+### SUITE-20260712-121814-stage2-r16-disentanglement-a-d
+
+- Status: DONE.
+- Question:
+  - At fixed rank `16` and alpha `64`, which individually controlled Stage2
+    change contributes useful behavior: target narrowing, protocol-token
+    row-only training, or evidence weight `0.2`?
+- Baseline anchor:
+  - Golden D-DeepStack Stage2:
+    `EXP-20260703-005210-stage2-d-deepstack-8gpu`.
+  - Combined narrow result:
+    `EXP-20260710-160934-stage2-narrow-lora-r16-qvo-rowonly-ev02` and
+    `BENCH-20260712-105716-stage2-narrow-lora-coredev2511`.
+- Experiment matrix:
+  - R16-A rank-only: broad q/k/v/o + MLP targets, `full_modules`, evidence
+    `1.0`.
+  - R16-B targets-only: q/v/o targets, `full_modules`, evidence `1.0`.
+  - R16-C row-only: broad q/k/v/o + MLP targets, `row_only`, evidence `1.0`.
+  - R16-D evidence-0.2: broad q/k/v/o + MLP targets, `full_modules`, evidence
+    `0.2`.
+- Allowed changed variables:
+  - LoRA rank/alpha are fixed suite-wide at `16/64`.
+  - Between A-D, only target modules, protocol-token training mode, and
+    evidence weight vary exactly as listed above.
+  - Run ids, output paths, W&B ids, timestamps, and smoke max steps/cadence.
+- Not allowed to change:
+  - Golden Stage1 checkpoint, Stage2 train/validation data, model/processor,
+    protocol, seed, global/micro batch and accumulation, main max steps and
+    cadence, all optimizer settings, all other CE weights, TGVF, mask policy,
+    original and D DeepStack state, resolution, sequence length, training
+    attention, evaluation manifest/sample order, backend, prompt, generation
+    budget, evaluation DeepStack state, continuation, and scorer.
+- Code / worktree:
+  - Branch `clean/tgvf-clean-project-20260625`.
+  - HEAD before suite report/driver commit:
+    `8ccf8928b643a54ba6085652ad0ff321f49bdcf9`.
+  - Pre-existing dirty benchmark/docs changes are preserved and excluded from
+    the suite report/driver commit.
+- Stage1 checkpoint:
+  - `outputs/clean_training/qwen3_stage1_ddeepstack_norm01_wandb_4gpu_20260702_180906/stage1_micro4/clean_training_execution/checkpoint_step_2000.pt`.
+  - sha256:
+    `b119379fc13a3eee1d19fb347bda729262592599218ea1ff88733ba142cb0c0b`.
+- Stage2 train data:
+  - `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend_open_answer/splits/tgvf_v4_teacher_stage2_protocol_c.train.jsonl`.
+  - Rows `46883`; sha256
+    `b5027e72dda7601073ddb8bc9cf1853ec564fa415a3e9cb7d1e684cc7c0d733b`.
+- Stage2 validation data:
+  - `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend_open_answer/splits/tgvf_v4_teacher_stage2_protocol_c.test.jsonl`.
+  - Rows `1002`; sha256
+    `3b719e1bd03a09741cc05dac3ed85e423a9b2c29209b07546792a6795cdbbfc5`.
+- Batch identity:
+  - GPUs `0,1,2,3,4,5,6,7`.
+  - `global_batch = 8 * micro_batch 4 * accumulation 4 = 128`.
+- Evaluation identity:
+  - Complete `core_balanced_dev_2511_seed20260625` manifest, rows `2511`,
+    internal hash
+    `a461d9b482b7165b42b9bbb0fbf0ea6aff31fde0a838c13d953f070e770b0579`.
+  - Free/softforce, native Stage2, FlashAttention-2, DeepStack `no_block`, D
+    DeepStack enabled, KV continuation, resolution `512`, unified max tokens
+    `512`, scorer `auto`, softforce prompt `Use focus tool.`.
+- Driver:
+  - `scripts/run_stage2_r16_disentanglement.sh`.
+- Report:
+  - `docs/STAGE2_R16_DISENTANGLEMENT_ABLATIONS.md`.
+- Suite output:
+  - `outputs/clean_ablation/stage2_r16_disentanglement_20260712_121814`.
+- W&B:
+  - Main runs online in project `tgvf-clean-qwen3-deepstack`; smokes disabled.
+- Execution policy:
+  - Prepare and diff all plans first.
+  - Complete all four one-step smokes before any main training.
+  - For each experiment: 1200-step Stage2, evaluation smoke, internal plus
+    complete free in parallel, then complete softforce.
+  - Queue is sequential and resumable; a failed gate stops later runs.
+- Plan preflight:
+  - All four smoke/main execution bundles report
+    `ready_for_explicit_distributed_launch`.
+  - After normalizing artifact paths and the declared ablation fields, R16-A
+    matches the golden plan and R16-B/C/D match R16-A exactly.
+  - Main plan sha256:
+    - R16-A:
+      `faf25f744188c388f9a4e6b43db5e883a521f19207ddbda1cbbaef3a9f6ae384`.
+    - R16-B:
+      `e747b172b839a6b2088bf67ddf432bbbb2e032e1dba8c0e0634d4cac42fd6c27`.
+    - R16-C:
+      `3e1aaaa469261afffbf025392c30757cc2f5cc1f626348f85dd66d05484b621a`.
+    - R16-D:
+      `9beb47791eb80961fe1404915bdf0b08dc8c6c60a00b2b0ae64a8a943c4b9158`.
+- tmux:
+  - `stage2_r16_disentanglement_20260712_121814` after all smokes passed.
+- Smoke gate:
+  - R16-A/B/C/D each completed one optimizer step from four micro steps,
+    validation, checkpoint save, and checkpoint state checks.
+  - Smoke losses A/B/C/D: `4.234375`, `4.234375`, `4.25`, `4.6484375`.
+  - Validation losses A/B/C/D: `4.25`, `4.25`, `4.25`, `4.96875`.
+  - Actual LLM optimizer parameters A/B/C/D: `1,286,152,192`,
+    `1,254,891,520`, `43,679,744`, `1,286,152,192`.
+  - TGVF optimizer parameters are fixed at `72,055,808` in all four runs.
+- Started:
+  - Plan preparation: `2026-07-12 12:21:59 JST`.
+  - Smokes: `2026-07-12 12:23:55` to `12:30:36 JST`.
+  - Formal queue: `2026-07-12 12:33:24 JST`.
+  - R16-A first step: loss `4.234375`, four micro steps, W&B online run
+    `vkzcu54m`:
+    `https://wandb.ai/mio_nora/tgvf-clean-qwen3-deepstack/runs/vkzcu54m`.
+- Finished:
+  - Formal queue: `2026-07-13 02:32:44 JST`.
+  - Queue wall time: `13h 59m 20s`.
+  - W&B runs A/B/C/D: `vkzcu54m`, `sqr3ckcw`, `0vq6jcoe`,
+    `62h5chag`.
+- Metrics:
+  - Strict complete CoreDev-2511 free/softforce accuracy:
+    - Golden: `37.04% / 37.92%`.
+    - R16-A: `36.96% / 36.60%`.
+    - R16-B: `35.51% / 34.73%`.
+    - R16-C: `37.57% / 37.11%`.
+    - R16-D: `37.55% / 36.88%`.
+    - R16-H combined: `36.91% / 34.98%`.
+  - Strict reasoning macro over MMMU-Pro, MathVista, and MathVerse:
+    - Golden: `33.78% / 35.33%`.
+    - R16-A: `33.20% / 33.22%`.
+    - R16-B: `30.51% / 28.42%`.
+    - R16-C: `33.89% / 32.09%`.
+    - R16-D: `34.04% / 33.31%`.
+    - R16-H combined: `32.00% / 29.96%`.
+  - Free/softforce trigger rates:
+    - Golden: `29.79% / 40.98%`.
+    - R16-A: `36.16% / 49.30%`.
+    - R16-B: `29.11% / 31.94%`.
+    - R16-C: `38.87% / 50.62%`.
+    - R16-D: `34.65% / 46.44%`.
+  - R16-B had `11 / 12` free/softforce empty-generation failures, all
+    counted wrong. R16-A/C/D had zero malformed rows. All variants had zero
+    append failures and exact 2511-row manifest coverage.
+  - Complete training, internal, per-benchmark, token-health, checkpoint, and
+    main-effect tables are in
+    `docs/STAGE2_R16_DISENTANGLEMENT_ABLATIONS.md`.
+- Conclusion:
+  - Rank 16 alone is almost flat on free accuracy but loses `1.32` points on
+    softforce and does not preserve the golden reasoning-macro lift.
+  - q/v/o-only LoRA targeting is the only large, consistently harmful main
+    effect; strong internal Top-1/MRR did not transfer externally.
+  - Row-only training and evidence weight `0.2` each provide small aggregate
+    gains relative to R16-A, but neither restores reasoning behavior.
+  - Golden D-DeepStack Stage2 remains authoritative. The no-focus
+    original-Qwen reasoning-replay data experiment remains the most targeted
+    low-cost follow-up.
+
+### PROBE-20260708-142817-lowrat-longthink-single-mathvista592
+
+- Status: DONE.
+- Question:
+  - On a healthier MathVista sample where original answers correctly but
+    low-rationale Stage2 softforce answers shortly and incorrectly without
+    focus, does a prompt asking for longer careful thinking improve the answer?
+- Baseline anchor:
+  - Completed low-rationale CoreDev-2511 softforce run:
+    `BENCH-20260707-223750-stage2-low-rationale-coredev2511`.
+  - Default row:
+    `outputs/clean_benchmarks/qwen3_stage2_low_rationale_coredev2511_dynamic_maxtok512_flash2_ddeepstack_gpu0_7_20260707_223750/tgvf_softforce/rows.jsonl`,
+    manifest index `1744`.
+  - Original comparison row:
+    `outputs/clean_benchmarks/qwen3_original_res512_coredev2511_dynamic_maxans4096_flash2_gpu0_7_20260707_103928/rows.jsonl`.
+- Intended diff:
+  - Single-sample diagnostic only.
+  - Same low-rationale checkpoint, model, backend, scorer, DeepStack eval
+    state, max image resolution, and unified `max_tokens=512`.
+  - Change only `--softforce-prompt-text` from `Use focus tool.` to a longer
+    instruction asking the model to think carefully, verify the graph and the
+    maximum value from the y-axis, and answer after step-by-step reasoning.
+- Allowed changed variables:
+  - Prompt text, output path, diagnostic manifest id/hash, and GPU `0`.
+- Not allowed to change:
+  - Checkpoint, sample, model/processor, backend, mode, continuation,
+    token budget, image resolution, scorer, and DeepStack state.
+- Code commit / worktree:
+  - Branch: `clean/tgvf-clean-project-20260625`.
+  - HEAD before launch: `f24477aed8c09112561d06e2fcea5267d6549792`.
+  - Worktree before launch: dirty with docs/code changes from current
+    experiments; this probe adds only diagnostic output files and this ledger
+    entry.
+- Checkpoint:
+  - `outputs/clean_training/qwen3_stage2_ddeepstack_low_rationale_from_golden_stage1_4gpu_20260707_181922/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt`.
+  - sha256:
+    `9ef6bf994a4874c3f3aac637dc6483dbbf6904f7f4cce68f813c7d4b36e144ae`.
+- Sample:
+  - Benchmark: `mathvista`.
+  - CoreDev-2511 manifest index: `1744`.
+  - Sample id:
+    `mathvista_testmini_1000/mathvista_snapshot_data_testmini_00000_of_00001_725687bf7a18d64b_parquet/592_000591`.
+  - Question:
+    `What is the global maximum of this function?`
+  - Gold answer: `4`.
+  - Default low-rationale softforce output:
+    `5`, score `0`, output tokens `29`, trigger `False`.
+  - Original `res512/max4096` output:
+    `4`, score `1`, output tokens `1103`.
+- Evaluation identity:
+  - Backend: `tgvf_stage2_qwen3_native`.
+  - Mode: `tgvf_softforce`.
+  - Attention: `flash_attention_2`.
+  - DeepStack: enabled, original-image scope `no_block`, D DeepStack enabled.
+  - Post-D continuation: `kv_cache`.
+  - Max image resolution: `512`.
+  - Token budget: unified `--max-tokens 512`.
+  - Scoring backend: `auto`.
+- Outputs:
+  - Manifest:
+    `outputs/clean_probe/longthink_prompt_20260708_142817/single_mathvista_592_manifest.json`.
+  - Driver:
+    `outputs/clean_probe/longthink_prompt_20260708_142817/run_probe.sh`.
+  - Result:
+    `outputs/clean_probe/longthink_prompt_20260708_142817/lowrat_softforce_longthink`.
+- Script / command:
+  - `CUDA_VISIBLE_DEVICES=0 bash outputs/clean_probe/longthink_prompt_20260708_142817/run_probe.sh`.
+- GPUs:
+  - `0`.
+- Started:
+  - `2026-07-08 14:29 JST`.
+- Finished:
+  - `2026-07-08 14:31 JST`.
+- Metrics:
+  - Accuracy: `0.0` on `1/1` sample.
+  - Parse rate: `1.0`.
+  - Trigger rate: `1.0`; focus-valid rate: `1.0`; append success rate:
+    `1.0`.
+  - Generated tokens: action `49`, answer `26`, total `75`.
+  - Parsed answer: `5`; gold answer: `4`.
+  - Focus target:
+    `the tallest blue peaks with nearby y-axis tick marks and the horizontal gridline`.
+  - Post-focus evidence/answer:
+    `The focused evidence shows the highest points are at y = 5, so the global maximum is 5.`
+  - Default low-rationale softforce row for the same sample had output
+    tokens `29`, trigger `False`, parsed answer `5`, and score `0`.
+  - Original `res512/max4096` row had output tokens `1103`, parsed answer
+    `4`, and score `1`.
+- Analysis:
+  - This is a healthier diagnostic than MathVista `650`: the graph visibly has
+    peaks at `y=4`, the y-axis extends to `5`, and the original model correctly
+    distinguishes those two facts after long reasoning.
+  - The longer prompt changed the router behavior: default softforce did not
+    trigger focus, while the long-thinking prompt triggered a valid focus span.
+  - However, the post-focus readout still confused the top y-axis tick (`5`)
+    with the function's actual peak value (`4`), so focus did not fix the
+    answer.
+  - Mechanistically this points less to pure router failure and more to a
+    readout/interpretation failure after TGVF D injection on this sample.
+- Conclusion:
+  - Prompting for longer thinking can increase focus triggering on this sample,
+    but it still does not recover the original model's correct reasoning. The
+    failure moved from no-focus short answer to focused-but-wrong visual
+    readout.
+- Comparable to baseline:
+  - Diagnostic single-sample prompt probe only; not an external benchmark
+    result.
+
+### PROBE-20260708-000158-lowrat-longthink-single-mathvista650
+
+- Status: DONE.
+- Question:
+  - On one low-rationale Stage2 sample where the default softforce output is
+    short and wrong, does a prompt asking for longer careful thinking improve
+    the answer?
+- Baseline anchor:
+  - Completed low-rationale CoreDev-2511 softforce run:
+    `BENCH-20260707-223750-stage2-low-rationale-coredev2511`.
+  - Default row:
+    `outputs/clean_benchmarks/qwen3_stage2_low_rationale_coredev2511_dynamic_maxtok512_flash2_ddeepstack_gpu0_7_20260707_223750/tgvf_softforce/rows.jsonl`,
+    manifest index `1715`.
+- Intended diff:
+  - Single-sample diagnostic only.
+  - Same checkpoint, model, backend, scorer, DeepStack eval state,
+    max image resolution, and unified `max_tokens=512`.
+  - Change only `--softforce-prompt-text` from `Use focus tool.` to a longer
+    instruction asking the model to think carefully, verify chart values, and
+    answer after step-by-step reasoning.
+- Allowed changed variables:
+  - Prompt text, output path, diagnostic manifest id/hash, and GPU `0`.
+- Not allowed to change:
+  - Checkpoint, sample, model/processor, backend, mode, continuation,
+    token budget, image resolution, scorer, and DeepStack state.
+- Checkpoint:
+  - `outputs/clean_training/qwen3_stage2_ddeepstack_low_rationale_from_golden_stage1_4gpu_20260707_181922/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt`.
+  - sha256:
+    `9ef6bf994a4874c3f3aac637dc6483dbbf6904f7f4cce68f813c7d4b36e144ae`.
+- Sample:
+  - Benchmark: `mathvista`.
+  - CoreDev-2511 manifest index: `1715`.
+  - Sample id:
+    `mathvista_testmini_1000/mathvista_snapshot_data_testmini_00000_of_00001_725687bf7a18d64b_parquet/650_000649`.
+  - Question:
+    `What is the sum of maximum employment rate and minimum employment?`
+  - Gold answer: `31.3`.
+  - Default low-rationale softforce output:
+    `24.0%`, score `0`, output tokens `54`, trigger `False`.
+- Evaluation identity:
+  - Backend: `tgvf_stage2_qwen3_native`.
+  - Mode: `tgvf_softforce`.
+  - Attention: `flash_attention_2`.
+  - DeepStack: enabled, original-image scope `no_block`, D DeepStack enabled.
+  - Post-D continuation: `kv_cache`.
+  - Max image resolution: `512`.
+  - Token budget: unified `--max-tokens 512`.
+  - Scoring backend: `auto`.
+- Outputs:
+  - Manifest:
+    `outputs/clean_probe/longthink_prompt_20260708_000158/single_mathvista_650_manifest.json`.
+  - Driver:
+    `outputs/clean_probe/longthink_prompt_20260708_000158/run_probe.sh`.
+  - Result:
+    `outputs/clean_probe/longthink_prompt_20260708_000158/lowrat_softforce_longthink`.
+- Script / command:
+  - `CUDA_VISIBLE_DEVICES=0 bash outputs/clean_probe/longthink_prompt_20260708_000158/run_probe.sh`.
+- GPUs:
+  - `0`.
+- Started:
+  - `2026-07-08 00:02 JST`.
+- Finished:
+  - `2026-07-08 00:03 JST`.
+- Metrics:
+  - Accuracy: `0.0` on `1/1` sample.
+  - Parse rate: `1.0`.
+  - Trigger rate: `0.0`; focus-valid rate: `0.0`.
+  - Output tokens: `63`.
+  - Parsed answer: `24.0`; gold answer: `31.3`.
+  - Raw output:
+    `<think> The chart already shows the highest point at 16.8% and the lowest point at 7.2%, so no additional visual evidence is needed. Adding those two values gives 16.8 + 7.2 = 24.0. </think> 24.0<|im_end|>`.
+  - Default low-rationale softforce row for the same sample had output
+    tokens `54`, trigger `False`, parsed answer `24.0`, and score `0`.
+- Analysis:
+  - The long-thinking prompt made the response slightly longer and added
+    explicit arithmetic, but it did not trigger focus and did not change the
+    visual readout.
+  - On this sample, the model stayed committed to the same wrong chart values
+    (`16.8` and `7.2`) and only verbalized the wrong calculation more
+    explicitly.
+  - First launch attempt failed at CLI parsing because the diagnostic command
+    missed required `--subset-id`; the driver was patched and rerun. The failed
+    attempt did not run model inference.
+- Conclusion:
+  - For this single MathVista sample, prompt-only "think longer / verify
+    carefully" does not recover the answer. It suggests that once the router
+    chooses no-focus and the visual read is wrong, longer prompting alone may
+    reinforce the wrong read rather than restore benchmark reasoning.
+- Comparable to baseline:
+  - Diagnostic single-sample prompt probe only; not an external benchmark
+    result.
+
+### EXP-20260707-181922-stage2-low-rationale-golden-stage1-4gpu
+
+- Status: DONE.
+- Question:
+  - Test whether reducing Stage2 imitation pressure on short teacher
+    rationale spans preserves more of the base model's reasoning distribution
+    while still constraining focus target, value readout, and final answer.
+- Baseline anchor:
+  - Golden Stage2 D DeepStack training recipe:
+    `EXP-20260703-005210-stage2-d-deepstack-8gpu`.
+  - Golden Stage1 checkpoint:
+    `outputs/clean_training/qwen3_stage1_ddeepstack_norm01_wandb_4gpu_20260702_180906/stage1_micro4/clean_training_execution/checkpoint_step_2000.pt`.
+  - Golden Stage2 plan sha256:
+    `527d5f51c8c2b47b4533d2a03110adfdc31dff1a6f2c7979324b7df860c591f9`.
+- Intended diff:
+  - Keep the golden Stage2 recipe and golden Stage1 checkpoint fixed, but
+    lower the weighted CE on rationale-like spans:
+    `evidence_state 0.2 -> 0.05`,
+    `evidence 1.0 -> 0.1`,
+    `no_focus_evidence_state 0.2 -> 0.05`.
+  - Keep `focus_target=1.5`, `value_span=1.0`, `answer=1.0`, and
+    `no_focus_answer=1.0`.
+  - Use GPUs `0,1,2,3` as requested. Preserve global batch `128` by changing
+    Stage2 batch math from golden `8 * 4 * 4` to `4 * 4 * 8`.
+- Allowed changed variables:
+  - Stage2 weighted span loss values listed above.
+  - GPU/world-size identity and gradient accumulation needed to keep global
+    batch fixed:
+    `global_batch = world_size 4 * micro_batch_size 4 * grad_accum 8 = 128`.
+  - Output path, run id, timestamp, tmux session, and smoke/main log paths.
+- Not allowed to change:
+  - Stage1 checkpoint, Stage2 train/test data, model/processor, protocol,
+    max image resolution, max seq len, max steps, save/eval cadence, seed,
+    dtype, attention implementation, optimizer/LR schedule, LoRA config,
+    `fast_batched_stage2`, FVT position mode, target focus ratio,
+    post-TGVF original-image mask behavior, DeepStack training state,
+    D DeepStack state, manifold loss, and W&B mode for the main run.
+- Code commit / worktree:
+  - Branch: `clean/tgvf-clean-project-20260625`.
+  - HEAD before launch: `f24477aed8c09112561d06e2fcea5267d6549792`.
+  - Worktree before launch: dirty with docs/code changes from current
+    evaluation reporting plus this new output driver; no training
+    implementation change for this ablation.
+- Stage1 checkpoint:
+  - `outputs/clean_training/qwen3_stage1_ddeepstack_norm01_wandb_4gpu_20260702_180906/stage1_micro4/clean_training_execution/checkpoint_step_2000.pt`.
+  - sha256:
+    `b119379fc13a3eee1d19fb347bda729262592599218ea1ff88733ba142cb0c0b`.
+- Stage1 processor:
+  - Base model/processor:
+    `/nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking`.
+- Stage2 checkpoint/output:
+  - Smoke:
+    `outputs/clean_training/qwen3_stage2_ddeepstack_low_rationale_from_golden_stage1_4gpu_20260707_181922_smoke/stage2_micro4/clean_training_execution/checkpoint_step_1.pt`.
+  - Main target:
+    `outputs/clean_training/qwen3_stage2_ddeepstack_low_rationale_from_golden_stage1_4gpu_20260707_181922/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt`.
+- Train data:
+  - `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend_open_answer/splits/tgvf_v4_teacher_stage2_protocol_c.train.jsonl`.
+  - Rows: `46883`.
+  - sha256:
+    `b5027e72dda7601073ddb8bc9cf1853ec564fa415a3e9cb7d1e684cc7c0d733b`.
+- Validation data:
+  - `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend_open_answer/splits/tgvf_v4_teacher_stage2_protocol_c.test.jsonl`.
+  - Rows: `1002`.
+  - sha256:
+    `3b719e1bd03a09741cc05dac3ed85e423a9b2c29209b07546792a6795cdbbfc5`.
+- Training identity:
+  - Stage: `stage2`.
+  - Protocol: `protocol_c_tool_observation`.
+  - Model/processor:
+    `/nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking`.
+  - Max image resolution: `512`.
+  - Max seq len: `2048`.
+  - Steps: smoke `1`; main `1200`.
+  - Save/eval every: main `300`.
+  - Seed: `20260525`.
+  - dtype / attention: `bfloat16` / `sdpa`.
+  - `fast_batched_stage2`: enabled.
+  - FVT position mode: `native_source_grid`.
+  - Target focus ratio: `0.8`.
+  - Mask original image after TGVF: enabled, probability `0.75`,
+    scope `through_answer`.
+  - DeepStack: enabled, original-image scope `through_answer`.
+  - D DeepStack features: enabled.
+  - Loss:
+    - `visual_token_manifold=0.0`.
+    - Weighted spans:
+      `evidence_state=0.05`, `focus_target=1.5`, `evidence=0.1`,
+      `value_span=1.0`, `answer=1.0`,
+      `no_focus_evidence_state=0.05`, `no_focus_answer=1.0`.
+  - LoRA:
+    rank `64`, alpha `256`, dropout `0.05`, bias `none`,
+    targets `q_proj,k_proj,v_proj,o_proj,gate_proj,up_proj,down_proj`.
+  - Optimizer:
+    `lr_lora=2e-5`, `lr_tgvf=5e-6`, `lr_calibration=1e-5`,
+    cosine schedule, warmup ratio `0.03`, warmup steps `100`,
+    min LR ratio `0.1`, Adam betas `(0.9, 0.95)`, eps `1e-8`,
+    weight decay `0.01`, max grad norm `1.0`.
+  - Batch:
+    `world_size=4`, `micro_batch_size=4`,
+    `gradient_accumulation_steps=8`, `global_batch=128`.
+  - W&B:
+    smoke disabled; main online in project `tgvf-clean-qwen3-deepstack`.
+- Benchmark output:
+  - Not part of this training launch. Benchmark follow-up:
+    `BENCH-20260707-223750-stage2-low-rationale-coredev2511`.
+- Script / command:
+  - Driver:
+    `outputs/clean_pipeline/stage2_low_rationale_20260707_181922/run_stage2_low_rationale.sh`.
+  - Syntax check:
+    `bash -n outputs/clean_pipeline/stage2_low_rationale_20260707_181922/run_stage2_low_rationale.sh`.
+  - Planned launch:
+    `tmux new-session -d -s stage2_lowrat_20260707_181922 'cd /nvmesv/dredvpn009/projects/r-vlm/revisit_vlm && bash outputs/clean_pipeline/stage2_low_rationale_20260707_181922/run_stage2_low_rationale.sh 2>&1 | tee outputs/clean_pipeline/stage2_low_rationale_20260707_181922/driver.log'`.
+- GPUs:
+  - Planned: `0,1,2,3`.
+  - Preflight: all GPUs `0..7` reported `0 MiB` used; fixed training ports
+    `29629` and `29630` were not listening before launch.
+- tmux:
+  - `stage2_lowrat_20260707_181922`.
+- Started:
+  - `2026-07-07 18:21:42 JST`.
+  - Driver log:
+    `outputs/clean_pipeline/stage2_low_rationale_20260707_181922/driver.log`.
+  - Smoke train log:
+    `outputs/clean_training/qwen3_stage2_ddeepstack_low_rationale_from_golden_stage1_4gpu_20260707_181922_smoke/stage2_micro4/logs/train.log`.
+  - Main train log:
+    `outputs/clean_training/qwen3_stage2_ddeepstack_low_rationale_from_golden_stage1_4gpu_20260707_181922/stage2_micro4/logs/train.log`.
+- Finished:
+  - `2026-07-07 22:33 JST`.
+- Metrics:
+  - Smoke status: DONE.
+  - Smoke final checkpoint:
+    `outputs/clean_training/qwen3_stage2_ddeepstack_low_rationale_from_golden_stage1_4gpu_20260707_181922_smoke/stage2_micro4/clean_training_execution/checkpoint_step_1.pt`.
+  - Smoke checkpoint sha256:
+    `2dd1045c60f41becea16dd80a52a341d3f7461d1960e9c8b0dbb58141dfe8c15`.
+  - Smoke optimizer step:
+    - `loss_total=4.578125`.
+    - `loss_focus=4.62890625`.
+    - `loss_no_focus=2.646484375`.
+    - `grad_norm=17.228910446166992`.
+    - Effective global batch `128`.
+    - Elapsed `96.16s`.
+  - Smoke validation probe:
+    - `loss_total=5.0625`.
+    - Sample count `4`.
+  - Main status: DONE.
+  - Main W&B:
+    `https://wandb.ai/mio_nora/tgvf-clean-qwen3-deepstack/runs/io4qrbef`.
+  - Main progress log:
+    `outputs/clean_training/qwen3_stage2_ddeepstack_low_rationale_from_golden_stage1_4gpu_20260707_181922/stage2_micro4/clean_training_execution/training_progress.jsonl`.
+  - Main final checkpoint:
+    `outputs/clean_training/qwen3_stage2_ddeepstack_low_rationale_from_golden_stage1_4gpu_20260707_181922/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt`.
+  - Main final checkpoint sha256:
+    `9ef6bf994a4874c3f3aac637dc6483dbbf6904f7f4cce68f813c7d4b36e144ae`.
+  - Main training plan sha256:
+    `659ded2bbd80fdcb9847de32981f72d5e7c58787c95a7c0d3ca2ac8d00541bf1`.
+  - Main first optimizer step observed:
+    - `global_step=1/1200`.
+    - `loss_total=4.5703125`.
+    - `loss_focus=4.62890625`.
+    - `loss_no_focus=2.646484375`.
+    - Effective global batch `128`.
+    - Peak memory on rank0 `78.12 GiB`.
+  - Main final optimizer step:
+    - `global_step=1200/1200`.
+    - `loss_total=0.664794921875`.
+    - `loss_focus=0.67529296875`.
+    - `loss_no_focus=0.2418212890625`.
+    - `grad_norm=2.5402631759643555`.
+    - `micro_steps_completed=9600`.
+    - `optimizer_steps_completed=1200`.
+    - `checkpoint_record_count=4`.
+    - Elapsed `14933.60s`.
+  - Final validation probe:
+    - `loss_total=0.75`.
+    - `loss_focus=0.76953125`.
+    - `loss_no_focus=0.275390625`.
+    - Sample count `4`.
+- Analysis:
+  - Training completed normally under the intended low-rationale span weights.
+    The training loss curve reached the same operational cadence as the golden
+    Stage2 recipe, with the expected four checkpoints and validation probes.
+- Conclusion:
+  - Valid Stage2 low-rationale ablation checkpoint is ready for CoreDev-2511
+    external benchmark evaluation.
+- Comparable to baseline:
+  - Intended as a valid Stage2 span-weight ablation against the golden D
+    DeepStack Stage2 recipe. GPU count differs, but global batch is held fixed.
+
+### BENCH-20260707-223750-stage2-low-rationale-coredev2511
+
+- Status: DONE.
+- Question:
+  - What are the external CoreDev-2511 benchmark results for the completed
+    Stage2 low-rationale D DeepStack checkpoint under the current default clean
+    benchmark settings?
+- Checkpoint:
+  - `outputs/clean_training/qwen3_stage2_ddeepstack_low_rationale_from_golden_stage1_4gpu_20260707_181922/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt`.
+  - sha256:
+    `9ef6bf994a4874c3f3aac637dc6483dbbf6904f7f4cce68f813c7d4b36e144ae`.
+- Baseline anchor:
+  - Golden D DeepStack Stage2 CoreDev-2511 benchmark:
+    `BENCH-20260703-084300-stage2-d-deepstack-coredev2511`.
+  - Original comparator remains the current clean original CoreDev-2511
+    max-answer/max-token baseline already recorded in the benchmark result
+    docs; this launch only produces TGVF free/softforce for the ablation
+    checkpoint.
+- Intended diff:
+  - Change checkpoint to the Stage2 low-rationale checkpoint.
+  - Keep the complete CoreDev-2511 sample set and current default clean TGVF
+    benchmark variables fixed.
+- Allowed changed variables:
+  - Checkpoint path, output path, run id, timestamp, and GPU allocation.
+- Not allowed to change:
+  - Manifest/sample set, benchmark root, model/processor, runner backend,
+    mode names, DeepStack eval state, post-D continuation mode, scorer,
+    max image resolution, token budget, dtype, attention implementation,
+    prompt suffix, and softforce prompt.
+- Code commit / worktree:
+  - Branch: `clean/tgvf-clean-project-20260625`.
+  - HEAD before launch: `f24477aed8c09112561d06e2fcea5267d6549792`.
+  - Worktree before launch: dirty with existing docs/code evaluation updates
+    plus this benchmark driver and ledger entry.
+- Benchmark identity:
+  - Manifest:
+    `revisit_vlm_clean/benchmark_manifests/core_balanced_dev_2511_seed20260625.json`.
+  - Rows: `2511`.
+  - Benchmark counts:
+    `vstar_bench=191`, `hr_bench_4k=200`, `blink=420`,
+    `ocrbench_v2=600`, `mmmu_pro=300`, `mathvista=300`,
+    `mathverse=500`.
+  - Manifest hash:
+    `a461d9b482b7165b42b9bbb0fbf0ea6aff31fde0a838c13d953f070e770b0579`.
+  - Manifest file sha256:
+    `3a013b2bcc64316054d28239a3cea3f44211cadbfe19787be3b7f285620fa5c1`.
+  - Benchmark root:
+    `/home/dredvpn009/Flash_Storage/datasets/benchmarks`.
+- Evaluation identity:
+  - Backend: `tgvf_stage2_qwen3_native`.
+  - Modes planned: `tgvf_free`, `tgvf_softforce`.
+  - DeepStack: `--deepstack-enabled`,
+    `--deepstack-original-image-scope no_block`, `--d-deepstack-enabled`.
+  - Attention: `flash_attention_2`.
+  - Post-D continuation: `kv_cache`.
+  - Max image resolution: `512`.
+  - Token budget: unified `--max-tokens 512`.
+  - Scoring backend: `auto`.
+  - Softforce prompt: `Use focus tool.`.
+  - Batch size: `1`.
+- Stage2 eval JSONL:
+  - `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend_open_answer/splits/tgvf_v4_teacher_stage2_protocol_c.test.jsonl`.
+  - sha256:
+    `3b719e1bd03a09741cc05dac3ed85e423a9b2c29209b07546792a6795cdbbfc5`.
+- Outputs:
+  - Driver:
+    `outputs/clean_pipeline/stage2_low_rationale_bench_20260707_223750/run_benchmark.sh`.
+  - Smoke free:
+    `outputs/clean_benchmarks/qwen3_stage2_low_rationale_coredev2511_dynamic_smoke_free_maxtok512_flash2_ddeepstack_gpu0_20260707_223750`.
+  - Complete free:
+    `outputs/clean_benchmarks/qwen3_stage2_low_rationale_coredev2511_dynamic_maxtok512_flash2_ddeepstack_gpu0_7_20260707_223750/tgvf_free`.
+  - Complete softforce:
+    `outputs/clean_benchmarks/qwen3_stage2_low_rationale_coredev2511_dynamic_maxtok512_flash2_ddeepstack_gpu0_7_20260707_223750/tgvf_softforce`.
+- Script / command:
+  - Syntax check passed:
+    `bash -n outputs/clean_pipeline/stage2_low_rationale_bench_20260707_223750/run_benchmark.sh`.
+  - Planned launch:
+    `tmux new-session -d -s bench_lowrat_20260707_223750 'cd /nvmesv/dredvpn009/projects/r-vlm/revisit_vlm && bash outputs/clean_pipeline/stage2_low_rationale_bench_20260707_223750/run_benchmark.sh 2>&1 | tee outputs/clean_pipeline/stage2_low_rationale_bench_20260707_223750/driver.log'`.
+- GPUs:
+  - Smoke planned: `0`.
+  - Complete CoreDev-2511 planned: `0,1,2,3,4,5,6,7`.
+  - Preflight: all GPUs `0..7` reported `0 MiB` used.
+- tmux:
+  - `bench_lowrat_20260707_223750`.
+- Started:
+  - `2026-07-07 22:40:30 JST`.
+  - Driver log:
+    `outputs/clean_pipeline/stage2_low_rationale_bench_20260707_223750/driver.log`.
+  - Smoke log:
+    `outputs/clean_benchmarks/qwen3_stage2_low_rationale_coredev2511_dynamic_smoke_free_maxtok512_flash2_ddeepstack_gpu0_20260707_223750/logs/benchmark.log`.
+  - Complete free log:
+    `outputs/clean_benchmarks/qwen3_stage2_low_rationale_coredev2511_dynamic_maxtok512_flash2_ddeepstack_gpu0_7_20260707_223750/tgvf_free/logs/benchmark.log`.
+  - Complete softforce log:
+    `outputs/clean_benchmarks/qwen3_stage2_low_rationale_coredev2511_dynamic_maxtok512_flash2_ddeepstack_gpu0_7_20260707_223750/tgvf_softforce/logs/benchmark.log`.
+- Finished:
+  - `2026-07-07 23:29 JST`.
+- Metrics:
+  - Smoke free: DONE.
+    - Rows `4/4`.
+    - Accuracy `75.00%`.
+    - Parse rate `100.00%`.
+    - Trigger rate `0.00%`.
+    - Malformed rate `0.00%`.
+    - Backend: `tgvf_stage2_qwen3_native`.
+    - Attention: `flash_attention_2`.
+    - Token budget: unified `max_tokens=512`.
+    - DeepStack eval: enabled, original-image scope `no_block`,
+      D DeepStack enabled.
+  - Complete `tgvf_free`: DONE.
+    - Rows `2511/2511`.
+    - Accuracy `36.7949170663%`.
+    - Parse rate `99.6814018319%`.
+    - Trigger/focus-valid rate `39.8247710076%`.
+    - Append-success rate `100.00%`.
+    - Malformed rate `0.00%`.
+    - Per benchmark accuracy:
+      `vstar_bench=52.8795811518%`, `hr_bench_4k=54.00%`,
+      `blink=58.0952380952%`, `ocrbench_v2=25.6533945892%`,
+      `mmmu_pro=34.00%`, `mathvista=47.6666666667%`,
+      `mathverse=14.40%`.
+    - Output:
+      `outputs/clean_benchmarks/qwen3_stage2_low_rationale_coredev2511_dynamic_maxtok512_flash2_ddeepstack_gpu0_7_20260707_223750/tgvf_free`.
+  - Complete `tgvf_softforce`: DONE.
+    - Rows `2511/2511`.
+    - Accuracy `36.0790788538%`.
+    - Parse rate `99.5221027479%`.
+    - Trigger/focus-valid rate `54.8387096774%`.
+    - Append-success rate `100.00%`.
+    - Malformed rate `0.00%`.
+    - Per benchmark accuracy:
+      `vstar_bench=51.8324607330%`, `hr_bench_4k=56.50%`,
+      `blink=56.4285714286%`, `ocrbench_v2=24.6576116698%`,
+      `mmmu_pro=32.3333333333%`, `mathvista=45.00%`,
+      `mathverse=15.40%`.
+    - Output:
+      `outputs/clean_benchmarks/qwen3_stage2_low_rationale_coredev2511_dynamic_maxtok512_flash2_ddeepstack_gpu0_7_20260707_223750/tgvf_softforce`.
+  - Output-token diagnostics:
+    - Low-rationale `tgvf_free`: mean `65.824`, median `41`,
+      p90 `116`, p95 `191`, hit512 `47/2511` (`1.87%`).
+    - Low-rationale `tgvf_softforce`: mean `60.090`, median `38`,
+      p90 `105`, p95 `166`, hit512 `28/2511` (`1.12%`).
+    - Golden D DeepStack comparator:
+      `tgvf_free` mean `72.774`, median `42`, p90 `141`,
+      p95 `250`, hit512 `57/2511` (`2.27%`);
+      `tgvf_softforce` mean `69.555`, median `40`, p90 `131`,
+      p95 `233`, hit512 `46/2511` (`1.83%`).
+- Analysis:
+  - Operational deviation while running:
+    - The user had previously requested GPU scope `0-3`, but this benchmark
+      driver was launched on `0,1,2,3,4,5,6,7` because the default clean
+      evaluation habit of using all currently free GPUs was incorrectly
+      applied here.
+    - Per explicit user instruction during the run, do not stop the current
+      benchmark. Treat the GPU set as a resource-allocation deviation, not a
+      sample/checkpoint/config change: manifest, checkpoint, backend,
+      prompt/mode, token budget, DeepStack state, scorer, and batch size remain
+      fixed.
+- Conclusion:
+  - Low-rationale Stage2 is not a clear external-benchmark win over the
+    golden D DeepStack setting. It improves free-mode overall accuracy versus
+    the golden free run, but softforce is slightly lower overall and the output
+    distribution is shorter, mostly by reducing the long-token tail rather than
+    changing the median substantially.
+- Comparable to baseline:
+  - Intended as a valid checkpoint ablation versus golden D DeepStack Stage2
+    under the same complete CoreDev-2511 eval identity.
+
+### INT-20260707-175030-qwen3-stage2-test-sample100
+
+- Status: DONE.
+- Question:
+  - On a small deterministic subset of the Stage2 teacher test split, how well
+    does raw Qwen3-VL answer the internal QA directly, and what is the mean
+    generated-token length?
+- Baseline anchor:
+  - Internal Stage2 test split from the current 50k open-answer teacher data.
+- Intended diff:
+  - Evaluate raw/original Qwen3-VL only; no TGVF checkpoint, no focus action,
+    no Stage2 adapter.
+  - Use a deterministic `100` row source-dataset-stratified sample, not the
+    complete `1002` row Stage2 test split.
+- Allowed changed variables:
+  - Sample size and deterministic sample seed for this internal sanity check.
+  - Output path and timestamp.
+- Not allowed to change:
+  - Stage2 test data file, model/processor, image cap, generation budget,
+    attention implementation, dtype, direct image+question prompt identity,
+    and scoring rule.
+- Code commit / worktree:
+  - Branch: `clean/tgvf-clean-project-20260625`.
+  - HEAD before launch: `f24477aed8c09112561d06e2fcea5267d6549792`.
+  - Worktree before launch: dirty with accumulated docs/code diagnostics plus
+    this one-off output-directory eval script.
+- Model / processor:
+  - `/nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking`.
+- Stage1 checkpoint:
+  - Not used.
+- Stage1 processor:
+  - Not used.
+- Stage2 checkpoint/output:
+  - Not used.
+- Train data:
+  - Not used.
+- Validation data:
+  - Stage2 test JSONL:
+    `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend_open_answer/splits/tgvf_v4_teacher_stage2_protocol_c.test.jsonl`.
+  - Rows: `1002`.
+  - sha256:
+    `3b719e1bd03a09741cc05dac3ed85e423a9b2c29209b07546792a6795cdbbfc5`.
+- Evaluation identity:
+  - Mode: raw Qwen3 original direct image+question.
+  - Prompt: the row's `question` only, with the row image.
+  - Sample rule: deterministic source-dataset-stratified random sample,
+    `sample_count=100`, `seed=20260707`.
+  - Scoring: parsed-final-answer normalized exact match; no-article exact is
+    reported as a secondary diagnostic.
+  - Max image resolution: `512`.
+  - Max generated tokens: `512`.
+  - Batch size: `16`.
+  - Attention: FlashAttention-2.
+  - Dtype: `bfloat16`.
+- Benchmark output:
+  - `outputs/clean_internal_eval/qwen3_stage2_test_sample100_20260707_175030`.
+- Script / command:
+  - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=revisit_vlm_clean/src:src python outputs/clean_internal_eval/qwen3_stage2_test_sample100_20260707_175030/eval_stage2_test_qwen3_sample.py --run-id qwen3_stage2_test_sample100_20260707_175030 --split-jsonl data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend_open_answer/splits/tgvf_v4_teacher_stage2_protocol_c.test.jsonl --output-dir outputs/clean_internal_eval/qwen3_stage2_test_sample100_20260707_175030 --model-id /nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking --sample-count 100 --seed 20260707 --batch-size 16 --max-image-resolution 512 --max-new-tokens 512 --dtype bfloat16 --device cuda:0 --device-map cuda:0 --attn-implementation flash_attention_2 --progress-every 10`.
+- GPUs:
+  - GPU `0`.
+- tmux:
+  - None; direct foreground command.
+- Started:
+  - `2026-07-07 17:50:30 JST`.
+- Finished:
+  - `2026-07-07 17:52:20 JST`.
+- Metrics:
+  - Sample rows: `100`.
+  - Strict normalized exact accuracy: `2.00%`.
+  - Relaxed heuristic accuracy: `63.00%`.
+  - Mean output tokens: `170.84`.
+  - Median output tokens: `127`.
+  - P90 output tokens: `322`.
+  - Hit `max_new_tokens=512`: `7.00%`.
+  - Error count: `0`.
+  - By source dataset, relaxed accuracy / mean output tokens:
+    - `visual_genome`: `59.46%` / `132.46` tokens (`37` rows).
+    - `docvqa`: `85.00%` / `162.25` tokens (`20` rows).
+    - `textvqa`: `68.75%` / `160.25` tokens (`16` rows).
+    - `textocr`: `35.71%` / `139.36` tokens (`14` rows).
+    - `chartqa`: `61.54%` / `340.23` tokens (`13` rows).
+  - By trajectory type, relaxed accuracy / mean output tokens:
+    - `direct_answer`: `91.67%` / `188.67` tokens (`12` rows).
+    - `single_focus`: `59.77%` / `164.46` tokens (`87` rows).
+    - `multi_focus`: `0.00%` / `512.00` tokens (`1` row).
+  - Output files:
+    - `outputs/clean_internal_eval/qwen3_stage2_test_sample100_20260707_175030/summary.json`.
+    - `outputs/clean_internal_eval/qwen3_stage2_test_sample100_20260707_175030/summary_relaxed.json`.
+    - `outputs/clean_internal_eval/qwen3_stage2_test_sample100_20260707_175030/rows.jsonl`.
+    - `outputs/clean_internal_eval/qwen3_stage2_test_sample100_20260707_175030/rows_with_relaxed.jsonl`.
+- Analysis:
+  - Strict exact is not a useful primary metric for this raw-Qwen3 probe:
+    many correct answers are returned as full sentences, e.g. gold `White`
+    versus prediction `The kitchen cabinets in the image are white.`
+  - Relaxed heuristic counts numeric exact, no-article exact, and short/content
+    gold answers contained in the parsed final answer. It is a sanity estimate,
+    not an official scorer.
+  - The sample is source-dataset-stratified and deterministic, but only `100`
+    rows, so per-source rows are small.
+- Conclusion:
+  - Raw Qwen3 can answer a substantial fraction of Stage2 teacher test QA
+    directly under relaxed scoring (`63.00%`), but natural thinking output is
+    verbose (`170.84` mean tokens) and exact-match scoring is unusably strict
+    without a short-answer prompt or a better judge.
+- Comparable to baseline:
+  - Internal sanity check only; not comparable to external benchmark tables.
+- Follow-up:
+  - For a cleaner accuracy number, rerun the same sample with an explicit
+    short-answer prompt or judge-based scorer.
+
+### BENCH-20260707-021325-original-tgvf-res1024-nores-max4096-coredev2511
+
+- Status: STOPPED_PARTIAL.
+- Question:
+  - On complete CoreDev-2511 (`2511` rows), what are original and current
+    golden D-DeepStack TGVF results under two high-budget eval settings:
+    `max_image_resolution=1024/max_tokens=4096` and no project-side image cap
+    (`max_image_resolution=0`)/`max_tokens=4096`?
+  - Does the original long-output/high-hit behavior remain at this scale, and
+    does TGVF keep output health under the same high generation budget?
+- Baseline anchor:
+  - Complete CoreDev-2511 eval-resolution-1024/max512 diagnostic:
+    `BENCH-20260706-160153-eval-resolution1024-original-golden-coredev2511`.
+  - Complete CoreDev-2511 golden D-DeepStack/max512 benchmark:
+    `BENCH-20260703-084300-stage2-d-deepstack-coredev2511`.
+  - CoreDev-70 high-budget diagnostic:
+    `BENCH-20260707-012845-original-tgvf-res1024-nores-max4096-coredev70`
+    is a prior health/stress diagnostic only, not the row set requested here.
+- Intended diff:
+  - Use the complete CoreDev-2511 manifest (`2511` rows), not CoreDev-70 or
+    any 350-row diagnostic.
+  - Run six branches:
+    - original `max_image_resolution=1024`, `max_answer_tokens=4096`.
+    - TGVF free `max_image_resolution=1024`, unified `max_tokens=4096`.
+    - TGVF softforce `max_image_resolution=1024`, unified `max_tokens=4096`.
+    - original `max_image_resolution=0`, `max_answer_tokens=4096`.
+    - TGVF free `max_image_resolution=0`, unified `max_tokens=4096`.
+    - TGVF softforce `max_image_resolution=0`, unified `max_tokens=4096`.
+  - For `max_image_resolution=0`, original omits project-side `max_pixels`;
+    TGVF native image loading likewise passes the image path without
+    project-side max-pixel limiting.
+  - Each branch gets a 4-row smoke run before the complete CoreDev-2511 run.
+- Allowed changed variables:
+  - `max_image_resolution`: `1024` or `0`.
+  - Generation budget: original `max_answer_tokens=4096`; TGVF
+    `max_tokens=4096`.
+  - Runtime output paths and timestamp.
+- Not allowed to change:
+  - Model/processor, Stage2 checkpoint, TGVF backend, CoreDev-2511 row set,
+    manifest hash, scoring backend, softforce prompt, D DeepStack state,
+    DeepStack original-image scope, post-D continuation, attention
+    implementation, and dtype.
+- Code commit / worktree:
+  - Branch: `clean/tgvf-clean-project-20260625`.
+  - HEAD before launch: `2144c4ac9da64f2b1d2c84e5bc6b2d1a54b3385e`.
+  - Worktree before launch: dirty with accumulated docs updates plus
+    `revisit_vlm_clean/src/revisit_vlm_clean/runner.py` diagnostic support for
+    original `max_image_resolution=0`, where project-side `max_pixels` is
+    omitted instead of set to zero.
+- Model / processor:
+  - `/nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking`.
+- Stage2 checkpoint/output:
+  - Golden checkpoint:
+    `outputs/clean_training/qwen3_stage2_ddeepstack_norm01_from_stage1_ddeepstack_8gpu_20260703_005210/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt`.
+  - sha256:
+    `b8d9f3fbd06c6731ef30a22344dc60f7d1ddffe8f71c6c8e37c055a059de55ae`.
+- Validation data:
+  - Stage2 eval jsonl:
+    `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend_open_answer/splits/tgvf_v4_teacher_stage2_protocol_c.test.jsonl`.
+  - sha256:
+    `3b719e1bd03a09741cc05dac3ed85e423a9b2c29209b07546792a6795cdbbfc5`.
+- Benchmark identity:
+  - Manifest:
+    `revisit_vlm_clean/benchmark_manifests/core_balanced_dev_2511_seed20260625.json`.
+  - Rows: `2511`.
+  - Manifest file sha256:
+    `3a013b2bcc64316054d28239a3cea3f44211cadbfe19787be3b7f285620fa5c1`.
+  - Internal manifest hash:
+    `a461d9b482b7165b42b9bbb0fbf0ea6aff31fde0a838c13d953f070e770b0579`.
+  - Distribution:
+    `vstar_bench=191`, `hr_bench_4k=200`, `blink=420`,
+    `ocrbench_v2=600`, `mmmu_pro=300`, `mathvista=300`,
+    `mathverse=500`.
+  - Benchmark root:
+    `/home/dredvpn009/Flash_Storage/datasets/benchmarks`.
+- Evaluation identity:
+  - `eval_family=project_native_external`.
+  - Original backend: `qwen3_original`.
+  - TGVF backend: clean native `tgvf_stage2_qwen3_native`.
+  - TGVF modes: `tgvf_free`, `tgvf_softforce`.
+  - Softforce prompt: `Use focus tool.`.
+  - DeepStack original-image scope: `no_block`.
+  - D DeepStack: enabled.
+  - Post-D continuation: `kv_cache`.
+  - Attention: FlashAttention-2.
+  - Dtype: `bfloat16`.
+  - Per-worker batch size: `1`.
+- Benchmark output:
+  - Driver:
+    `outputs/clean_pipeline/original_tgvf_res1024_nores_max4096_coredev2511_20260707_021325/run_res1024_nores_max4096_coredev2511.sh`.
+  - Queue log:
+    `outputs/clean_pipeline/original_tgvf_res1024_nores_max4096_coredev2511_20260707_021325/queue.log`.
+  - Result roots:
+    `outputs/clean_benchmarks/qwen3_original_res1024_coredev2511_dynamic_maxans4096_flash2_gpu0_7_20260707_021325`,
+    `outputs/clean_benchmarks/qwen3_stage2_ddeepstack_res1024_coredev2511_dynamic_maxtok4096_flash2_ddeepstack_gpu0_7_20260707_021325/tgvf_free`,
+    `outputs/clean_benchmarks/qwen3_stage2_ddeepstack_res1024_coredev2511_dynamic_maxtok4096_flash2_ddeepstack_gpu0_7_20260707_021325/tgvf_softforce`,
+    `outputs/clean_benchmarks/qwen3_original_nores_coredev2511_dynamic_maxans4096_flash2_gpu0_7_20260707_021325`,
+    `outputs/clean_benchmarks/qwen3_stage2_ddeepstack_nores_coredev2511_dynamic_maxtok4096_flash2_ddeepstack_gpu0_7_20260707_021325/tgvf_free`,
+    `outputs/clean_benchmarks/qwen3_stage2_ddeepstack_nores_coredev2511_dynamic_maxtok4096_flash2_ddeepstack_gpu0_7_20260707_021325/tgvf_softforce`.
+- Script / command:
+  - Planned syntax check:
+    `bash -n outputs/clean_pipeline/original_tgvf_res1024_nores_max4096_coredev2511_20260707_021325/run_res1024_nores_max4096_coredev2511.sh`.
+  - Planned launch:
+    `tmux new-session -d -s coredev2511_res1024_nores_4096_20260707_021325 'cd /nvmesv/dredvpn009/projects/r-vlm/revisit_vlm && bash outputs/clean_pipeline/original_tgvf_res1024_nores_max4096_coredev2511_20260707_021325/run_res1024_nores_max4096_coredev2511.sh'`.
+- GPUs:
+  - Preflight: GPUs `0,1,2,3,4,5,6,7` all reported `0 MiB` used.
+  - Planned runtime: smoke on GPU `0`; complete CoreDev-2511 runs on
+    `0,1,2,3,4,5,6,7`.
+- tmux:
+  - `coredev2511_res1024_nores_4096_20260707_021325`.
+- Started:
+  - `2026-07-07T02:15:24+09:00`.
+- Smoke:
+  - All six 4-row smoke runs completed before complete CoreDev-2511 launch:
+    original@1024, TGVF free@1024, TGVF softforce@1024, original nores,
+    TGVF free nores, and TGVF softforce nores.
+  - Complete CoreDev-2511 first branch started at
+    `2026-07-07T02:20:33+09:00`.
+- Finished:
+  - Stopped by user request at `2026-07-07T10:39:10+09:00`.
+  - Completed branches with `summary.json`: original@1024, TGVF free@1024,
+    TGVF softforce@1024, original nores, and TGVF free nores.
+  - Incomplete branch: TGVF softforce nores; it was interrupted before
+    `summary.json` was written and is excluded from complete comparison tables.
+- Verification:
+  - Six smoke runs must finish before complete CoreDev-2511 branches run.
+  - Each complete run must write `run_config.txt`, `rows.jsonl`,
+    `summary.json`, and benchmark source metadata.
+  - Report n, scored rows, overall/macro accuracy, parse, trigger/focus/append,
+    malformed, average output tokens, hit rates at `>=512`, `>=2048`,
+    `>=3072`, `>=4096`, and per-benchmark results.
+- Metrics:
+  - Partial metrics were reported interactively; final doc table pending.
+- Analysis:
+  - Partial analysis: nores improves original mainly on VStar/HR but does not
+    mitigate original long-output pathology; TGVF free nores keeps output-token
+    health but has HR append/malformed failures.
+- Conclusion:
+  - Partial diagnostic only because TGVF softforce nores was intentionally
+    stopped.
+- Comparable to baseline:
+  - Intended as a named high-resolution/high-generation-budget diagnostic on
+    the same complete CoreDev-2511 row set; it is not the default max512 report.
+- Follow-up:
+  - Run `res512/max4096` on the same complete CoreDev-2511 row set.
+
+### BENCH-20260707-160904-original-nothink-res512-max2048-bs32-coredev2511
+
+- Status: DONE.
+- Question:
+  - Same objective as the bs16 launch below, but increase dynamic generation
+    batch size from `16` to `32` because bs16 used only about `60-65GB` on
+    180GB GPUs.
+- Baseline anchor:
+  - Supersedes partial bs16 launch:
+    `BENCH-20260707-155845-original-nothink-res512-max2048-coredev2511`.
+- Intended diff:
+  - Only change batch size from `16` to `32`, with a new output path.
+  - Keep original no-thinking, complete CoreDev-2511 manifest, `res512`,
+    `max_answer_tokens=2048`, FlashAttention-2, scoring backend, model,
+    processor, and GPUs `0,1,2,3` fixed.
+- Benchmark output:
+  - Driver:
+    `outputs/clean_pipeline/original_nothink_res512_max2048_bs32_coredev2511_20260707_160904/run_original_nothink_res512_max2048_bs32_coredev2511.sh`.
+  - Queue log:
+    `outputs/clean_pipeline/original_nothink_res512_max2048_bs32_coredev2511_20260707_160904/queue.log`.
+  - Smoke:
+    `outputs/clean_benchmarks/qwen3_original_nothink_res512_coredev2511_dynamic_maxans2048_flash2_bs32_gpu0_20260707_160904_smoke32`.
+  - Complete CoreDev-2511:
+    `outputs/clean_benchmarks/qwen3_original_nothink_res512_coredev2511_dynamic_maxans2048_flash2_bs32_gpu0_3_20260707_160904`.
+  - Pipeline:
+    `outputs/clean_pipeline/original_nothink_res512_max2048_bs32_coredev2511_20260707_160904`.
+- Verification:
+  - Run a 32-row smoke first.
+  - Then run complete CoreDev-2511 (`2511` rows) on GPUs `0,1,2,3` with
+    `--batch-size 32`.
+- Smoke:
+  - Completed `32/32` rows on GPU `0` with `--batch-size 32`.
+  - Accuracy `34.38%`; parse `96.88%`; malformed `0.00%`.
+  - No raw outputs contained `<think>` or `</think>`.
+  - Token health: average output tokens `802.6`; `>=512` `12/32`,
+    `>=1024` `11/32`, `>=2048` `11/32`.
+- tmux:
+  - `coredev2511_original_nothink_2048_bs32_20260707_160904`.
+- Started:
+  - `2026-07-07T16:13:35+09:00`.
+- Metrics:
+  - Complete CoreDev-2511 rows `2511/2511`.
+  - Scored-only accuracy `30.45%` on `1100` scored rows.
+  - All-row accuracy, treating unscored rows as zero: `13.34%`.
+  - Parse rate `59.14%`; malformed `0.00%`.
+  - Average output tokens `795.1`.
+  - Token hit rates: `>=512` `41.42%`, `>=1024` `33.97%`,
+    `>=2048` `30.03%`.
+  - Raw outputs containing `<think>` or `</think>`: `23/2511`.
+  - Per-benchmark:
+    - `vstar_bench`: scored `0/191`, parse `0.00%`, all-row accuracy
+      `0.00%`, hit>=2048 `17.28%`.
+    - `hr_bench_4k`: scored `0/200`, parse `0.00%`, all-row accuracy
+      `0.00%`, hit>=2048 `28.50%`.
+    - `blink`: scored `0/420`, parse `0.00%`, all-row accuracy `0.00%`,
+      hit>=2048 `28.57%`.
+    - `ocrbench_v2`: scored `0/600`, parse `89.83%`, all-row accuracy
+      `0.00%`, hit>=2048 `23.33%`.
+    - `mmmu_pro`: scored `300/300`, scored/all-row accuracy `50.00%`,
+      parse `100.00%`, hit>=2048 `59.33%`.
+    - `mathvista`: scored `300/300`, scored/all-row accuracy `41.00%`,
+      parse `87.67%`, hit>=2048 `27.67%`.
+    - `mathverse`: scored `500/500`, scored/all-row accuracy `12.40%`,
+      parse `76.60%`, hit>=2048 `28.60%`.
+- Conclusion:
+  - Diagnostic no-thinking original is not a healthy replacement baseline under
+    this parser/scorer setting.
+  - It reduces explicit think-tag output sharply compared with normal original
+    but does not solve long-output pathology: `30.03%` of rows still hit the
+    `2048` cap.
+  - The failure mode shifts from explicit thinking traces to ordinary answer
+    channel loops such as uncertainty, option-forcing conflicts, and repeated
+    self-correction.
+  - Many non-math/choice benchmarks are parser-incompatible in this
+    no-thinking setting (`0` scored rows for VStar, HR, and BLINK), so report
+    all-row accuracy separately from scored-only accuracy.
+  - The only superficially strong scored result is MMMU-Pro `50.00%`, but it
+    also has the worst token health (`59.33%` hit `2048`), so it should be
+    interpreted cautiously.
+
+### BENCH-20260707-155845-original-nothink-res512-max2048-coredev2511
+
+- Status: STOPPED_SIDE_RESULT_FOR_BS32_RELAUNCH.
+- Question:
+  - On complete CoreDev-2511 (`2511` rows), what is the original Qwen3-VL
+    no-thinking baseline under `max_image_resolution=512` and
+    `max_answer_tokens=2048`?
+  - Does suppressing the thinking prefill reduce long-output pathology while
+    preserving or improving benchmark accuracy?
+- Baseline anchor:
+  - `BENCH-20260707-103928-original-tgvf-res512-max4096-coredev2511`
+    original@512/max4096 completed result.
+  - Canonical CoreDev-2511 max512 table from
+    `BENCH-20260703-084300-stage2-d-deepstack-coredev2511`.
+- Intended diff:
+  - Original backend only; no Stage2/TGVF checkpoint behavior.
+  - Enable diagnostic `--original-no-thinking`, which disables the Qwen
+    thinking generation prompt and blocks `<think>` / `</think>` tokens.
+  - Use `max_answer_tokens=2048` instead of `4096` or canonical `512`.
+  - Use dynamic batching on GPUs `0,1,2,3`, starting with `--batch-size 16`
+    to make better use of 180GB devices.
+- Code/worktree:
+  - Branch: `clean/tgvf-clean-project-20260625`.
+  - HEAD before launch: `f24477aed8c09112561d06e2fcea5267d6549792`.
+  - Worktree before launch: dirty with accumulated docs updates, diagnostic
+    evaluation support, and the new no-thinking original evaluation flag.
+- Model / processor:
+  - `/nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking`.
+- Benchmark identity:
+  - Manifest:
+    `revisit_vlm_clean/benchmark_manifests/core_balanced_dev_2511_seed20260625.json`.
+  - Rows: `2511`.
+  - Manifest file sha256:
+    `3a013b2bcc64316054d28239a3cea3f44211cadbfe19787be3b7f285620fa5c1`.
+  - Internal manifest hash:
+    `a461d9b482b7165b42b9bbb0fbf0ea6aff31fde0a838c13d953f070e770b0579`.
+  - Distribution:
+    `vstar_bench=191`, `hr_bench_4k=200`, `blink=420`,
+    `ocrbench_v2=600`, `mmmu_pro=300`, `mathvista=300`,
+    `mathverse=500`.
+  - Benchmark root:
+    `/home/dredvpn009/Flash_Storage/datasets/benchmarks`.
+- Evaluation identity:
+  - `eval_family=project_native_external`.
+  - Backend: `qwen3_original`.
+  - Mode: `original`.
+  - Original no-thinking: enabled.
+  - Attention: FlashAttention-2.
+  - Dtype: `bfloat16`.
+  - Max image resolution: `512`.
+  - Max answer tokens: `2048`.
+  - Scoring backend: `auto`.
+- Benchmark output:
+  - Driver:
+    `outputs/clean_pipeline/original_nothink_res512_max2048_coredev2511_20260707_155845/run_original_nothink_res512_max2048_coredev2511.sh`.
+  - Queue log:
+    `outputs/clean_pipeline/original_nothink_res512_max2048_coredev2511_20260707_155845/queue.log`.
+  - Smoke:
+    `outputs/clean_benchmarks/qwen3_original_nothink_res512_coredev2511_dynamic_maxans2048_flash2_bs16_gpu0_20260707_155845_smoke16`.
+  - Complete CoreDev-2511:
+    `outputs/clean_benchmarks/qwen3_original_nothink_res512_coredev2511_dynamic_maxans2048_flash2_bs16_gpu0_3_20260707_155845`.
+  - Pipeline:
+    `outputs/clean_pipeline/original_nothink_res512_max2048_coredev2511_20260707_155845`.
+- GPUs:
+  - Planned smoke: GPU `0`.
+  - Planned complete run: GPUs `0,1,2,3`.
+  - Batch size: `16` queued samples per worker generation call.
+- Smoke:
+  - Completed `16/16` rows on GPU `0` with `--batch-size 16`.
+  - Accuracy `18.75%`; parse `93.75%`; malformed `0.00%`.
+  - No raw outputs contained `<think>` or `</think>`, confirming the
+    no-thinking switch took effect.
+  - Token health in smoke was still mixed: `3/16` rows hit `2048`, average
+    output tokens `511.6`.
+- tmux:
+  - `coredev2511_original_nothink_2048_bs16_20260707_155845`.
+- Started:
+  - `2026-07-07T16:02:29+09:00`.
+- Verification:
+  - First run a 16-row smoke.
+  - Complete run must write `run_config.txt`, `rows.jsonl`, `summary.json`,
+    and benchmark source metadata.
+  - Report n, scored rows, overall/macro accuracy, parse, average output
+    tokens, hit rates at `>=512`, `>=1024`, and `>=2048`, plus per-benchmark
+    results.
+- Metrics:
+  - Main run stopped/abandoned as a side result after user requested doubling
+    the batch size to `32`.
+  - Partial rows only: `288/2511`; no `summary.json`.
+  - Partial distribution: `vstar_bench=191`, `hr_bench_4k=97`.
+  - Partial token health: average output tokens `467.9`; `>=512` `64/288`,
+    `>=1024` `54/288`, `>=2048` `51/288`; one partial row still contained a
+    think tag despite the no-thinking guard.
+- Conclusion:
+  - Not a reportable benchmark result; superseded by bs32 relaunch.
+
+### BENCH-20260707-103928-original-tgvf-res512-max4096-coredev2511
+
+- Status: STOPPED_PARTIAL.
+- Question:
+  - On complete CoreDev-2511 (`2511` rows), what are original and golden
+    D-DeepStack TGVF results under the normal project-side
+    `max_image_resolution=512` setting with the high generation budget
+    `4096`?
+  - Does the original long-output/high-hit behavior remain at the default
+    image-resolution setting, and does TGVF remain output-healthy?
+- Baseline anchor:
+  - Same-row high-budget diagnostics:
+    `BENCH-20260707-021325-original-tgvf-res1024-nores-max4096-coredev2511`.
+  - Same CoreDev-2511 default max512 report:
+    `BENCH-20260703-084300-stage2-d-deepstack-coredev2511`.
+- Intended diff:
+  - Run three branches on the same complete CoreDev-2511 manifest:
+    - original `max_image_resolution=512`, `max_answer_tokens=4096`.
+    - TGVF free `max_image_resolution=512`, unified `max_tokens=4096`.
+    - TGVF softforce `max_image_resolution=512`, unified `max_tokens=4096`.
+  - Each branch gets a 4-row smoke run before the complete CoreDev-2511 run.
+- Allowed changed variables:
+  - `max_image_resolution=512`.
+  - Generation budget: original `max_answer_tokens=4096`; TGVF
+    `max_tokens=4096`.
+  - Runtime output paths and timestamp.
+- Not allowed to change:
+  - Model/processor, Stage2 checkpoint, TGVF backend, CoreDev-2511 row set,
+    manifest hash, scoring backend, softforce prompt, D DeepStack state,
+    DeepStack original-image scope, post-D continuation, attention
+    implementation, dtype, and per-worker batch size.
+- Code commit / worktree:
+  - Branch: `clean/tgvf-clean-project-20260625`.
+  - HEAD before launch: `2144c4ac9da64f2b1d2c84e5bc6b2d1a54b3385e`.
+  - Worktree before launch: dirty with accumulated docs updates plus
+    diagnostic evaluation support already used by the preceding high-budget
+    CoreDev-2511 runs.
+- Model / processor:
+  - `/nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking`.
+- Stage2 checkpoint/output:
+  - Golden checkpoint:
+    `outputs/clean_training/qwen3_stage2_ddeepstack_norm01_from_stage1_ddeepstack_8gpu_20260703_005210/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt`.
+  - sha256:
+    `b8d9f3fbd06c6731ef30a22344dc60f7d1ddffe8f71c6c8e37c055a059de55ae`.
+- Validation data:
+  - Stage2 eval jsonl:
+    `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend_open_answer/splits/tgvf_v4_teacher_stage2_protocol_c.test.jsonl`.
+  - sha256:
+    `3b719e1bd03a09741cc05dac3ed85e423a9b2c29209b07546792a6795cdbbfc5`.
+- Benchmark identity:
+  - Manifest:
+    `revisit_vlm_clean/benchmark_manifests/core_balanced_dev_2511_seed20260625.json`.
+  - Rows: `2511`.
+  - Manifest file sha256:
+    `3a013b2bcc64316054d28239a3cea3f44211cadbfe19787be3b7f285620fa5c1`.
+  - Internal manifest hash:
+    `a461d9b482b7165b42b9bbb0fbf0ea6aff31fde0a838c13d953f070e770b0579`.
+  - Distribution:
+    `vstar_bench=191`, `hr_bench_4k=200`, `blink=420`,
+    `ocrbench_v2=600`, `mmmu_pro=300`, `mathvista=300`,
+    `mathverse=500`.
+  - Benchmark root:
+    `/home/dredvpn009/Flash_Storage/datasets/benchmarks`.
+- Evaluation identity:
+  - `eval_family=project_native_external`.
+  - Original backend: `qwen3_original`.
+  - TGVF backend: clean native `tgvf_stage2_qwen3_native`.
+  - TGVF modes: `tgvf_free`, `tgvf_softforce`.
+  - Softforce prompt: `Use focus tool.`.
+  - DeepStack original-image scope: `no_block`.
+  - D DeepStack: enabled.
+  - Post-D continuation: `kv_cache`.
+  - Attention: FlashAttention-2.
+  - Dtype: `bfloat16`.
+  - Per-worker batch size: `1`.
+- Benchmark output:
+  - Driver:
+    `outputs/clean_pipeline/original_tgvf_res512_max4096_coredev2511_20260707_103928/run_res512_max4096_coredev2511.sh`.
+  - Queue log:
+    `outputs/clean_pipeline/original_tgvf_res512_max4096_coredev2511_20260707_103928/queue.log`.
+  - Result roots:
+    `outputs/clean_benchmarks/qwen3_original_res512_coredev2511_dynamic_maxans4096_flash2_gpu0_7_20260707_103928`,
+    `outputs/clean_benchmarks/qwen3_stage2_ddeepstack_res512_coredev2511_dynamic_maxtok4096_flash2_ddeepstack_gpu0_7_20260707_103928/tgvf_free`,
+    `outputs/clean_benchmarks/qwen3_stage2_ddeepstack_res512_coredev2511_dynamic_maxtok4096_flash2_ddeepstack_gpu0_7_20260707_103928/tgvf_softforce`.
+- Script / command:
+  - Planned syntax check:
+    `bash -n outputs/clean_pipeline/original_tgvf_res512_max4096_coredev2511_20260707_103928/run_res512_max4096_coredev2511.sh`.
+  - Planned launch:
+    `tmux new-session -d -s coredev2511_res512_4096_20260707_103928 'cd /nvmesv/dredvpn009/projects/r-vlm/revisit_vlm && bash outputs/clean_pipeline/original_tgvf_res512_max4096_coredev2511_20260707_103928/run_res512_max4096_coredev2511.sh'`.
+- GPUs:
+  - Preflight: GPUs `0,1,2,3,4,5,6,7` all reported `0 MiB` used.
+  - Planned runtime: smoke on GPU `0`; complete CoreDev-2511 runs on
+    `0,1,2,3,4,5,6,7`.
+- tmux:
+  - `coredev2511_res512_4096_20260707_103928`.
+- Started:
+  - `2026-07-07T10:42:16+09:00`.
+- Smoke:
+  - All three 4-row smoke runs completed before complete CoreDev-2511 launch:
+    original@512, TGVF free@512, and TGVF softforce@512.
+  - Complete CoreDev-2511 first branch started at
+    `2026-07-07T10:45:12+09:00`.
+- Finished:
+  - `2026-07-07T14:48:10+09:00`.
+  - Stopped by user request after original and TGVF free completed.
+  - TGVF softforce had only partial rows and no `summary.json`; do not treat it
+    as a comparable complete CoreDev-2511 result.
+- Verification:
+  - Three smoke runs must finish before complete CoreDev-2511 branches run.
+  - Each complete run must write `run_config.txt`, `rows.jsonl`,
+    `summary.json`, and benchmark source metadata.
+  - Report n, scored rows, overall/macro accuracy, parse, trigger/focus/append,
+    malformed, average output tokens, hit rates at `>=512`, `>=2048`,
+    `>=3072`, `>=4096`, and per-benchmark results.
+- Metrics:
+  - Completed original@512/max4096:
+    - Rows `2511/2511`; accuracy `40.00%`; parse `98.69%`;
+      average output tokens `1526.5`.
+    - Token hit rates: `>=512` `60.89%`, `>=2048` `29.55%`,
+      `>=4096` `20.27%`.
+    - Per-benchmark accuracy:
+      `vstar_bench=53.40%`, `hr_bench_4k=53.00%`, `blink=58.81%`,
+      `ocrbench_v2=21.41%`, `mmmu_pro=42.00%`,
+      `mathvista=57.33%`, `mathverse=24.60%`.
+  - Completed TGVF free@512/max4096:
+    - Rows `2511/2511`; accuracy `37.08%`; parse `99.88%`;
+      trigger/focus-valid `29.83%`; append-success `100.00%`;
+      malformed `0.00%`; average output tokens `132.3`.
+    - Token hit rates: `>=512` `2.91%`, `>=2048` `1.59%`,
+      `>=4096` `1.00%`.
+    - Per-benchmark accuracy:
+      `vstar_bench=52.36%`, `hr_bench_4k=53.00%`, `blink=56.90%`,
+      `ocrbench_v2=25.03%`, `mmmu_pro=35.67%`,
+      `mathvista=49.67%`, `mathverse=16.00%`.
+  - Stopped TGVF softforce partial:
+    - `partial_rows.jsonl` had `242` rows at stop time:
+      `vstar_bench=191`, `hr_bench_4k=51`.
+    - No complete summary was written.
+- Analysis:
+  - Under `max_image_resolution=512`, original remains strongly output
+    unhealthy at high generation budget: `20.27%` of rows reach the `4096`
+    cap and `60.89%` reach at least `512` generated tokens.
+  - TGVF free remains output-healthy by comparison (`1.00%` at `>=4096`) but
+    is lower than original on accuracy in this high-budget diagnostic by
+    `2.92` overall points.
+  - The main TGVF free losses are on reasoning-heavy math/MMMU benchmarks
+    (`mathverse -8.60`, `mathvista -7.66`, `mmmu_pro -6.33` points versus
+    original), while OCR improves (`ocrbench_v2 +3.62` points).
+- Conclusion:
+  - `res512/max4096` is a useful health diagnostic but should not replace the
+    canonical `max_tokens=512` reporting setting.
+  - Completed comparable results from this partial run are original and
+    TGVF free only; softforce was stopped before completion.
+- Comparable to baseline:
+  - Intended as a named `res512/max4096` high-budget diagnostic on the same
+    complete CoreDev-2511 row set.
+- Follow-up:
+  - If softforce at this diagnostic setting is needed later, rerun it as a
+    separate complete CoreDev-2511 job and record the new identity explicitly.
+
+### BENCH-20260707-012845-original-tgvf-res1024-nores-max4096-coredev70
+
+- Status: DONE.
+- Question:
+  - Under the same balanced CoreDev-70 sample set and `4096` generation
+    budget, how do original, TGVF free, and TGVF softforce behave at
+    `max_image_resolution=1024` and under no project-side image-resolution cap?
+  - Does TGVF remain output-healthy when original is allowed the same high
+    token budget and high/no project-side image cap?
+- Baseline anchor:
+  - `BENCH-20260706-230528-original-health-params-gpu0-3-coredev70`.
+  - `BENCH-20260707-010022-original-nores-balanced-coredev70-max4096`.
+  - Existing nores original result reused:
+    `outputs/clean_benchmarks/qwen3_original_nores_coredev70_maxans4096_flash2_gpu0_3_20260707_010022/summary.json`.
+- Intended diff:
+  - Use the same balanced CoreDev-70 manifest (`10` rows per benchmark).
+  - Run or reuse:
+    - original `res1024/max_answer_tokens=4096` (new).
+    - TGVF free `res1024/max_tokens=4096` (new).
+    - TGVF softforce `res1024/max_tokens=4096` (new).
+    - original nores `max_answer_tokens=4096` (reuse existing completed run).
+    - TGVF free nores `max_tokens=4096` (new).
+    - TGVF softforce nores `max_tokens=4096` (new).
+  - TGVF nores uses `max_image_resolution=0`, where the native TGVF image
+    helper returns the image path without project-side `max_pixels`.
+  - Use smoke checks for the five new branches before their CoreDev-70 runs.
+- Not allowed to change:
+  - Model/processor, Stage2 checkpoint, TGVF backend, D DeepStack state,
+    DeepStack original-image scope, post-D continuation, prompt/template,
+    scoring backend, benchmark root, sample ids, and attention implementation.
+- Code commit / worktree:
+  - Branch: `clean/tgvf-clean-project-20260625`.
+  - HEAD before launch: `2144c4ac9da64f2b1d2c84e5bc6b2d1a54b3385e`.
+  - Worktree before launch: dirty with accumulated documentation updates and
+    the diagnostic original-backend change allowing `max_image_resolution=0`
+    to omit project-side `max_pixels`.
+- Model / processor:
+  - `/nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking`.
+- Stage2 checkpoint/output:
+  - Golden checkpoint:
+    `outputs/clean_training/qwen3_stage2_ddeepstack_norm01_from_stage1_ddeepstack_8gpu_20260703_005210/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt`.
+  - sha256:
+    `b8d9f3fbd06c6731ef30a22344dc60f7d1ddffe8f71c6c8e37c055a059de55ae`.
+  - Stage2 eval jsonl:
+    `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend_open_answer/splits/tgvf_v4_teacher_stage2_protocol_c.test.jsonl`.
+  - sha256:
+    `3b719e1bd03a09741cc05dac3ed85e423a9b2c29209b07546792a6795cdbbfc5`.
+- Benchmark identity:
+  - Manifest:
+    `outputs/clean_pipeline/original_health_sweep_gpu0_3_20260706_230528/coredev70_7bench_10each_from_coredev350_seed20260706.json`.
+  - Rows: `70` (`10` per benchmark).
+  - Manifest hash:
+    `f4a42621974b7993c46ea0480aefc3ee781c2444e59549475169686a3e9018f1`.
+  - Manifest file sha256:
+    `eb5ae54abfe045c68791fe507c11d6f1f7c5580b996f98318cb6c14d210b8200`.
+  - Benchmark root:
+    `/home/dredvpn009/Flash_Storage/datasets/benchmarks`.
+- Evaluation identity:
+  - `eval_family=project_native_external`.
+  - Original backend: `qwen3_original`; original budget
+    `max_answer_tokens=4096`.
+  - TGVF backend: clean native `tgvf_stage2_qwen3_native`; TGVF unified
+    `max_tokens=4096`.
+  - TGVF modes: `tgvf_free`, `tgvf_softforce`.
+  - Softforce prompt: `Use focus tool.`.
+  - DeepStack original-image scope: `no_block`.
+  - D DeepStack: enabled.
+  - Post-D continuation: `kv_cache`.
+  - Attention: FlashAttention-2.
+  - Dtype: `bfloat16`.
+  - GPU set: `0,1,2,3,5,6,7` (GPU 4 avoided due preflight occupancy).
+  - Per-worker batch size: `1`.
+- Benchmark output:
+  - Driver:
+    `outputs/clean_pipeline/original_tgvf_res1024_nores_max4096_coredev70_20260707_012845/run_res1024_nores_max4096_coredev70.sh`.
+  - Queue log:
+    `outputs/clean_pipeline/original_tgvf_res1024_nores_max4096_coredev70_20260707_012845/queue.log`.
+  - New result roots:
+    `outputs/clean_benchmarks/qwen3_original_res1024_coredev70_maxans4096_flash2_gpu0_1_2_3_5_6_7_20260707_012845`,
+    `outputs/clean_benchmarks/qwen3_stage2_ddeepstack_res1024_coredev70_maxtok4096_flash2_ddeepstack_gpu0_1_2_3_5_6_7_20260707_012845/tgvf_free`,
+    `outputs/clean_benchmarks/qwen3_stage2_ddeepstack_res1024_coredev70_maxtok4096_flash2_ddeepstack_gpu0_1_2_3_5_6_7_20260707_012845/tgvf_softforce`,
+    `outputs/clean_benchmarks/qwen3_stage2_ddeepstack_nores_coredev70_maxtok4096_flash2_ddeepstack_gpu0_1_2_3_5_6_7_20260707_012845/tgvf_free`,
+    `outputs/clean_benchmarks/qwen3_stage2_ddeepstack_nores_coredev70_maxtok4096_flash2_ddeepstack_gpu0_1_2_3_5_6_7_20260707_012845/tgvf_softforce`.
+- Verification:
+  - Each new branch must pass a 4-row smoke run before its CoreDev-70 run.
+  - Each completed CoreDev-70 run must write `run_config.txt`, `rows.jsonl`,
+    and `summary.json`.
+  - Report accuracy, parse, trigger rate, append/focus health, average output
+    tokens, hit rates at `>=512`, `>=2048`, `>=3072`, `>=4096`, and
+    per-benchmark accuracy.
+- tmux:
+  - `original_tgvf_res1024_nores_4096_coredev70_20260707_012845`.
+- Started:
+  - `2026-07-07T01:31:14+09:00`.
+- Finished:
+  - `2026-07-07T01:58:36+09:00`.
+- Metrics:
+  - All five new branches passed 4-row smoke before the CoreDev-70 runs.
+  - All six comparable rows below use the same 70 sample ids. The nores
+    original row reuses
+    `BENCH-20260707-010022-original-nores-balanced-coredev70-max4096`.
+
+| Setting | Mode | Rows | Scored | Acc scored | Acc all rows | Parse | Trigger | Append | Malformed | Avg output tokens | Hit>=512 | Hit>=2048 | Hit>=3072 | Hit>=4096 |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| `res1024/max4096` | original | 70 | 70 | 52.55% | 52.55% | 98.57% | 0.00% | 0.00% | 0.00% | 1255.0 | 30/70 | 17/70 | 14/70 | 14/70 |
+| `res1024/max4096` | TGVF free | 70 | 70 | 45.16% | 45.16% | 100.00% | 34.29% | 34.29% | 0.00% | 106.8 | 1/70 | 1/70 | 1/70 | 0/70 |
+| `res1024/max4096` | TGVF softforce | 70 | 70 | 48.00% | 48.00% | 98.57% | 47.14% | 47.14% | 0.00% | 122.2 | 2/70 | 1/70 | 1/70 | 0/70 |
+| `nores/max4096` | original | 70 | 70 | 53.98% | 53.98% | 97.14% | 0.00% | 0.00% | 0.00% | 1296.2 | 31/70 | 18/70 | 15/70 | 15/70 |
+| `nores/max4096` | TGVF free | 70 | 65 | 45.55% | 42.30% | 92.86% | 32.86% | 25.71% | 7.14% | 105.8 | 1/70 | 1/70 | 1/70 | 0/70 |
+| `nores/max4096` | TGVF softforce | 70 | 64 | 44.69% | 40.86% | 90.00% | 44.29% | 35.71% | 8.57% | 66.7 | 1/70 | 0/70 | 0/70 | 0/70 |
+
+  - Per-benchmark accuracy, `Acc scored`:
+
+| Setting | Mode | VStar | HR | BLINK | OCRBench-v2 | MMMU-Pro | MathVista | MathVerse |
+|---|---|---:|---:|---:|---:|---:|---:|---:|
+| `res1024` | original | 80.00% | 70.00% | 60.00% | 37.87% | 40.00% | 40.00% | 40.00% |
+| `res1024` | TGVF free | 80.00% | 80.00% | 60.00% | 26.10% | 20.00% | 30.00% | 20.00% |
+| `res1024` | TGVF softforce | 90.00% | 80.00% | 50.00% | 25.98% | 40.00% | 30.00% | 20.00% |
+| `nores` | original | 90.00% | 80.00% | 50.00% | 37.87% | 40.00% | 40.00% | 40.00% |
+| `nores` | TGVF free | 90.00% | 80.00% | 70.00% | 26.10% | 20.00% | 30.00% | 20.00% |
+| `nores` | TGVF softforce | 90.00% | 75.00% | 50.00% | 26.03% | 40.00% | 30.00% | 20.00% |
+
+- Analysis:
+  - Original remains output-unhealthy at both high-image settings despite the
+    higher `4096` budget: `res1024` hits `4096` on `14/70`, and nores hits
+    `4096` on `15/70`.
+  - TGVF remains output-healthy in both image settings by generation length:
+    all TGVF branches have `0/70` hit>=4096, and only one or two rows hit
+    `>=512`.
+  - `res1024` TGVF is operationally healthy: no malformed rows and append
+    success equals trigger count for both free and softforce.
+  - nores TGVF is not operationally clean. Malformed rows are CUDA OOMs during
+    triggered focus append on HR samples: `5` rows for free and `6` rows for
+    softforce. These rows have empty raw outputs and should be treated as an
+    invalid/nores compatibility issue, not as ordinary model errors.
+  - Because malformed rows are unscored by the scorer, `Acc scored` overstates
+    the practical nores TGVF result. `Acc all rows` is the safer number for
+    nores TGVF until the OOM issue is fixed.
+- Conclusion:
+  - `res1024/max4096` is a valid high-budget CoreDev-70 diagnostic: original
+    accuracy is higher but output health is poor; TGVF is lower on this small
+    diagnostic but output-healthy.
+  - `nores/max4096` is useful as a stress diagnostic but not a clean TGVF
+    comparison setting yet, because nores HR focus append can OOM at 180GB.
+  - The same central pattern remains: original gains some accuracy from longer
+    thinking but pays with many unhealthy cap hits; TGVF avoids long-output
+    pathology but has lower reasoning-heavy benchmark accuracy in this small
+    CoreDev-70 slice.
+
+### BENCH-20260707-010022-original-nores-balanced-coredev70-max4096
+
+- Status: DONE.
+- Question:
+  - On a balanced CoreDev-70 diagnostic, how common are unhealthy original
+    Qwen3-thinking outputs under no project-side image-resolution cap and
+    `max_answer_tokens=4096`?
+  - Is the high unhealthy rate observed in the 21-row nores hit-stress run a
+    real balanced-sample prevalence or mainly a selection effect?
+- Baseline anchor:
+  - `BENCH-20260706-230528-original-health-params-gpu0-3-coredev70`.
+  - `BENCH-20260706-235519-original-hitstress-nores-max4096-coredev21`.
+- Intended diff:
+  - Original only; no TGVF modes.
+  - Use the balanced CoreDev-70 manifest (`10` rows per benchmark).
+  - Use `max_image_resolution=0`, where `0` means the original backend omits
+    project-side `max_pixels`. `qwen_vl_utils` still applies its own default
+    image cap, equivalent to roughly a `4096 x 4096` square at the local
+    patch/merge factor.
+  - Use `max_answer_tokens=4096` to test natural termination.
+  - Use GPUs `0,1,2,3` with per-worker batch size `1`.
+- Not allowed to change:
+  - Model/processor, original prompt/template, sampling (`do_sample=False`),
+    scoring backend, benchmark root, sample ids, and attention implementation.
+- Code commit / worktree:
+  - Branch: `clean/tgvf-clean-project-20260625`.
+  - HEAD before launch: `2144c4ac9da64f2b1d2c84e5bc6b2d1a54b3385e`.
+  - Worktree before launch: dirty with documentation updates and the
+    diagnostic original-backend change allowing `max_image_resolution=0` to
+    omit `max_pixels`.
+- Model / processor:
+  - `/nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking`.
+- Benchmark identity:
+  - Manifest:
+    `outputs/clean_pipeline/original_health_sweep_gpu0_3_20260706_230528/coredev70_7bench_10each_from_coredev350_seed20260706.json`.
+  - Rows: `70` (`10` per benchmark).
+  - Manifest hash:
+    `f4a42621974b7993c46ea0480aefc3ee781c2444e59549475169686a3e9018f1`.
+  - Manifest file sha256:
+    `eb5ae54abfe045c68791fe507c11d6f1f7c5580b996f98318cb6c14d210b8200`.
+  - Benchmark root:
+    `/home/dredvpn009/Flash_Storage/datasets/benchmarks`.
+- Evaluation identity:
+  - `eval_family=project_native_external`.
+  - Mode/backend: `original` / `qwen3_original`.
+  - Attention: FlashAttention-2.
+  - Dtype: `bfloat16`.
+  - Max image resolution: `0` / omit project-side `max_pixels`.
+  - Max answer tokens: `4096`.
+  - GPU set: `0,1,2,3`.
+  - Per-worker batch size: `1`.
+- Benchmark output:
+  - Driver:
+    `outputs/clean_pipeline/original_nores_balanced_coredev70_20260707_010022/run_nores_balanced_coredev70.sh`.
+  - Queue log:
+    `outputs/clean_pipeline/original_nores_balanced_coredev70_20260707_010022/queue.log`.
+  - Result root:
+    `outputs/clean_benchmarks/qwen3_original_nores_coredev70_maxans4096_flash2_gpu0_3_20260707_010022`.
+- Verification:
+  - The run must write `run_config.txt`, `rows.jsonl`, and `summary.json`.
+  - Report accuracy, parse rate, average prompt length, average output tokens,
+    hit rates at `>=2048`, `>=3072`, and `>=4096`, and per-benchmark
+    breakdown.
+  - Inspect cap-hit rows for loop symptoms and compare the prevalence against
+    the 21-row hit-stress diagnostic.
+- tmux:
+  - `original_nores_balanced_coredev70_20260707_010022`.
+- Started:
+  - `2026-07-07T01:01:34+09:00`.
+- Finished:
+  - `2026-07-07T01:14:03+09:00`.
+- Metrics:
+  - The run completed and wrote `summary.json`, `rows.jsonl`, and
+    `run_config.txt`.
+  - Overall:
+
+| Setting | Rows | Acc | Parse | Avg prompt len | Max prompt len | Avg output tokens | Hit>=2048 | Hit>=3072 | Hit>=4096 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| `nores/max4096` | 70 | 53.98% | 68/70 (97.1%) | 3046.7 | 15985 | 1296.2 | 18/70 (25.7%) | 15/70 (21.4%) | 15/70 (21.4%) |
+
+  - Per-benchmark:
+
+| Benchmark | n | Acc | Avg prompt len | Avg output tokens | Hit>=2048 | Hit>=3072 | Hit>=4096 |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| VStar | 10 | 90.00% | 3221.5 | 54.4 | 0/10 | 0/10 | 0/10 |
+| HR | 10 | 80.00% | 15473.0 | 517.7 | 1/10 | 1/10 | 1/10 |
+| BLINK | 10 | 50.00% | 980.9 | 590.8 | 1/10 | 1/10 | 1/10 |
+| OCRBench-v2 | 10 | 37.87% | 629.2 | 874.2 | 0/10 | 0/10 | 0/10 |
+| MMMU-Pro | 10 | 40.00% | 320.4 | 2677.8 | 6/10 | 6/10 | 6/10 |
+| MathVista | 10 | 40.00% | 386.6 | 1410.8 | 3/10 | 2/10 | 2/10 |
+| MathVerse | 10 | 40.00% | 315.6 | 2947.5 | 7/10 | 5/10 | 5/10 |
+
+  - Compared with `res512/max_answer_tokens=2048` on the same CoreDev-70
+    sample set:
+    - `res512/max2048`: acc `40.01%`, parse `68/70`, avg prompt len
+      `365.0`, avg output tokens `911.9`, hit>=2048 `21/70`.
+    - `nores/max4096`: acc `53.98%`, parse `68/70`, avg prompt len
+      `3046.7`, avg output tokens `1296.2`, hit>=2048 `18/70`,
+      hit>=4096 `15/70`.
+- Analysis:
+  - The 21-row hit-stress run overestimated nores prevalence because it was
+    intentionally selected from prior `res512/max2048` cap hits: stress
+    `hit>=4096` was `14/21` (`66.7%`), while balanced CoreDev-70 nores is
+    `15/70` (`21.4%`).
+  - Balanced nores still has a real unhealthy-output issue. The cap hits are
+    concentrated in reasoning-heavy surfaces: MMMU-Pro `6/10`, MathVerse
+    `5/10`, MathVista `2/10`, plus one HR and one BLINK row.
+  - Prompt length alone does not explain the pathology. Nores increases visual
+    prompt length substantially, from `365.0` avg at `res512` to `3046.7`, with
+    max `15985`. But VStar has long nores prompts and `0/10` cap hits, while
+    MMMU-Pro has short prompts (`320.4` avg) and `6/10` cap hits.
+  - `qwen_vl_utils` confirms that `nores` is not truly unlimited: omitting
+    project-side `max_pixels` falls back to its default maximum, equivalent to
+    roughly a `4096 x 4096` square at the local patch/merge factor.
+  - Manual cap-hit inspection again shows repeated self-correction, cyclic
+    re-evaluation of the same evidence, and failure to naturally terminate.
+- Threshold recommendation:
+  - For `max_answer_tokens=4096`, use `hit>=4096` as the high-precision
+    unhealthy label.
+  - `hit>=3072` is a strong warning / early-screen threshold. In this balanced
+    nores run it matches the `4096` cap-hit set exactly (`15/70`), but the
+    cap-hit criterion is still the cleaner reported label.
+  - `hit>=2048` should be treated as a warning threshold requiring inspection,
+    not an automatic unhealthy label, because it includes some long but
+    terminating OCR/reasoning rows.
+- Conclusion:
+  - The high stress-set unhealthy rate was partly selection bias, but balanced
+    nores still has a meaningful dead-loop problem.
+  - The issue is not simply project-side image resolution. It is primarily
+    original Qwen3-thinking generation behavior on reasoning-heavy tasks.
+
+### BENCH-20260706-235519-original-hitstress-nores-max4096-coredev21
+
+- Status: DONE.
+- Question:
+  - For original Qwen3-thinking rows that already hit the `2048` cap under
+    `res=512`, do they naturally stop when raised to `max_answer_tokens=4096`,
+    or do they continue into unhealthy loops?
+  - Does removing the project-side original-image resolution cap mitigate the
+    loop behavior compared with `max_image_resolution=512` on the exact same
+    rows?
+- Baseline anchor:
+  - `BENCH-20260706-230528-original-health-params-gpu0-3-coredev70`.
+  - Source rows are exactly the `21` rows from
+    `outputs/clean_benchmarks/qwen3_original_healthparam_coredev70_res512_maxans2048_flash2_gpu0_3_20260706_230528/rows.jsonl`
+    with `output_tokens >= 2048`.
+- Intended diff:
+  - Original only; no TGVF modes.
+  - Compare two image settings on the same 21-row stress set:
+    `max_image_resolution=512` and `max_image_resolution=0`.
+  - In this diagnostic, `max_image_resolution=0` means the original backend
+    omits project-side `max_pixels` from the image content item.
+  - Raise original answer budget to `max_answer_tokens=4096`.
+  - Use GPUs `0,1,2,3` with per-worker batch size `1` to reduce OOM risk.
+- Not allowed to change:
+  - Model/processor, original prompt/template, sampling (`do_sample=False`),
+    scoring backend, benchmark root, sample ids, and attention implementation.
+- Code commit / worktree:
+  - Branch: `clean/tgvf-clean-project-20260625`.
+  - HEAD before launch: `2144c4ac9da64f2b1d2c84e5bc6b2d1a54b3385e`.
+  - Worktree before launch: dirty with documentation updates and a diagnostic
+    original-backend change allowing `max_image_resolution=0` to omit
+    `max_pixels`.
+- Model / processor:
+  - `/nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking`.
+- Benchmark identity:
+  - Manifest:
+    `outputs/clean_pipeline/original_nores_max4096_hitstress_20260706_235519/coredev70_res512_hit2048_21_seed20260706.json`.
+  - Rows: `21`.
+  - Selection rule: preserve CoreDev-70 manifest order for rows whose prior
+    `res=512/max_answer_tokens=2048` original output hit `2048`.
+  - Manifest hash:
+    `e2f26517d5dd3d1aa1a5bf36ce4ffd914eacd9bd610ada3baf61c1e3e3ea18d4`.
+  - Manifest file sha256:
+    `f1e04338e7924b2615b43a4b1b7bfb032e77f95e5b23ef34884c87c85af7407f`.
+  - Benchmark root:
+    `/home/dredvpn009/Flash_Storage/datasets/benchmarks`.
+- Evaluation identity:
+  - `eval_family=project_native_external`.
+  - Mode/backend: `original` / `qwen3_original`.
+  - Attention: FlashAttention-2.
+  - Dtype: `bfloat16`.
+  - Max answer tokens: `4096`.
+  - GPU set: `0,1,2,3`.
+  - Per-worker batch size: `1`.
+- Benchmark output:
+  - Driver:
+    `outputs/clean_pipeline/original_nores_max4096_hitstress_20260706_235519/run_hitstress_res512_vs_nores.sh`.
+  - Queue log:
+    `outputs/clean_pipeline/original_nores_max4096_hitstress_20260706_235519/queue.log`.
+  - Result roots:
+    `outputs/clean_benchmarks/qwen3_original_hitstress_res512_maxans4096_flash2_gpu0_3_20260706_235519`,
+    `outputs/clean_benchmarks/qwen3_original_hitstress_nores_maxans4096_flash2_gpu0_3_20260706_235519`.
+- Verification:
+  - Each run must write `run_config.txt`, `rows.jsonl`, and `summary.json`.
+  - Report hit rates at `>=2048` and `>=4096`, parse rate, accuracy, average
+    output tokens, and per-benchmark breakdown.
+  - Inspect hit-row outputs for loop symptoms: repeated phrases, cyclic
+    reconsideration without new visual evidence, answer churn, or failure to
+    produce a final answer before the cap.
+- tmux:
+  - `original_nores_4096_hitstress_20260706_235519`.
+- Started:
+  - `2026-07-06T23:56:37+09:00`.
+- Finished:
+  - `2026-07-07T00:32:41+09:00`.
+- Metrics:
+  - Both runs completed and wrote `summary.json`, `rows.jsonl`, and
+    `run_config.txt`.
+
+| Image setting | Rows | Acc | Parse | Hit>=2048 | Hit>=4096 | Avg output tokens |
+|---|---:|---:|---:|---:|---:|---:|
+| `res512` | 21 | 28.59% | 20/21 (95.2%) | 18/21 (85.7%) | 13/21 (61.9%) | 3350.7 |
+| `nores` | 21 | 28.61% | 19/21 (90.5%) | 17/21 (81.0%) | 14/21 (66.7%) | 3332.4 |
+
+  - Per-benchmark `hit>=4096`:
+
+| Benchmark | n | res512 | nores |
+|---|---:|---:|---:|
+| HR | 1 | 1/1 | 1/1 |
+| BLINK | 1 | 0/1 | 1/1 |
+| OCRBench-v2 | 2 | 0/2 | 0/2 |
+| MMMU-Pro | 6 | 6/6 | 6/6 |
+| MathVista | 4 | 2/4 | 2/4 |
+| MathVerse | 7 | 4/7 | 4/7 |
+
+  - Paired token deltas:
+    - `17/21` rows had exactly the same output-token count under `res512` and
+      `nores`.
+    - `2/21` rows became shorter under `nores`: one OCR row `2421 -> 917`,
+      one MathVista row `1715 -> 1136`.
+    - `2/21` rows became longer under `nores`: BLINK `2449 -> 4096` and one
+      MathVerse row `2331 -> 2383`.
+- Loop inspection:
+  - All `hit>=4096` rows in both settings show loop-like behavior by manual
+    inspection plus simple repetition signals: repeated self-correction
+    (`Wait`, `maybe`), cyclic re-evaluation of the same visual/text evidence,
+    or high repeated n-gram counts near the tail.
+  - This is strongest on MMMU-Pro: `6/6` rows hit `4096` under both settings.
+    Some MMMU rows still score correctly because a parseable option appears
+    somewhere in the output, but they are operationally unhealthy because they
+    do not naturally terminate.
+  - Not all `>=2048` rows are the same pathology. Non-cap long rows include
+    OCR transcription and a few long-but-terminating reasoning outputs.
+    Therefore the strongest unhealthy label should be attached to cap hits,
+    especially `>=4096`, while `>=2048` is a warning threshold.
+- Analysis:
+  - Raising the answer budget from `2048` to `4096` does not make the original
+    hit rows healthy. Most of the original `2048` hits continue until the new
+    cap: `13/21` at `res512`, `14/21` under `nores`.
+  - Removing the project-side image-resolution cap does not mitigate the
+    loop behavior. It leaves most rows unchanged, improves only a small OCR
+    case, and worsens the BLINK stress row into a `4096` cap hit.
+  - Combined with the earlier `res256/res384/res512` sweep, this points to the
+    original Qwen3-thinking generation behavior rather than project-side image
+    resolution as the main source of the dead-loop pathology.
+- Conclusion:
+  - Most high-cap hits are unhealthy loops, especially on MMMU-Pro,
+    MathVerse, MathVista, and HR. A few long outputs are legitimate OCR/long
+    reasoning cases, so `hit>=2048` alone should be interpreted as a warning,
+    not an automatic failure label.
+  - No-project-cap original image resolution is not a fix; it is neutral to
+    slightly worse on this stress set.
+  - For a healthy original comparison, the next meaningful variable is
+    generation behavior, such as no-thinking/direct-answer or a validated
+    stop/answer extraction policy, not further raising the token cap or
+    removing the image cap.
+
+### BENCH-20260706-230528-original-health-params-gpu0-3-coredev70
+
+- Status: DONE.
+- Question:
+  - Under the current original Qwen3 thinking prompt, is there a normal
+    output-healthy original setting using only `max_image_resolution` and
+    `max_answer_tokens`, and can we find it while limiting this test to GPUs
+    `0,1,2,3`?
+- Baseline anchor:
+  - Original CoreDev-350 `res=512`, `max_answer_tokens=2048`:
+    `outputs/clean_benchmarks/qwen3_original_coredev350_flash2_maxans2048_bsz4_gpu0_7_20260701_205732/summary.json`.
+    This run hit `2048` on `94/350` rows (`26.9%`).
+  - Original CoreDev-350 `res=1024`, `max_answer_tokens=2048`:
+    `outputs/clean_benchmarks/qwen3_original_health_res1024_coredev350_dynamic_maxans2048_flash2_gpu0_7_20260706_214629/summary.json`.
+    This run hit `2048` on `88/350` rows (`25.1%`).
+  - Original CoreDev-2511 `res=512`, `max_answer_tokens=512` baseline:
+    `outputs/clean_benchmarks/qwen3_original_coredev2511_4shard_maxans512_20260628_0216_rescored_bboxfix_20260628_035759/merged/summary.json`.
+    On the CoreDev-350 diagnostic overlap, this baseline hit `512` on
+    `186/350` rows (`53.1%`).
+- Intended diff:
+  - Run original only.
+  - Limit dynamic benchmark workers to GPUs `0,1,2,3`.
+  - Use a new balanced CoreDev-70 diagnostic manifest: `10` rows per benchmark
+    selected from the existing CoreDev-350 diagnostic manifest.
+  - Keep `max_answer_tokens=2048` as a natural-termination probe and sweep
+    `max_image_resolution` over `256`, `384`, and `512`.
+- Health criterion:
+  - A setting is a natural healthy candidate only if `hit>=2048 <= 5%`,
+    answer parse rate stays at least `95%`, and average output length is not
+    dominated by long thinking loops.
+  - If no setting passes, report that original-thinking has no natural healthy
+    `res/max` setting in the tested range, and separately identify any
+    practical guarded setting.
+- Not allowed to change:
+  - Model/processor, original backend, prompt/template, sampling
+    (`do_sample=False`), scoring backend, benchmark root, row identities except
+    for the named CoreDev-70 diagnostic subset, and GPU set.
+- Code commit / worktree:
+  - Branch: `clean/tgvf-clean-project-20260625`.
+  - HEAD before launch: `2144c4ac9da64f2b1d2c84e5bc6b2d1a54b3385e`.
+  - Worktree before launch: dirty with documentation updates from the prior
+    resolution-1024 diagnostics.
+- Model / processor:
+  - `/nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking`.
+- Benchmark identity:
+  - Manifest:
+    `outputs/clean_pipeline/original_health_sweep_gpu0_3_20260706_230528/coredev70_7bench_10each_from_coredev350_seed20260706.json`.
+  - Rows: `70` (`10` per benchmark).
+  - Manifest hash:
+    `f4a42621974b7993c46ea0480aefc3ee781c2444e59549475169686a3e9018f1`.
+  - Manifest file sha256:
+    `eb5ae54abfe045c68791fe507c11d6f1f7c5580b996f98318cb6c14d210b8200`.
+  - Source diagnostic manifest:
+    `revisit_vlm_clean/benchmark_manifests/coredev2511_7bench_50each_seed20260701.json`,
+    sha256 `cd765bae2dd48a86f033c91369da2cfc74471718525e83fc3dd5f35f8f7f7958`.
+  - Benchmark root:
+    `/home/dredvpn009/Flash_Storage/datasets/benchmarks`.
+- Evaluation identity:
+  - `eval_family=project_native_external`.
+  - Mode/backend: `original` / `qwen3_original`.
+  - Attention: FlashAttention-2.
+  - Dtype: `bfloat16`.
+  - Max answer tokens: `2048`.
+  - GPU set: `0,1,2,3`.
+  - Per-worker batch size: `4`.
+- Benchmark output:
+  - Driver:
+    `outputs/clean_pipeline/original_health_sweep_gpu0_3_20260706_230528/run_original_health_sweep_gpu0_3.sh`.
+  - Queue log:
+    `outputs/clean_pipeline/original_health_sweep_gpu0_3_20260706_230528/queue.log`.
+  - Result roots:
+    `outputs/clean_benchmarks/qwen3_original_healthparam_coredev70_res256_maxans2048_flash2_gpu0_3_20260706_230528`,
+    `outputs/clean_benchmarks/qwen3_original_healthparam_coredev70_res384_maxans2048_flash2_gpu0_3_20260706_230528`,
+    `outputs/clean_benchmarks/qwen3_original_healthparam_coredev70_res512_maxans2048_flash2_gpu0_3_20260706_230528`.
+- Script / command:
+  - Syntax check passed:
+    `bash -n outputs/clean_pipeline/original_health_sweep_gpu0_3_20260706_230528/run_original_health_sweep_gpu0_3.sh`.
+  - Launch command:
+    `tmux new-session -d -s original_health_sweep_gpu0_3_20260706_230528 'cd /nvmesv/dredvpn009/projects/r-vlm/revisit_vlm && bash outputs/clean_pipeline/original_health_sweep_gpu0_3_20260706_230528/run_original_health_sweep_gpu0_3.sh'`.
+- tmux:
+  - `original_health_sweep_gpu0_3_20260706_230528`.
+- Started:
+  - `2026-07-06T23:07:16+09:00`.
+- GPUs:
+  - Preflight: GPUs `0,1,2,3` all reported `0 MiB` used.
+- Verification:
+  - Each run must write `run_config.txt`, `rows.jsonl`, and `summary.json`.
+  - Report rows/scored, accuracy, parse rate, output-token thresholds
+    `>=512`, `>=1024`, `>=1536`, `>=2048`, average output tokens, and
+    per-benchmark hit rates.
+  - Promote a setting for the next 350-row test only if it meets the health
+    criterion above.
+- Finished:
+  - `2026-07-06T23:48:59+09:00`.
+- Metrics:
+  - All three GPU0-3 original-only runs completed and wrote `summary.json`,
+    `rows.jsonl`, and `run_config.txt`.
+  - Overall CoreDev-70:
+
+| Max image res | Rows | Acc | Parse | Hit>=512 | Hit>=1024 | Hit>=1536 | Hit>=2048 | Avg output tokens |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 256 | 70 | 36.51% | 100.00% | 40/70 (57.1%) | 29/70 (41.4%) | 23/70 (32.9%) | 20/70 (28.6%) | 975.0 |
+| 384 | 70 | 35.32% | 98.57% | 36/70 (51.4%) | 30/70 (42.9%) | 27/70 (38.6%) | 19/70 (27.1%) | 981.7 |
+| 512 | 70 | 40.01% | 97.14% | 36/70 (51.4%) | 30/70 (42.9%) | 21/70 (30.0%) | 21/70 (30.0%) | 911.9 |
+
+  - Per-benchmark `hit>=2048` counts:
+
+| Benchmark | res256 | res384 | res512 |
+|---|---:|---:|---:|
+| VStar | 0/10 | 0/10 | 0/10 |
+| HR | 0/10 | 1/10 | 1/10 |
+| BLINK | 0/10 | 0/10 | 1/10 |
+| OCRBench-v2 | 3/10 | 2/10 | 2/10 |
+| MMMU-Pro | 6/10 | 6/10 | 6/10 |
+| MathVista | 4/10 | 3/10 | 4/10 |
+| MathVerse | 7/10 | 7/10 | 7/10 |
+
+- Analysis:
+  - None of the tested `max_image_resolution` values meet the natural health
+    criterion. All three settings hit the `2048` cap on roughly `27-30%` of
+    rows, far above the `<=5%` threshold.
+  - Lowering resolution from `512` to `384` or `256` does not fix the original
+    Qwen3 thinking-loop pathology. MathVerse remains `7/10` hit>=2048 at all
+    three resolutions, and MMMU-Pro remains `6/10`.
+  - The result is consistent with the larger CoreDev-350 evidence:
+    `res=512/max_answer_tokens=2048` hit `94/350` (`26.9%`) and
+    `res=1024/max_answer_tokens=2048` hit `88/350` (`25.1%`).
+- Conclusion:
+  - No normal output-healthy original setting was found using only
+    `max_image_resolution in {256,384,512}` and `max_answer_tokens=2048` under
+    the current original Qwen3 thinking prompt.
+  - Do not promote any of these settings to a 350-row confirmation run.
+  - The practical guarded setting remains a cap such as
+    `max_answer_tokens=512`, but it should be reported as a truncation guard,
+    not as natural output health. A genuinely healthy original comparison would
+    require changing generation behavior, such as a no-thinking/direct-answer
+    mode or a validated stop/answer extraction policy, which was intentionally
+    not tested in this GPU0-3 sweep.
+
+### BENCH-20260706-214629-health-res1024-maxtok2048-coredev350
+
+- Status: DONE.
+- Question:
+  - Does a healthier output budget reduce original Qwen3 truncation at
+    `max_image_resolution=1024`, and do original/free/softforce still show the
+    same MathVerse behavior when evaluated under the same high-output setting?
+- Baseline anchor:
+  - Eval-only 1024 CoreDev-2511 diagnostic:
+    `BENCH-20260706-160153-eval-resolution1024-original-golden-coredev2511`.
+  - Original@1024 in that run hit `>=512` output tokens on `1474/2511`
+    rows (`58.70%`), including MathVerse `482/500` (`96.40%`).
+- Intended diff:
+  - Diagnostic sample set only: use CoreDev-350 (`7` benchmarks x `50`
+    samples) from the CoreDev-2511 manifest family.
+  - Keep eval-time image resolution at `1024`.
+  - Increase generation budget from `512` to `2048` for all methods:
+    original uses `--max-answer-tokens 2048`; TGVF uses unified
+    `--max-tokens 2048`.
+  - Run original, golden `tgvf_free`, and golden `tgvf_softforce`.
+- Not allowed to change:
+  - Model/processor, Stage2 checkpoint, TGVF backend, D DeepStack state,
+    DeepStack original-image scope, post-D continuation, scoring backend,
+    attention implementation, and softforce prompt.
+- Code commit / worktree:
+  - Branch: `clean/tgvf-clean-project-20260625`.
+  - HEAD before launch: `2144c4ac9da64f2b1d2c84e5bc6b2d1a54b3385e`.
+  - Worktree before launch: dirty with documentation updates in
+    `docs/EXPERIMENT_LEDGER.md`,
+    `docs/TGVF_ABLATION_BENCHMARK_RESULTS.md`, and
+    `docs/TGVF_ABLATION_TASK_TABLE.md`; generated driver under
+    `outputs/clean_pipeline/healthy_res1024_maxtok2048_20260706_214629`.
+- Model / processor:
+  - `/nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking`.
+- Stage2 checkpoint/output:
+  - Golden checkpoint:
+    `outputs/clean_training/qwen3_stage2_ddeepstack_norm01_from_stage1_ddeepstack_8gpu_20260703_005210/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt`.
+  - sha256:
+    `b8d9f3fbd06c6731ef30a22344dc60f7d1ddffe8f71c6c8e37c055a059de55ae`.
+- Validation data:
+  - Stage2 eval jsonl:
+    `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend_open_answer/splits/tgvf_v4_teacher_stage2_protocol_c.test.jsonl`.
+  - Rows: `1002`.
+  - sha256:
+    `3b719e1bd03a09741cc05dac3ed85e423a9b2c29209b07546792a6795cdbbfc5`.
+- Benchmark identity:
+  - Diagnostic manifest:
+    `revisit_vlm_clean/benchmark_manifests/coredev2511_7bench_50each_seed20260701.json`.
+  - Rows: `350` (`50` per benchmark).
+  - Manifest file sha256:
+    `cd765bae2dd48a86f033c91369da2cfc74471718525e83fc3dd5f35f8f7f7958`.
+  - Manifest hash:
+    `3acd25bed95ef1361447840d7cd5dcf6b46d1609d49953e0592a3e40b3b37904`.
+  - Note: this diagnostic manifest inherits `manifest_id` text from the
+    CoreDev-2511 source but contains only the deterministic 350-row sample set.
+  - Benchmark root:
+    `/home/dredvpn009/Flash_Storage/datasets/benchmarks`.
+- Evaluation identity:
+  - `eval_family=project_native_external`.
+  - Original:
+    - Mode/backend: `original` / `qwen3_original`.
+    - Attention: FlashAttention-2.
+    - Max answer tokens: `2048`.
+  - Golden TGVF:
+    - Modes: `tgvf_free`, `tgvf_softforce`.
+    - Backend: clean native `tgvf_stage2_qwen3_native`.
+    - Attention: FlashAttention-2.
+    - DeepStack original-image scope: `no_block`.
+    - D DeepStack: enabled.
+    - Post-D continuation: `kv_cache`.
+    - Unified max tokens: `2048`.
+    - Softforce prompt: `Use focus tool.`.
+- Benchmark output:
+  - Driver:
+    `outputs/clean_pipeline/healthy_res1024_maxtok2048_20260706_214629/run_health_coredev350.sh`.
+  - Queue log:
+    `outputs/clean_pipeline/healthy_res1024_maxtok2048_20260706_214629/queue.log`.
+  - Original:
+    `outputs/clean_benchmarks/qwen3_original_health_res1024_coredev350_dynamic_maxans2048_flash2_gpu0_7_20260706_214629/summary.json`.
+  - Golden free:
+    `outputs/clean_benchmarks/qwen3_stage2_ddeepstack_health_res1024_coredev350_dynamic_maxtok2048_flash2_ddeepstack_gpu0_7_20260706_214629/tgvf_free/summary.json`.
+  - Golden softforce:
+    `outputs/clean_benchmarks/qwen3_stage2_ddeepstack_health_res1024_coredev350_dynamic_maxtok2048_flash2_ddeepstack_gpu0_7_20260706_214629/tgvf_softforce/summary.json`.
+- Script / command:
+  - Syntax check passed:
+    `bash -n outputs/clean_pipeline/healthy_res1024_maxtok2048_20260706_214629/run_health_coredev350.sh`.
+  - Planned launch command:
+    `tmux new-session -d -s health_res1024_2048_coredev350_20260706_214629 'cd /nvmesv/dredvpn009/projects/r-vlm/revisit_vlm && bash outputs/clean_pipeline/healthy_res1024_maxtok2048_20260706_214629/run_health_coredev350.sh'`.
+- tmux:
+  - `health_res1024_2048_coredev350_20260706_214629`.
+- Started:
+  - `2026-07-06T21:46:29+09:00`.
+- Launch note:
+  - First launch exited before model loading because the diagnostic 350-row
+    manifest inherits `manifest_id=core_balanced_dev_2511_seed20260625`; the
+    driver originally passed `--subset-id coredev2511_7bench_50each_seed20260701`,
+    causing manifest identity validation to fail. Driver was corrected to pass
+    the manifest's internal subset id while keeping the 350-row manifest hash
+    `3acd25bed95ef1361447840d7cd5dcf6b46d1609d49953e0592a3e40b3b37904`.
+- GPUs:
+  - Preflight: GPUs `0,1,2,3,4,5,6,7` all reported `0 MiB` used.
+  - Planned runtime: smoke on GPU `0`; CoreDev-350 diagnostic on
+    `0,1,2,3,4,5,6,7`.
+- Verification:
+  - Require all three smoke runs to complete before CoreDev-350 runs.
+  - Report accuracy, macro accuracy, parse rate, trigger rate, append-success
+    rate, malformed rate, and `output_tokens >= 2048` hit rate.
+  - Compare MathVerse rows and output tails against the prior `512` budget run
+    to distinguish truncation from answer/scorer difficulty.
+- Finished:
+  - `2026-07-06T22:59:17+09:00`.
+- Metrics:
+  - All three smoke runs completed before the CoreDev-350 diagnostic.
+  - Overall CoreDev-350:
+    - Original: acc `48.00%`, parse `98.57%`, hit>=512 `170/350`
+      (`48.6%`), hit>=2048 `88/350` (`25.1%`), average output tokens
+      `870.2`.
+    - TGVF free: acc `47.41%`, parse `99.71%`, trigger `30.86%`,
+      append `100.00%`, hit>=512 `4/350` (`1.1%`), hit>=2048 `0/350`,
+      average output tokens `71.1`.
+    - TGVF softforce: acc `48.54%`, parse `99.14%`, trigger `45.43%`,
+      append `100.00%`, hit>=512 `3/350` (`0.9%`), hit>=2048 `0/350`,
+      average output tokens `64.9`.
+    - Macro accuracy is effectively identical to overall accuracy in this
+      diagnostic because the sample is balanced at `50` rows per benchmark:
+      original `48.00%`, free `47.41%`, softforce `48.54%`.
+  - Per-benchmark accuracy:
+    - VStar: original `70.00%`, free `68.00%`, softforce `66.00%`.
+    - HR: original `68.00%`, free `68.00%`, softforce `68.00%`.
+    - BLINK: original `60.00%`, free `60.00%`, softforce `62.00%`.
+    - OCRBench-v2: original `27.97%`, free `27.87%`, softforce
+      `29.75%`.
+    - MMMU-Pro: original `36.00%`, free `34.00%`, softforce `48.00%`.
+    - MathVista: original `56.00%`, free `60.00%`, softforce `46.00%`.
+    - MathVerse: original `18.00%`, free `14.00%`, softforce `20.00%`.
+  - Key output-health rows:
+    - MathVerse original hit>=512 `48/50`, hit>=2048 `30/50`, average
+      output tokens `1703.6`.
+    - MathVerse free hit>=512 `1/50`, hit>=2048 `0/50`, average output
+      tokens `83.4`.
+    - MathVerse softforce hit>=512 `2/50`, hit>=2048 `0/50`, average output
+      tokens `130.1`.
+    - MMMU-Pro original hit>=2048 `25/50`; free and softforce both
+      hit>=2048 `0/50`.
+- Analysis:
+  - Raising the output budget from `512` to `2048` is not sufficient to make
+    original Qwen3 healthy at `max_image_resolution=1024`: one quarter of the
+    CoreDev-350 diagnostic rows still hit the new cap.
+  - The high-resolution original issue is concentrated in reasoning-heavy
+    surfaces, especially MathVerse and MMMU-Pro. MathVerse remains almost
+    entirely long-output dominated even at the higher budget.
+  - TGVF under the same resolution and output budget does not show the same
+    pathology: both free and softforce have `0/350` hit>=2048 and roughly
+    order-of-magnitude shorter average outputs.
+  - Accuracy on this CoreDev-350 diagnostic is close across methods, so the
+    main conclusion is output health, not a final high-resolution accuracy
+    ranking.
+- Conclusion:
+  - Treat original@1024 with `max_answer_tokens=512` as invalid for high-
+    resolution interpretation due to truncation.
+  - Treat original@1024 with `max_answer_tokens=2048` as improved but still
+    output-unhealthy, especially on MathVerse and MMMU-Pro.
+  - TGVF free/softforce remain output-healthy under the same `1024/2048`
+    setting; low MathVerse absolute scores for TGVF are not explained by the
+    same max-token failure.
+- Comparable to baseline:
+  - Comparable across original/free/softforce within this CoreDev-350
+    diagnostic sample.
+  - Not a replacement for the complete CoreDev-2511 tables because the sample
+    is only `50` rows per benchmark.
+- Follow-up:
+  - If high-resolution reporting is needed, run complete CoreDev-2511 with the
+    same `1024/2048` identity and explicitly report output-token health.
+  - Inspect MathVerse row examples separately for scorer/answer-form and
+    reasoning behavior, since TGVF's low MathVerse score is not a truncation
+    artifact under this setting.
+
+### BENCH-20260706-160153-eval-resolution1024-original-golden-coredev2511
+
+- Status: DONE.
+- Question:
+  - Can the current original Qwen3 baseline and current D DeepStack golden
+    Stage2 checkpoint be evaluated on complete CoreDev-2511 with eval-time
+    raw image budget increased from `512` to `1024`?
+- Baseline anchor:
+  - Current valid original CoreDev-2511 baseline:
+    `outputs/clean_benchmarks/qwen3_original_coredev2511_4shard_maxans512_20260628_0216_rescored_bboxfix_20260628_035759/merged`.
+  - Current D DeepStack golden CoreDev-2511 benchmark:
+    `BENCH-20260703-084300-stage2-d-deepstack-coredev2511`.
+    - `tgvf_free`:
+      `outputs/clean_benchmarks/qwen3_stage2_ddeepstack_coredev2511_dynamic_maxtok512_flash2_ddeepstack_gpu1_7_20260703_084300/tgvf_free`.
+    - `tgvf_softforce`:
+      `outputs/clean_benchmarks/qwen3_stage2_ddeepstack_coredev2511_dynamic_maxtok512_flash2_ddeepstack_gpu0_7_20260703_084300/tgvf_softforce`.
+- Intended diff:
+  - Eval-only resolution ablation: change benchmark `max_image_resolution`
+    from `512` to `1024`.
+  - Do not retrain; use the existing 512-trained original model and golden
+    Stage2 checkpoint.
+  - Run original, golden `tgvf_free`, and golden `tgvf_softforce` on the same
+    complete CoreDev-2511 manifest.
+- Allowed changed variables:
+  - `max_image_resolution=1024`.
+  - Runtime launcher for original uses current dynamic benchmark +
+    FlashAttention-2, matching the newer resolution-214 original rerun style
+    rather than the older 4-shard SDPA original launcher.
+  - Runtime GPU scheduling uses available GPUs `0,1,2,3,4,5,6,7`.
+- Not allowed to change:
+  - Model/processor, Stage2 checkpoint, CoreDev-2511 sample set, manifest hash,
+    scoring backend, softforce prompt, D DeepStack state, DeepStack
+    original-image scope, post-D continuation, and generation token budget.
+- Code commit / worktree:
+  - Branch: `clean/tgvf-clean-project-20260625`.
+  - HEAD before launch: `2144c4ac9da64f2b1d2c84e5bc6b2d1a54b3385e`.
+  - Worktree before launch: dirty with report-documentation edits in
+    `docs/TGVF_ABLATION_BENCHMARK_RESULTS.md` and
+    `docs/TGVF_ABLATION_TASK_TABLE.md`; generated driver script under
+    `outputs/clean_pipeline/eval_resolution1024_20260706_160153`.
+- Model / processor:
+  - Original model/checkpoint:
+    `/nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking`.
+  - TGVF model/processor:
+    `/nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking`.
+- Stage2 checkpoint/output:
+  - Golden checkpoint:
+    `outputs/clean_training/qwen3_stage2_ddeepstack_norm01_from_stage1_ddeepstack_8gpu_20260703_005210/stage2_micro4/clean_training_execution/checkpoint_step_1200.pt`.
+  - sha256:
+    `b8d9f3fbd06c6731ef30a22344dc60f7d1ddffe8f71c6c8e37c055a059de55ae`.
+- Validation data:
+  - Stage2 eval jsonl:
+    `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend_open_answer/splits/tgvf_v4_teacher_stage2_protocol_c.test.jsonl`.
+  - Rows: `1002`.
+  - sha256:
+    `3b719e1bd03a09741cc05dac3ed85e423a9b2c29209b07546792a6795cdbbfc5`.
+- Benchmark identity:
+  - Manifest:
+    `revisit_vlm_clean/benchmark_manifests/core_balanced_dev_2511_seed20260625.json`.
+  - Rows: `2511`.
+  - Manifest file sha256:
+    `3a013b2bcc64316054d28239a3cea3f44211cadbfe19787be3b7f285620fa5c1`.
+  - Internal manifest hash:
+    `a461d9b482b7165b42b9bbb0fbf0ea6aff31fde0a838c13d953f070e770b0579`.
+  - Benchmark root:
+    `/home/dredvpn009/Flash_Storage/datasets/benchmarks`.
+- Evaluation identity:
+  - Original:
+    - Mode/backend: `original` / `qwen3_original`.
+    - Attention: FlashAttention-2.
+    - Max answer tokens: `512`.
+    - DeepStack: off/noop.
+  - Golden TGVF:
+    - Modes: `tgvf_free`, `tgvf_softforce`.
+    - Backend: clean native `tgvf_stage2_qwen3_native`.
+    - Attention: FlashAttention-2.
+    - DeepStack original-image scope: `no_block`.
+    - D DeepStack: enabled.
+    - Post-D continuation: `kv_cache`.
+    - Unified max tokens: `512`.
+    - Softforce prompt: `Use focus tool.`.
+- Benchmark output:
+  - Driver:
+    `outputs/clean_pipeline/eval_resolution1024_20260706_160153/run_eval_resolution1024_queue.sh`.
+  - Queue log:
+    `outputs/clean_pipeline/eval_resolution1024_20260706_160153/queue.log`.
+  - Original@1024:
+    `outputs/clean_benchmarks/qwen3_original_evalres1024_coredev2511_dynamic_maxans512_flash2_gpu0_7_20260706_160153/summary.json`.
+  - Golden free@1024:
+    `outputs/clean_benchmarks/qwen3_stage2_ddeepstack_evalres1024_coredev2511_dynamic_maxtok512_flash2_ddeepstack_gpu0_7_20260706_160153/tgvf_free/summary.json`.
+  - Golden softforce@1024:
+    `outputs/clean_benchmarks/qwen3_stage2_ddeepstack_evalres1024_coredev2511_dynamic_maxtok512_flash2_ddeepstack_gpu0_7_20260706_160153/tgvf_softforce/summary.json`.
+- Script / command:
+  - Syntax check passed:
+    `bash -n outputs/clean_pipeline/eval_resolution1024_20260706_160153/run_eval_resolution1024_queue.sh`.
+  - Launch command:
+    `tmux new-session -d -s eval_res1024_20260706_160153 'cd /nvmesv/dredvpn009/projects/r-vlm/revisit_vlm && bash outputs/clean_pipeline/eval_resolution1024_20260706_160153/run_eval_resolution1024_queue.sh'`.
+- GPUs:
+  - Preflight: GPUs `0,1,2,3,4,5,6,7` all reported `0 MiB` used.
+  - Planned runtime: smoke on GPU `0`; complete runs on
+    `0,1,2,3,4,5,6,7`.
+- tmux:
+  - `eval_res1024_20260706_160153`.
+- Started:
+  - `2026-07-06T16:04:55+09:00`.
+- Smoke:
+  - Original@1024 smoke completed:
+    `outputs/clean_benchmarks/qwen3_original_evalres1024_coredev2511_dynamic_smoke_maxans512_flash2_gpu0_20260706_160153`.
+    Rows `4/4`; output artifacts include `summary.json`, `rows.jsonl`,
+    `run_config.txt`, and `benchmark_sources.json`.
+  - Golden free@1024 smoke completed:
+    `outputs/clean_benchmarks/qwen3_stage2_ddeepstack_evalres1024_coredev2511_dynamic_smoke_free_maxtok512_flash2_ddeepstack_gpu0_20260706_160153`.
+    Rows `4/4`; TGVF append path did not crash at eval resolution `1024`.
+  - Golden softforce@1024 smoke completed:
+    `outputs/clean_benchmarks/qwen3_stage2_ddeepstack_evalres1024_coredev2511_dynamic_smoke_softforce_maxtok512_flash2_ddeepstack_gpu0_20260706_160153`.
+    Rows `4/4`; TGVF append path did not crash at eval resolution `1024`.
+- Verification:
+  - Smoke original, smoke golden free, and smoke golden softforce must finish
+    before the complete CoreDev-2511 runs continue.
+  - Compare complete rows/scored, accuracy, macro accuracy, parse rate, trigger
+    rate, append-success rate, and per-benchmark accuracy against the 512
+    original/golden anchors.
+- Results:
+  - Original@1024 complete CoreDev-2511 finished and artifacts were written:
+    `outputs/clean_benchmarks/qwen3_original_evalres1024_coredev2511_dynamic_maxans512_flash2_gpu0_7_20260706_160153`.
+  - Rows/scored: `2511 / 2511`.
+  - Overall accuracy: `0.3261966470` (`32.62%`), versus original@512
+    `0.3085530629` (`+1.76` points).
+  - Macro accuracy: `0.3925634624` (`39.26%`), versus original@512
+    `0.3613591379` (`+3.12` points).
+  - Parse rate: `0.9458383114`; malformed rate: `0.0`.
+  - Per-benchmark accuracy:
+    - VStar `69.63%` (`+15.71` vs original@512).
+    - HR `62.00%` (`+10.00`).
+    - BLINK `49.05%` (`+2.62`).
+    - OCRBench-v2 `21.51%` (`+1.05`).
+    - MMMU-Pro `31.67%` (`-2.67`).
+    - MathVista `36.33%` (`-4.67`).
+    - MathVerse `4.60%` (`-0.20`).
+  - Rows with `output_tokens >= 512`: `1474/2511` (`58.70%`), concentrated
+    in MathVerse `482/500`, OCRBench-v2 `370/600`, MMMU-Pro `211/300`, and
+    MathVista `178/300`.
+  - Caveat: the command omitted explicit `--eval-family project_native_external`,
+    so the summary metadata records `eval_family=internal_diagnostic`. The
+    runner backend, scorer, manifest hash, row count/order, model, attention
+    implementation, and resolution are still the intended complete CoreDev-2511
+    eval identity; record this metadata caveat when using the result.
+  - Golden free@1024 complete CoreDev-2511 finished and artifacts were written:
+    `outputs/clean_benchmarks/qwen3_stage2_ddeepstack_evalres1024_coredev2511_dynamic_maxtok512_flash2_ddeepstack_gpu0_7_20260706_160153/tgvf_free`.
+  - Rows/scored: `2511 / 2511`.
+  - Overall accuracy: `0.3975744712` (`39.76%`), versus golden free@512
+    `0.3704269230` (`+2.71` points), and versus original@1024
+    `0.3261966470` (`+7.14` points).
+  - Macro accuracy: `0.4553399576` (`45.53%`), versus golden free@512
+    `0.4115968335` (`+4.37` points), and versus original@1024
+    `0.3925634624` (`+6.28` points).
+  - Parse rate: `0.9980087614`; trigger/focus-valid rate:
+    `0.3058542413`; append-success rate: `1.0`; malformed rate: `0.0`.
+  - Per-benchmark accuracy:
+    - VStar `68.59%` (`+16.23` vs free@512; `-1.05` vs original@1024).
+    - HR `62.50%` (`+10.00`; `+0.50`).
+    - BLINK `56.67%` (`-0.24`; `+7.62`).
+    - OCRBench-v2 `26.05%` (`+1.03`; `+4.54`).
+    - MMMU-Pro `37.33%` (`+1.67`; `+5.67`).
+    - MathVista `51.00%` (`+1.33`; `+14.67`).
+    - MathVerse `16.60%` (`+0.60`; `+12.00`).
+  - Rows with `output_tokens >= 512`: `55/2511` (`2.19%`), mostly
+    OCRBench-v2 `50/600`; no append failures or malformed rows.
+  - Golden softforce@1024 complete CoreDev-2511 finished and artifacts were
+    written:
+    `outputs/clean_benchmarks/qwen3_stage2_ddeepstack_evalres1024_coredev2511_dynamic_maxtok512_flash2_ddeepstack_gpu0_7_20260706_160153/tgvf_softforce`.
+  - Rows/scored: `2511 / 2511`.
+  - Overall accuracy: `39.58%`, versus golden softforce@512 `+1.65` points,
+    and versus original@1024 `+6.96` points.
+  - Macro accuracy: `45.07%`, versus golden softforce@512 `+2.74` points,
+    and versus original@1024 `+5.81` points.
+  - Parse rate: `99.40%`; trigger/focus-valid rate: `41.78%`;
+    append-success rate: `100.00%`; malformed rate: `0.00%`.
+  - Per-benchmark accuracy:
+    - VStar `67.54%` (`+16.75` vs softforce@512; `-2.09` vs original@1024).
+    - HR `61.50%` (`+2.00`; `-0.50`).
+    - BLINK `54.52%` (`-0.95`; `+5.48`).
+    - OCRBench-v2 `26.46%` (`+1.92`; `+4.95`).
+    - MMMU-Pro `37.67%` (`-0.33`; `+6.00`).
+    - MathVista `49.00%` (`+0.00`; `+12.67`).
+    - MathVerse `18.80%` (`-0.20`; `+14.20`).
+  - Rows with `output_tokens >= 512`: `44/2511` (`1.75%`); no append
+    failures or malformed rows.
+- Finished:
+  - `2026-07-06T19:27:02+09:00` after golden softforce@1024 wrote
+    `summary.json`.
+- Conclusion:
+  - Eval resolution `1024` helps original overall, mainly through VStar and HR,
+    but original still has severe long-output truncation pressure
+    (`1474/2511`, `58.70%` hit `>=512` output tokens).
+  - Golden D DeepStack TGVF remains clearly above original@1024:
+    free `+7.14` overall / `+6.28` macro; softforce `+6.96` overall /
+    `+5.81` macro.
+  - Free@1024 is slightly better overall than softforce@1024 in this run
+    (`39.76%` vs `39.58%`), while softforce triggers more often
+    (`41.78%` vs `30.59%`) and has the lowest `>=512` hit rate (`1.75%`).
+
 ### TIME-20260706-124428-inference-time-coredev35
 
 - Status: DONE.
@@ -17005,3 +20442,91 @@ entry, update this file immediately.
       FlashAttention-2, DeepStack `no_block`, KV-cache continuation, scoring
       backend `auto`, max image resolution `512`, and unified
       `max_tokens=512`.
+
+## 2026-07-13 Stage2 Matrix-CE Preservation Implementation Smoke
+
+- Status: `RUNNING`.
+- Question: can Stage2 retain the Stage1 same-image target-discrimination
+  objective while leaving the authoritative weighted-CE trajectory training
+  unchanged?
+- Baseline: authoritative D-DeepStack Stage2 plan
+  `outputs/clean_training/qwen3_stage2_ddeepstack_norm01_from_stage1_ddeepstack_8gpu_20260703_005210/stage2_micro4/training_plan.json`.
+- Bound Stage1 checkpoint:
+  `outputs/clean_training/qwen3_stage1_ddeepstack_norm01_wandb_4gpu_20260702_180906/stage1_micro4/clean_training_execution/checkpoint_step_2000.pt`,
+  SHA256 `b119379fc13a3eee1d19fb347bda729262592599218ea1ff88733ba142cb0c0b`.
+- Bound train split: `46883` rows,
+  `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend_open_answer/splits/tgvf_v4_teacher_stage2_protocol_c.train.jsonl`,
+  SHA256 `b5027e72dda7601073ddb8bc9cf1853ec564fa415a3e9cb7d1e684cc7c0d733b`.
+- Bound validation split: `1002` rows,
+  `data/tgvf_teacher/generated/runs/tgvf_v4_teacher_50k_clean_imend_open_answer/splits/tgvf_v4_teacher_stage2_protocol_c.test.jsonl`,
+  SHA256 `3b719e1bd03a09741cc05dac3ed85e423a9b2c29209b07546792a6795cdbbfc5`.
+- Model and processor:
+  `/nvmesv/dredvpn009/models/hf/Qwen3-VL-8B-Thinking`.
+- Code identity before the implementation commit: branch
+  `clean/tgvf-clean-project-20260625`, HEAD
+  `fad7968792177677c470851c232d7a894a508b03`, dirty worktree. The smoke plan
+  records the exact dirty state containing the new implementation.
+- Held fixed from Golden: protocol `protocol_c_tool_observation`, resolution
+  `512`, SDPA, rank-64 broad LoRA, full-modules protocol-token training,
+  weighted span losses, target focus ratio `0.8`, mask probability `0.75`,
+  `through_answer` original-image scope, original-image DeepStack enabled, and
+  D-DeepStack enabled.
+- Intended functional diff: add auxiliary same-image single-focus Matrix-CE
+  with group size `4`, weight `1.0`, readout chunk size `4`, score span
+  `post_d_readout_before_answer`, and joint candidate swap of D plus its
+  D-DeepStack features. The ordinary Stage2 data cursor and weighted CE are
+  unchanged.
+- Smoke-only deviations: GPU `0`, world size `1`, micro/global batch `1`,
+  gradient accumulation `1`, `max_steps=1`, `save_every=1`, evaluation
+  disabled, and W&B disabled. This run is implementation validation, not an
+  accuracy result and not comparable to the Golden training run.
+- Planned output:
+  `outputs/clean_training/smoke_stage2_matrix_ce_preservation_golden_gpu0_20260713`.
+- Started at `2026-07-13T16:28:27+09:00` on GPU `0` with:
+  `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=src:revisit_vlm_clean/src python -m revisit_vlm_clean.training.stage2_executor --plan outputs/clean_training/smoke_stage2_matrix_ce_preservation_golden_gpu0_20260713/training_plan.json --launch-training`.
+- First launch stopped before any training step or checkpoint because the plan
+  bound a validation split while setting `eval_every=0`; the clean cadence gate
+  requires `training.eval_every >= 1` in that case. This is an implementation
+  smoke setup failure, not a model result. The failed output is retained at the
+  path above.
+- Retry status: `COMPLETE`. Retry changed only smoke cadence to `eval_every=1`
+  and writes to
+  `outputs/clean_training/smoke_stage2_matrix_ce_preservation_golden_gpu0_20260713_v2`.
+- Retry started at `2026-07-13T16:29:37+09:00` on GPU `0`.
+- Retry completed successfully in `40.86s`: one forward/backward/optimizer
+  step, one validation forward, and one checkpoint publish. Runtime:
+  `outputs/clean_training/smoke_stage2_matrix_ce_preservation_golden_gpu0_20260713_v2/clean_training_execution/single_process_training_runtime.json`.
+- Step-1 metrics: weighted focus CE `3.890625`, same-image Matrix-CE
+  `6.40625`, combined loss `10.3125`, Matrix Top-1 `0.25`, positive score
+  `-60.875`, negative score `-61.6667`, positive-negative margin `+0.7917`,
+  pre-clip grad norm `505.63`, post-clip norm `1.0013`, and peak allocated GPU
+  memory `123.46 GiB`. All losses and gradients were finite.
+- Matrix trace verified four distinct `single_focus` rows from the same image
+  `visual_genome:2360991`; runtime debug verified candidate swap
+  `d_and_d_deepstack_features`, score span `post_d_readout_before_answer`,
+  original-image DeepStack `through_answer`, and D-DeepStack injection enabled.
+- Published checkpoint:
+  `outputs/clean_training/smoke_stage2_matrix_ce_preservation_golden_gpu0_20260713_v2/clean_training_execution/checkpoint_step_1.pt`,
+  SHA256 `a47b4a82cf55b672ab8e8258464a5102f04aae54c2923af23fe6269eaef83887`;
+  required keys, state checks, and step checks all passed.
+- Conclusion: implementation smoke passes. The single-group Top-1 is not an
+  experiment conclusion; a controlled multi-checkpoint pilot with internal D
+  discrimination evaluation is still required.
+- Post-smoke implementation audit tightened the auxiliary-loss contract:
+  Matrix-CE now forces original-image masking with probability `1.0` over the
+  scored readout and encodes the shared image only once per K-row group. These
+  changes do not alter ordinary Stage2 weighted CE. Final v3 smoke status:
+  `COMPLETE`, started at `2026-07-13T16:37:54+09:00` on GPU `0`, output
+  `outputs/clean_training/smoke_stage2_matrix_ce_preservation_golden_gpu0_20260713_v3`.
+- Final v3 smoke completed successfully in `42.12s`. Weighted focus CE was
+  `3.859375`, Matrix-CE `6.4375`, combined loss `10.3125`, Matrix Top-1
+  `0.25`, positive-negative score margin `+0.7917`, pre-clip grad norm
+  `515.54`, post-clip norm `0.9994`, and peak allocated memory `123.45 GiB`.
+  Runtime debug explicitly reports Matrix original-image mask probability
+  `1.0`, one vision encode per same-image group, D plus D-DeepStack candidate
+  swap, and four distinct same-image single-focus rows. All gradients were
+  finite.
+- Final v3 checkpoint:
+  `outputs/clean_training/smoke_stage2_matrix_ce_preservation_golden_gpu0_20260713_v3/clean_training_execution/checkpoint_step_1.pt`,
+  SHA256 `7a973bd933bcc9741a94a6893ca96f7238c1b4dc3805789d96934ef2a54c75b5`;
+  checkpoint key, state, and step validation all passed.

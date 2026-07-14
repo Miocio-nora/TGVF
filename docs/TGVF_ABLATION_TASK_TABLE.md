@@ -135,6 +135,8 @@ holding the CoreDev-2511 benchmark identity fixed.
 
 D DeepStack on improves CoreDev-2511 overall by `+1.51` points in free mode
 and `+1.94` points in softforce mode over the comparable D-off Stage2 line.
+Full per-benchmark results and source paths are recorded in
+[TGVF_ABLATION_BENCHMARK_RESULTS.md](TGVF_ABLATION_BENCHMARK_RESULTS.md).
 
 ## Resolution Ablation
 
@@ -150,6 +152,9 @@ Detailed per-benchmark resolution results are recorded in
 |---|---:|---|---|---|---|---|---|---|---|
 | `resolution512_golden` | 512 | Done | Done | Done | Done | Done | 37.04% | 37.92% | Current golden experimental baseline |
 | `resolution1024` | 1024 | Failed at Stage1 smoke | OOM before train | Not run | Not run | Not run | N/A | N/A | Golden micro-batch-4 Stage1 recipe does not fit at 1024 resolution on the available 180GB-class GPUs |
+| `resolution1024_eval_only` | 1024 | Done / diagnostic | Not retrained | Not run | Not retrained | Not run | 39.76% | 39.58% | Eval-only diagnostic. Original@1024 is 32.62%, but the original output is unhealthy: 58.70% hit the 512-token cap and MathVerse hit rate is 96.40%. Requires a healthy output-budget rerun before final interpretation |
+| `resolution1024_health2048_coredev350` | 1024 | Done / diagnostic | Not retrained | Not run | Not retrained | Not run | 47.41% | 48.54% | CoreDev-350 diagnostic with `max_answer_tokens/max_tokens=2048`. Original is 48.00%, but still unhealthy: 25.14% hit the 2048-token cap, including MathVerse 30/50 and MMMU-Pro 25/50. TGVF free/softforce both have 0/350 hit>=2048 |
+| `original_health_params_coredev70` | 256/384/512 + 1024/nores max4096 | Done / diagnostic | Not retrained | Not run | Not retrained | Not run | N/A | N/A | Original/TGVF high-budget diagnostics on balanced CoreDev-70. Original remains output-unhealthy at res1024/nores max4096 with 14/70 and 15/70 hit>=4096. TGVF res1024 has 0/70 hit>=4096 and no malformed rows; TGVF nores also has 0/70 hit>=4096 but is not clean because HR triggered focus append OOM causes 5-6 malformed rows |
 | `resolution214` | 214 | Done | Done | Done | Done | Done | 30.82% | 30.73% | Original@214 is 23.96%; lowering resolution hurts all three methods versus 512, but TGVF still beats original@214 by about +6.8 points |
 
 ## Data Scale Ablation
@@ -196,4 +201,5 @@ recorded in
 | Priority | Task | Why |
 |---:|---|---|
 | P1 | Review Matrix CE size sweep and choose whether to promote size `3`, size `4`, or size `5` as the next training default | Size `5` has best Stage1 internal retrieval, size `3` has best current softforce score, and size `4` remains the golden anchor |
+| P1 | Decide whether to run complete CoreDev-2511 at `resolution=1024` / `max_tokens=2048` | CoreDev-350 shows original remains output-unhealthy even at 2048, while TGVF stays healthy. A complete CoreDev-2511 rerun is only useful if we want final high-resolution reporting rather than a diagnostic conclusion |
 | P3 | Generate 75k/100k teacher data | Required before upper data-scale curve points can start |

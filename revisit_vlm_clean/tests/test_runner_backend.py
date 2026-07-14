@@ -334,6 +334,126 @@ def test_qwen3_original_batch_inputs_force_left_padding(monkeypatch) -> None:
     assert inputs["input_ids"].shape == (2, 2)
 
 
+def test_qwen3_original_no_thinking_blocks_think_tokens(monkeypatch, tmp_path) -> None:
+    import torch
+
+    image_path = tmp_path / "image.jpg"
+    image_path.write_bytes(b"not a real image; processor is mocked")
+    sample = BenchmarkSample(
+        sample_id="sample",
+        benchmark="vstar_bench",
+        population_id="vstar_test_questions_191",
+        source_file="vstar/test.jsonl",
+        question="Question?",
+        media=({"kind": "path", "path": str(image_path), "exists": True},),
+        choices=("A", "B"),
+        gold_answer="A",
+    )
+    config = _run_config(EvalMode.ORIGINAL)
+    rendered = render_benchmark_input(sample, config)
+
+    class FakeTokenizer:
+        pad_token_id = 0
+
+        def encode(self, text, **kwargs):
+            del kwargs
+            return {"<think>": [101], "</think>": [102]}.get(text, [])
+
+        def decode(self, ids, **kwargs):
+            del kwargs
+            return " ".join(str(item) for item in ids)
+
+    class FakeProcessor:
+        tokenizer = FakeTokenizer()
+
+    class FakeModel:
+        def generate(self, **kwargs):
+            assert kwargs["bad_words_ids"] == [[101], [102]]
+            return torch.tensor([[1, 2, 10, 0]])
+
+    backend = Qwen3OriginalBackend(
+        model_id="fake",
+        processor_id=None,
+        backend_config=BackendConfig(
+            backend="qwen3_original",
+            device="cpu",
+            device_map=None,
+            original_no_thinking=True,
+        ),
+        max_image_resolution=512,
+        max_answer_tokens=8,
+    )
+    monkeypatch.setattr(backend, "_load", lambda: (FakeModel(), FakeProcessor()))
+    monkeypatch.setattr(
+        backend,
+        "_build_batch_inputs",
+        lambda processor, messages: {
+            "input_ids": torch.tensor([[1, 2]]),
+            "attention_mask": torch.ones(1, 2, dtype=torch.long),
+        },
+    )
+
+    result = backend.run(sample, rendered, config)
+
+    assert result.raw_output == "10"
+    assert result.debug["original_generation"]["no_thinking"] is True
+
+
+def test_qwen3_original_no_thinking_strips_think_prefill(monkeypatch) -> None:
+    import sys
+    import types
+
+    import torch
+
+    fake_qwen_vl_utils = types.ModuleType("qwen_vl_utils")
+
+    def fake_process_vision_info(*args, **kwargs):
+        del args, kwargs
+        return None, None, {}
+
+    fake_qwen_vl_utils.process_vision_info = fake_process_vision_info
+    monkeypatch.setitem(sys.modules, "qwen_vl_utils", fake_qwen_vl_utils)
+
+    class FakeTokenizer:
+        padding_side = "right"
+
+    class FakeProcessor:
+        tokenizer = FakeTokenizer()
+
+        def apply_chat_template(self, messages, **kwargs):
+            del messages
+            if "enable_thinking" in kwargs:
+                raise TypeError("old processor")
+            return "prompt<|im_start|>assistant\n<think>\n"
+
+        def __call__(self, **kwargs):
+            assert kwargs["text"] == ["prompt<|im_start|>assistant\n"]
+            return {
+                "input_ids": torch.tensor([[1, 2]]),
+                "attention_mask": torch.ones(1, 2, dtype=torch.long),
+            }
+
+    backend = Qwen3OriginalBackend(
+        model_id="fake",
+        processor_id=None,
+        backend_config=BackendConfig(
+            backend="qwen3_original",
+            device="cpu",
+            device_map=None,
+            original_no_thinking=True,
+        ),
+        max_image_resolution=512,
+        max_answer_tokens=8,
+    )
+
+    inputs = backend._build_batch_inputs(
+        FakeProcessor(),
+        [[{"role": "user", "content": [{"type": "text", "text": "one"}]}]],
+    )
+
+    assert inputs["input_ids"].shape == (1, 2)
+
+
 def test_make_tgvf_stage2_legacy_backend_without_prepare_for_diagnostic(tmp_path) -> None:
     runtime = Stage2RuntimeConfig(
         stage2_checkpoint=str(tmp_path / "ckpt.pt"),
