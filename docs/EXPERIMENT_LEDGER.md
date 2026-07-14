@@ -459,9 +459,31 @@ If a mistake is found:
     accumulation are adjusted to the currently available four GPUs.
 - Driver:
   - `scripts/run_stage2_r16c_direct_reasoning_replay.sh`.
+  - sha256
+    `42891ec4d01db354bbe78fba28043cdba0d19ee18584d5f50c046070f56c93e6`.
   - Sequence: prepare plans -> one-step four-GPU smoke -> 1200-step training.
   - Smoke gate requires real focus and direct rows, nonzero direct loss-token
     weight, D-DeepStack enabled, Matrix-CE disabled, and a valid checkpoint.
+- Plan preflight:
+  - Code commit `b99377ebb26ab5af6d0e00ca62ee3dd8ce599dbb`; worktree was
+    clean when both plans were generated.
+  - Main plan sha256
+    `6278655acb8de7eaf583b7b632560825a48c7f4c389bd7d35aca5e90dd62aabf`;
+    smoke plan sha256
+    `9380327cd50353bc57503fabbfb59a828a1bfe61e94b11086df3c3ef6aceb350`.
+  - Both execution bundles are valid, have zero blocking items, validated
+    checkpoint/optimizer contracts, and report
+    `ready_for_explicit_distributed_launch`.
+  - Machine-checked normalized comparison against the completed R16-C plan
+    passed for model, protocol, LoRA, weighted CE, mask, DeepStack, module
+    policy, optimizer, TGVF, resolution, sequence length, sampler ratio, and
+    1200-step cadence.
+  - Allowed plan differences are only train/validation data; world size
+    `8 -> 4` with accumulation `4 -> 8`; run/output/command identities; and
+    current-schema metadata explicitly recording Matrix-CE as disabled.
+  - The Stage2 loader materializes `45066/968` train/validation samples and
+    retains `no_focus_think`; a rendered direct audit row has the expected
+    `<think>original reasoning</think>\nshort answer<|im_end|>` target.
 - Planned outputs:
   - `outputs/clean_ablation/stage2_r16c_direct_reasoning_replay_4gpu_20260714_225235`.
 - W&B:
