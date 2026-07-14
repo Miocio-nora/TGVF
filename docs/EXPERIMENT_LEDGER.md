@@ -613,6 +613,13 @@ If a mistake is found:
     `outputs/clean_ablation/stage2_r16c_direct_reasoning_replay_micro8_4gpu_20260714_232021/logs/train.log`.
   - Main checkpoint target:
     `outputs/clean_ablation/stage2_r16c_direct_reasoning_replay_micro8_4gpu_20260714_232021/main/stage2_micro8/clean_training_execution/checkpoint_step_1200.pt`.
+  - Early formal-run health at step `10`: loss total/focus/direct
+    `3.93359 / 4.13281 / 1.77539`; maximum peak memory `129.61 GiB`; no
+    OOM/non-finite/distributed failure.
+  - Matched-prefix throughput over steps 1-10: micro8 mean interval
+    `32.16 s/step` versus micro4 `44.09 s/step`, a `1.37x` speedup. The most
+    recent five micro8 intervals average `29.62 s/step`, giving a provisional
+    remaining runtime near `9.8 h` before validation/checkpoint overhead.
 - Golden status:
   - Named throughput configuration for the replay ablation only; no Golden
     default changes.
