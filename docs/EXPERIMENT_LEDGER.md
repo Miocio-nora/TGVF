@@ -410,7 +410,7 @@ If a mistake is found:
 
 ### EXP-20260714-225235-stage2-r16c-direct-reasoning-replay
 
-- Status: PLANNED.
+- Status: RUNNING.
 - Objective:
   - Test whether replacing only accepted direct/no-focus teacher rationales
     with correct original Qwen3-VL thinking trajectories preserves more of the
@@ -488,6 +488,22 @@ If a mistake is found:
   - `outputs/clean_ablation/stage2_r16c_direct_reasoning_replay_4gpu_20260714_225235`.
 - W&B:
   - Formal run online in project `tgvf-clean-qwen3-deepstack`; smoke disabled.
+- Smoke gate:
+  - Passed on GPUs `0,1,2,3` from `2026-07-14 22:56:54` to `22:58:36`
+    JST; one optimizer step, eight micro steps, validation, and checkpoint
+    state checks completed.
+  - Loss total/focus/direct `3.91797 / 4.11914 / 1.34082`; effective global
+    batch `128`; peak rank-0 memory `77.37 GiB`.
+  - Actual rank-0 accumulated sample mix `26 focus / 6 direct` (`81.25%`
+    focus), direct loss-token weight `135`, D-DeepStack injection enabled,
+    Matrix-CE disabled, and no OOM/non-finite/distributed failure.
+  - Checkpoint:
+    `outputs/clean_ablation/stage2_r16c_direct_reasoning_replay_4gpu_20260714_225235/smoke/stage2_micro4/clean_training_execution/checkpoint_step_1.pt`.
+- Formal launch:
+  - Started `2026-07-14 22:58:58 JST` on GPUs `0,1,2,3`.
+  - tmux `stage2_r16c_direct_replay_20260714_225235`.
+  - Main log:
+    `outputs/clean_ablation/stage2_r16c_direct_reasoning_replay_4gpu_20260714_225235/logs/train.log`.
 - Golden status:
   - This is a named data ablation. Golden defaults remain unchanged until
     internal and complete CoreDev-2511 free/softforce evaluation is finished.
